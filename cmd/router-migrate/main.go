@@ -18,7 +18,7 @@ func main() {
 		fmt.Println(buildinfo.Text())
 		return
 	}
-	action := flag.String("action", "status", "migration action: status, plan, verify, apply, maintenance, non-transactional-maintenance, cancel, retry, or resume")
+	action := flag.String("action", "status", "migration action: status, plan, verify, verify-serving, apply, maintenance, non-transactional-maintenance, cancel, retry, or resume")
 	driver := flag.String("driver", "sqlite", "usage DB driver: sqlite or postgres")
 	dbPath := flag.String("db", "usage.sqlite", "path to usage SQLite database")
 	dsnEnv := flag.String("dsn-env", "ROUTER_USAGE_DB_DSN", "environment variable containing the Postgres DSN")
@@ -47,6 +47,11 @@ func main() {
 		status, err = r.Status()
 	case "verify":
 		status, err = r.Verify()
+	case "verify-serving":
+		status, err = r.Verify()
+		if err == nil {
+			err = requireServingCompatible(status)
+		}
 	case "apply":
 		err = r.ApplyPending(*runnerID)
 		if err == nil {
@@ -107,3 +112,10 @@ func main() {
 }
 
 func die(format string, args ...any) { fmt.Fprintf(os.Stderr, format+"\n", args...); os.Exit(1) }
+
+func requireServingCompatible(status router.MigrationStatus) error {
+	if !router.UsageMigrationServingCompatible(status) {
+		return fmt.Errorf("migration verify-serving requires current compatible ledger and validated data jobs (state %s)", status.State)
+	}
+	return nil
+}

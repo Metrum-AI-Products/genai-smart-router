@@ -1,22 +1,23 @@
 # Kubernetes Deployment Bootstrap
 
-This package does not include turnkey Kubernetes manifests or a Helm chart. Kubernetes is a supported deployment pattern when the operating team supplies reviewed manifests that follow the same runtime contract as the binary and Docker Compose packages.
+The checked-in generic manifests provide a one-router SQLite installation for a fresh PVC. They use one replica, `Recreate`, and `ReadWriteOnce` storage so `/app/state/usage.sqlite` has exactly one active writer. The base includes no database DSN, credentials, or TCP/5432 egress.
 
-Use the embedded `/docs/` site after startup for the full Kubernetes deployment planning guide.
+## Fresh-PVC Bootstrap
 
-## Required Kubernetes Objects
+Set the same immutable image in `deploy/kubernetes/overlays/sqlite-bootstrap/job.yaml` and `deploy/kubernetes/overlays/example/patch-image.yaml`. Use this path only when `smart-llmrouter-state` does not already exist; existing databases use the reviewed upgrade migration runbook.
 
-A Kubernetes deployment normally needs:
+```bash
+kubectl apply -k deploy/kubernetes/overlays/sqlite-bootstrap
+kubectl -n smart-llmrouter wait --for=condition=complete job/smart-llmrouter-sqlite-bootstrap --timeout=10m
+kubectl -n smart-llmrouter logs job/smart-llmrouter-sqlite-bootstrap -c migration-verify-serving
+kubectl -n smart-llmrouter delete job smart-llmrouter-sqlite-bootstrap
+kubectl apply -k deploy/kubernetes/overlays/example
+kubectl -n smart-llmrouter rollout status deployment/smart-llmrouter --timeout=10m
+```
 
-- a namespace owned by the platform team;
-- a ConfigMap for reviewed router config when policy allows config in ConfigMaps;
-- Secrets for provider keys, caller-token hashes or generated config fragments, browser-admin credentials, and the issued `license.json`;
-- an external Postgres database or a separately managed in-cluster database;
-- a Deployment for stateless router pods plus persistent state only where required by the deployment design;
-- a Service and Ingress or Gateway with TLS;
-- readiness and liveness probes for `/readyz` and `/healthz`;
-- resource requests and limits sized for expected concurrent requests;
-- NetworkPolicy that permits only required clients, admin paths, database access, and upstream providers or private model services.
+Never use `delete -k` for the bootstrap overlay: it can remove shared resources or the PVC. The bootstrap Job serializes `version`, `plan`, `apply`, zero-row `resume`, and `verify-serving` while no serving Deployment mounts the claim. `verify-serving` fails unless the migration ledger is current/compatible and every bound data job is validated.
+
+For multi-replica or externally managed database deployments, select PostgreSQL explicitly: provide a deployment-owned DSN Secret, configure `server.usage_db.driver: postgres` with that DSN, and add narrowly scoped database egress. Do not share SQLite storage between router replicas.
 
 ## Bootstrap Validation
 

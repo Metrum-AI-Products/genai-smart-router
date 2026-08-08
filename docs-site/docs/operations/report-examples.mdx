@@ -84,8 +84,8 @@ Generate a usage report for a recent window:
 
 ```bash
 router-usage-report \
-  --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --driver sqlite \
+  --db /app/state/usage.sqlite \
   --since 7d \
   --out usage-7d.md
 ```
@@ -94,8 +94,8 @@ Generate a report for one caller cohort or rollout:
 
 ```bash
 router-usage-report \
-  --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --driver sqlite \
+  --db /app/state/usage.sqlite \
   --caller-user <owner-user> \
   --caller-project <project> \
   --caller-environment <environment> \

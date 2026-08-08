@@ -84,8 +84,8 @@ Use `router-usage-report` or `/admin/reports/` to separate downstream caller exp
 
 ```bash
 router-usage-report \
-  --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --driver sqlite \
+  --db /app/state/usage.sqlite \
   --since 24h \
   --out usage-24h.md
 ```

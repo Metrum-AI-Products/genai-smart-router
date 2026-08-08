@@ -49,7 +49,7 @@ type TenantDeploymentManifest struct {
 	Stage             string                  `json:"stage" yaml:"stage"`
 	Release           string                  `json:"release" yaml:"release"`
 	ResourceProfile   string                  `json:"resource_profile" yaml:"resource_profile"`
-	DatabaseProfile   string                  `json:"database_profile" yaml:"database_profile"`
+	StateProfile      string                  `json:"state_profile" yaml:"state_profile"`
 	UpstreamConfigRef string                  `json:"upstream_config_ref" yaml:"upstream_config_ref"`
 	ConfigRevision    string                  `json:"config_revision" yaml:"config_revision"`
 	License           TenantDeploymentLicense `json:"license" yaml:"license"`
@@ -74,29 +74,37 @@ type TenantDeploymentProfile struct {
 	HostnameSuffix          string `json:"hostname_suffix" yaml:"hostname_suffix"`
 	ApprovedReleaseDigest   string `json:"approved_release_digest" yaml:"approved_release_digest"`
 	ApprovedResourceProfile string `json:"approved_resource_profile" yaml:"approved_resource_profile"`
-	ApprovedDatabaseProfile string `json:"approved_database_profile" yaml:"approved_database_profile"`
+	ApprovedStateProfile    string `json:"approved_state_profile" yaml:"approved_state_profile"`
+	AWSProfile              string `json:"aws_profile" yaml:"aws_profile"`
+	StorageClass            string `json:"storage_class" yaml:"storage_class"`
+	StateStorageGiB         int    `json:"state_storage_gib" yaml:"state_storage_gib"`
+	IngressClassName        string `json:"ingress_class_name" yaml:"ingress_class_name"`
+	IngressNamespace        string `json:"ingress_namespace" yaml:"ingress_namespace"`
+	TLSSecretName           string `json:"tls_secret_name" yaml:"tls_secret_name"`
 }
 
 type TenantDeploymentPlan struct {
-	Schema          string   `json:"schema"`
-	Mode            string   `json:"mode"`
-	JobID           string   `json:"job_id"`
-	InstanceID      string   `json:"instance_id"`
-	ProfileID       string   `json:"profile_id"`
-	Environment     string   `json:"environment"`
-	AccountAlias    string   `json:"account_alias"`
-	Region          string   `json:"region"`
-	ClusterAlias    string   `json:"cluster_alias"`
-	CustomerID      string   `json:"customer_id"`
-	Stage           string   `json:"stage"`
-	Namespace       string   `json:"namespace"`
-	Hostname        string   `json:"hostname"`
-	ReleaseDigest   string   `json:"release_digest"`
-	ResourceProfile string   `json:"resource_profile"`
-	DatabaseProfile string   `json:"database_profile"`
-	ConfigRevision  string   `json:"config_revision"`
-	ManifestSHA256  string   `json:"manifest_sha256"`
-	Actions         []string `json:"actions"`
+	Schema            string   `json:"schema"`
+	Mode              string   `json:"mode"`
+	JobID             string   `json:"job_id"`
+	InstanceID        string   `json:"instance_id"`
+	ProfileID         string   `json:"profile_id"`
+	Environment       string   `json:"environment"`
+	AccountAlias      string   `json:"account_alias"`
+	Region            string   `json:"region"`
+	ClusterAlias      string   `json:"cluster_alias"`
+	CustomerID        string   `json:"customer_id"`
+	Stage             string   `json:"stage"`
+	Namespace         string   `json:"namespace"`
+	Hostname          string   `json:"hostname"`
+	ReleaseDigest     string   `json:"release_digest"`
+	ResourceProfile   string   `json:"resource_profile"`
+	StateProfile      string   `json:"state_profile"`
+	ConfigRevision    string   `json:"config_revision"`
+	ManifestSHA256    string   `json:"manifest_sha256"`
+	Actions           []string `json:"actions"`
+	upstreamConfigRef string
+	licenseRequestRef string
 }
 
 func LoadTenantDeploymentManifest(path string, stdin io.Reader) (TenantDeploymentManifest, error) {
@@ -119,8 +127,14 @@ func LoadTenantDeploymentProfile(ref string) (TenantDeploymentProfile, error) {
 	if err != nil || parsed.Scheme == "" {
 		return TenantDeploymentProfile{}, errors.New("profile reference must be an absolute reference")
 	}
+	if parsed.Scheme == "aws-ssm" {
+		if parsed.Host != "" || parsed.RawQuery != "" || parsed.Fragment != "" || !referencePattern.MatchString(ref) {
+			return TenantDeploymentProfile{}, errors.New("SSM profile reference is invalid")
+		}
+		return loadTenantDeploymentProfileSSM(ref)
+	}
 	if parsed.Scheme != "file" {
-		return TenantDeploymentProfile{}, errors.New("live protected-profile adapter is disabled; local validation requires a mode-0600 file:// profile")
+		return TenantDeploymentProfile{}, errors.New("profile reference must be a protected aws-ssm:/// reference or a local file:// test fixture")
 	}
 	if parsed.Host != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Path == "" {
 		return TenantDeploymentProfile{}, errors.New("file profile reference must contain only an absolute local path")
@@ -146,8 +160,8 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 	if manifest.ResourceProfile != profile.ApprovedResourceProfile {
 		return TenantDeploymentPlan{}, errors.New("resource_profile is not approved by the protected profile")
 	}
-	if manifest.DatabaseProfile != profile.ApprovedDatabaseProfile {
-		return TenantDeploymentPlan{}, errors.New("database_profile is not approved by the protected profile")
+	if manifest.StateProfile != profile.ApprovedStateProfile {
+		return TenantDeploymentPlan{}, errors.New("state_profile is not approved by the protected profile")
 	}
 	if manifest.Release != TenantReleaseLatestApproved {
 		return TenantDeploymentPlan{}, errors.New("release must be latest-approved")
@@ -165,15 +179,16 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 	}
 	manifestSum := sha256.Sum256(manifestBytes)
 	return TenantDeploymentPlan{
-		Schema: "metrum.ai/smartrouter-deployment-plan/v1", Mode: "local-fake",
+		Schema: "metrum.ai/smartrouter-deployment-plan/v1", Mode: "eks",
 		JobID: "job-" + jobSuffix, InstanceID: "instance-" + instanceSuffix,
 		ProfileID: profile.ProfileID, Environment: profile.Environment, AccountAlias: profile.AccountAlias,
 		Region: profile.Region, ClusterAlias: profile.ClusterAlias, CustomerID: manifest.CustomerID,
 		Stage: manifest.Stage, Namespace: namespace, Hostname: hostname,
 		ReleaseDigest: profile.ApprovedReleaseDigest, ResourceProfile: manifest.ResourceProfile,
-		DatabaseProfile: manifest.DatabaseProfile, ConfigRevision: manifest.ConfigRevision,
-		ManifestSHA256: hex.EncodeToString(manifestSum[:]),
-		Actions:        []string{"namespace", "network_policy", "database", "runtime_secret_binding", "license_binding", "state_pvc", "router", "activation", "hostname"},
+		StateProfile: manifest.StateProfile, ConfigRevision: manifest.ConfigRevision,
+		ManifestSHA256:    hex.EncodeToString(manifestSum[:]),
+		upstreamConfigRef: manifest.UpstreamConfigRef, licenseRequestRef: manifest.License.RequestRef,
+		Actions: []string{"namespace", "network_policy", "runtime_secret_binding", "license_binding", "state_pvc", "router", "activation", "hostname"},
 	}, nil
 }
 
@@ -244,7 +259,7 @@ func validateTenantDeploymentManifest(manifest TenantDeploymentManifest, raw []b
 	if manifest.APIVersion != TenantDeploymentManifestAPIVersion {
 		return fmt.Errorf("api_version must be %q", TenantDeploymentManifestAPIVersion)
 	}
-	for name, value := range map[string]string{"customer_id": manifest.CustomerID, "stage": manifest.Stage, "resource_profile": manifest.ResourceProfile, "database_profile": manifest.DatabaseProfile} {
+	for name, value := range map[string]string{"customer_id": manifest.CustomerID, "stage": manifest.Stage, "resource_profile": manifest.ResourceProfile, "state_profile": manifest.StateProfile} {
 		if err := validateDeploymentID(name, value); err != nil {
 			return err
 		}
@@ -274,14 +289,16 @@ func validateTenantDeploymentProfile(profile TenantDeploymentProfile, raw []byte
 	for name, value := range map[string]string{
 		"profile_id": profile.ProfileID, "account_alias": profile.AccountAlias, "cluster_alias": profile.ClusterAlias,
 		"namespace_prefix": profile.NamespacePrefix, "approved_resource_profile": profile.ApprovedResourceProfile,
-		"approved_database_profile": profile.ApprovedDatabaseProfile,
+		"approved_state_profile": profile.ApprovedStateProfile, "storage_class": profile.StorageClass,
+		"ingress_class_name": profile.IngressClassName, "ingress_namespace": profile.IngressNamespace,
+		"tls_secret_name": profile.TLSSecretName,
 	} {
 		if err := validateDeploymentID(name, value); err != nil {
 			return err
 		}
 	}
 	if profile.Environment != "nonproduction" {
-		return errors.New("local fake-first profile environment must be nonproduction")
+		return errors.New("production profiles are not accepted by the customer EKS lifecycle")
 	}
 	if !awsRegionPattern.MatchString(profile.Region) {
 		return errors.New("region must be an AWS region identifier")
@@ -291,6 +308,9 @@ func validateTenantDeploymentProfile(profile TenantDeploymentProfile, raw []byte
 	}
 	if !sha256DigestPattern.MatchString(profile.ApprovedReleaseDigest) {
 		return errors.New("approved_release_digest must be an immutable repository@sha256 digest")
+	}
+	if profile.StateStorageGiB < 1 || profile.StateStorageGiB > 1024 {
+		return errors.New("state_storage_gib must be between 1 and 1024")
 	}
 	return rejectSecretShapedDeploymentData(raw)
 }

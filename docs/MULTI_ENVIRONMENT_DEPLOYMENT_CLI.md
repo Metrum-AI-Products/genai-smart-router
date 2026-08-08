@@ -1,12 +1,11 @@
-# Multi-environment deployment CLI safe contract
+# Customer EKS lifecycle CLI
 
-`metrum-smartrouterctl` contains one ADR-0012 control-plane contract with two
-local relational registries:
+`metrum-smartrouterctl` is the only customer EKS lifecycle surface. It uses
+typed AWS SDK and Kubernetes API clients; it never invokes `aws`, `kubectl`,
+Helm, Terraform, Make, or a shell command.
 
-- the established tenant inventory used by `register`, `observe-schema`,
-  `quota-reserve`, and bounded drift `status`; and
-- the #555 fake-first deployment job registry used by deterministic `plan`,
-  idempotent `deploy`, exact-job `status`, and approved `delete`.
+- the #555 deployment job registry used by deterministic `plan`, idempotent
+  `deploy`, exact-job `status`, and approved `delete`.
 
 Both registries contain normalized scalar records only. They do not store
 credentials, DSNs, Router tokens or hashes, provider keys, license payloads,
@@ -15,14 +14,13 @@ binary tarballs and is not included in the standard Docker or Docker Compose
 image. Docker-based operators run it from an extracted binary package on a
 separate trusted administration host.
 
-## Fake-first deployment lifecycle
+## Real deployment lifecycle
 
-The shipped deployment lifecycle is intentionally `local-fake`. It proves the
-manifest, plan, idempotency, state, retry, activation gate, status, retention,
-and deletion contracts without contacting AWS, Kubernetes, RDS, DNS, a
-provider, a license service, or a production host. A protected profile using
-any scheme other than `file://` fails closed because live adapters are not yet
-enabled.
+`deploy` resolves a protected `aws-ssm:///` profile, verifies the selected
+non-production EKS cluster, and uses an IAM-authenticated Kubernetes client.
+It creates or resumes only resources labelled with its derived instance owner.
+It refuses production profiles, foreign ownership, HPA, any replica count
+other than one, and PVC modes other than `ReadWriteOnce`.
 
 The protected local profile must be a regular mode-`0600` YAML or JSON file. It
 names the exact non-production account alias, region, cluster alias, namespace
@@ -40,7 +38,12 @@ namespace_prefix: router
 hostname_suffix: apps.example.test
 approved_release_digest: registry.example.test/router@sha256:<64-lowercase-hex>
 approved_resource_profile: small
-approved_database_profile: isolated-small
+  approved_state_profile: sqlite-rwo-small
+  storage_class: gp3
+  state_storage_gib: 20
+  ingress_class_name: nginx
+  ingress_namespace: ingress-nginx
+  tls_secret_name: shared-wildcard-tls
 ```
 
 Caller intent is a strict reference-only YAML or JSON manifest. Unknown fields,
@@ -55,7 +58,7 @@ customer_id: customer-a
 stage: test
 release: latest-approved
 resource_profile: small
-database_profile: isolated-small
+state_profile: sqlite-rwo-small
 upstream_config_ref: aws-secretsmanager:///smart-router/test/customer-a/upstreams
 config_revision: revision-17
 license:
@@ -73,7 +76,7 @@ metrum-smartrouterctl plan \
   --output json
 ```
 
-Create or resume the same local fake job:
+Create or resume the same EKS job:
 
 ```bash
 metrum-smartrouterctl deploy \
@@ -86,12 +89,11 @@ metrum-smartrouterctl deploy \
 
 The deterministic lifecycle is `requested -> provisioning -> validating ->
 ready`. A classified safe failure is `failed` and retryable from its exact
-stage. An unknown adapter outcome after the dedicated database or state PVC
-record exists becomes `operator_required`; it cannot resume until reconciliation
-establishes ownership. Exact safe retries use normalized resource evidence
-instead of recreating completed resources. The ordered fake adapter contract is
-namespace, network policy, dedicated database, runtime-secret binding,
-license binding, state PVC, Router workload, activation, then hostname.
+stage. An unknown outcome after the PVC exists becomes `operator_required`; it
+cannot resume until an operator establishes ownership. Exact safe retries use
+normalized resource evidence instead of recreating completed resources. The
+ordered adapter contract is namespace, network policy, runtime-secret binding,
+license binding, PVC, one-replica Router workload, activation, then hostname.
 Hostname publication cannot run until activation passes.
 The plan exposes both a job ID and an instance ID. The job ID binds one intent
 and desired manifest. The instance ID, namespace, hostname, and resource
@@ -114,7 +116,7 @@ metrum-smartrouterctl status \
 
 Deletion requires the same manifest and intent plus a regular mode-`0600`
 approval file bound to the exact job, expiring within 24 hours, and explicitly
-choosing database and PVC retention:
+choosing PVC retention:
 The approval is recorded before cleanup begins, remains resumable while cleanup
 is incomplete, and is consumed only after every non-retained resource reaches
 `deleted`. A completed delete is an idempotent exact-job read.
@@ -126,7 +128,6 @@ is incomplete, and is consumed only after every non-retained resource reaches
   "job_id": "job-<opaque-id>",
   "action": "delete",
   "expires_at": "<RFC3339 time within the next 24 hours>",
-  "retain_database": true,
   "retain_pvc": true,
   "nonce": "approval-a"
 }
@@ -143,44 +144,26 @@ metrum-smartrouterctl delete \
 ```
 
 The hostname is disabled first. Resources are then removed in reverse order;
-the database and state PVC are retained when the approval says so. A failed
+the state PVC is retained when the approval says so. A failed
 delete becomes `operator_required` and never guesses ownership.
 
-## Existing inventory commands
-
-`register` records one isolated router instance plus one explicit dedicated RDS
-allocation ID. Separate expected and independently observed schema versions are
-required. Only `dedicated_instance` placement is accepted and RDS Proxy remains
-disabled.
-
-`observe-schema` updates only the current schema observation in an existing
-registry. `quota-reserve` performs a fake local quota admission using a bounded
-`rsv-<lowercase-canonical-uuid>` idempotency key. Inventory `status`, when
-called without `--job` or `--profile-ref`, remains bounded to 1–100 rows and
-read-only.
-
-`promote` and `rollback` remain disabled. The fake-first deployment lifecycle
-does not authorize or perform live resource creation, configuration update,
-customer handoff, promotion, rollback, or cleanup. Live adapters require the
-approved protected profile resolver, disposable non-production EKS E2E,
-independent security/operations review, and explicit execution authorization.
+`plan` is read-only. `deploy` creates the namespace, policy, runtime and
+license Secret bindings, a one-replica SQLite `ReadWriteOnce` PVC-backed
+Deployment, then validates readiness before publishing the exact hostname
+Ingress. `status` opens the job store read-only. `delete` requires a fresh,
+job-bound approval and removes only owned resources; a PVC is retained unless
+the approval explicitly opts out. There is no RDS provisioning, DSN, RDS proxy,
+or quota lifecycle in this command.
 
 ## Validation and rollout
 
 Run all credential-free local lifecycle suites:
 
 ```bash
-rtk make test-tenant-deploy-all
+rtk go test ./internal/router ./cmd/metrum-smartrouterctl -run TenantDeployment -count=1
 ```
 
-The component targets are `test-tenant-deploy-contract`,
-`test-tenant-deploy-adapters`, `test-tenant-deploy-security`, and
-`test-tenant-deploy-activation`. The activation suite uses a local mock API to
-verify readiness, authenticated model and chat access, usage visibility, admin
-metrics access, and ordinary-caller `/metrics` `403`. It does not constitute
-provider-backed or EKS evidence.
-
-Rollback this slice by restoring the previous binary and preserving the private
-SQLite registry for inspection. Do not connect live AWS, Kubernetes, DNS, RDS,
-license, Secret, or provider adapters until the remaining gates pass. This
-registry remains separate from Router usage persistence and #507 migrations.
+The EKS E2E is intentionally opt-in and runs the packaged CLI against a
+disposable non-production profile. It must be performed by an independently
+authorized operator and record only resource IDs, states, and safe error
+classes. The deployment registry remains separate from Router usage persistence.

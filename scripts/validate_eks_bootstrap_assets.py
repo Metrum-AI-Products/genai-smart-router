@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -20,6 +21,11 @@ POLICY_ACTIVATOR = ROOT / "scripts/apply_tenant_network_policies.py"
 INGRESS_RENDERER = ROOT / "scripts/render_tenant_ingress_network_policy.py"
 DISCOVERY_SCRIPT = ROOT / "scripts/eks_discover.py"
 BASE_NETWORK_POLICY = ROOT / "deploy/kubernetes/base/networkpolicy.yaml"
+BASE_CONFIGMAP = ROOT / "deploy/kubernetes/base/configmap.yaml"
+BASE_DEPLOYMENT = ROOT / "deploy/kubernetes/base/deployment.yaml"
+BASE_SECRET_EXAMPLE = ROOT / "deploy/kubernetes/base/secret.example.yaml"
+SQLITE_BOOTSTRAP = ROOT / "deploy/kubernetes/overlays/sqlite-bootstrap"
+EXAMPLE_OVERLAY = ROOT / "deploy/kubernetes/overlays/example"
 STAGING_NETWORK_POLICY_PATCH = ROOT / "deploy/kubernetes/overlays/metrum-staging/patch-networkpolicy.yaml"
 STAGING_INGRESS_GUARD = ROOT / "deploy/kubernetes/overlays/metrum-staging/networkpolicy-ingress-guard.yaml"
 STAGING_DEPLOYMENT_PATCH = ROOT / "deploy/kubernetes/overlays/metrum-staging/patch-deployment.yaml"
@@ -71,6 +77,55 @@ def main() -> int:
     base_network_policy = BASE_NETWORK_POLICY.read_text(encoding="utf-8")
     if "    - Egress\n" not in base_network_policy or "    - Ingress\n" in base_network_policy or re.search(r"(?m)^  ingress:", base_network_policy):
         raise SystemExit("generic base NetworkPolicy must remain egress-only for non-EKS deployment")
+
+    base_configmap = BASE_CONFIGMAP.read_text(encoding="utf-8")
+    for required in (
+        "enabled: true",
+        "driver: sqlite",
+        "path: /app/state/usage.sqlite",
+        "migration_policy: deployment-job",
+    ):
+        if required not in base_configmap:
+            raise SystemExit(f"generic ConfigMap lacks SQLite deployment setting: {required}")
+    for path in (BASE_DEPLOYMENT, BASE_SECRET_EXAMPLE, BASE_NETWORK_POLICY):
+        content = path.read_text(encoding="utf-8")
+        if "ROUTER_USAGE_DB_DSN" in content or "5432" in content:
+            raise SystemExit(f"generic Kubernetes base retains PostgreSQL coupling: {path}")
+
+    def render(path: Path) -> str:
+        return subprocess.run(
+            ["kubectl", "kustomize", str(path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+
+    sqlite_bootstrap = render(SQLITE_BOOTSTRAP)
+    if "kind: Deployment\n" in sqlite_bootstrap:
+        raise SystemExit("SQLite bootstrap render must exclude the serving Deployment")
+    for required in (
+        "kind: Job\n",
+        "name: smart-llmrouter-sqlite-bootstrap",
+        "claimName: smart-llmrouter-state",
+        "mountPath: /app/state",
+        "name: migration-verify-serving",
+        "--action=verify-serving",
+    ):
+        if required not in sqlite_bootstrap:
+            raise SystemExit(f"SQLite bootstrap render lacks required migration boundary: {required}")
+
+    example_render = render(EXAMPLE_OVERLAY)
+    if example_render.count("kind: Deployment\n") != 1:
+        raise SystemExit("example render must contain one serving Deployment")
+    for required in ("replicas: 1", "type: Recreate", "driver: sqlite", "path: /app/state/usage.sqlite"):
+        if required not in example_render:
+            raise SystemExit(f"example render lacks single-writer SQLite boundary: {required}")
+    if "ROUTER_USAGE_DB_DSN" in example_render or "5432" in example_render:
+        raise SystemExit("example render must not contain PostgreSQL coupling")
+
+    staging_render = render(ROOT / "deploy/kubernetes/overlays/metrum-staging")
+    if "ROUTER_USAGE_DB_DSN" not in staging_render or "port: 5432" not in staging_render:
+        raise SystemExit("staging render must retain protected PostgreSQL DSN and egress")
     eks_ingress_guard = EKS_INGRESS_GUARD.read_text(encoding="utf-8")
     if "metadata:\n  name: smart-llmrouter-restrict-ingress\n" not in eks_ingress_guard or "    - Ingress\n" not in eks_ingress_guard or not re.search(r"(?m)^  ingress:\s*\[\]\s*$", eks_ingress_guard):
         raise SystemExit("EKS ingress guard must deny ingress until discovery renders an allow policy")

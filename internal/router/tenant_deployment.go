@@ -6,13 +6,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 )
 
 const (
@@ -28,7 +32,7 @@ const (
 var tenantDeploymentProcessLock sync.Mutex
 
 var tenantDeploymentActionOrder = []string{
-	"namespace", "network_policy", "database", "runtime_secret_binding",
+	"namespace", "network_policy", "runtime_secret_binding",
 	"license_binding", "state_pvc", "router", "activation", "hostname",
 }
 
@@ -51,6 +55,7 @@ type TenantDeploymentStatus struct {
 	ReleaseDigest   string    `json:"release_digest"`
 	ConfigRevision  string    `json:"config_revision"`
 	State           string    `json:"state"`
+	ObservedState   string    `json:"observed_state,omitempty"`
 	CompletedAction string    `json:"completed_action,omitempty"`
 	NextAction      string    `json:"next_action,omitempty"`
 	ErrorClass      string    `json:"error_class,omitempty"`
@@ -74,7 +79,7 @@ type tenantDeploymentJobRecord struct {
 	Hostname         string    `gorm:"column:hostname;type:text;not null"`
 	ReleaseDigest    string    `gorm:"column:release_digest;type:text;not null"`
 	ResourceProfile  string    `gorm:"column:resource_profile;type:text;not null"`
-	DatabaseProfile  string    `gorm:"column:database_profile;type:text;not null"`
+	StateProfile     string    `gorm:"column:state_profile;type:text;not null"`
 	ConfigRevision   string    `gorm:"column:config_revision;type:text;not null"`
 	State            string    `gorm:"column:state;type:text;not null"`
 	CompletedAction  string    `gorm:"column:completed_action;type:text;not null"`
@@ -122,7 +127,6 @@ type tenantDeploymentApprovalRecord struct {
 	Action         string     `gorm:"column:action;type:text;not null"`
 	ExpiresAt      time.Time  `gorm:"column:expires_at;not null"`
 	ConsumedAt     *time.Time `gorm:"column:consumed_at"`
-	RetainDatabase bool       `gorm:"column:retain_database;not null"`
 	RetainPVC      bool       `gorm:"column:retain_pvc;not null"`
 	CreatedAt      time.Time  `gorm:"column:created_at;not null"`
 }
@@ -132,6 +136,35 @@ func (tenantDeploymentApprovalRecord) TableName() string { return "tenant_deploy
 // TenantDeploymentStore is a normalized local lifecycle registry. It shares no
 // schema or mutable state with Router request usage.
 type TenantDeploymentStore struct{ db *gorm.DB }
+
+func openTenantRegistrySQLite(path, mode string) (*gorm.DB, error) {
+	dsn := (&url.URL{Scheme: "file", OmitHost: true, Path: path, RawQuery: "mode=" + mode + "&_pragma=foreign_keys(1)"}).String()
+	return gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+}
+
+func validateTenantRegistryPath(path string) error {
+	if strings.TrimSpace(path) == "" || strings.Contains(path, "?") || strings.HasPrefix(path, "file:") || path == ":memory:" {
+		return errors.New("deployment registry must use a local SQLite file path without URI options")
+	}
+	return nil
+}
+
+func safeRegistryScalar(v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" || len(v) > 160 || strings.ContainsAny(v, "\n\r{}?@") || strings.Contains(v, "://") {
+		return false
+	}
+	lower := strings.ToLower(v)
+	if strings.Contains(lower, "dsn") || strings.Contains(lower, "token") || strings.Contains(lower, "secret") {
+		return false
+	}
+	for _, r := range v {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-_.:", r)) {
+			return false
+		}
+	}
+	return true
+}
 
 func OpenTenantDeploymentStore(path string) (*TenantDeploymentStore, error) {
 	if err := validateTenantRegistryPath(path); err != nil {
@@ -150,12 +183,12 @@ func OpenTenantDeploymentStore(path string) (*TenantDeploymentStore, error) {
 	}
 	store := &TenantDeploymentStore{db: db}
 	statements := []string{
-		`CREATE TABLE IF NOT EXISTS tenant_deployment_jobs (job_id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, manifest_sha256 TEXT NOT NULL, profile_id TEXT NOT NULL, customer_id TEXT NOT NULL, stage TEXT NOT NULL, environment TEXT NOT NULL, region TEXT NOT NULL, cluster_alias TEXT NOT NULL, namespace TEXT NOT NULL, hostname TEXT NOT NULL, release_digest TEXT NOT NULL, resource_profile TEXT NOT NULL, database_profile TEXT NOT NULL, config_revision TEXT NOT NULL, state TEXT NOT NULL, completed_action TEXT NOT NULL, next_action TEXT NOT NULL, error_class TEXT NOT NULL, retryable NUMERIC NOT NULL, activation_passed NUMERIC NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS tenant_deployment_jobs (job_id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, manifest_sha256 TEXT NOT NULL, profile_id TEXT NOT NULL, customer_id TEXT NOT NULL, stage TEXT NOT NULL, environment TEXT NOT NULL, region TEXT NOT NULL, cluster_alias TEXT NOT NULL, namespace TEXT NOT NULL, hostname TEXT NOT NULL, release_digest TEXT NOT NULL, resource_profile TEXT NOT NULL, state_profile TEXT NOT NULL, config_revision TEXT NOT NULL, state TEXT NOT NULL, completed_action TEXT NOT NULL, next_action TEXT NOT NULL, error_class TEXT NOT NULL, retryable NUMERIC NOT NULL, activation_passed NUMERIC NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)`,
 		`CREATE INDEX IF NOT EXISTS idx_tenant_deployment_jobs_instance_id ON tenant_deployment_jobs(instance_id)`,
 		`CREATE TABLE IF NOT EXISTS tenant_deployment_attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, action TEXT NOT NULL, attempt INTEGER NOT NULL, state TEXT NOT NULL, error_class TEXT NOT NULL, started_at DATETIME NOT NULL, completed_at DATETIME, UNIQUE(job_id, action, attempt), FOREIGN KEY(job_id) REFERENCES tenant_deployment_jobs(job_id) ON UPDATE CASCADE ON DELETE RESTRICT)`,
 		`CREATE TABLE IF NOT EXISTS tenant_deployment_resources (id INTEGER PRIMARY KEY AUTOINCREMENT, instance_id TEXT NOT NULL, job_id TEXT NOT NULL, resource_kind TEXT NOT NULL, resource_ref TEXT NOT NULL UNIQUE, ownership_key TEXT NOT NULL UNIQUE, desired_revision TEXT NOT NULL, state TEXT NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, UNIQUE(instance_id, resource_kind), FOREIGN KEY(job_id) REFERENCES tenant_deployment_jobs(job_id) ON UPDATE CASCADE ON DELETE RESTRICT)`,
 		`CREATE INDEX IF NOT EXISTS idx_tenant_deployment_resources_job_id ON tenant_deployment_resources(job_id)`,
-		`CREATE TABLE IF NOT EXISTS tenant_deployment_approvals (approval_sha256 TEXT PRIMARY KEY, job_id TEXT NOT NULL, action TEXT NOT NULL, expires_at DATETIME NOT NULL, consumed_at DATETIME, retain_database NUMERIC NOT NULL, retain_pvc NUMERIC NOT NULL, created_at DATETIME NOT NULL, FOREIGN KEY(job_id) REFERENCES tenant_deployment_jobs(job_id) ON UPDATE CASCADE ON DELETE RESTRICT)`,
+		`CREATE TABLE IF NOT EXISTS tenant_deployment_approvals (approval_sha256 TEXT PRIMARY KEY, job_id TEXT NOT NULL, action TEXT NOT NULL, expires_at DATETIME NOT NULL, consumed_at DATETIME, retain_pvc NUMERIC NOT NULL, created_at DATETIME NOT NULL, FOREIGN KEY(job_id) REFERENCES tenant_deployment_jobs(job_id) ON UPDATE CASCADE ON DELETE RESTRICT)`,
 	}
 	for _, statement := range statements {
 		if err := db.Exec(statement).Error; err != nil {
@@ -208,7 +241,7 @@ func (s *TenantDeploymentStore) createOrLoad(ctx context.Context, plan TenantDep
 		JobID: plan.JobID, InstanceID: plan.InstanceID, IdempotencyKey: hex.EncodeToString(idempotencySum[:]), ManifestSHA256: plan.ManifestSHA256,
 		ProfileID: plan.ProfileID, CustomerID: plan.CustomerID, Stage: plan.Stage, Environment: plan.Environment,
 		Region: plan.Region, ClusterAlias: plan.ClusterAlias, Namespace: plan.Namespace, Hostname: plan.Hostname,
-		ReleaseDigest: plan.ReleaseDigest, ResourceProfile: plan.ResourceProfile, DatabaseProfile: plan.DatabaseProfile,
+		ReleaseDigest: plan.ReleaseDigest, ResourceProfile: plan.ResourceProfile, StateProfile: plan.StateProfile,
 		ConfigRevision: plan.ConfigRevision, State: TenantDeploymentRequested, NextAction: tenantDeploymentActionOrder[0],
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -246,7 +279,7 @@ func statusFromDeploymentRecord(record tenantDeploymentJobRecord) TenantDeployme
 		hostname = record.Hostname
 	}
 	return TenantDeploymentStatus{
-		Schema: "metrum.ai/smartrouter-deployment-status/v1", Mode: "local-fake", JobID: record.JobID,
+		Schema: "metrum.ai/smartrouter-deployment-status/v1", Mode: "eks", JobID: record.JobID,
 		InstanceID: record.InstanceID,
 		ProfileID:  record.ProfileID, CustomerID: record.CustomerID, Stage: record.Stage, Environment: record.Environment,
 		Region: record.Region, ClusterAlias: record.ClusterAlias, Namespace: record.Namespace, Hostname: hostname,
@@ -265,10 +298,6 @@ type TenantNamespaceAdapter interface {
 type TenantNetworkPolicyAdapter interface {
 	EnsureNetworkPolicy(context.Context, TenantDeploymentPlan) (string, error)
 	DeleteNetworkPolicy(context.Context, TenantDeploymentPlan, string) error
-}
-type TenantDatabaseAdapter interface {
-	EnsureDatabase(context.Context, TenantDeploymentPlan) (string, error)
-	DeleteDatabase(context.Context, TenantDeploymentPlan, string) error
 }
 type TenantSecretBindingAdapter interface {
 	EnsureSecretBinding(context.Context, TenantDeploymentPlan) (string, error)
@@ -298,7 +327,6 @@ type TenantHostnameAdapter interface {
 type TenantDeploymentAdapters struct {
 	Namespace      TenantNamespaceAdapter
 	NetworkPolicy  TenantNetworkPolicyAdapter
-	Database       TenantDatabaseAdapter
 	SecretBinding  TenantSecretBindingAdapter
 	LicenseBinding TenantLicenseBindingAdapter
 	State          TenantStateAdapter
@@ -315,7 +343,7 @@ type TenantDeploymentEngine struct {
 }
 
 func NewTenantDeploymentEngine(store *TenantDeploymentStore, adapters TenantDeploymentAdapters) (*TenantDeploymentEngine, error) {
-	if store == nil || adapters.Namespace == nil || adapters.NetworkPolicy == nil || adapters.Database == nil || adapters.SecretBinding == nil || adapters.LicenseBinding == nil || adapters.State == nil || adapters.Router == nil || adapters.Activation == nil || adapters.Hostname == nil {
+	if store == nil || adapters.Namespace == nil || adapters.NetworkPolicy == nil || adapters.SecretBinding == nil || adapters.LicenseBinding == nil || adapters.State == nil || adapters.Router == nil || adapters.Activation == nil || adapters.Hostname == nil {
 		return nil, errors.New("complete tenant deployment adapter set is required")
 	}
 	return &TenantDeploymentEngine{store: store, adapters: adapters}, nil
@@ -360,7 +388,7 @@ func (e *TenantDeploymentEngine) Deploy(ctx context.Context, plan TenantDeployme
 		if ensureErr != nil {
 			errorClass := classifyTenantDeploymentError(ensureErr)
 			operatorRequired := tenantDeploymentErrorNeedsOperator(ensureErr)
-			if operatorRequired && action != "database" && action != "state_pvc" {
+			if operatorRequired && action != "state_pvc" {
 				durable, durableErr := e.hasDurableState(ctx, record.InstanceID)
 				if durableErr != nil {
 					return TenantDeploymentStatus{}, durableErr
@@ -418,7 +446,7 @@ func (e *TenantDeploymentEngine) resource(ctx context.Context, instanceID, kind 
 func (e *TenantDeploymentEngine) hasDurableState(ctx context.Context, instanceID string) (bool, error) {
 	var count int64
 	err := e.store.db.WithContext(ctx).Model(&tenantDeploymentResourceRecord{}).
-		Where("instance_id = ? AND resource_kind IN ? AND state = ?", instanceID, []string{"database", "state_pvc"}, "ready").
+		Where("instance_id = ? AND resource_kind = ? AND state = ?", instanceID, "state_pvc", "ready").
 		Count(&count).Error
 	return count > 0, err
 }
@@ -497,8 +525,6 @@ func (e *TenantDeploymentEngine) ensure(ctx context.Context, action string, plan
 		return e.adapters.Namespace.EnsureNamespace(ctx, plan)
 	case "network_policy":
 		return e.adapters.NetworkPolicy.EnsureNetworkPolicy(ctx, plan)
-	case "database":
-		return e.adapters.Database.EnsureDatabase(ctx, plan)
 	case "runtime_secret_binding":
 		return e.adapters.SecretBinding.EnsureSecretBinding(ctx, plan)
 	case "license_binding":
@@ -522,8 +548,6 @@ func (e *TenantDeploymentEngine) deleteResource(ctx context.Context, kind string
 		return e.adapters.Namespace.DeleteNamespace(ctx, plan, ref)
 	case "network_policy":
 		return e.adapters.NetworkPolicy.DeleteNetworkPolicy(ctx, plan, ref)
-	case "database":
-		return e.adapters.Database.DeleteDatabase(ctx, plan, ref)
 	case "runtime_secret_binding":
 		return e.adapters.SecretBinding.DeleteSecretBinding(ctx, plan, ref)
 	case "license_binding":

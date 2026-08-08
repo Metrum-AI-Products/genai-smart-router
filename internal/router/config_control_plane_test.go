@@ -551,8 +551,8 @@ func TestConfigControlPlanePhase3FailsClosedOnExistingCaseInsensitiveHeaderDupli
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.SchemaVersion != 2 || status.State != "pending" {
-		t.Fatalf("duplicate header migration status = %+v, want pending schema 2", status)
+	if status.SchemaVersion != 2 || status.State != "failed" {
+		t.Fatalf("duplicate header migration status = %+v, want failed schema 2", status)
 	}
 }
 

@@ -47,6 +47,28 @@ func TestUsageDBMigrationPolicyValidation(t *testing.T) {
 		t.Fatalf("migration policy default = %q", cfg.Server.UsageDB.MigrationPolicy)
 	}
 }
+func TestUsageDBDefaultsToSQLiteBesideStatePath(t *testing.T) {
+	cfg := &Config{StatePath: "/var/lib/smart-llmrouter/router-state.json"}
+	cfg.setDefaults()
+	if cfg.Server.UsageDB.Driver != "sqlite" {
+		t.Fatalf("usage DB driver = %q, want sqlite", cfg.Server.UsageDB.Driver)
+	}
+	if cfg.Server.UsageDB.Path != "/var/lib/smart-llmrouter/usage.sqlite" {
+		t.Fatalf("usage DB path = %q", cfg.Server.UsageDB.Path)
+	}
+	if cfg.Server.UsageDB.MigrationPolicy != usageDBMigrationPolicyDeploymentJob {
+		t.Fatalf("usage DB migration policy = %q", cfg.Server.UsageDB.MigrationPolicy)
+	}
+
+	postgres := &Config{Server: ServerConfig{UsageDB: UsageDBConfig{
+		Driver: "postgres",
+		DSN:    "postgres://test-only",
+	}}}
+	postgres.setDefaults()
+	if postgres.Server.UsageDB.Path != "" {
+		t.Fatalf("Postgres usage DB path = %q, want empty", postgres.Server.UsageDB.Path)
+	}
+}
 
 func TestEnvExampleContainsOnlySafePlaceholders(t *testing.T) {
 	root := filepath.Join("..", "..")

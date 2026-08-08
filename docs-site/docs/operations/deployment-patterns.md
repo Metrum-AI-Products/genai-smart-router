@@ -75,7 +75,7 @@ In binary tarballs, `metrum-smartrouterctl` provides two local, normalized
 control-plane records. The established inventory records explicit isolated
 tenant/router placement, dedicated database allocation identifiers, expected
 and independently observed schema versions, fake quota admission, and bounded
-drift. The fake-first lifecycle adds deterministic `plan`, idempotent `deploy`,
+drift. The EKS lifecycle adds deterministic `plan`, idempotent `deploy`,
 exact-job read-only `status`, and approved `delete` for a strict reference-only
 manifest.
 

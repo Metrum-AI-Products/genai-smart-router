@@ -12,7 +12,7 @@ GenAI Smart Router is delivered as release artifacts. Deployment hosts do not ne
 | Artifact | Use when | Contents |
 |---|---|---|
 | Linux binary package | The platform team manages the service supervisor, TLS proxy, database, and filesystem layout. | Router binaries, config templates, Caddy example, package-safe bootstrap docs. |
-| Docker Compose package | The platform team wants a packaged router image tar plus Compose files and a bundled Postgres service. | Saved image tar, Compose files, config templates, package-safe bootstrap docs. |
+| Docker Compose package | The platform team wants a packaged router image tar plus Compose files with durable single-writer SQLite by default. | Saved image tar, SQLite-first Compose files, an explicit localhost-only PostgreSQL override, config templates, package-safe bootstrap docs. |
 | Kubernetes manifests or Helm | The platform team operates Kubernetes and supplies reviewed manifests. | Obtained as a reviewed deployment artifact when needed; see [Deploy To Kubernetes](./kubernetes). |
 
 Use `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts, including ARM64 cloud instances. Docker packages use the same architecture suffix and include exactly one saved image tar for that architecture.

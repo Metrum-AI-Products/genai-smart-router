@@ -6,13 +6,13 @@
 
 Use this runbook to operate one customer router instance through onboarding, configuration/release updates, status inspection, activation, recovery, and eventual retirement.
 
-At launch, one customer router instance maps to one isolated runtime identity and namespace, one dedicated private PostgreSQL RDS instance, and one deployment-defined environment and region. Account and region are explicit profile data; no command, registry record, or fixture may infer a default region or derive a resource address from a customer name.
+At launch, one customer router instance maps to one isolated runtime identity and namespace, one `ReadWriteOnce` PVC-backed SQLite state volume, one Router replica, and one deployment-defined environment and region. Account and region are explicit profile data; no command, registry record, or fixture may infer a default region or derive a resource address from a customer name.
 
 | Owner | Responsibility |
 | --- | --- |
 | Customer administrator | Supplies approved upstream/BYOK information through the protected onboarding path and accepts the activated instance. |
 | Commercial/control-plane owner | Verifies entitlement and creates the authorized provisioning intent. #545 owns this durable customer job. |
-| Platform operator | Uses the shipped safe-contract CLI for inventory/schema/quota records and the #555 deterministic local fake lifecycle. Live AWS/EKS/RDS/DNS/Secret/license/provider adapters, promotion, rollback, and customer handoff remain disabled until the reviewed profile, disposable EKS E2E, and human policy gates are complete. |
+| Platform operator | Uses the shipped `metrum-smartrouterctl` lifecycle. It resolves approved AWS/EKS policy, applies only instance-owned Kubernetes resources, enforces one PVC-backed SQLite writer, and publishes ingress only after activation. |
 | Infra/Security approver | Approves account/region, network, KMS, IAM, durability, quota, DNS, and change-control policy before live execution. |
 | Release approver | Owns protected production-like rehearsal, change window, canary/cutover, and recovery authorization under #518. |
 
@@ -31,7 +31,7 @@ revokes access without changing the
 CLI or customer instance. See the credential-free profile and verification
 procedure in [EKS staging migration](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap).
 
-Issue #581 owns reusable operator primitives and the RDS lifecycle contract. Issue #555 now consumes those boundaries through one strict reference-only manifest, one normalized deployment-job registry, and typed fake adapters in the shipped `metrum-smartrouterctl`. The fake-first slice performs no live cloud or runtime mutation. It proves deterministic plan, idempotent create/resume, classified state, activation-before-hostname, bounded status, explicit retention, and exact-job deletion behavior. The #507 migration ledger remains the per-database source of truth.
+Issue #555 uses one strict reference-only manifest, one normalized deployment-job registry, and typed AWS/EKS and Kubernetes adapters in the shipped `metrum-smartrouterctl`. It performs deterministic plan, idempotent ownership-safe create/resume, classified state, activation-before-hostname, bounded status, explicit PVC retention, and exact-job deletion. The PVC-backed SQLite store is single-writer; HPA and multi-replica workloads are rejected.
 
 ## Before any live action
 
@@ -55,7 +55,7 @@ RDS Proxy is disabled at launch. Cross-region backup is never implicit: it is di
 ## Existing EKS staging repair lifecycle
 
 The current Metrum staging deployment is an integration target, not a customer
-instance provisioned by the fake-first #555 CLI. Its canonical live repair
+instance provisioned by the customer #555 CLI. Its canonical live repair
 procedure is [EKS staging migration runbook: Staging Repair And Validation
 Lifecycle](EKS_STAGING_MIGRATION.md#staging-repair-and-validation-lifecycle).
 Use that procedure in order: open a change record; establish the exact
@@ -74,8 +74,8 @@ disposable EKS proof for #555.
 
 ## Onboard a new customer router instance
 
-The shipped command implements the complete local fake-first lifecycle but not
-the live control plane. Use a mode-`0600` `file://` non-production profile and
+The shipped command implements the live customer EKS lifecycle. Use an approved
+`aws-ssm:///` non-production profile and
 the reference-only manifest documented in [Multi-environment deployment CLI
 safe contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md) to run `plan`, `deploy`,
 exact-job `status`, and approved `delete`. Those commands mutate only a private
@@ -90,7 +90,7 @@ The live workflow remains:
 1. Verify the commercial entitlement and record an explicit, authorized provision intent. Select an approved account+region, environment, customer instance alias, domain policy, and deployment template. Do not put customer identifiers, provider keys, licenses, or full config in GitHub evidence.
 2. Create or resume the #555 durable provisioning job. Its first read-only status must identify the selected profile revision and safe intent reference.
 3. Run the #581 preflight against exactly that profile and instance. It must reject unknown capacity, an unavailable dedicated placement, missing policy evidence, unapproved namespace access, or an incompatible migration/release.
-4. Reserve capacity transactionally and create the isolated runtime and dedicated RDS only after the fresh pre-create check passes. Every retry is idempotent and scoped to the instance record; an incomplete run must report a classified safe state instead of guessing whether to create again.
+4. Create the isolated runtime and PVC-backed SQLite state only after the typed EKS preflight passes. Every retry is idempotent and scoped to the instance record; an incomplete run must report a classified safe state instead of guessing whether to create again.
 5. Have #555 deliver customer secrets/BYOK through the secret manager, attach the instance-bound license, configure DNS/TLS and namespace/Linkerd/ingress, and retain only references in status evidence.
 6. Run the protected sandbox/activation path. #554 must produce passing, versioned activation evidence before the job becomes `ready`, before public ingress is enabled, or before a caller credential is handed off.
 7. Notify the customer administrator with the approved instance URL and protected credential-delivery path. Do not include raw credentials, provider keys, license files, or complete configuration in notification or status output.
@@ -101,7 +101,7 @@ RDS instance, snapshot, PVC, or customer data by default.
 
 ## Update configuration or release
 
-Each proposed change is one instance-scoped, explicit operation. The future release manifest binds the instance/profile revision, immutable image digest, configuration revision, license compatibility, migration set, dedicated-RDS reference, prior known-good manifest, and approval/evidence references. It contains no credentials, endpoints, DSNs, or full configuration.
+Each proposed change is one instance-scoped, explicit operation. The release manifest binds the instance/profile revision, immutable image digest, configuration revision, license compatibility, PVC-backed state policy, prior known-good manifest, and approval/evidence references. It contains no credentials, endpoints, DSNs, or full configuration.
 
 1. Create a reviewed draft configuration using protected secret references. Validate YAML/contract shape and caller/model access; keep new provider/model/API-skin combinations in a smoke or staging group until exact request-shape validation passes.
 2. Render and plan against the named profile/environment/instance. Confirm the target identity, manifest diff, configuration fingerprint, migration class, rollback classification, and expected caller-visible impact.
@@ -116,14 +116,14 @@ Do not use the phrase "backup to a cluster." An EKS cluster is a runtime placeme
 | Artifact | Canonical owner | Contents and recovery behavior |
 | --- | --- | --- |
 | Configuration backup | #7 and #545 | Versioned configuration, safe secret references, entitlement-compatible metadata, and audit linkage. It never contains raw BYOK, caller tokens/hashes, DSNs, or Kubernetes Secrets. Restore creates a draft and requires revalidation. |
-| Tenant RDS recovery point | #581 | An immutable recovery-point/snapshot reference for one tenant's dedicated RDS. It is not a raw database download or tenant cloud credential. |
+| Tenant PVC recovery record | #555 | A protected record for one tenant's retained SQLite PVC. It is not a raw database download or tenant cloud credential. |
 | Release manifest | #581 and #517 | Immutable image/config/license/migration and safe evidence references. It is a release record, not a data backup. |
 
 ### Operator recovery primitive (planned #581)
 
 An operator may create or inspect a tenant RDS recovery point only with an explicit tenant, source router-instance, account/region/environment profile, backup class, idempotency/intent ID, and approved policy reference. The future primitive must fail closed for an unapproved profile, capacity/retention violation, tenant mismatch, unknown source instance, or missing authorization.
 
-A restore never overwrites a serving tenant database. It names an immutable recovery-point ID and an explicit **recovery router instance** for the same tenant. The registry resolves the target to a new dedicated private RDS allocation in an allowed profile; arbitrary EKS clusters, arbitrary RDS instances, cross-tenant targets, and unapproved account/region targets are rejected. The result starts as a non-serving `recovery_candidate` with ingress and caller handoff disabled.
+A restore never overwrites a serving tenant state volume. It names an explicit **recovery router instance** for the same tenant and an approved retained PVC recovery record. Arbitrary EKS clusters, arbitrary PVCs, cross-tenant targets, and unapproved account/region targets are rejected. The result starts as a non-serving `recovery_candidate` with ingress and caller handoff disabled.
 
 The candidate then follows #507-compatible migration/compatibility checks, #7 configuration reconciliation as a draft where required, and #554 activation verification. Only a separately authorized promotion/cutover can make it serving. Database recovery is never an automatic rollback or a silent replacement of live customer data.
 
@@ -153,7 +153,7 @@ explicit profile/environment/instance. It must answer:
 | What is deployed? | Instance alias, environment/region aliases, manifest/release/config revision, and migration version. |
 | Is it serving? | Readiness, bounded uptime/observed timestamp, activation state, safe DNS/ingress health, and sanitized error class. |
 | Is the database aligned? | Dedicated-DB connectivity summary, desired versus last-observed migration state, observation time, and drift count. |
-| Is policy satisfied? | Profile revision, placement mode `DEDICATED_INSTANCE`, RDS Proxy disabled, backup-policy state, and capacity reservation state. |
+| Is policy satisfied? | Profile revision, `ReadWriteOnce` PVC storage policy, one-replica enforcement, and retained-state recovery policy. |
 | What should be checked next? | Latest approved evidence reference, required verification, and a safe next action or escalation. |
 
 For a newly activated instance, verify:
@@ -184,7 +184,7 @@ Customer retirement or incident cleanup requires a separately confirmed plan cov
 
 ## Related records
 
-- [#581 deployment CLI and dedicated-RDS lifecycle](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/581)
+- [#555 customer EKS lifecycle](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/555)
 - [#555 customer provisioning orchestration](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/555)
 - [#507 forward-only migration framework](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/507)
 - [#592 tenant-admin protected RDS recovery requests](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/592)

@@ -168,17 +168,9 @@ server:
 state_path: /var/lib/smart-llmrouter/router-state.json
 ```
 
-For Docker Compose production, use the packaged `postgres:18-bookworm` service instead:
+New packaged Docker Compose installations also default to SQLite at `/app/state/usage.sqlite` on the durable `./state:/app/state` bind. Set `server.logging.path: /app/logs/requests.jsonl`, `server.usage_db.path: /app/state/usage.sqlite`, `server.usage_db.migration_policy: deployment-job`, and `state_path: /app/state/router-state.json` before the non-serving migration gate. The base Compose profile requires only `SMART_LLMROUTER_VERSION`; it has no database credentials or TCP database egress.
 
-```yaml
-server:
-  usage_db:
-    enabled: true
-    driver: postgres
-    dsn: ${ROUTER_USAGE_DB_DSN}
-```
-
-The compose Postgres service listens on `postgres:5432` internally and is not host-published by default. Compose deployments must set `SMART_LLMROUTER_VERSION`, `POSTGRES_PASSWORD`, and `ROUTER_USAGE_DB_DSN` explicitly in `compose/.env`; `SMART_LLMROUTER_VERSION` must be the concrete package image tag, not `latest`. If local host access to the database is required for administration, include `docker-compose.postgres-localhost.yml` so Postgres binds only to `127.0.0.1:${POSTGRES_HOST_PORT:-15432}`.
+PostgreSQL is an explicit choice for multi-replica or externally managed database deployments. Include `docker-compose.postgres-localhost.yml`, configure `server.usage_db.driver: postgres` and `dsn: ${ROUTER_USAGE_DB_DSN}`, and supply `POSTGRES_PASSWORD`/`ROUTER_USAGE_DB_DSN`. The override binds Postgres only to `127.0.0.1:${POSTGRES_HOST_PORT:-15432}`.
 
 Edit `/opt/smart-llmrouter/config/env.json` with provider keys such as `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `MOONSHOT_API_KEY`, `MINIMAX_API_KEY`, and `XAI_API_KEY`, or provide those variables through the host's secret manager or service environment. Do not copy real values back into `env.example.json`; `make secret-check` fails if tracked env examples contain live-looking keys.
 

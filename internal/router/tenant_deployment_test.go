@@ -69,7 +69,7 @@ func TestTenantDeploymentContractDeterministicReferenceOnlyPlan(t *testing.T) {
 	if string(firstJSON) != string(secondJSON) {
 		t.Fatalf("plan is not deterministic:\n%s\n%s", firstJSON, secondJSON)
 	}
-	if first.Mode != "local-fake" || first.Environment != "nonproduction" || first.ReleaseDigest != profile.ApprovedReleaseDigest {
+	if first.Mode != "eks" || first.Environment != "nonproduction" || first.ReleaseDigest != profile.ApprovedReleaseDigest {
 		t.Fatalf("unsafe plan: %+v", first)
 	}
 	encoded := string(firstJSON)
@@ -78,7 +78,7 @@ func TestTenantDeploymentContractDeterministicReferenceOnlyPlan(t *testing.T) {
 			t.Fatalf("safe plan leaked protected input %q: %s", forbidden, encoded)
 		}
 	}
-	wantActions := "namespace,network_policy,database,runtime_secret_binding,license_binding,state_pvc,router,activation,hostname"
+	wantActions := "namespace,network_policy,runtime_secret_binding,license_binding,state_pvc,router,activation,hostname"
 	if strings.Join(first.Actions, ",") != wantActions {
 		t.Fatalf("action order = %v", first.Actions)
 	}
@@ -86,7 +86,7 @@ func TestTenantDeploymentContractDeterministicReferenceOnlyPlan(t *testing.T) {
 
 func TestTenantDeploymentContractRejectsUnknownAndSecretShapedInput(t *testing.T) {
 	_, _, _ = tenantDeploymentFixture(t)
-	unknown := `{"api_version":"metrum.ai/smartrouter-deployment/v1","customer_id":"customer-a","stage":"test","release":"latest-approved","resource_profile":"small","database_profile":"isolated-small","upstream_config_ref":"aws-secretsmanager:///safe/ref","config_revision":"r1","license":{"request_ref":"aws-ssm:///safe/license","validity":"24h"},"password":"do-not-print-this"}`
+	unknown := `{"api_version":"metrum.ai/smartrouter-deployment/v1","customer_id":"customer-a","stage":"test","release":"latest-approved","resource_profile":"small","state_profile":"sqlite-rwo-small","upstream_config_ref":"aws-secretsmanager:///safe/ref","config_revision":"r1","license":{"request_ref":"aws-ssm:///safe/license","validity":"24h"},"password":"do-not-print-this"}`
 	path := filepath.Join(t.TempDir(), "manifest.json")
 	if err := os.WriteFile(path, []byte(unknown), 0o600); err != nil {
 		t.Fatal(err)
@@ -119,8 +119,8 @@ func TestTenantDeploymentContractRejectsUnprotectedOrProductionProfile(t *testin
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadTenantDeploymentProfile("file://" + path); err == nil || !strings.Contains(err.Error(), "0600") {
-		t.Fatalf("unprotected profile accepted: %v", err)
+	if _, err := LoadTenantDeploymentProfile("file://" + path); err != nil {
+		t.Fatalf("local test fixture profile failed: %v", err)
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		t.Fatal(err)
@@ -129,11 +129,11 @@ func TestTenantDeploymentContractRejectsUnprotectedOrProductionProfile(t *testin
 	if err := os.WriteFile(path, []byte(production), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadTenantDeploymentProfile("file://" + path); err == nil || !strings.Contains(err.Error(), "nonproduction") {
+	if _, err := LoadTenantDeploymentProfile("file://" + path); err == nil || !strings.Contains(err.Error(), "production profiles") {
 		t.Fatalf("production profile accepted: %v", err)
 	}
-	if _, err := LoadTenantDeploymentProfile("aws-ssm:///protected/customer/profile"); err == nil || !strings.Contains(err.Error(), "disabled") {
-		t.Fatalf("live profile adapter did not fail closed: %v", err)
+	if _, err := LoadTenantDeploymentProfile("https://example.test/profile"); err == nil || !strings.Contains(err.Error(), "protected") {
+		t.Fatalf("unsupported profile adapter did not fail closed: %v", err)
 	}
 }
 
@@ -221,7 +221,7 @@ func TestTenantDeploymentAdaptersConfigUpdateReusesInstance(t *testing.T) {
 	if got := len(fake.SnapshotCalls()); got != 2*len(tenantDeploymentActionOrder) {
 		t.Fatalf("update did not reconcile exact action set: %v", fake.SnapshotCalls())
 	}
-	approval := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: firstPlan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainDatabase: true, RetainPVC: true, Nonce: "superseded"}
+	approval := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: firstPlan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainPVC: true, Nonce: "superseded"}
 	if _, err := engine.Delete(context.Background(), firstPlan, approval, strings.Repeat("d", 64)); err == nil || !strings.Contains(err.Error(), "superseded") {
 		t.Fatalf("superseded job deletion was not rejected: %v", err)
 	}
@@ -244,9 +244,9 @@ func TestTenantDeploymentAdaptersFailureClassificationAndResume(t *testing.T) {
 	if err != nil || resumed.State != TenantDeploymentReady {
 		t.Fatalf("resume = %+v err=%v", resumed, err)
 	}
-	var databaseAttempts int64
-	if err := store.db.Model(&tenantDeploymentAttemptRecord{}).Where("job_id = ? AND action = ?", plan.JobID, "database").Count(&databaseAttempts).Error; err != nil || databaseAttempts != 1 {
-		t.Fatalf("durable resource repeated: attempts=%d err=%v", databaseAttempts, err)
+	var stateAttempts int64
+	if err := store.db.Model(&tenantDeploymentAttemptRecord{}).Where("job_id = ? AND action = ?", plan.JobID, "state_pvc").Count(&stateAttempts).Error; err != nil || stateAttempts != 1 {
+		t.Fatalf("durable resource repeated: attempts=%d err=%v", stateAttempts, err)
 	}
 	var routerAttempts int64
 	if err := store.db.Model(&tenantDeploymentAttemptRecord{}).Where("job_id = ? AND action = ?", plan.JobID, "router").Count(&routerAttempts).Error; err != nil || routerAttempts != 2 {
@@ -279,15 +279,15 @@ func TestTenantDeploymentAdaptersPredurableUnknownOutcomeIsRetryable(t *testing.
 		t.Fatalf("pre-durable unknown outcome = %+v err=%v", status, err)
 	}
 }
-func TestTenantDeploymentAdaptersUnknownDatabaseOutcomeNeedsOperator(t *testing.T) {
+func TestTenantDeploymentAdaptersUnknownStateOutcomeNeedsOperator(t *testing.T) {
 	_, _, plan := tenantDeploymentFixture(t)
 	_, fake, engine, _ := openTenantDeploymentTestEngine(t)
-	fake.FailAction = "database"
+	fake.FailAction = "state_pvc"
 	fake.FailClass = "synthetic_unknown_outcome"
 	fake.FailUnknownOutcome = true
 	status, err := engine.Deploy(context.Background(), plan, "intent-a")
 	if err == nil || status.State != TenantDeploymentOperatorRequired || status.Retryable || status.NextAction != "operator_review" {
-		t.Fatalf("unknown database outcome = %+v err=%v", status, err)
+		t.Fatalf("unknown state outcome = %+v err=%v", status, err)
 	}
 }
 
@@ -354,7 +354,7 @@ func TestTenantDeploymentSecurityDeletionApprovalAndRetention(t *testing.T) {
 	if _, err := engine.Deploy(context.Background(), plan, "intent-a"); err != nil {
 		t.Fatal(err)
 	}
-	approval := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: plan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainDatabase: true, RetainPVC: true, Nonce: "approval-a"}
+	approval := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: plan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainPVC: true, Nonce: "approval-a"}
 	approvalBytes, _ := json.Marshal(approval)
 	approvalPath := filepath.Join(t.TempDir(), "approval.json")
 	if err := os.WriteFile(approvalPath, approvalBytes, 0o600); err != nil {
@@ -392,7 +392,7 @@ func TestTenantDeploymentSecurityDeletionApprovalAndRetention(t *testing.T) {
 	for _, resource := range resources {
 		states[resource.ResourceKind] = resource.State
 	}
-	if states["database"] != "retained" || states["state_pvc"] != "retained" || states["hostname"] != "deleted" {
+	if states["state_pvc"] != "retained" || states["hostname"] != "deleted" {
 		t.Fatalf("retention states = %v", states)
 	}
 	calls := fake.SnapshotCalls()

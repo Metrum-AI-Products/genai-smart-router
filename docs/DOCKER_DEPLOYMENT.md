@@ -139,7 +139,7 @@ For PII-aware script routing, package the policy file under `compose/config/scri
 
 For standalone policy services, configure `strategy: external` with `external_policy.url`, exact `allow_hosts`, low `timeout_ms`, `max_response_bytes`, and config-owned auth headers. Use HTTPS unless the service is loopback-local or `external_policy.allow_http: true` is approved for a trusted internal endpoint. Redirects are blocked when any hop changes to a non-allowlisted hostname. The service receives safe routing context and eligible target metadata, then returns the selected target decision.
 
-Edit `compose/config/config.yaml` for container paths:
+Edit `compose/config/config.yaml` for the default durable SQLite paths:
 
 ```yaml
 server:
@@ -148,23 +148,16 @@ server:
     path: /app/logs/requests.jsonl
   usage_db:
     enabled: true
-    driver: postgres
-    dsn: ${ROUTER_USAGE_DB_DSN}
+    driver: sqlite
+    path: /app/state/usage.sqlite
+    migration_policy: deployment-job
 
 state_path: /app/state/router-state.json
 ```
 
-Edit `compose/config/env.json` with provider keys, or inject the same variables through your container secret manager or compose environment. `config/env.example.json` is only an empty placeholder template checked by `make secret-check`. Do not commit or publish runtime `env.json`, compose overrides containing real keys, or modified examples with real values.
+The base Compose profile requires only a pinned `SMART_LLMROUTER_VERSION`, has no database credentials/TCP database egress, and persists `usage.sqlite` on `./state:/app/state`. Run the non-serving SQLite migration gate before `docker compose up`.
 
-The packaged compose file includes `postgres:18-bookworm` for the usage DB. It listens only on the internal Docker network at `postgres:5432` by default. Compose fails during `docker compose config` if `SMART_LLMROUTER_VERSION`, `POSTGRES_PASSWORD`, or `ROUTER_USAGE_DB_DSN` are missing. Generate a strong random database password, store it in `compose/.env` as `POSTGRES_PASSWORD`, and use the same value in `ROUTER_USAGE_DB_DSN`.
-
-If temporary host access to Postgres is required for local administration, include the explicit localhost-only override:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.postgres-localhost.yml up -d
-```
-
-That override binds Postgres to `127.0.0.1:${POSTGRES_HOST_PORT:-15432}` on the deployment host. Do not publish Postgres on `0.0.0.0`.
+PostgreSQL is an explicit multi-replica or externally managed database choice. Include the packaged localhost-only override, set `POSTGRES_PASSWORD` and `ROUTER_USAGE_DB_DSN`, and configure `driver: postgres` with `dsn: ${ROUTER_USAGE_DB_DSN}`. The override binds Postgres to `127.0.0.1:${POSTGRES_HOST_PORT:-15432}`; do not publish it on `0.0.0.0`.
 
 The response cache is in-memory inside the router container. Restarting the container clears cached responses. Cache hits are shared across caller tokens, return fresh router-owned response IDs, and do not consume provider credits or persisted caller token quota. Cache hit/miss/bypass, item count, occupied bytes, max bytes, and occupancy percentage are persisted per request in the usage DB.
 
@@ -439,4 +432,4 @@ Then use:
 http://127.0.0.1:18080
 ```
 
-`scripts/compose_live_e2e.sh` follows the same rule for tool smokes: set `COMPOSE_E2E_TOOL_SANDBOX_IMAGE` to an image that contains the CLI clients, and the script runs tool-bearing Claude/Codex checks inside a locked-down container with only scratch workdir mounts. The compose e2e temp config directory is private, secret files are written `0600`, and a Docker helper changes only the bind-mounted config tree to owner UID/GID `65532` so the packaged router can read `/app/config/config.yaml` and `/app/config/env.json` through the read-only `./config:/app/config:ro` mount without making them world-readable. Override `COMPOSE_E2E_PERMISSIONS_IMAGE` if the default lightweight helper image is not available. Retained workdirs scrub `config/env.json` and `.env`, then restore config ownership to the invoking user for inspection.
+`scripts/compose_live_e2e.sh` runs its Claude and Codex tool smokes with the operator or CI machine's installed CLI clients. The clients target the disposable Compose router URL and write only in disposable E2E work directories; neither CLI is copied into the router image or required on the Compose target. The Claude smoke unsets direct Anthropic credentials and uses its router bearer token. The compose e2e temp config directory is private, secret files are written `0600`, and a Docker helper changes only the bind-mounted config tree to owner UID/GID `65532` so the packaged router can read `/app/config/config.yaml` and `/app/config/env.json` through the read-only `./config:/app/config:ro` mount without making them world-readable. Override `COMPOSE_E2E_PERMISSIONS_IMAGE` if the default lightweight helper image is not available. Retained workdirs scrub `config/env.json` and `.env`, then restore bind-mounted ownership before removal or handoff.

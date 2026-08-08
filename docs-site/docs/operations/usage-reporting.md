@@ -30,11 +30,13 @@ For the broader health, metrics, logs, and request-ID workflow, see [Observabili
 
 ```bash
 router-usage-report \
-  --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --driver sqlite \
+  --db /app/state/usage.sqlite \
   --since 24h \
   --out usage-24h.md
 ```
+
+For an explicitly configured PostgreSQL deployment, substitute `--driver postgres --dsn "$ROUTER_USAGE_DB_DSN"`; do not use that connection mode as the generic default.
 
 CLI-generated reports are Markdown files with structured tables for usage, cost, latency, throughput, downstream caller performance, and upstream endpoint performance. Instant values in the `Period UTC` bounds and `Per-Request Throughput` time column use fixed UTC RFC3339 milliseconds (`YYYY-MM-DDTHH:mm:ss.SSSZ`). Hour and day summary labels remain reporting buckets; browser Markdown exports, browser JSON APIs, and CSV exports retain their existing precision. The public docs include graphical Chart.js examples built from the same report dimensions.
 
@@ -66,15 +68,15 @@ Example filters:
 
 ```bash
 router-usage-report \
-  --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --driver sqlite \
+  --db /app/state/usage.sqlite \
   --since 24h \
   --traffic-shaped-only \
   --caller-user <owner-user>
 
 router-usage-report \
-  --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --driver sqlite \
+  --db /app/state/usage.sqlite \
   --since 24h \
   --provider <provider-name> \
   --traffic-shape-bucket adaptive_backoff
@@ -86,8 +88,8 @@ Traffic tuning advisor output is available from the same CLI with usage database
 
 ```bash
 router-usage-report \
-  --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --driver sqlite \
+  --db /app/state/usage.sqlite \
   --since 24h \
   --traffic-tuning-advisor \
   --caller-user <owner-user>
@@ -108,8 +110,8 @@ Administrators can generate bounded hourly, daily, or monthly rollups from store
 
 ```bash
 router-usage-report \
-  --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --driver sqlite \
+  --db /app/state/usage.sqlite \
   --from 2026-06-14 \
   --to 2026-06-15 \
   --rollup \
@@ -337,8 +339,8 @@ Governed content capture is separate from diagnostics. It is disabled by default
 
 ```bash
 router-usage-report \
-  --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --driver sqlite \
+  --db /app/state/usage.sqlite \
   --caller-user <owner-user> \
   --caller-project <project> \
   --resolved-group <model-group> \
