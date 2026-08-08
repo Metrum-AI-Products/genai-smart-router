@@ -3,7 +3,7 @@ customer_id: customer-a
 stage: test
 release: latest-approved
 resource_profile: small
-database_profile: isolated-small
+state_profile: sqlite-rwo-small
 upstream_config_ref: aws-secretsmanager:///smart-router/test/customer-a/upstreams
 config_revision: revision-17
 license:

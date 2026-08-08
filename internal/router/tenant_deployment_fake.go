@@ -32,7 +32,7 @@ type FakeTenantDeploymentAdapters struct {
 func NewFakeTenantDeploymentAdapters() (*FakeTenantDeploymentAdapters, TenantDeploymentAdapters) {
 	fake := &FakeTenantDeploymentAdapters{}
 	return fake, TenantDeploymentAdapters{
-		Namespace: fake, NetworkPolicy: fake, Database: fake, SecretBinding: fake,
+		Namespace: fake, NetworkPolicy: fake, SecretBinding: fake,
 		LicenseBinding: fake, State: fake, Router: fake, Activation: fake, Hostname: fake,
 	}
 }
@@ -78,12 +78,6 @@ func (f *FakeTenantDeploymentAdapters) EnsureNetworkPolicy(_ context.Context, pl
 func (f *FakeTenantDeploymentAdapters) DeleteNetworkPolicy(_ context.Context, _ TenantDeploymentPlan, _ string) error {
 	return f.remove("network_policy")
 }
-func (f *FakeTenantDeploymentAdapters) EnsureDatabase(_ context.Context, plan TenantDeploymentPlan) (string, error) {
-	return f.ensure("database", plan)
-}
-func (f *FakeTenantDeploymentAdapters) DeleteDatabase(_ context.Context, _ TenantDeploymentPlan, _ string) error {
-	return f.remove("database")
-}
 func (f *FakeTenantDeploymentAdapters) EnsureSecretBinding(_ context.Context, plan TenantDeploymentPlan) (string, error) {
 	return f.ensure("runtime_secret_binding", plan)
 }
@@ -128,13 +122,12 @@ func (f *FakeTenantDeploymentAdapters) SnapshotCalls() []string {
 }
 
 type TenantDeletionApproval struct {
-	APIVersion     string    `json:"api_version"`
-	JobID          string    `json:"job_id"`
-	Action         string    `json:"action"`
-	ExpiresAt      time.Time `json:"expires_at"`
-	RetainDatabase bool      `json:"retain_database"`
-	RetainPVC      bool      `json:"retain_pvc"`
-	Nonce          string    `json:"nonce"`
+	APIVersion string    `json:"api_version"`
+	JobID      string    `json:"job_id"`
+	Action     string    `json:"action"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	RetainPVC  bool      `json:"retain_pvc"`
+	Nonce      string    `json:"nonce"`
 }
 
 func LoadTenantDeletionApproval(path string, now time.Time) (TenantDeletionApproval, string, error) {
@@ -213,7 +206,7 @@ func (e *TenantDeploymentEngine) Delete(ctx context.Context, plan TenantDeployme
 	}
 	approvalRecord := tenantDeploymentApprovalRecord{
 		ApprovalSHA256: approvalSHA256, JobID: approval.JobID, Action: approval.Action,
-		ExpiresAt: approval.ExpiresAt, RetainDatabase: approval.RetainDatabase,
+		ExpiresAt: approval.ExpiresAt,
 		RetainPVC: approval.RetainPVC, CreatedAt: now,
 	}
 	var priorApproval tenantDeploymentApprovalRecord
@@ -223,7 +216,7 @@ func (e *TenantDeploymentEngine) Delete(ctx context.Context, plan TenantDeployme
 		}
 		if priorApproval.JobID != approvalRecord.JobID || priorApproval.Action != approvalRecord.Action ||
 			!priorApproval.ExpiresAt.Equal(approvalRecord.ExpiresAt) ||
-			priorApproval.RetainDatabase != approvalRecord.RetainDatabase || priorApproval.RetainPVC != approvalRecord.RetainPVC {
+			priorApproval.RetainPVC != approvalRecord.RetainPVC {
 			return TenantDeploymentStatus{}, errors.New("stored deletion approval does not match")
 		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -242,7 +235,7 @@ func (e *TenantDeploymentEngine) Delete(ctx context.Context, plan TenantDeployme
 		if resource.State == "deleted" || resource.State == "retained" {
 			continue
 		}
-		retain := resource.ResourceKind == "database" && approval.RetainDatabase || resource.ResourceKind == "state_pvc" && approval.RetainPVC
+		retain := resource.ResourceKind == "state_pvc" && approval.RetainPVC
 		if retain {
 			if err := e.setResourceState(ctx, resource.ID, "retained"); err != nil {
 				return TenantDeploymentStatus{}, err

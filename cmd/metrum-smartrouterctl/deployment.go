@@ -81,10 +81,13 @@ func deploymentDeploy(args []string) {
 		die("open deployment registry: %v", err)
 	}
 	defer store.Close()
-	_, adapters := router.NewFakeTenantDeploymentAdapters()
+	_, adapters, err := router.NewEKSTenantDeploymentAdapters(context.Background(), routerProfileForPlan(flags))
+	if err != nil {
+		die("configure AWS/EKS deployment adapters: %v", err)
+	}
 	engine, err := router.NewTenantDeploymentEngine(store, adapters)
 	if err != nil {
-		die("configure local fake deployment engine: %v", err)
+		die("configure deployment engine: %v", err)
 	}
 	status, err := engine.Deploy(context.Background(), plan, *flags.intentID)
 	if err != nil {
@@ -118,6 +121,11 @@ func deploymentStatus(args []string) {
 	if err != nil {
 		die("read deployment status: %v", err)
 	}
+	observed, err := router.ObserveTenantDeployment(context.Background(), profile, status)
+	if err != nil {
+		die("observe EKS deployment status: %v", err)
+	}
+	status.ObservedState = observed
 	writeJSON(status)
 }
 
@@ -140,10 +148,13 @@ func deploymentDelete(args []string) {
 		die("open deployment registry: %v", err)
 	}
 	defer store.Close()
-	_, adapters := router.NewFakeTenantDeploymentAdapters()
+	_, adapters, err := router.NewEKSTenantDeploymentAdapters(context.Background(), routerProfileForPlan(flags))
+	if err != nil {
+		die("configure AWS/EKS deployment adapters: %v", err)
+	}
 	engine, err := router.NewTenantDeploymentEngine(store, adapters)
 	if err != nil {
-		die("configure local fake deployment engine: %v", err)
+		die("configure deployment engine: %v", err)
 	}
 	status, err := engine.Delete(context.Background(), plan, approval, approvalSHA256)
 	if err != nil {
@@ -155,11 +166,10 @@ func deploymentDelete(args []string) {
 	writeJSON(status)
 }
 
-func isDeploymentStatus(args []string) bool {
-	for _, arg := range args {
-		if arg == "--job" || strings.HasPrefix(arg, "--job=") || arg == "--profile-ref" || strings.HasPrefix(arg, "--profile-ref=") {
-			return true
-		}
+func routerProfileForPlan(flags deploymentCommandFlags) router.TenantDeploymentProfile {
+	profile, err := router.LoadTenantDeploymentProfile(*flags.profileRef)
+	if err != nil {
+		die("load protected profile: %v", err)
 	}
-	return false
+	return profile
 }

@@ -90,8 +90,8 @@ sudo install -m 0640 -o router -g router config/env.json /etc/smart-llmrouter/en
 sudo install -m 0640 -o router -g router license.json /etc/smart-llmrouter/license.json
 ```
 
-`metrum-smartrouterctl` is not a live cloud deployment driver. It includes a
-credential-free local fake lifecycle for validating a strict reference-only
+`metrum-smartrouterctl` is the live customer EKS deployment driver. It uses
+typed AWS and Kubernetes clients with a strict reference-only
 manifest before live adapters are approved. With a protected mode-`0600`
 `file://` non-production profile, `plan` returns deterministic JSON without
 creating state; `deploy` creates or resumes one normalized local job; exact-job
