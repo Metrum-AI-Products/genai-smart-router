@@ -5,9 +5,9 @@ doc_type: howto
 
 # Deploy To Kubernetes
 
-Use Kubernetes when GenAI Smart Router needs to run inside a customer-managed cluster with cluster-native ingress, Secrets, external Postgres, and operational controls. This is the canonical Kubernetes installation page; post-deployment topology guidance lives in [Enterprise Deployment Patterns](../operations/deployment-patterns).
+Use Kubernetes when GenAI Smart Router needs to run inside a customer-managed cluster with cluster-native ingress, Secrets, and operational controls. The generic base defaults to a serialized single-writer SQLite deployment on its `/app/state` PVC; PostgreSQL is an explicit option for multi-replica or externally managed database designs. This is the canonical Kubernetes installation page; post-deployment topology guidance lives in [Enterprise Deployment Patterns](../operations/deployment-patterns).
 
-Metrum maintains Kustomize-friendly manifests as a production-oriented starting point. The manifests are examples. Review them against your cluster's ingress controller, network policy engine, storage class, registry, and secret-management process before production rollout. If you are installing from a package that does not include Kubernetes manifests, obtain the matching manifest bundle from Metrum for that release.
+Metrum maintains Kustomize-friendly manifests as a production-oriented starting point. Review them against your cluster's ingress controller, network policy engine, storage class, registry, and secret-management process before production rollout.
 
 The base and example overlay are deployment-neutral. Choose your own hostname,
 ingress class, certificate workflow, registry, database topology, storage class,
@@ -19,7 +19,7 @@ not belong in public manifests or package documentation.
 
 - A Kubernetes cluster with an ingress controller and TLS automation or a separate TLS termination plan.
 - A private registry image tag such as `registry.example.com/smart-llmrouter:<version>-linux-amd64`.
-- External Postgres for the usage database.
+- A fresh `ReadWriteOnce` PVC for the default SQLite bootstrap, or an explicit PostgreSQL deployment design for multi-replica/external database use.
 - A Metrum-issued `license.json`.
 - Provider credentials stored in a Kubernetes Secret or external secret manager.
 - A router config reviewed for the deployment's model groups, callers, admin auth, and reporting settings.
@@ -58,10 +58,9 @@ A Kubernetes deployment needs:
 | Router config | A reviewed ConfigMap or mounted config artifact for `config.yaml`, depending on the customer's config-handling policy. |
 | Provider keys | A Secret or external secret integration that injects provider credentials as env vars or `env.json`. |
 | License | A Secret containing the Metrum-issued `license.json`, mounted at the path configured in `server.license.path`. |
-| State | Durable license state and router state when the deployment design requires file-backed state. |
-| Usage database | External Postgres is recommended for production Kubernetes deployments. |
-| Workload | A Deployment for stateless router pods unless the state design requires a different controller. |
-| Network | Service, Ingress or Gateway, TLS, and NetworkPolicy for clients, admin surfaces, database, and upstream providers or private model services. |
+| State and usage database | The generic base stores router state and `/app/state/usage.sqlite` on one `ReadWriteOnce` PVC. It remains one replica with `Recreate`; do not share SQLite between router writers. |
+| Workload | A single-router Deployment for the generic SQLite path. Multi-replica deployments explicitly use PostgreSQL. |
+| Network | Service, Ingress or Gateway, TLS, and NetworkPolicy for clients and upstream providers/private model services. The SQLite base has no database DSN or TCP/5432 egress. |
 | Health | Readiness on `/readyz` and liveness on `/healthz`. |
 | Resources | Requests and limits sized for request concurrency, streaming traffic, and admin report queries. |
 
@@ -73,17 +72,22 @@ When the release includes Kubernetes examples, the base manifests live in:
 
 ```text
 deploy/kubernetes/base/
+deploy/kubernetes/overlays/sqlite-bootstrap/
 deploy/kubernetes/overlays/example/
 ```
 
-They include:
+For a fresh PVC, set the same immutable image in `sqlite-bootstrap/job.yaml` and `example/patch-image.yaml`, then run:
 
-- `Namespace` and `ServiceAccount` with service account token mounting disabled;
-- `ConfigMap` for non-secret router config;
-- placeholder `Secret` example for provider env, license JSON, and Postgres DSN;
-- `Deployment` with `/readyz` readiness/startup probes and `/healthz` liveness probe;
-- `Service`, example `Ingress`, egress-focused base `NetworkPolicy`, `PersistentVolumeClaim`, and `PodDisruptionBudget`;
-- an example overlay for image and ingress replacement.
+```bash
+kubectl apply -k deploy/kubernetes/overlays/sqlite-bootstrap
+kubectl -n smart-llmrouter wait --for=condition=complete job/smart-llmrouter-sqlite-bootstrap --timeout=10m
+kubectl -n smart-llmrouter logs job/smart-llmrouter-sqlite-bootstrap -c migration-verify-serving
+kubectl -n smart-llmrouter delete job smart-llmrouter-sqlite-bootstrap
+kubectl apply -k deploy/kubernetes/overlays/example
+kubectl -n smart-llmrouter rollout status deployment/smart-llmrouter --timeout=10m
+```
+
+The bootstrap Job removes the serving Deployment from its render so no serving pod contends for the PVC. It runs `version`, `plan`, `apply`, zero-row `resume`, then `verify-serving`; the last action fails unless the migration ledger is current/compatible and every bound data job is validated. Never run `delete -k` on this overlay: that can delete shared resources/PVCs. Use reviewed backup-bound migration jobs for existing database upgrades.
 
 The suggested layout is:
 
@@ -98,7 +102,7 @@ namespace/
   NetworkPolicy
 ```
 
-The router container should run the packaged image tag for the target release, not `latest`. The config should point to mounted paths such as:
+The router container should run the packaged image tag for the target release, not `latest`. The generic ConfigMap configures:
 
 ```yaml
 server:
@@ -109,8 +113,9 @@ server:
     state_path: /app/state/license-state.json
   usage_db:
     enabled: true
-    driver: postgres
-    dsn: ${ROUTER_USAGE_DB_DSN}
+    driver: sqlite
+    path: /app/state/usage.sqlite
+    migration_policy: deployment-job
 
 state_path: /app/state/router-state.json
 ```
@@ -123,7 +128,6 @@ Create deployment-owned secrets before applying the router workload. Do not comm
 kubectl create namespace smart-llmrouter
 
 kubectl -n smart-llmrouter create secret generic smart-llmrouter-secrets \
-  --from-literal=ROUTER_USAGE_DB_DSN='postgres://llmrouter:replace-with-password@postgres.example.internal:5432/llmrouter?sslmode=require' \
   --from-file=env.json=./env.json \
   --from-file=license.json=./license.json
 ```
@@ -153,26 +157,11 @@ the attestation outside the workload Kustomize inventory. Delete it before a
 Secret mutation and recreate it only after bootstrap has read the new Secret
 metadata, so a partial rotation fails closed.
 
-For managed PostgreSQL, use TLS with hostname verification. Mount the
-provider's CA bundle when the container trust store does not already contain
-the required root, and reference that file from the DSN. Validate the database
-connection from the router pod before publishing the Ingress.
-
-For production, use an external secret manager or sealed-secret workflow if that is the cluster standard. Keep raw provider keys, router tokens, token hashes, license files, and DSNs out of tickets, screenshots, and public docs.
+For an explicit PostgreSQL deployment, use TLS with hostname verification, keep its DSN in a deployment-owned Secret, mount any required CA bundle, and add narrowly scoped database egress. The generic SQLite path has no DSN or database network dependency. Keep raw provider keys, router tokens, token hashes, license files, and DSNs out of tickets, screenshots, and public docs.
 
 ## Usage Database And State
 
-Use external Postgres for production usage reporting:
-
-```yaml
-server:
-  usage_db:
-    enabled: true
-    driver: postgres
-    dsn: ${ROUTER_USAGE_DB_DSN}
-```
-
-The example uses a PVC for file-backed router and license state. Back up the PVC or move state to a deployment-approved durable store if that is supported by your router version. Keep the initial deployment at one replica unless the state, quota, and license behavior has been validated for the chosen scaling design.
+The generic example uses its `ReadWriteOnce` PVC for router state, license state, and `/app/state/usage.sqlite`. Back it up atomically while the router is stopped, with `usage.sqlite` and any `-wal`/`-shm` sidecars together. The one-replica/Recreate contract is required for SQLite; multi-replica production reporting requires an explicitly configured PostgreSQL deployment.
 
 ## Deploy
 

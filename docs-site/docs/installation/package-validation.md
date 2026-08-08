@@ -55,7 +55,7 @@ docker run --rm --entrypoint /app/bin/router-migrate \
   smart-llmrouter:<version>-linux-<arch> --version
 ```
 
-For `migration_policy: deployment-job`, follow the packaged `docs/DATA_MIGRATIONS.md` runbook before service startup: `plan`, approved backup, `apply`, every release-defined data job until each safe state is `validated`, `verify`, `status`, then serve. Do not treat checkpoint ordinal `0` as completion. Use `--dsn-env` for PostgreSQL and the documented container `--entrypoint`; never expose a connection string in commands or evidence. See [Upgrade Guide](../release-notes/upgrade-guide) for the release and rollback contract.
+For `migration_policy: deployment-job`, follow the packaged `docs/DATA_MIGRATIONS.md` runbook before service startup: `plan`, approved backup, `apply`, every release-defined data job until each safe state is `validated`, `verify-serving`, then final read-only `status`. `verify-serving` runs schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. Generic Compose/Kubernetes installs use `--driver sqlite --db /app/state/usage.sqlite`; PostgreSQL is a separately configured deployment substitution using `--driver postgres --dsn "$ROUTER_USAGE_DB_DSN"`. Do not treat checkpoint ordinal `0` as completion or expose a connection string in commands/evidence. See [Upgrade Guide](../release-notes/upgrade-guide) for the release and rollback contract.
 
 ## Release Validation Matrix
 

@@ -1245,8 +1245,8 @@ func TestUsageMigrationServingCompatibilityRequiresValidatedBoundJobs(t *testing
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := usageMigrationServingCompatible(tc.status); got != tc.want {
-				t.Fatalf("usageMigrationServingCompatible(%+v) = %t, want %t", tc.status, got, tc.want)
+			if got := UsageMigrationServingCompatible(tc.status); got != tc.want {
+				t.Fatalf("UsageMigrationServingCompatible(%+v) = %t, want %t", tc.status, got, tc.want)
 			}
 		})
 	}
@@ -1395,7 +1395,7 @@ func TestUsageStoreAutoSafeRejectsExistingSQLiteUsageRowsBeforeValidation(t *tes
 	}
 	if status.State != "pending" || len(status.Jobs) != 1 ||
 		status.Jobs[0].State != migrationDataJobPending || status.Jobs[0].Present ||
-		status.Jobs[0].Checkpoints != 0 || usageMigrationServingCompatible(status) {
+		status.Jobs[0].Checkpoints != 0 || UsageMigrationServingCompatible(status) {
 		t.Fatalf("preflight rejection must leave the required job fresh and non-serving: %+v", status)
 	}
 }
@@ -1496,7 +1496,7 @@ func TestAutoSafeZeroRowCheckpointFailureFailsClosed(t *testing.T) {
 	}
 	if status.State != "failed" || len(status.Jobs) != 1 ||
 		status.Jobs[0].State != migrationDataJobFailed || status.Jobs[0].Checkpoints != 0 ||
-		usageMigrationServingCompatible(status) {
+		UsageMigrationServingCompatible(status) {
 		t.Fatalf("checkpoint failure must remain failed and non-serving: %+v", status)
 	}
 }
@@ -1618,7 +1618,7 @@ func assertAtomicAutoSafeFailure(t *testing.T, runner *migrationRunner) {
 	}
 	if status.State != "failed" || status.DataVersion != 0 || len(status.Jobs) != 1 ||
 		status.Jobs[0].State != migrationDataJobFailed || status.Jobs[0].Checkpoints != 0 ||
-		status.Jobs[0].RowsScanned != 0 || usageMigrationServingCompatible(status) {
+		status.Jobs[0].RowsScanned != 0 || UsageMigrationServingCompatible(status) {
 		t.Fatalf("rejected auto-safe validation must remain failed without durable counters or checkpoints: %+v", status)
 	}
 }

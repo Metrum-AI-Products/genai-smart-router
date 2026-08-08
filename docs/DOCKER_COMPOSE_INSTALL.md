@@ -8,7 +8,7 @@ This is the offline bootstrap path for a Docker Compose package. After startup, 
 - Docker Engine and the Docker Compose plugin.
 - A TLS reverse proxy or ingress in front of the router.
 - A Metrum-issued `license.json`.
-- A deployment-owned Postgres password and usage database policy.
+- A single router writer and private `state`/`logs` directories. New installs use SQLite; PostgreSQL is an explicit multi-replica or externally managed database choice.
 
 ## Bootstrap
 
@@ -25,7 +25,18 @@ cp ../config/env.example.json config/env.json
 cp -R ../config/scripts config/scripts
 ```
 
-Review `compose/.env`. Set a strong `POSTGRES_PASSWORD`, set `ROUTER_USAGE_DB_DSN` to the same password, and keep `SMART_LLMROUTER_VERSION` pinned to the image tag from this package. Do not use `latest`.
+Review `compose/.env`; only `SMART_LLMROUTER_VERSION` is required and must be the package image tag, never `latest`. Configure exact container paths before the migration gate:
+```yaml
+server:
+  logging:
+    path: /app/logs/requests.jsonl
+  usage_db:
+    enabled: true
+    driver: sqlite
+    path: /app/state/usage.sqlite
+    migration_policy: deployment-job
+state_path: /app/state/router-state.json
+```
 
 Place the issued license at `config/license.json`, matching `server.license.path` in `config/config.yaml`. Put provider credentials in `config/env.json` or the deployment secret manager.
 
@@ -46,11 +57,20 @@ Set permissions for the container runtime user used by the packaged image:
 
 ```bash
 sudo chown -R 65532:65532 config state logs
-chmod 0750 config config/scripts state logs
+chmod 0700 config config/scripts state logs
 chmod 0400 config/env.json config/license.json
 ```
 
-Before starting a `deployment-job` router, version-check the non-serving runner and follow the canonical [Data migration framework](DATA_MIGRATIONS.md): `plan`, approved backup, `apply`, every required data job until its safe state is `validated`, `verify`, `status`, then serve. The framework retains the safe Compose `--entrypoint` and PostgreSQL `--dsn-env` forms. `auto-safe` is not a PostgreSQL production procedure; ordinal `0` is not completion evidence.
+Migrations run only while the router is stopped. Before an upgrade, take one approved atomic storage snapshot or offline copy of `usage.sqlite` together with any `-wal`/`-shm` sidecars; never copy those files independently while the router writes. Run the non-serving SQLite gate in order:
+```bash
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --version
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=plan --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=apply --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=verify-serving --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=status --driver=sqlite --db=/app/state/usage.sqlite --json
+```
+`verify-serving` checks schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. It is the machine gate immediately before final read-only `status`; ordinal `0` alone is not completion evidence.
 
 Start the service only after compatible/current final status:
 
@@ -60,7 +80,7 @@ docker compose up -d
 docker compose ps
 ```
 
-The package includes a bundled Postgres service for Compose deployments. If administrators need host-local database access for maintenance, use the packaged localhost-only override so the database binds to `127.0.0.1`, not a public interface.
+The base Compose profile has no database credentials or TCP database egress and persists SQLite on `./state:/app/state`. For PostgreSQL, explicitly include `docker-compose.postgres-localhost.yml`, set `POSTGRES_PASSWORD` and `ROUTER_USAGE_DB_DSN`, and configure `server.usage_db.driver: postgres` with `dsn: ${ROUTER_USAGE_DB_DSN}`. The override binds Postgres only to `127.0.0.1`.
 
 ## Validate
 
@@ -82,6 +102,6 @@ https://router.example.com/admin/reports/
 
 ## Upgrade And Rollback
 
-Before upgrading, back up `compose/.env`, `compose/config/`, `compose/state/`, Postgres data, and logs according to the deployment policy. Load the new image tar, update `SMART_LLMROUTER_VERSION`, review config changes, run `docker compose config`, then recreate the router.
+Before upgrading, back up `compose/.env`, `compose/config/`, `compose/state/`, and logs according to the deployment policy. For SQLite, the usage DB and sidecars require one offline atomic copy; for an explicit PostgreSQL installation, use its approved consistent database backup. Load the new image tar, update `SMART_LLMROUTER_VERSION`, review config changes, run `docker compose config`, then recreate the router.
 
 Package rollback never runs a reverse migration. For a `restore-required` release contract, restore the approved pre-migration database snapshot before deploying the earlier package; otherwise preserve the usage database and roll back only approved package/config inputs. Rerun migration verify/status, `/readyz`, `/docs/`, `/v1/models`, and one caller smoke.

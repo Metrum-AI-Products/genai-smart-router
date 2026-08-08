@@ -1,4 +1,27 @@
 services:
+  router:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ROUTER_USAGE_DB_DSN: ${ROUTER_USAGE_DB_DSN:?Set ROUTER_USAGE_DB_DSN when using the PostgreSQL override}
+
   postgres:
+    image: postgres:18-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-llmrouter}
+      POSTGRES_USER: ${POSTGRES_USER:-llmrouter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to a strong random value when using the PostgreSQL override}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-15432}:5432"
+
+volumes:
+  postgres_data:

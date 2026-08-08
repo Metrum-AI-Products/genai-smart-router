@@ -6,10 +6,10 @@ This document is for maintainers. The external solution brief should describe ca
 
 - Usage persistence is implemented with GORM.
 - Supported drivers are `sqlite` and `postgres`.
-- Local/default config uses SQLite at `server.usage_db.path`.
-- Docker Compose production uses Postgres via `server.usage_db.driver: postgres` and `server.usage_db.dsn`.
+- New generic local, Docker Compose, and Kubernetes config uses SQLite at `server.usage_db.path`; container installs use `/app/state/usage.sqlite`.
+- SQLite is one active router writer: generic Kubernetes stays one replica/Recreate/ReadWriteOnce.
 - SQLite usage database files are created/chmodded `0600`; keep the containing state directory private and do not loosen permissions on WAL or SHM sidecars.
-- The packaged compose service uses the official `postgres:18-bookworm` image and listens only on the internal Docker network by default. Host access requires the explicit localhost-only compose override.
+- PostgreSQL is an explicit multi-replica or externally managed deployment choice via `server.usage_db.driver: postgres` and deployment-owned DSN. Compose provides it only through the localhost-only override.
 
 ## Relational Schema Rule
 

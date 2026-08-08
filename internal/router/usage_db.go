@@ -1505,7 +1505,7 @@ func (s *usageStore) initializeSchema(policy string) error {
 		if err != nil {
 			return fmt.Errorf("usage migration %s: %w", policy, err)
 		}
-		if !usageMigrationServingCompatible(status) {
+		if !UsageMigrationServingCompatible(status) {
 			return fmt.Errorf("usage migration %s requires a current compatible ledger (state %s)", policy, status.State)
 		}
 		return nil
@@ -1526,7 +1526,7 @@ func (s *usageStore) initializeSchema(policy string) error {
 		if err != nil {
 			return fmt.Errorf("usage migration auto-safe: %w", err)
 		}
-		if !usageMigrationServingCompatible(status) {
+		if !UsageMigrationServingCompatible(status) {
 			return fmt.Errorf("usage migration auto-safe requires a current compatible ledger (state %s)", status.State)
 		}
 		return nil
@@ -1539,7 +1539,7 @@ func (s *usageStore) initializeSchema(policy string) error {
 // required bound data job has reached its checked-in validated state. A
 // synthesized pending job after apply is deliberately just as unready as a
 // durable running, paused, cancelled, failed, or incompatible job.
-func usageMigrationServingCompatible(status MigrationStatus) bool {
+func UsageMigrationServingCompatible(status MigrationStatus) bool {
 	if !status.Compatible || status.State != "current" {
 		return false
 	}

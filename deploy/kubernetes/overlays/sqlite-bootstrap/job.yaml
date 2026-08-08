@@ -1,0 +1,91 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smart-llmrouter-sqlite-bootstrap
+  labels:
+    app.kubernetes.io/name: smart-llmrouter
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: smart-llmrouter
+    spec:
+      serviceAccountName: smart-llmrouter
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: migration-version
+          image: registry.example.com/smart-llmrouter:<version>-linux-amd64
+          command: ["/app/bin/router-migrate", "--version"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+        - name: migration-plan
+          image: registry.example.com/smart-llmrouter:<version>-linux-amd64
+          command: ["/app/bin/router-migrate", "--action=plan", "--driver=sqlite", "--db=/app/state/usage.sqlite", "--json"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: state
+              mountPath: /app/state
+            - name: tmp
+              mountPath: /tmp
+        - name: migration-apply
+          image: registry.example.com/smart-llmrouter:<version>-linux-amd64
+          command: ["/app/bin/router-migrate", "--action=apply", "--driver=sqlite", "--db=/app/state/usage.sqlite", "--json"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: state
+              mountPath: /app/state
+            - name: tmp
+              mountPath: /tmp
+        - name: migration-resume
+          image: registry.example.com/smart-llmrouter:<version>-linux-amd64
+          command: ["/app/bin/router-migrate", "--action=resume", "--job=historical-usage-validation-v1", "--checkpoint-ordinal=0", "--driver=sqlite", "--db=/app/state/usage.sqlite", "--json"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: state
+              mountPath: /app/state
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: migration-verify-serving
+          image: registry.example.com/smart-llmrouter:<version>-linux-amd64
+          command: ["/app/bin/router-migrate", "--action=verify-serving", "--driver=sqlite", "--db=/app/state/usage.sqlite", "--json"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: state
+              mountPath: /app/state
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: smart-llmrouter-state
+        - name: tmp
+          emptyDir: {}

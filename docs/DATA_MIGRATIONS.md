@@ -8,20 +8,17 @@ Metrics-admin callers can scrape aggregate migration schema/data version, compat
 
 ## Required deployment-job gate
 
-Before a fresh serving startup or package upgrade using `migration_policy: deployment-job`, run **plan → approved backup → apply → all data jobs → verify → status → serve** while the router is stopped or drained. A deployment job owns the database change; the serving process only validates the compatible ledger. `auto-safe` is not a PostgreSQL production procedure.
+Before a fresh serving startup or package upgrade using `migration_policy: deployment-job`, run **plan → approved backup → apply → all data jobs → verify-serving → status → serve** while the router is stopped or drained. A deployment job owns the database change; the serving process only validates the compatible ledger. `auto-safe` is not a production deployment procedure.
 
-Use a PostgreSQL DSN only through the job environment. The container invocation replaces the serving entrypoint and never places a DSN literal in a command line:
+New generic Compose/Kubernetes installations use SQLite at `/app/state/usage.sqlite` and run:
 
 ```sh
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=plan --json
-
-# Take and approve the deployment's pre-migration backup before continuing.
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=plan --driver=sqlite --db=/app/state/usage.sqlite --json
+# Take and approve one offline atomic copy/snapshot of usage.sqlite and any -wal/-shm sidecars.
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=apply --driver=sqlite --db=/app/state/usage.sqlite --json
 ```
 
-Version-check the same packaged runner before this gate. Complete every data job named by the release contract before `verify` and `status`; use the status-driven procedure below for each job. Do not start the serving router if plan, apply, data-job completion, verify, or status is incompatible, pending, running, paused, cancelled, failed, or unrecognized. This includes the synthesized pending state immediately after `apply` and before a job's first `resume`: it is not a serving-ready exception. The ledger is authoritative: a bound data job can refine only an already-applied ledger row and never overrides ledger `running` or `failed` state.
+Version-check the same packaged runner before this gate. Complete every data job named by the release contract; do not start serving if plan, apply, or any job is incompatible, pending, running, paused, cancelled, failed, or unrecognized. `verify-serving` runs schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. PostgreSQL is explicit: use `--driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN` with a deployment-owned DSN.
 
 ### Checkpointed data-job procedure
 
@@ -39,20 +36,20 @@ For the current package, the controlled repeat is:
 
 ```sh
 # n starts at 0. Run one checkpoint, then inspect only the returned safe status.
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=resume \
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router \
+  --driver=sqlite --db=/app/state/usage.sqlite --action=resume \
   --job=historical-usage-validation-v1 --checkpoint-ordinal="$n" --json
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router \
+  --driver=sqlite --db=/app/state/usage.sqlite --action=status --json
 ```
 
 Record the ordinal and safe state in the approved change record. If the job state is `running`, set `n` to the next integer and repeat the two commands. If it is `validated`, continue with the final non-serving checks:
 
 ```sh
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router \
+  --driver=sqlite --db=/app/state/usage.sqlite --action=verify-serving --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router \
+  --driver=sqlite --db=/app/state/usage.sqlite --action=status --json
 # Only after compatible/current final status and every required job is validated:
 docker compose up -d
 ```
@@ -70,8 +67,10 @@ For SQLite, schedule exclusive downtime, stop every router and migration process
 Each release must publish its migration contract: migration ID and scope, online or maintenance execution mode, lock/timeout class, data-job requirement, backup evidence requirement, compatible schema/data window, and rollback class. Package rollback never performs a reverse migration; follow the release-specific restore requirement.
 
 ```sh
-router-migrate --driver=sqlite --db=usage.sqlite --action=status
-router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
+router-migrate --driver=sqlite --db=/app/state/usage.sqlite --action=verify-serving --json
+router-migrate --driver=sqlite --db=/app/state/usage.sqlite --action=status
+# Explicit PostgreSQL substitution:
+router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify-serving --json
 ```
 
 Stage 3 activates the framework's normalized scalar job records without putting a backfill in a router request path or startup. A checked-in data-job definition is bound to an applied immutable migration by scope, migration ID, data version, key, execution and validation mode, bounded throttle, restart-safe declaration, and handler identity. `schema_data_jobs` records only aggregate counters and safe state; `schema_data_job_checkpoints` holds bounded scalar shard/range/cursor progress. No JSON, SQL values, DSNs, request content, credentials, or configuration is recorded.

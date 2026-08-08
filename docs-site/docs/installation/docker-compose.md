@@ -48,7 +48,7 @@ cp ../config/env.example.json config/env.json
 cp -R ../config/scripts config/scripts
 ```
 
-Review `.env` or copy `.env.example` to `.env` if your package does not include a populated `.env`. Fill deployment-owned values, use a strong database password, and pin `SMART_LLMROUTER_VERSION` to the exact image tag from the package. Do not use `latest`.
+Review `.env` or copy `.env.example` to `.env` if needed. New SQLite installs require only `SMART_LLMROUTER_VERSION`, pinned to the exact package image tag; never use `latest`. The base profile has no database credential or TCP database egress.
 
 Generate at least one caller token and replace the placeholder caller hashes in `config/config.yaml` before first startup:
 
@@ -65,7 +65,7 @@ docker run --rm \
 
 Save the printed raw token for the caller through an approved secret channel. In `config/config.yaml`, add or verify the referenced `users`, `projects`, and `project_memberships` entries, then replace the placeholder `callers:` entries with the generated caller YAML. A fresh template with `REPLACE_WITH_SHA256_HEX_OF_*` values is intentionally not startable.
 
-Edit `config/config.yaml` for container paths and the packaged Postgres service before startup:
+Edit `config/config.yaml` for durable container paths before startup:
 
 ```yaml
 server:
@@ -78,11 +78,14 @@ server:
     state_path: /app/state/license-state.json
   usage_db:
     enabled: true
-    driver: postgres
-    dsn: ${ROUTER_USAGE_DB_DSN}
+    driver: sqlite
+    path: /app/state/usage.sqlite
+    migration_policy: deployment-job
 
 state_path: /app/state/router-state.json
 ```
+
+SQLite supports one active router writer. Compose persists its database in `./state`; do not use shared or multi-replica storage. For a multi-replica or externally managed database deployment, explicitly add `docker-compose.postgres-localhost.yml`, configure `server.usage_db.driver: postgres` and `dsn: ${ROUTER_USAGE_DB_DSN}`, and supply the deployment-owned DSN/password.
 
 ## Configure Secrets
 
@@ -101,13 +104,24 @@ Then set ownership and permissions for the container runtime user. The packaged 
 
 ```bash
 sudo chown -R 65532:65532 config state logs
-chmod 0750 config config/scripts state logs
+chmod 0700 config config/scripts state logs
 chmod 0400 config/env.json config/license.json
 ```
 
 ## Run The Migration Gate, Then Start And Validate
 
-For `server.usage_db.migration_policy: deployment-job`, a fresh router service starts only after the packaged `docs/DATA_MIGRATIONS.md` runbook completes the non-serving gate: `plan`, approved backup, `apply`, every required data job until its safe state is `validated`, `verify`, `status`, then serve. This is required before `docker compose up -d`; `auto-safe` is not a PostgreSQL production procedure. The canonical procedure preserves the secure Compose `--entrypoint` and PostgreSQL `--dsn-env` forms. A successful checkpoint ordinal `0` does not prove completion; do not start the service when any required job is pending, running, paused, cancelled, failed, incompatible, or unrecognized. Record only the approved backup reference and safe result fields in the deployment change record. The read-only migration views are available afterward only to a metrics-admin caller or authorized browser administrator.
+For `server.usage_db.migration_policy: deployment-job`, stop or keep the router absent while running the non-serving gate. Before upgrades, take one approved atomic offline snapshot/copy of `usage.sqlite` together with any `-wal`/`-shm` sidecars; never copy those files independently while the router writes. For a fresh SQLite PVC/state bind, run:
+
+```bash
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --version
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=plan --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=apply --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=verify-serving --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=status --driver=sqlite --db=/app/state/usage.sqlite --json
+```
+
+`verify-serving` runs schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. It is the machine gate immediately before final read-only `status`; ordinal `0` alone does not prove completion. PostgreSQL uses the explicit override and `--driver postgres --dsn "$ROUTER_USAGE_DB_DSN"` instead.
 
 ```bash
 docker compose config >/dev/null

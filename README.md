@@ -680,7 +680,7 @@ curl http://127.0.0.1:8080/version
 
 ## Usage Reports
 
-Usage is written to both JSONL and a GORM-backed relational database. SQLite is the default for local use and is created with private `0600` file modes, including sidecars when present; Docker Compose deployments can use Postgres via `server.usage_db.driver: postgres` and `server.usage_db.dsn`. The schema is scalar and relational only: no JSONB, JSON, array, or packed multi-value DB columns.
+Usage is written to both JSONL and a GORM-backed relational database. SQLite is the default for local and new generic Docker Compose/Kubernetes installations; it is created with private `0600` file modes, including sidecars when present. The generic container path is one writer using `/app/state/usage.sqlite`; PostgreSQL is an explicit multi-replica or externally managed database choice. The schema is scalar and relational only: no JSONB, JSON, array, or packed multi-value DB columns.
 
 When license enforcement is enabled, request logs and `request_usage` store only safe scalar license metadata such as status, reason, license ID, customer ID, SKU, key ID, expiry, and grace-active flag. They do not store the license payload, detached signature, public/private key bytes, or signing material.
 
@@ -747,7 +747,7 @@ For routine browser inspection, deployments may enable `/admin/reports/`. The br
 Generate a markdown report for the last 24 hours:
 
 ```bash
-./router-usage-report --db usage.sqlite --since 24h --out usage-24h.md
+./router-usage-report --driver sqlite --db /app/state/usage.sqlite --since 24h --out usage-24h.md
 ```
 
 Generate a report from Postgres:
@@ -764,23 +764,24 @@ Generate a report for an explicit period and import existing JSONL first. Import
 
 ```bash
 ./router-usage-report \
-  --db usage.sqlite \
+  --driver sqlite --db /app/state/usage.sqlite \
   --log requests.jsonl \
   --from 2026-06-14T00:00:00Z \
   --to 2026-06-15T00:00:00Z \
   --out usage-2026-06-14.md
 ```
 
-Generate a report from a Docker Compose deployment:
+Generate a report from the default Docker Compose SQLite deployment:
 
 ```bash
-dsn="$(sed -n 's/^ROUTER_USAGE_DB_DSN=//p' .env | tail -n 1)"
-docker compose run --rm --entrypoint /app/bin/router-usage-report router \
-  --driver postgres \
-  --dsn "$dsn" \
+docker compose run --rm --no-deps --entrypoint /app/bin/router-usage-report router \
+  --driver sqlite \
+  --db /app/state/usage.sqlite \
   --since 24h \
   --out /app/logs/usage-24h.md
 ```
+
+For an explicitly configured PostgreSQL deployment, substitute `--driver postgres --dsn "$ROUTER_USAGE_DB_DSN"`.
 
 Generate a report for one benchmark or case study by caller project/environment:
 

@@ -27,9 +27,3 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-    - to:
-        - ipBlock:
-            cidr: 10.0.0.0/8
-      ports:
-        - protocol: TCP
-          port: 5432

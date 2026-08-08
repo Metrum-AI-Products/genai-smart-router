@@ -157,7 +157,7 @@ def docker_package_files(root: str = "smart-llmrouter-v1.0.0-docker-linux-amd64"
         f"{root}/compose/docker-compose.postgres-localhost.yml": "services: {}\n",
         f"{root}/compose/Caddyfile.compose": ":80\n",
         f"{root}/compose/.env.example": "SMART_LLMROUTER_VERSION=v1.0.0-linux-amd64\n",
-        f"{root}/compose/.env": "SMART_LLMROUTER_VERSION=v1.0.0-linux-amd64\nPOSTGRES_PASSWORD=replace-me\n",
+        f"{root}/compose/.env": "SMART_LLMROUTER_VERSION=v1.0.0-linux-amd64\n",
         f"{root}/config/config.example.yaml": "server: {}\n",
         f"{root}/config/env.example.json": "{}\n",
         f"{root}/config/scripts/router.ts": "export function route() {}\n",

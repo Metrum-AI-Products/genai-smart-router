@@ -89,8 +89,8 @@ Use Traffic tuning advisor when the question is whether to increase burst, chang
 
 ```bash
 router-usage-report \
-  --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --driver sqlite \
+  --db /app/state/usage.sqlite \
   --since 24h \
   --traffic-tuning-advisor \
   --caller-user <owner-user>

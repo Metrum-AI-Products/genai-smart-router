@@ -35,7 +35,7 @@ docker run --rm --entrypoint /app/bin/router-usage-report smart-llmrouter:<versi
 docker run --rm --entrypoint /app/bin/router-migrate smart-llmrouter:<version>-linux-<arch> --version
 ```
 
-Before a `deployment-job` serving startup, use the canonical `DATA_MIGRATIONS.md` procedure: `plan`, approved backup, `apply`, all release-defined data jobs until each safe state is `validated`, `verify`, `status`, then serve. PostgreSQL uses `--dsn-env=ROUTER_USAGE_DB_DSN`, never a literal DSN; Compose uses its documented `--entrypoint`. A successful ordinal `0` is not completion evidence.
+Before a `deployment-job` serving startup, use the canonical `DATA_MIGRATIONS.md` procedure: `plan`, approved backup, `apply`, all release-defined data jobs until each safe state is `validated`, `verify-serving`, then final read-only `status`. `verify-serving` runs schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. New generic packages use `--driver=sqlite --db=/app/state/usage.sqlite`; PostgreSQL is an explicit deployment substitution using `--driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN`, never a literal DSN. A successful ordinal `0` is not completion evidence.
 
 Packages must not contain:
 

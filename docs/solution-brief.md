@@ -205,8 +205,9 @@ server:
     path: /app/logs/requests.jsonl
   usage_db:
     enabled: true
-    driver: postgres
-    dsn: ${ROUTER_USAGE_DB_DSN}
+    driver: sqlite
+    path: /app/state/usage.sqlite
+    migration_policy: deployment-job
 
 providers:
   minimax:
