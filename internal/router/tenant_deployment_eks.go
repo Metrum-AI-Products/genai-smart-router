@@ -326,8 +326,8 @@ func (a *EKSTenantDeploymentAdapters) DeleteStatePVC(ctx context.Context, p Tena
 // non-production RDS adapter, credential-binding, and activation review gates
 // are accepted. It never resolves or emits a DSN.
 func (a *EKSTenantDeploymentAdapters) EnsureDedicatedRDS(_ context.Context, plan TenantDeploymentPlan) (string, error) {
-	if a.profile.DatabaseMode != "dedicated-rds" || plan.DatabaseID == "" {
-		return "", &TenantDeploymentAdapterError{Class: "rds_profile_invalid", Err: errors.New("dedicated RDS profile is required")}
+	if a.profile.DatabaseMode != "dedicated-rds" || plan.DatabaseID == "" || plan.DatabaseProfile != a.profile.ApprovedDatabaseProfile {
+		return "", &TenantDeploymentAdapterError{Class: "rds_profile_invalid", Err: errors.New("dedicated RDS database profile is required")}
 	}
 	return "", &TenantDeploymentAdapterError{Class: "rds_live_admission_required", Err: errors.New("dedicated RDS live adapter is not approved")}
 }

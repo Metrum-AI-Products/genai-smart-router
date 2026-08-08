@@ -426,6 +426,11 @@ rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspee
 - Fleet binaries belong only in binary packages. Customer Docker images MAY
   contain `smartrouterctl` but MUST NOT contain `metrum-fleetctl` or the
   compatibility command.
+- SQLite is the default deployment path: exactly one Router container and one
+  replica, with no RDS provision or binding. Dedicated RDS is OPTIONAL and
+  requires an explicit manifest `database_profile` equal to the protected
+  profile's approved database profile. Its action precedes runtime-secret
+  binding only on that branch.
 - Dedicated-RDS plans MUST retain only deterministic safe scalar identity and
   profile evidence—NEVER a DSN, endpoint, credential, secret reference, or
   raw adapter response. `tenant_deployment_rds.go` is a typed AWS adapter for

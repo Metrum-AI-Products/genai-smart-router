@@ -50,6 +50,7 @@ type TenantDeploymentManifest struct {
 	Release           string                  `json:"release" yaml:"release"`
 	ResourceProfile   string                  `json:"resource_profile" yaml:"resource_profile"`
 	StateProfile      string                  `json:"state_profile" yaml:"state_profile"`
+	DatabaseProfile   string                  `json:"database_profile,omitempty" yaml:"database_profile,omitempty"`
 	UpstreamConfigRef string                  `json:"upstream_config_ref" yaml:"upstream_config_ref"`
 	ConfigRevision    string                  `json:"config_revision" yaml:"config_revision"`
 	License           TenantDeploymentLicense `json:"license" yaml:"license"`
@@ -177,6 +178,10 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 	if manifest.Release != TenantReleaseLatestApproved {
 		return TenantDeploymentPlan{}, errors.New("release must be latest-approved")
 	}
+	dedicatedRDS := manifest.DatabaseProfile != ""
+	if dedicatedRDS && (profile.DatabaseMode != "dedicated-rds" || manifest.DatabaseProfile != profile.ApprovedDatabaseProfile) {
+		return TenantDeploymentPlan{}, errors.New("database_profile is not approved by the protected profile")
+	}
 	instanceIdentity := strings.Join([]string{profile.ProfileID, manifest.CustomerID, manifest.Stage}, "\x00")
 	instanceSum := sha256.Sum256([]byte(instanceIdentity))
 	instanceSuffix := hex.EncodeToString(instanceSum[:])[:20]
@@ -189,6 +194,10 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 		return TenantDeploymentPlan{}, fmt.Errorf("canonicalize deployment manifest: %w", err)
 	}
 	manifestSum := sha256.Sum256(manifestBytes)
+	databaseID := ""
+	if dedicatedRDS {
+		databaseID = "rds-" + instanceSuffix
+	}
 	return TenantDeploymentPlan{
 		Schema: "metrum.ai/smartrouter-deployment-plan/v1", Mode: "eks",
 		JobID: "job-" + jobSuffix, InstanceID: "instance-" + instanceSuffix,
@@ -199,15 +208,15 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 		StateProfile: manifest.StateProfile, ConfigRevision: manifest.ConfigRevision,
 		ManifestSHA256:    hex.EncodeToString(manifestSum[:]),
 		upstreamConfigRef: manifest.UpstreamConfigRef, licenseRequestRef: manifest.License.RequestRef,
-		DatabaseProfile: profile.ApprovedDatabaseProfile,
-		DatabaseID:      "rds-" + instanceSuffix,
-		Actions:         tenantDeploymentActions(profile),
+		DatabaseProfile: manifest.DatabaseProfile,
+		DatabaseID:      databaseID,
+		Actions:         tenantDeploymentActions(dedicatedRDS),
 	}, nil
 }
 
-func tenantDeploymentActions(profile TenantDeploymentProfile) []string {
+func tenantDeploymentActions(dedicatedRDS bool) []string {
 	actions := []string{"namespace", "network_policy"}
-	if profile.DatabaseMode == "dedicated-rds" {
+	if dedicatedRDS {
 		actions = append(actions, "dedicated_rds")
 	}
 	return append(actions, "runtime_secret_binding", "license_binding", "state_pvc", "router", "activation", "hostname")
@@ -290,6 +299,11 @@ func validateTenantDeploymentManifest(manifest TenantDeploymentManifest, raw []b
 	}
 	if !configRevisionPattern.MatchString(manifest.ConfigRevision) {
 		return errors.New("config_revision is required and must be an opaque revision identifier")
+	}
+	if manifest.DatabaseProfile != "" {
+		if err := validateDeploymentID("database_profile", manifest.DatabaseProfile); err != nil {
+			return err
+		}
 	}
 	for name, value := range map[string]string{"upstream_config_ref": manifest.UpstreamConfigRef, "license.request_ref": manifest.License.RequestRef} {
 		if !referencePattern.MatchString(value) {

@@ -95,11 +95,13 @@ the raw token or token hash. The output requires the approved configuration
 controller to activate; the CLI cannot activate config, rotate keys, sign
 licenses, access AWS/EKS/RDS, or operate another customer.
 
-Fleet remains blocked for live dedicated-RDS provisioning. A typed AWS RDS
-adapter now enforces private/encrypted/no-proxy policy, ownership tags, and
-final-snapshot deletion behind a time-bounded non-production admission that
-the shipped Fleet CLI cannot create. The default EKS adapter remains
-fail-closed; independent non-production credential-binding, ownership,
+The default customer deployment is SQLite state with exactly one Router
+container and one replica; it does not provision or bind RDS. Dedicated RDS is
+optional and requires an explicit approved `database_profile` manifest branch.
+The typed AWS RDS adapter enforces private/encrypted/no-proxy policy, ownership
+tags, and final-snapshot deletion behind a time-bounded non-production
+admission that the shipped Fleet CLI cannot create. The default EKS adapter
+remains fail-closed; independent non-production credential-binding, ownership,
 activation, disposable E2E, security, and operations evidence is still
 required. Production profiles remain rejected until #518. See [the Fleet
 lifecycle contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md) and [CLI boundary

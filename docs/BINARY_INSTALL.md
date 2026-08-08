@@ -47,11 +47,13 @@ For Fleet lifecycle contract validation, run `bin/metrum-fleetctl plan`, then
 `deploy`, exact-job `status`, and approved `delete` with a protected
 reference-only profile. A new intent/config revision reconciles the same
 instance in place. `bin/metrum-smartrouterctl` reports the one-release rename
-only. Use `bin/smartrouterctl` for customer-local safe config, token-file,
+notice only. `smartrouterctl` provides local configuration, caller-token,
 license, model, and usage operations; it cannot activate config or access cloud
-systems. Dedicated-RDS mutation remains fail-closed; production profiles remain
-rejected until #518. The hosted **Operations > Deployment Patterns** page
-defines the input and approval contract.
+systems. The default deployment is SQLite state with one Router container and
+one replica; it neither provisions nor binds RDS. Dedicated RDS requires an
+explicit approved `database_profile` manifest branch and remains fail-closed.
+Production profiles remain rejected until #518. The hosted **Operations >
+Deployment Patterns** page defines the input and approval contract.
 
 
 Start the router in the foreground only after compatible/current final status:

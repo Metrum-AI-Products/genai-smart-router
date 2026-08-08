@@ -80,19 +80,22 @@ creates a caller token once in a new mode-`0600` file, and reports safe local
 status; it has no cloud or activation authority.
 
 The lifecycle accepts only a protected mode-`0600` `file://` non-production
-profile in the shipped build. Plan is side-effect-free. The ordered stages are
-namespace, network policy, dedicated private RDS when selected, protected
-runtime-secret/DSN-reference binding, license binding, state PVC, one-replica
-Router, activation, and hostname. Hostname is not published until activation
-passes. A classified safe failure can retry from its exact stage. An unknown
-outcome for a PVC or dedicated-RDS action becomes `operator_required` rather
-than guessing whether creation should repeat.
+profile in the shipped build. Plan is side-effect-free. The default SQLite path
+is namespace, network policy, protected runtime-secret binding, license
+binding, state PVC, one-replica single-container Router, activation, and
+hostname; it never provisions or binds RDS. An explicit approved
+`database_profile` manifest branch inserts dedicated private RDS after network
+policy and before runtime-secret/DSN-reference binding. Hostname is not
+published until activation passes. A classified safe failure can retry from its
+exact stage. An unknown outcome for a PVC or dedicated-RDS action becomes
+`operator_required` rather than guessing whether creation should repeat.
 
-Dedicated-RDS plans retain only deterministic database ID/profile evidence:
-never a DSN, endpoint, credential, secret reference, or raw adapter response.
-The typed adapter enforces private/encrypted/no-proxy policy, ownership tags,
-and final-snapshot deletion, but is unattached by the default EKS constructor.
-It requires a separately validated, time-bounded non-production admission that
+Dedicated-RDS is optional: the manifest must select the exact approved profile.
+Its plan retains only deterministic database ID/profile evidence—never a DSN,
+endpoint, credential, secret reference, or raw adapter response. The typed
+adapter enforces private/encrypted/no-proxy policy, ownership tags, and
+final-snapshot deletion, but is unattached by the default EKS constructor. It
+requires a separately validated, time-bounded non-production admission that
 the shipped CLI cannot create. Mutation remains fail-closed pending independent
 non-production credential-binding, ownership, activation, disposable E2E,
 security, and operations evidence. Production profiles remain rejected until

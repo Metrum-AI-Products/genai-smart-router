@@ -33,6 +33,13 @@ smart-llmrouter-<version>-linux-<arch>/
 
 Use `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts. Release validation checks the package binaries against the selected architecture and rejects unexpected files, deployment-private notes, raw secrets, local state, and macOS archive metadata.
 
+`metrum-fleetctl` runs only from an extracted binary package on a separate
+trusted administration host. Its default lifecycle uses SQLite state with one
+Router container and one replica; it neither provisions nor binds RDS. A
+dedicated-RDS branch requires an explicit approved `database_profile` manifest
+and remains fail-closed pending separately accepted non-production evidence.
+Production profiles remain rejected.
+
 Create a dedicated service account, then create deployment-owned directories:
 
 ```bash

@@ -77,6 +77,7 @@ func dedicatedRDSFixture(t *testing.T) (TenantDeploymentProfile, TenantDeploymen
 	profile.RDSVPCSecurityGroup = "sg-router-private"
 	profile.RDSMasterUsername = "routeradmin"
 	profile.RDSProxyDisabled = true
+	manifest.DatabaseProfile = profile.ApprovedDatabaseProfile
 	plan, err := BuildTenantDeploymentPlan(profile, manifest, "intent-rds-adapter")
 	raw, err := json.Marshal(profile)
 	if err != nil {

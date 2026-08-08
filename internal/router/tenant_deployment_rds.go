@@ -67,6 +67,9 @@ func validateTenantDeploymentRDSAdmission(profile TenantDeploymentProfile, admis
 }
 
 func (a *TenantDeploymentRDSAdapter) EnsureDedicatedRDS(ctx context.Context, plan TenantDeploymentPlan) (string, error) {
+	if plan.DatabaseID == "" || plan.DatabaseProfile != a.profile.ApprovedDatabaseProfile {
+		return "", &TenantDeploymentAdapterError{Class: "rds_profile_invalid", Err: errors.New("dedicated RDS database profile is required")}
+	}
 	instance, found, err := a.observe(ctx, plan)
 	if err != nil {
 		return "", err
@@ -106,6 +109,9 @@ func (a *TenantDeploymentRDSAdapter) EnsureDedicatedRDS(ctx context.Context, pla
 }
 
 func (a *TenantDeploymentRDSAdapter) DeleteDedicatedRDS(ctx context.Context, plan TenantDeploymentPlan, _ string) error {
+	if plan.DatabaseID == "" || plan.DatabaseProfile != a.profile.ApprovedDatabaseProfile {
+		return &TenantDeploymentAdapterError{Class: "rds_profile_invalid", Err: errors.New("dedicated RDS database profile is required")}
+	}
 	_, found, err := a.observe(ctx, plan)
 	if err != nil {
 		return err

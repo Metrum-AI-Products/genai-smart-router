@@ -82,6 +82,9 @@ func TestTenantDeploymentContractDeterministicReferenceOnlyPlan(t *testing.T) {
 	if strings.Join(first.Actions, ",") != wantActions {
 		t.Fatalf("action order = %v", first.Actions)
 	}
+	if first.DatabaseID != "" || first.DatabaseProfile != "" || strings.Contains(strings.Join(first.Actions, ","), "dedicated_rds") {
+		t.Fatalf("SQLite default unexpectedly selected RDS: %+v", first)
+	}
 }
 
 func TestTenantDeploymentContractRejectsUnknownAndSecretShapedInput(t *testing.T) {

@@ -25,9 +25,12 @@ contain `smartrouterctl`, never `metrum-fleetctl` or the compatibility binary.
 
 ## Dedicated RDS boundary
 
-A protected non-production profile may select `database_mode: dedicated-rds`.
-The plan contains only deterministic database identity and profile scalars—no
-DSN, hostname, port, credentials, secret reference, or database response.
+The default deployment path is SQLite state with one Router container and one
+replica; it neither provisions nor binds RDS. A protected non-production
+profile may permit an explicit approved `database_profile` manifest branch for
+`database_mode: dedicated-rds`. That plan contains only deterministic database
+identity and profile scalars—no DSN, hostname, port, credentials, secret
+reference, or database response.
 The normalized lifecycle records retries and ownership-safe retention exactly
 as for the PVC path. `tenant_deployment_rds.go` provides the typed AWS RDS
 adapter for a private, encrypted PostgreSQL instance with ownership tags,

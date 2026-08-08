@@ -53,9 +53,12 @@ metrum-fleetctl status \
   --output json
 ```
 
-The ordered lifecycle is namespace, network policy, dedicated private RDS
-(when selected), runtime-secret/DSN-reference binding, license binding, state
-PVC, one-replica Router, activation, then hostname. Hostname publication is
+The default path is SQLite state with exactly one Router container and one
+replica; it does not provision or bind RDS. The ordered SQLite lifecycle is
+namespace, network policy, runtime-secret binding, license binding, state PVC,
+one-replica Router, activation, then hostname. An explicit approved
+`database_profile` branch inserts dedicated private RDS after network policy
+and before runtime-secret/DSN-reference binding. Hostname publication is
 impossible before activation. Reuse the same intent to resume; use a new
 immutable config revision/intent to reconcile the same instance. Unknown RDS
 or PVC outcomes require operator reconciliation.
@@ -76,11 +79,13 @@ metrum-fleetctl delete \
 
 ## Dedicated RDS contract
 
-A protected non-production profile can select `database_mode: dedicated-rds`
-with an approved database profile, private subnet/security-group policy,
-RDS-Proxy disabled, instance class, storage, backup retention, and managed
-master-credential policy. The plan exposes only a deterministic `database_id`
-and `database_profile`; it never stores or emits a DSN or credential.
+An optional protected non-production `database_mode: dedicated-rds` profile
+permits exactly its approved `database_profile`; a manifest must explicitly
+select that profile. SQLite remains the default when the manifest omits
+`database_profile`. The RDS branch requires private subnet/security-group
+policy, RDS-Proxy disabled, instance class, storage, backup retention, and
+managed master-credential policy. The plan exposes only a deterministic
+`database_id` and `database_profile`; it never stores or emits a DSN or credential.
 `tenant_deployment_rds.go` uses typed AWS RDS calls to observe ownership tags
 and policy, provision only private encrypted PostgreSQL, and delete only
 owned instances with a final snapshot. It returns scalar evidence only.

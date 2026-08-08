@@ -14,6 +14,7 @@ func TestTenantDeploymentDedicatedRDSPlanFakeRetryAndRetention(t *testing.T) {
 	profile.RDSInstanceClass = "db-t4g-medium"
 	profile.RDSStorageGiB = 20
 	profile.RDSBackupRetentionDays = 7
+	manifest.DatabaseProfile = profile.ApprovedDatabaseProfile
 	plan, err := BuildTenantDeploymentPlan(profile, manifest, "intent-rds")
 	if err != nil {
 		t.Fatal(err)
@@ -48,5 +49,18 @@ func TestTenantDeploymentDedicatedRDSPlanFakeRetryAndRetention(t *testing.T) {
 		if resource.ResourceKind == "dedicated_rds" && resource.State != "retained" {
 			t.Fatalf("RDS state=%q, want retained", resource.State)
 		}
+	}
+}
+
+func TestTenantDeploymentDedicatedRDSProfileDefaultsToSQLiteWithoutManifestSelection(t *testing.T) {
+	profile, manifest, _ := tenantDeploymentFixture(t)
+	profile.DatabaseMode = "dedicated-rds"
+	profile.ApprovedDatabaseProfile = "postgres-dedicated-small"
+	plan, err := BuildTenantDeploymentPlan(profile, manifest, "intent-sqlite-default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.DatabaseID != "" || plan.DatabaseProfile != "" || strings.Contains(strings.Join(plan.Actions, ","), "dedicated_rds") {
+		t.Fatalf("unselected dedicated RDS profile changed SQLite default: %#v", plan)
 	}
 }
