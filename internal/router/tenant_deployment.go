@@ -32,8 +32,8 @@ const (
 var tenantDeploymentProcessLock sync.Mutex
 
 var tenantDeploymentActionOrder = []string{
-	"namespace", "network_policy", "runtime_secret_binding", "license_binding",
-	"state_pvc", "dedicated_rds", "router", "activation", "hostname",
+	"namespace", "network_policy", "dedicated_rds", "runtime_secret_binding",
+	"license_binding", "state_pvc", "router", "activation", "hostname",
 }
 
 // TenantDeploymentStatus is the bounded, non-secret lifecycle view returned by
@@ -403,7 +403,7 @@ func (e *TenantDeploymentEngine) Deploy(ctx context.Context, plan TenantDeployme
 		if ensureErr != nil {
 			errorClass := classifyTenantDeploymentError(ensureErr)
 			operatorRequired := tenantDeploymentErrorNeedsOperator(ensureErr)
-			if operatorRequired && action != "state_pvc" {
+			if operatorRequired && action != "state_pvc" && action != "dedicated_rds" {
 				durable, durableErr := e.hasDurableState(ctx, record.InstanceID)
 				if durableErr != nil {
 					return TenantDeploymentStatus{}, durableErr

@@ -18,7 +18,7 @@ func TestTenantDeploymentDedicatedRDSPlanFakeRetryAndRetention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.DatabaseID == "" || plan.DatabaseProfile != "postgres-dedicated-small" || strings.Join(plan.Actions, ",") != "namespace,network_policy,runtime_secret_binding,license_binding,dedicated_rds,router,activation,hostname" {
+	if plan.DatabaseID == "" || plan.DatabaseProfile != "postgres-dedicated-small" || strings.Join(plan.Actions, ",") != "namespace,network_policy,dedicated_rds,runtime_secret_binding,license_binding,state_pvc,router,activation,hostname" {
 		t.Fatalf("unexpected dedicated RDS plan: %#v", plan)
 	}
 	store, fake, engine, _ := openTenantDeploymentTestEngine(t)
@@ -31,6 +31,9 @@ func TestTenantDeploymentDedicatedRDSPlanFakeRetryAndRetention(t *testing.T) {
 	status, err := engine.Deploy(context.Background(), plan, "intent-rds")
 	if err != nil || status.State != TenantDeploymentReady {
 		t.Fatalf("RDS resume status=%#v err=%v", status, err)
+	}
+	if got := fake.SnapshotCalls(); strings.Join(got[:3], ",") != "ensure:namespace,ensure:network_policy,ensure:dedicated_rds" {
+		t.Fatalf("dedicated RDS did not precede secret binding: %v", got)
 	}
 	approval := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: plan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainDatabase: true, Nonce: "retain-rds"}
 	status, err = engine.Delete(context.Background(), plan, approval, strings.Repeat("a", 64))

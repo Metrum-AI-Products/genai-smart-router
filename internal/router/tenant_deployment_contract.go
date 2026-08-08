@@ -86,6 +86,10 @@ type TenantDeploymentProfile struct {
 	RDSInstanceClass        string `json:"rds_instance_class" yaml:"rds_instance_class"`
 	RDSStorageGiB           int    `json:"rds_storage_gib" yaml:"rds_storage_gib"`
 	RDSBackupRetentionDays  int    `json:"rds_backup_retention_days" yaml:"rds_backup_retention_days"`
+	RDSSubnetGroup          string `json:"rds_subnet_group" yaml:"rds_subnet_group"`
+	RDSVPCSecurityGroup     string `json:"rds_vpc_security_group" yaml:"rds_vpc_security_group"`
+	RDSMasterUsername       string `json:"rds_master_username" yaml:"rds_master_username"`
+	RDSProxyDisabled        bool   `json:"rds_proxy_disabled" yaml:"rds_proxy_disabled"`
 }
 
 type TenantDeploymentPlan struct {
@@ -202,11 +206,11 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 }
 
 func tenantDeploymentActions(profile TenantDeploymentProfile) []string {
-	actions := []string{"namespace", "network_policy", "runtime_secret_binding", "license_binding"}
+	actions := []string{"namespace", "network_policy"}
 	if profile.DatabaseMode == "dedicated-rds" {
-		return append(actions, "dedicated_rds", "router", "activation", "hostname")
+		actions = append(actions, "dedicated_rds")
 	}
-	return append(actions, "state_pvc", "router", "activation", "hostname")
+	return append(actions, "runtime_secret_binding", "license_binding", "state_pvc", "router", "activation", "hostname")
 }
 
 func readDeploymentDocument(path string, stdin io.Reader, requirePrivate bool) ([]byte, error) {
@@ -318,7 +322,13 @@ func validateTenantDeploymentProfile(profile TenantDeploymentProfile, raw []byte
 		return errors.New("database_mode must be dedicated-rds when set")
 	}
 	if profile.DatabaseMode == "dedicated-rds" {
-		for name, value := range map[string]string{"approved_database_profile": profile.ApprovedDatabaseProfile, "rds_instance_class": profile.RDSInstanceClass} {
+		for name, value := range map[string]string{
+			"approved_database_profile": profile.ApprovedDatabaseProfile,
+			"rds_instance_class":        profile.RDSInstanceClass,
+			"rds_subnet_group":          profile.RDSSubnetGroup,
+			"rds_vpc_security_group":    profile.RDSVPCSecurityGroup,
+			"rds_master_username":       profile.RDSMasterUsername,
+		} {
 			if err := validateDeploymentID(name, value); err != nil {
 				return err
 			}
@@ -328,6 +338,9 @@ func validateTenantDeploymentProfile(profile TenantDeploymentProfile, raw []byte
 		}
 		if profile.RDSBackupRetentionDays < 1 || profile.RDSBackupRetentionDays > 35 {
 			return errors.New("rds_backup_retention_days must be between 1 and 35")
+		}
+		if !profile.RDSProxyDisabled {
+			return errors.New("rds_proxy_disabled must be true")
 		}
 	}
 	if profile.Environment != "nonproduction" {
