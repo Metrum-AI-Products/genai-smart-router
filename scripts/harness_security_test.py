@@ -29,6 +29,7 @@ def main() -> int:
     require("COMPOSE_E2E_TOOL_SANDBOX_IMAGE" not in compose, "Compose E2E must not require a CLI sandbox image")
     require("TOOL_SANDBOX_IMAGE" not in compose, "Compose E2E must not retain a CLI sandbox image variable")
     require('command -v codex' in compose, "Compose E2E must preflight the local Codex CLI")
+    require("unshare -Ur true" in compose, "Codex workspace-write must preflight user namespace support")
     require('command -v claude' in compose, "Compose E2E must preflight the local Claude CLI")
     require("COMPOSE_E2E_PERMISSIONS_IMAGE" in compose, "compose permissions helper image must be configurable")
     require("protect_compose_config_for_router" in compose, "compose config permissions helper is missing")
