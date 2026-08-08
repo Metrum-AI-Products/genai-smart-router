@@ -66,11 +66,13 @@ CLI, metrics-isolation, and relational-usage smokes; sanitize and preserve
 asciinema evidence; review and announce; then roll back or clean up.
 
 Do not use a previously successful smoke as present readiness evidence. As of
-2026-08-06, staging public health, readiness, docs, and version probes returned
-HTTP 503, and issue #792 tracks the missing approved delivery identity and
-namespace RBAC. Until that prerequisite and the complete repair lifecycle pass,
-do not mark staging ready, hand off a caller credential, or treat it as
-disposable EKS proof for #555.
+2026-08-07, the reviewed staging delivery role passed `make eks-preflight`, and
+the public readiness endpoint returned HTTP 200 with `ok=true`. This is
+staging-only repair evidence, not a disposable customer EKS proof for #555:
+customer handoff and production authorization remain gated on the approved
+customer profile, disposable E2E, and the complete activation record. Keep
+exact API-surface compatibility evidence current; #856, #857, and #858 track
+the outstanding Anthropic-text and Codex-tool eligibility/retry findings.
 
 ## Onboard a new customer router instance
 
