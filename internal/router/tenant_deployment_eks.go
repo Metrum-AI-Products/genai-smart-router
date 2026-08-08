@@ -33,11 +33,12 @@ const tenantDeploymentOwnerLabel = "metrum.ai/smartrouter-instance"
 // EKS tenant deployment adapters use typed AWS and Kubernetes clients. No
 // command runner exists in this implementation.
 type EKSTenantDeploymentAdapters struct {
-	profile  TenantDeploymentProfile
-	kube     kubernetes.Interface
-	ssm      *ssm.Client
-	secrets  *secretsmanager.Client
-	database TenantDatabaseAdapter
+	profile          TenantDeploymentProfile
+	kube             kubernetes.Interface
+	ssm              *ssm.Client
+	secrets          *secretsmanager.Client
+	database         TenantDatabaseAdapter
+	resolveReference func(context.Context, string) ([]byte, error)
 }
 
 // ObserveTenantDeployment obtains a bounded live readback for status. It does
@@ -113,6 +114,7 @@ func newEKSTenantDeploymentAdapters(ctx context.Context, profile TenantDeploymen
 		return nil, TenantDeploymentAdapters{}, errors.New("construct typed Kubernetes client")
 	}
 	a := &EKSTenantDeploymentAdapters{profile: profile, kube: kube, ssm: ssm.NewFromConfig(cfg), secrets: secretsmanager.NewFromConfig(cfg)}
+	a.resolveReference = a.referenceValue
 	a.database = a
 	if admission != nil {
 		database, err := NewTenantDeploymentRDSAdapter(profile, *admission, rds.NewFromConfig(cfg))
@@ -212,25 +214,56 @@ func (a *EKSTenantDeploymentAdapters) deleteNetworkPolicy(ctx context.Context, p
 }
 
 func (a *EKSTenantDeploymentAdapters) EnsureSecretBinding(ctx context.Context, p TenantDeploymentPlan) (string, error) {
-	return a.ensureReferenceSecret(ctx, p, "router-runtime", pUpstreamRef(p))
+	return a.ensureRuntimeBundleSecret(ctx, p, pRuntimeBundleRef(p))
 }
 func (a *EKSTenantDeploymentAdapters) DeleteSecretBinding(ctx context.Context, p TenantDeploymentPlan, _ string) error {
 	return a.deleteSecret(ctx, p, "router-runtime")
 }
 func (a *EKSTenantDeploymentAdapters) EnsureLicenseBinding(ctx context.Context, p TenantDeploymentPlan) (string, error) {
-	return a.ensureReferenceSecret(ctx, p, "router-license", pLicenseRef(p))
+	return a.ensureReferenceSecret(ctx, p, "router-license", "license.json", pLicenseRef(p))
 }
 func (a *EKSTenantDeploymentAdapters) DeleteLicenseBinding(ctx context.Context, p TenantDeploymentPlan, _ string) error {
 	return a.deleteSecret(ctx, p, "router-license")
 }
 
-// References are persisted only in the manifest hash; the adapter receives
-// them through the approved plan's process-local resolver installed by CLI.
-// This prevents secret references themselves from entering status/resource rows.
-func pUpstreamRef(p TenantDeploymentPlan) string { return p.upstreamConfigRef }
-func pLicenseRef(p TenantDeploymentPlan) string  { return p.licenseRequestRef }
+// References are retained only as private plan fields and resolved by the
+// typed adapter in memory. This prevents protected references from entering
+// status or resource rows.
+func pRuntimeBundleRef(p TenantDeploymentPlan) string { return p.runtimeBundleRef }
+func pLicenseRef(p TenantDeploymentPlan) string       { return p.licenseRequestRef }
 
-func (a *EKSTenantDeploymentAdapters) ensureReferenceSecret(ctx context.Context, p TenantDeploymentPlan, name, ref string) (string, error) {
+func (a *EKSTenantDeploymentAdapters) ensureRuntimeBundleSecret(ctx context.Context, p TenantDeploymentPlan, ref string) (string, error) {
+	value, err := a.resolveProtectedReference(ctx, ref)
+	if err != nil {
+		return "", errors.New("read protected runtime bundle")
+	}
+	bundle, err := parseTenantDeploymentRuntimeBundle(value)
+	if err != nil {
+		return "", err
+	}
+	data := map[string][]byte{"config.yaml": []byte(bundle.ConfigYAML), "env.json": []byte(bundle.EnvJSON)}
+	c := a.kube.CoreV1().Secrets(p.Namespace)
+	existing, err := c.Get(ctx, "router-runtime", metav1.GetOptions{})
+	if err == nil {
+		if !owned(existing.Labels, p) {
+			return "", ownershipError()
+		}
+		existing.Data = data
+		if _, err := c.Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
+			return "", errors.New("write protected runtime bundle")
+		}
+		return "secret/router-runtime", nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return "", errors.New("read protected runtime secret")
+	}
+	if _, err := c.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "router-runtime", Namespace: p.Namespace, Labels: a.labels(p)}, Type: corev1.SecretTypeOpaque, Data: data}, metav1.CreateOptions{}); err != nil {
+		return "", errors.New("write protected runtime bundle")
+	}
+	return "secret/router-runtime", nil
+}
+
+func (a *EKSTenantDeploymentAdapters) ensureReferenceSecret(ctx context.Context, p TenantDeploymentPlan, name, key, ref string) (string, error) {
 	c := a.kube.CoreV1().Secrets(p.Namespace)
 	existing, err := c.Get(ctx, name, metav1.GetOptions{})
 	if err == nil {
@@ -242,13 +275,9 @@ func (a *EKSTenantDeploymentAdapters) ensureReferenceSecret(ctx context.Context,
 	if !apierrors.IsNotFound(err) {
 		return "", err
 	}
-	value, err := a.referenceValue(ctx, ref)
+	value, err := a.resolveProtectedReference(ctx, ref)
 	if err != nil {
 		return "", err
-	}
-	key := "config.yaml"
-	if name == "router-license" {
-		key = "license.json"
 	}
 	_, err = c.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: p.Namespace, Labels: a.labels(p)}, Type: corev1.SecretTypeOpaque, Data: map[string][]byte{key: value}}, metav1.CreateOptions{})
 	return "secret/" + name, err
@@ -267,6 +296,13 @@ func (a *EKSTenantDeploymentAdapters) deleteSecret(ctx context.Context, p Tenant
 	}
 	return c.Delete(ctx, name, metav1.DeleteOptions{})
 }
+func (a *EKSTenantDeploymentAdapters) resolveProtectedReference(ctx context.Context, ref string) ([]byte, error) {
+	if a.resolveReference != nil {
+		return a.resolveReference(ctx, ref)
+	}
+	return a.referenceValue(ctx, ref)
+}
+
 func (a *EKSTenantDeploymentAdapters) referenceValue(ctx context.Context, ref string) ([]byte, error) {
 	if strings.HasPrefix(ref, "aws-ssm:///") {
 		name := strings.TrimPrefix(ref, "aws-ssm:///")
@@ -359,7 +395,7 @@ func (a *EKSTenantDeploymentAdapters) EnsureRouter(ctx context.Context, p Tenant
 		Spec: appsv1.DeploymentSpec{Replicas: &one, Selector: &metav1.LabelSelector{MatchLabels: map[string]string{tenantDeploymentOwnerLabel: p.InstanceID}},
 			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: corev1.PodSpec{
 				Containers: []corev1.Container{{Name: "router", Image: p.ReleaseDigest, Ports: []corev1.ContainerPort{{ContainerPort: 8080}},
-					VolumeMounts:   []corev1.VolumeMount{{Name: "state", MountPath: "/var/lib/smart-llmrouter"}, {Name: "runtime", MountPath: "/etc/smart-llmrouter", ReadOnly: true}, {Name: "license", MountPath: "/etc/smart-llmrouter-license", ReadOnly: true}},
+					VolumeMounts:   []corev1.VolumeMount{{Name: "state", MountPath: "/var/lib/smart-llmrouter"}, {Name: "runtime", MountPath: "/app/config", ReadOnly: true}, {Name: "license", MountPath: "/etc/smart-llmrouter-license", ReadOnly: true}},
 					ReadinessProbe: &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/readyz", Port: intstr.FromInt(8080)}}, InitialDelaySeconds: 5, PeriodSeconds: 5}}},
 				Volumes: []corev1.Volume{{Name: "state", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "router-state"}}}, {Name: "runtime", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "router-runtime"}}}, {Name: "license", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "router-license"}}}},
 			}},

@@ -73,7 +73,7 @@ func TestTenantDeploymentContractDeterministicReferenceOnlyPlan(t *testing.T) {
 		t.Fatalf("unsafe plan: %+v", first)
 	}
 	encoded := string(firstJSON)
-	for _, forbidden := range []string{manifest.UpstreamConfigRef, manifest.License.RequestRef, "provider_key", "router_token", "license_request"} {
+	for _, forbidden := range []string{manifest.RuntimeBundleRef, manifest.License.RequestRef, "provider_key", "router_token", "license_request"} {
 		if strings.Contains(encoded, forbidden) {
 			t.Fatalf("safe plan leaked protected input %q: %s", forbidden, encoded)
 		}
@@ -89,7 +89,7 @@ func TestTenantDeploymentContractDeterministicReferenceOnlyPlan(t *testing.T) {
 
 func TestTenantDeploymentContractRejectsUnknownAndSecretShapedInput(t *testing.T) {
 	_, _, _ = tenantDeploymentFixture(t)
-	unknown := `{"api_version":"metrum.ai/smartrouter-deployment/v1","customer_id":"customer-a","stage":"test","release":"latest-approved","resource_profile":"small","state_profile":"sqlite-rwo-small","upstream_config_ref":"aws-secretsmanager:///safe/ref","config_revision":"r1","license":{"request_ref":"aws-ssm:///safe/license","validity":"24h"},"password":"do-not-print-this"}`
+	unknown := `{"api_version":"metrum.ai/smartrouter-deployment/v1","customer_id":"customer-a","stage":"test","release":"latest-approved","resource_profile":"small","state_profile":"sqlite-rwo-small","runtime_bundle_ref":"aws-secretsmanager:///safe/runtime-bundle","config_revision":"r1","license":{"request_ref":"aws-ssm:///safe/license","validity":"24h"},"password":"do-not-print-this"}`
 	path := filepath.Join(t.TempDir(), "manifest.json")
 	if err := os.WriteFile(path, []byte(unknown), 0o600); err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestTenantDeploymentContractRejectsUnknownAndSecretShapedInput(t *testing.T
 		t.Fatalf("error leaked secret-shaped value: %v", err)
 	}
 	secretValue := strings.Replace(unknown, `,"password":"do-not-print-this"`, "", 1)
-	secretValue = strings.Replace(secretValue, "customer-a", "sk-abcdefghijklmnop", 1)
+	secretValue = strings.Replace(secretValue, "aws-secretsmanager:///safe/runtime-bundle", "sk-abcdefghijklmnop", 1)
 	if err := os.WriteFile(path, []byte(secretValue), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -436,6 +436,15 @@ rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspee
 - Fleet binaries belong only in binary packages. Customer Docker images MAY
   contain `smartrouterctl` but MUST NOT contain `metrum-fleetctl` or the
   compatibility command.
+- Fleet manifests MUST carry runtime configuration only as
+  `runtime_bundle_ref`, an `aws-ssm:///` or `aws-secretsmanager:///` reference
+  with no query data. Raw config, `env.json`, provider credentials, and other
+  secret-like values are forbidden. The resolved protected JSON bundle MUST
+  contain exactly `config.yaml` and `env.json`; validate it only in memory,
+  create the owned `router-runtime` Secret with exactly those keys, and mount
+  it read-only at `/app/config`. Keep `router-license` separate. NEVER place
+  the reference or values in plans, lifecycle rows, statuses, logs, errors, or
+  evidence.
 - SQLite is the default deployment path: exactly one Router container and one
   replica, with no RDS provision or binding. Dedicated RDS is OPTIONAL and
   requires an explicit manifest `database_profile` equal to the protected

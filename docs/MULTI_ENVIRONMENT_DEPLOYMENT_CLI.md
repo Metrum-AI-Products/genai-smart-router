@@ -30,6 +30,16 @@ state, safe error class, retryability, action progress, and hostname only once
 activation succeeds. It never contains DSNs, endpoints other than the
 activated caller hostname, credentials, references, or configuration.
 
+The manifest's `runtime_bundle_ref` is the sole runtime configuration input.
+It accepts only an `aws-ssm:///` or `aws-secretsmanager:///` reference without
+query data; it never accepts raw configuration, credentials, or environment
+values. The resolver handles its protected JSON payload only in memory. The
+payload has exactly `config.yaml` (a YAML mapping) and `env.json` (a JSON
+string map); malformed, additional, or empty fields fail without echoing
+protected data. The adapter writes an owned `router-runtime` Secret with those
+two exact keys and mounts it read-only at `/app/config`. `router-license`
+continues to be a separate `license.json` Secret and mount.
+
 ## Non-production lifecycle
 
 ```bash

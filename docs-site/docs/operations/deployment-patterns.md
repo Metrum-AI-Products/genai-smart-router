@@ -90,6 +90,13 @@ published until activation passes. A classified safe failure can retry from its
 exact stage. An unknown outcome for a PVC or dedicated-RDS action becomes
 `operator_required` rather than guessing whether creation should repeat.
 
+The Fleet manifest accepts one protected `runtime_bundle_ref`, never raw
+runtime configuration or credentials. Its resolved JSON payload is validated
+only in memory and contains exactly `config.yaml` and `env.json`; the owned
+`router-runtime` Secret exposes those two files read-only at `/app/config`.
+The license remains in a separate `router-license` Secret. Plans, status, and
+errors retain neither protected references nor bundle values.
+
 Dedicated-RDS is optional: the manifest must select the exact approved profile.
 Its plan retains only deterministic database ID/profile evidence—never a DSN,
 endpoint, credential, secret reference, or raw adapter response. The typed

@@ -4,7 +4,7 @@ stage: test
 release: latest-approved
 resource_profile: small
 state_profile: sqlite-rwo-small
-upstream_config_ref: aws-secretsmanager:///smart-router/test/customer-a/upstreams
+runtime_bundle_ref: aws-secretsmanager:///smart-router/test/customer-a/runtime-bundle
 config_revision: revision-17
 license:
   request_ref: aws-ssm:///smart-router/test/customer-a/license-request
