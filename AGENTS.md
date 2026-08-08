@@ -256,9 +256,19 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
 
 ## EKS Delivery Boundaries
 
-- `metrum-smartrouterctl` is shipped in binary packages, but currently implements only the completed #581 local safe-contract slice: registry, explicit schema observation, fake quota admission, and bounded local drift status. Live `deploy`, `promote`, and `rollback` remain disabled.
-- `scripts/eks_delivery.py` and the `eks-*` Make targets are source-only, target-policy-bound staging delivery controls. They are not a generic customer CLI and must not be presented or packaged as the #555 provisioner.
-- #555 is the sole implementation epic for one-command customer EKS deployment. Extend `metrum-smartrouterctl`; do not create a second provisioner, registry, lifecycle, activation authority, or smoke framework. The public lifecycle is limited to deterministic `plan`, idempotent `deploy`, bounded `status`, and separately approved `delete`.
+- `metrum-fleetctl` is shipped only in binary packages and is the #555 Fleet
+  lifecycle authority. It provides the bounded local safe-contract registry,
+  deterministic plan, fake-adapter idempotent deploy, exact-job status, and
+  separately approved delete. Live EKS/RDS mutation remains disabled.
+  `metrum-smartrouterctl` is a one-release rename notice only.
+- `scripts/eks_delivery.py` and the `eks-*` Make targets are source-only,
+  target-policy-bound staging delivery controls. They are not a generic
+  customer CLI and must not be presented or packaged as the #555 provisioner.
+- #555 is the sole implementation epic for one-command customer EKS deployment.
+  Extend `metrum-fleetctl`; do not create a second provisioner, registry,
+  lifecycle, activation authority, or smoke framework. The public lifecycle is
+  limited to deterministic `plan`, idempotent `deploy`, bounded `status`, and
+  separately approved `delete`.
 - A customer `deploy` must consume an approved profile plus a strict reference-only intent, create or resume one isolated licensed Router, and require no manual AWS, Kubernetes, RDS, DNS, certificate, secret, license, or workload steps after invocation. Raw credentials, DSNs, kubeconfigs, license payloads, full Router configs, and shell commands are forbidden inputs and evidence.
 - Configuration and release updates use the same deployment job with a new approved immutable intent: exact config/license revisions and one image digest are pinned across retries. Do not add an out-of-band config mutation path.
 - Keep mutations disabled until the #555 fake-adapter contract/security/activation suites, disposable non-production EKS E2E, and independent security/operations review pass. Production profiles remain rejected until #518 authorizes them. #545 and #586 supply approved customer/config/license intent; #507 supplies migration compatibility.
