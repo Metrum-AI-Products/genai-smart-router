@@ -44,16 +44,16 @@ var (
 // provider credential, Router token, license payload, DSN, kubeconfig, or
 // production configuration content.
 type TenantDeploymentManifest struct {
-	APIVersion        string                  `json:"api_version" yaml:"api_version"`
-	CustomerID        string                  `json:"customer_id" yaml:"customer_id"`
-	Stage             string                  `json:"stage" yaml:"stage"`
-	Release           string                  `json:"release" yaml:"release"`
-	ResourceProfile   string                  `json:"resource_profile" yaml:"resource_profile"`
-	StateProfile      string                  `json:"state_profile" yaml:"state_profile"`
-	DatabaseProfile   string                  `json:"database_profile,omitempty" yaml:"database_profile,omitempty"`
-	UpstreamConfigRef string                  `json:"upstream_config_ref" yaml:"upstream_config_ref"`
-	ConfigRevision    string                  `json:"config_revision" yaml:"config_revision"`
-	License           TenantDeploymentLicense `json:"license" yaml:"license"`
+	APIVersion       string                  `json:"api_version" yaml:"api_version"`
+	CustomerID       string                  `json:"customer_id" yaml:"customer_id"`
+	Stage            string                  `json:"stage" yaml:"stage"`
+	Release          string                  `json:"release" yaml:"release"`
+	ResourceProfile  string                  `json:"resource_profile" yaml:"resource_profile"`
+	StateProfile     string                  `json:"state_profile" yaml:"state_profile"`
+	DatabaseProfile  string                  `json:"database_profile,omitempty" yaml:"database_profile,omitempty"`
+	RuntimeBundleRef string                  `json:"runtime_bundle_ref" yaml:"runtime_bundle_ref"`
+	ConfigRevision   string                  `json:"config_revision" yaml:"config_revision"`
+	License          TenantDeploymentLicense `json:"license" yaml:"license"`
 }
 
 type TenantDeploymentLicense struct {
@@ -115,7 +115,7 @@ type TenantDeploymentPlan struct {
 	DatabaseProfile   string   `json:"database_profile,omitempty"`
 	DatabaseID        string   `json:"database_id,omitempty"`
 	Actions           []string `json:"actions"`
-	upstreamConfigRef string
+	runtimeBundleRef  string
 	licenseRequestRef string
 }
 
@@ -206,8 +206,8 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 		Stage: manifest.Stage, Namespace: namespace, Hostname: hostname,
 		ReleaseDigest: profile.ApprovedReleaseDigest, ResourceProfile: manifest.ResourceProfile,
 		StateProfile: manifest.StateProfile, ConfigRevision: manifest.ConfigRevision,
-		ManifestSHA256:    hex.EncodeToString(manifestSum[:]),
-		upstreamConfigRef: manifest.UpstreamConfigRef, licenseRequestRef: manifest.License.RequestRef,
+		ManifestSHA256:   hex.EncodeToString(manifestSum[:]),
+		runtimeBundleRef: manifest.RuntimeBundleRef, licenseRequestRef: manifest.License.RequestRef,
 		DatabaseProfile: manifest.DatabaseProfile,
 		DatabaseID:      databaseID,
 		Actions:         tenantDeploymentActions(dedicatedRDS),
@@ -305,7 +305,7 @@ func validateTenantDeploymentManifest(manifest TenantDeploymentManifest, raw []b
 			return err
 		}
 	}
-	for name, value := range map[string]string{"upstream_config_ref": manifest.UpstreamConfigRef, "license.request_ref": manifest.License.RequestRef} {
+	for name, value := range map[string]string{"runtime_bundle_ref": manifest.RuntimeBundleRef, "license.request_ref": manifest.License.RequestRef} {
 		if !referencePattern.MatchString(value) {
 			return fmt.Errorf("%s must be an aws-ssm:/// or aws-secretsmanager:/// reference without query data", name)
 		}

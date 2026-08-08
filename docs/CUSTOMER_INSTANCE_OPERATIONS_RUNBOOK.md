@@ -33,6 +33,15 @@ procedure in [EKS staging migration](EKS_STAGING_MIGRATION.md#one-time-authoriza
 
 Issue #555 has one strict reference-only manifest, one normalized deployment-job registry, and typed AWS/EKS contracts in `metrum-fleetctl`. It provides deterministic plan, idempotent ownership-safe create/resume, classified state, activation-before-hostname, bounded status, explicit PVC/RDS retention, and exact-job deletion. Customer-local `smartrouterctl` has no Fleet, cloud, cross-customer, config-activation, key-rotation, or license-signing authority.
 
+The Fleet-only manifest carries `runtime_bundle_ref`, not raw runtime files. It
+is an `aws-ssm:///` or `aws-secretsmanager:///` reference without query data.
+The resolver reads the protected JSON bundle only in memory; it must contain
+exactly `config.yaml` as a YAML mapping and `env.json` as a JSON string map.
+The owned `router-runtime` Secret contains only those keys and is mounted
+read-only at `/app/config`; `router-license` remains separate. No bundle
+value or reference belongs in a plan, registry, status, error, ticket, or
+evidence record.
+
 ## Before any live action
 
 The following are mandatory fail-closed preflight conditions. An absent condition means record a safe blocked status in the #555 durable provisioning job and escalate to the commercial/control-plane owner. That owner coordinates the listed Infra/Security or Release approver when the missing gate requires their decision; operators must not bypass the gate manually, select shared placement, or reuse another customer's resources.

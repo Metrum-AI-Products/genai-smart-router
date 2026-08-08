@@ -23,6 +23,23 @@ or license signing.
 Fleet binaries are included only in binary tarballs. Customer Docker images
 contain `smartrouterctl`, never `metrum-fleetctl` or the compatibility binary.
 
+## Runtime bundle boundary
+
+The manifest carries exactly one `runtime_bundle_ref`, an
+`aws-ssm:///` or `aws-secretsmanager:///` reference without query data. It
+never carries `config.yaml`, `env.json`, provider credentials, or any other
+runtime value. The typed resolver reads the protected value only in memory and
+accepts a single JSON object with exactly two string fields: `config.yaml`
+(a YAML mapping) and `env.json` (a JSON string map). Malformed payloads,
+unknown fields, empty values, and raw secret-shaped manifest content fail with
+safe generic errors.
+
+The adapter writes those two exact keys to the owned `router-runtime` Secret
+and mounts it read-only at `/app/config`, the Router image's startup path.
+`router-license` remains a distinct one-key `license.json` Secret and mount.
+Neither protected bundle values nor references enter plans, lifecycle records,
+statuses, or error output.
+
 ## Dedicated RDS boundary
 
 The default deployment path is SQLite state with one Router container and one
