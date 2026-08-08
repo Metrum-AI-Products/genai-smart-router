@@ -36,6 +36,42 @@ func TestCallerGenerateWritesTokenOnceAndNeverPrintsIt(t *testing.T) {
 	}
 }
 
+func TestCustomerConfigAndModelReadCommands(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"config.example.yaml", "env.example.json"} {
+		body, err := os.ReadFile(filepath.Join("..", "..", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := name
+		if name == "config.example.yaml" {
+			target = "config.yaml"
+			body = []byte(strings.NewReplacer(
+				"REPLACE_WITH_SHA256_HEX_OF_STANDARD_ROUTER_TOKEN", strings.Repeat("a", 64),
+				"REPLACE_WITH_SHA256_HEX_OF_CODING_ROUTER_TOKEN", strings.Repeat("b", 64),
+				"REPLACE_WITH_SHA256_HEX_OF_METRICS_ADMIN_ROUTER_TOKEN", strings.Repeat("c", 64),
+				"REPLACE_WITH_SHA256_HEX_OF_CONTENT_ADMIN_ROUTER_TOKEN", strings.Repeat("d", 64),
+			).Replace(string(body)))
+		} else {
+			target = "env.json"
+		}
+		if err := os.WriteFile(filepath.Join(dir, target), body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	configPath := filepath.Join(dir, "config.yaml")
+	for _, command := range [][]string{{"config", "validate"}, {"config", "diff", "--from", configPath, "--to", configPath}, {"status"}, {"models", "list"}} {
+		args := append([]string{"run", "."}, command...)
+		if !(command[0] == "config" && command[1] == "diff") {
+			args = append(args, "--config", configPath)
+		}
+		output, err := exec.Command("go", args...).CombinedOutput()
+		if err != nil || !strings.Contains(string(output), "\"schema\"") {
+			t.Fatalf("%v failed: %v %s", command, err, output)
+		}
+	}
+}
+
 func TestCustomerCLIFailsClosedForFleetAuthority(t *testing.T) {
 	for _, command := range [][]string{{"deploy"}, {"config", "activate"}, {"license", "sign"}, {"keys", "rotate"}} {
 		args := append([]string{"run", "."}, command...)
