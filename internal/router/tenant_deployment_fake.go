@@ -33,7 +33,7 @@ func NewFakeTenantDeploymentAdapters() (*FakeTenantDeploymentAdapters, TenantDep
 	fake := &FakeTenantDeploymentAdapters{}
 	return fake, TenantDeploymentAdapters{
 		Namespace: fake, NetworkPolicy: fake, SecretBinding: fake,
-		LicenseBinding: fake, State: fake, Router: fake, Activation: fake, Hostname: fake,
+		LicenseBinding: fake, State: fake, Database: fake, Router: fake, Activation: fake, Hostname: fake,
 	}
 }
 
@@ -96,6 +96,13 @@ func (f *FakeTenantDeploymentAdapters) EnsureStatePVC(_ context.Context, plan Te
 func (f *FakeTenantDeploymentAdapters) DeleteStatePVC(_ context.Context, _ TenantDeploymentPlan, _ string) error {
 	return f.remove("state_pvc")
 }
+
+func (f *FakeTenantDeploymentAdapters) EnsureDedicatedRDS(_ context.Context, plan TenantDeploymentPlan) (string, error) {
+	return f.ensure("dedicated_rds", plan)
+}
+func (f *FakeTenantDeploymentAdapters) DeleteDedicatedRDS(_ context.Context, _ TenantDeploymentPlan, _ string) error {
+	return f.remove("dedicated_rds")
+}
 func (f *FakeTenantDeploymentAdapters) EnsureRouter(_ context.Context, plan TenantDeploymentPlan) (string, error) {
 	return f.ensure("router", plan)
 }
@@ -122,12 +129,13 @@ func (f *FakeTenantDeploymentAdapters) SnapshotCalls() []string {
 }
 
 type TenantDeletionApproval struct {
-	APIVersion string    `json:"api_version"`
-	JobID      string    `json:"job_id"`
-	Action     string    `json:"action"`
-	ExpiresAt  time.Time `json:"expires_at"`
-	RetainPVC  bool      `json:"retain_pvc"`
-	Nonce      string    `json:"nonce"`
+	APIVersion     string    `json:"api_version"`
+	JobID          string    `json:"job_id"`
+	Action         string    `json:"action"`
+	ExpiresAt      time.Time `json:"expires_at"`
+	RetainPVC      bool      `json:"retain_pvc"`
+	RetainDatabase bool      `json:"retain_database"`
+	Nonce          string    `json:"nonce"`
 }
 
 func LoadTenantDeletionApproval(path string, now time.Time) (TenantDeletionApproval, string, error) {
@@ -235,7 +243,7 @@ func (e *TenantDeploymentEngine) Delete(ctx context.Context, plan TenantDeployme
 		if resource.State == "deleted" || resource.State == "retained" {
 			continue
 		}
-		retain := resource.ResourceKind == "state_pvc" && approval.RetainPVC
+		retain := (resource.ResourceKind == "state_pvc" && approval.RetainPVC) || (resource.ResourceKind == "dedicated_rds" && approval.RetainDatabase)
 		if retain {
 			if err := e.setResourceState(ctx, resource.ID, "retained"); err != nil {
 				return TenantDeploymentStatus{}, err

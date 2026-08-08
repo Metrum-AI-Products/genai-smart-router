@@ -32,36 +32,38 @@ const (
 var tenantDeploymentProcessLock sync.Mutex
 
 var tenantDeploymentActionOrder = []string{
-	"namespace", "network_policy", "runtime_secret_binding",
-	"license_binding", "state_pvc", "router", "activation", "hostname",
+	"namespace", "network_policy", "runtime_secret_binding", "license_binding",
+	"state_pvc", "dedicated_rds", "router", "activation", "hostname",
 }
 
 // TenantDeploymentStatus is the bounded, non-secret lifecycle view returned by
 // deploy and status. It intentionally omits endpoints other than the caller
 // hostname, credential references, error text, and provider configuration.
 type TenantDeploymentStatus struct {
-	Schema          string    `json:"schema"`
-	Mode            string    `json:"mode"`
-	JobID           string    `json:"job_id"`
-	InstanceID      string    `json:"instance_id"`
-	ProfileID       string    `json:"profile_id"`
-	CustomerID      string    `json:"customer_id"`
-	Stage           string    `json:"stage"`
-	Environment     string    `json:"environment"`
-	Region          string    `json:"region"`
-	ClusterAlias    string    `json:"cluster_alias"`
-	Namespace       string    `json:"namespace"`
-	Hostname        string    `json:"hostname,omitempty"`
-	ReleaseDigest   string    `json:"release_digest"`
-	ConfigRevision  string    `json:"config_revision"`
-	State           string    `json:"state"`
-	ObservedState   string    `json:"observed_state,omitempty"`
-	CompletedAction string    `json:"completed_action,omitempty"`
-	NextAction      string    `json:"next_action,omitempty"`
-	ErrorClass      string    `json:"error_class,omitempty"`
-	Retryable       bool      `json:"retryable"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	Schema           string    `json:"schema"`
+	Mode             string    `json:"mode"`
+	JobID            string    `json:"job_id"`
+	InstanceID       string    `json:"instance_id"`
+	ProfileID        string    `json:"profile_id"`
+	CustomerID       string    `json:"customer_id"`
+	Stage            string    `json:"stage"`
+	Environment      string    `json:"environment"`
+	Region           string    `json:"region"`
+	ClusterAlias     string    `json:"cluster_alias"`
+	Namespace        string    `json:"namespace"`
+	Hostname         string    `json:"hostname,omitempty"`
+	ReleaseDigest    string    `json:"release_digest"`
+	ConfigRevision   string    `json:"config_revision"`
+	State            string    `json:"state"`
+	ObservedState    string    `json:"observed_state,omitempty"`
+	CompletedAction  string    `json:"completed_action,omitempty"`
+	NextAction       string    `json:"next_action,omitempty"`
+	ErrorClass       string    `json:"error_class,omitempty"`
+	Retryable        bool      `json:"retryable"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	ActivationPassed bool      `json:"activation_passed"`
+	DatabaseState    string    `json:"database_state,omitempty"`
 }
 
 type tenantDeploymentJobRecord struct {
@@ -242,7 +244,7 @@ func (s *TenantDeploymentStore) createOrLoad(ctx context.Context, plan TenantDep
 		ProfileID: plan.ProfileID, CustomerID: plan.CustomerID, Stage: plan.Stage, Environment: plan.Environment,
 		Region: plan.Region, ClusterAlias: plan.ClusterAlias, Namespace: plan.Namespace, Hostname: plan.Hostname,
 		ReleaseDigest: plan.ReleaseDigest, ResourceProfile: plan.ResourceProfile, StateProfile: plan.StateProfile,
-		ConfigRevision: plan.ConfigRevision, State: TenantDeploymentRequested, NextAction: tenantDeploymentActionOrder[0],
+		ConfigRevision: plan.ConfigRevision, State: TenantDeploymentRequested, NextAction: plan.Actions[0],
 		CreatedAt: now, UpdatedAt: now,
 	}
 	result := s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&record)
@@ -270,7 +272,14 @@ func (s *TenantDeploymentStore) Status(ctx context.Context, jobID, profileID str
 	if err := s.db.WithContext(ctx).Where("job_id = ? AND profile_id = ?", jobID, profileID).First(&record).Error; err != nil {
 		return TenantDeploymentStatus{}, err
 	}
-	return statusFromDeploymentRecord(record), nil
+	status := statusFromDeploymentRecord(record)
+	var database tenantDeploymentResourceRecord
+	if err := s.db.WithContext(ctx).Where("instance_id = ? AND resource_kind = ?", record.InstanceID, "dedicated_rds").First(&database).Error; err == nil {
+		status.DatabaseState = database.State
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return TenantDeploymentStatus{}, err
+	}
+	return status, nil
 }
 
 func statusFromDeploymentRecord(record tenantDeploymentJobRecord) TenantDeploymentStatus {
@@ -285,7 +294,8 @@ func statusFromDeploymentRecord(record tenantDeploymentJobRecord) TenantDeployme
 		Region: record.Region, ClusterAlias: record.ClusterAlias, Namespace: record.Namespace, Hostname: hostname,
 		ReleaseDigest: record.ReleaseDigest, ConfigRevision: record.ConfigRevision, State: record.State,
 		CompletedAction: record.CompletedAction, NextAction: record.NextAction, ErrorClass: record.ErrorClass,
-		Retryable: record.Retryable, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
+		Retryable: record.Retryable, ActivationPassed: record.ActivationPassed,
+		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
 }
 
@@ -311,6 +321,10 @@ type TenantStateAdapter interface {
 	EnsureStatePVC(context.Context, TenantDeploymentPlan) (string, error)
 	DeleteStatePVC(context.Context, TenantDeploymentPlan, string) error
 }
+type TenantDatabaseAdapter interface {
+	EnsureDedicatedRDS(context.Context, TenantDeploymentPlan) (string, error)
+	DeleteDedicatedRDS(context.Context, TenantDeploymentPlan, string) error
+}
 type TenantRouterAdapter interface {
 	EnsureRouter(context.Context, TenantDeploymentPlan) (string, error)
 	DeleteRouter(context.Context, TenantDeploymentPlan, string) error
@@ -330,6 +344,7 @@ type TenantDeploymentAdapters struct {
 	SecretBinding  TenantSecretBindingAdapter
 	LicenseBinding TenantLicenseBindingAdapter
 	State          TenantStateAdapter
+	Database       TenantDatabaseAdapter
 	Router         TenantRouterAdapter
 	Activation     TenantActivationAdapter
 	Hostname       TenantHostnameAdapter
@@ -343,7 +358,7 @@ type TenantDeploymentEngine struct {
 }
 
 func NewTenantDeploymentEngine(store *TenantDeploymentStore, adapters TenantDeploymentAdapters) (*TenantDeploymentEngine, error) {
-	if store == nil || adapters.Namespace == nil || adapters.NetworkPolicy == nil || adapters.SecretBinding == nil || adapters.LicenseBinding == nil || adapters.State == nil || adapters.Router == nil || adapters.Activation == nil || adapters.Hostname == nil {
+	if store == nil || adapters.Namespace == nil || adapters.NetworkPolicy == nil || adapters.SecretBinding == nil || adapters.LicenseBinding == nil || adapters.State == nil || adapters.Database == nil || adapters.Router == nil || adapters.Activation == nil || adapters.Hostname == nil {
 		return nil, errors.New("complete tenant deployment adapter set is required")
 	}
 	return &TenantDeploymentEngine{store: store, adapters: adapters}, nil
@@ -365,7 +380,7 @@ func (e *TenantDeploymentEngine) Deploy(ctx context.Context, plan TenantDeployme
 	if record.State == TenantDeploymentOperatorRequired {
 		return statusFromDeploymentRecord(record), errors.New("deployment requires operator reconciliation before resume")
 	}
-	for index, action := range tenantDeploymentActionOrder {
+	for index, action := range plan.Actions {
 		resource, found, err := e.resource(ctx, record.InstanceID, action)
 		if err != nil {
 			return TenantDeploymentStatus{}, err
@@ -377,7 +392,7 @@ func (e *TenantDeploymentEngine) Deploy(ctx context.Context, plan TenantDeployme
 		if action == "activation" || action == "hostname" {
 			state = TenantDeploymentValidating
 		}
-		if err := e.updateJob(ctx, record.JobID, state, previousAction(index), action, "", false, action == "hostname"); err != nil {
+		if err := e.updateJob(ctx, record.JobID, state, previousAction(plan.Actions, index), action, "", false, action == "hostname"); err != nil {
 			return TenantDeploymentStatus{}, err
 		}
 		attempt, err := e.startAttempt(ctx, record.JobID, action)
@@ -402,7 +417,7 @@ func (e *TenantDeploymentEngine) Deploy(ctx context.Context, plan TenantDeployme
 				nextAction = "operator_review"
 			}
 			_ = e.finishAttempt(ctx, attempt.ID, "failed", errorClass)
-			_ = e.updateJob(ctx, record.JobID, failedState, previousAction(index), nextAction, errorClass, !operatorRequired, false)
+			_ = e.updateJob(ctx, record.JobID, failedState, previousAction(plan.Actions, index), nextAction, errorClass, !operatorRequired, false)
 			status, statusErr := e.store.Status(ctx, record.JobID, record.ProfileID)
 			if statusErr != nil {
 				return TenantDeploymentStatus{}, statusErr
@@ -427,11 +442,11 @@ func (e *TenantDeploymentEngine) Deploy(ctx context.Context, plan TenantDeployme
 	return e.store.Status(ctx, record.JobID, record.ProfileID)
 }
 
-func previousAction(index int) string {
+func previousAction(actions []string, index int) string {
 	if index == 0 {
 		return ""
 	}
-	return tenantDeploymentActionOrder[index-1]
+	return actions[index-1]
 }
 
 func (e *TenantDeploymentEngine) resource(ctx context.Context, instanceID, kind string) (tenantDeploymentResourceRecord, bool, error) {
@@ -446,7 +461,7 @@ func (e *TenantDeploymentEngine) resource(ctx context.Context, instanceID, kind 
 func (e *TenantDeploymentEngine) hasDurableState(ctx context.Context, instanceID string) (bool, error) {
 	var count int64
 	err := e.store.db.WithContext(ctx).Model(&tenantDeploymentResourceRecord{}).
-		Where("instance_id = ? AND resource_kind = ? AND state = ?", instanceID, "state_pvc", "ready").
+		Where("instance_id = ? AND resource_kind IN ? AND state = ?", instanceID, []string{"state_pvc", "dedicated_rds"}, "ready").
 		Count(&count).Error
 	return count > 0, err
 }
@@ -531,6 +546,8 @@ func (e *TenantDeploymentEngine) ensure(ctx context.Context, action string, plan
 		return e.adapters.LicenseBinding.EnsureLicenseBinding(ctx, plan)
 	case "state_pvc":
 		return e.adapters.State.EnsureStatePVC(ctx, plan)
+	case "dedicated_rds":
+		return e.adapters.Database.EnsureDedicatedRDS(ctx, plan)
 	case "router":
 		return e.adapters.Router.EnsureRouter(ctx, plan)
 	case "activation":
@@ -554,6 +571,8 @@ func (e *TenantDeploymentEngine) deleteResource(ctx context.Context, kind string
 		return e.adapters.LicenseBinding.DeleteLicenseBinding(ctx, plan, ref)
 	case "state_pvc":
 		return e.adapters.State.DeleteStatePVC(ctx, plan, ref)
+	case "dedicated_rds":
+		return e.adapters.Database.DeleteDedicatedRDS(ctx, plan, ref)
 	case "router":
 		return e.adapters.Router.DeleteRouter(ctx, plan, ref)
 	case "activation":

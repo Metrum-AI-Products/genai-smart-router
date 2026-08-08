@@ -285,7 +285,7 @@ test-tenant-deploy-activation:
 	go test ./internal/router -run '^TestTenantDeploymentActivation' -count=1
 
 test-tenant-deploy-all: test-tenant-deploy-contract test-tenant-deploy-adapters test-tenant-deploy-security test-tenant-deploy-activation
-	go test ./cmd/metrum-smartrouterctl -run 'TestTenantDeploymentCLIPlanDeployStatus|TestLifecycleCommandsFailClosed' -count=1
+	go test ./cmd/metrum-fleetctl -run 'TestTenantDeploymentCLIPlanIsReadOnly|TestLifecycleCommandsRejectUnsupportedVerbs' -count=1
 
 test: secret-check capability-smoke-unit
 	go test ./...
@@ -463,6 +463,8 @@ build: docs-build admin-build capability-smoke-unit
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-token-gen ./cmd/router-token-gen
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-usage-report ./cmd/router-usage-report
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-migrate ./cmd/router-migrate
+	go build -ldflags "$(BUILD_LDFLAGS)" -o smartrouterctl ./cmd/smartrouterctl
+	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-fleetctl ./cmd/metrum-fleetctl
 	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-smartrouterctl ./cmd/metrum-smartrouterctl
 
 build-go-only: capability-smoke-unit
@@ -471,6 +473,8 @@ build-go-only: capability-smoke-unit
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-token-gen ./cmd/router-token-gen
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-usage-report ./cmd/router-usage-report
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-migrate ./cmd/router-migrate
+	go build -ldflags "$(BUILD_LDFLAGS)" -o smartrouterctl ./cmd/smartrouterctl
+	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-fleetctl ./cmd/metrum-fleetctl
 	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-smartrouterctl ./cmd/metrum-smartrouterctl
 
 build-all: docs-build admin-build capability-smoke-unit
@@ -480,11 +484,15 @@ build-all: docs-build admin-build capability-smoke-unit
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/router-token-gen" ./cmd/router-token-gen
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/router-usage-report" ./cmd/router-usage-report
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/router-migrate" ./cmd/router-migrate
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/smartrouterctl" ./cmd/smartrouterctl
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/metrum-fleetctl" ./cmd/metrum-fleetctl
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/metrum-smartrouterctl" ./cmd/metrum-smartrouterctl
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/router" ./cmd/router
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/router-token-gen" ./cmd/router-token-gen
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/router-usage-report" ./cmd/router-usage-report
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/router-migrate" ./cmd/router-migrate
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/smartrouterctl" ./cmd/smartrouterctl
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/metrum-fleetctl" ./cmd/metrum-fleetctl
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/metrum-smartrouterctl" ./cmd/metrum-smartrouterctl
 
 package: package-all
@@ -501,6 +509,8 @@ package-one-no-docs: capability-smoke-unit
 	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/router-token-gen" ./cmd/router-token-gen; \
 	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/router-usage-report" ./cmd/router-usage-report; \
 	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/router-migrate" ./cmd/router-migrate; \
+	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/smartrouterctl" ./cmd/smartrouterctl; \
+	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/metrum-fleetctl" ./cmd/metrum-fleetctl; \
 	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/metrum-smartrouterctl" ./cmd/metrum-smartrouterctl; \
 	cp config.example.yaml "$${pkg_dir}/config/config.example.yaml"; \
 	cp env.example.json "$${pkg_dir}/config/env.example.json"; \
@@ -512,10 +522,9 @@ package-one-no-docs: capability-smoke-unit
 	done < "$(PACKAGE_DOC_ALLOWLIST)"
 	find "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}" -type d -exec chmod 0755 {} \;
 	find "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}" -type f -exec chmod 0644 {} \;
-	chmod 0755 "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-token-gen" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-usage-report" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-migrate" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/metrum-smartrouterctl"
+	chmod 0755 "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-token-gen" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-usage-report" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-migrate" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/smartrouterctl" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/metrum-fleetctl" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/metrum-smartrouterctl"
 	$(TAR_ENV) tar --owner=0 --group=0 --numeric-owner -C "$${DIST_DIR}/pkg" -czf "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz" "$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}"
 	python3 scripts/validate_package_contents.py --allowlist "$(PACKAGE_DOC_ALLOWLIST)" "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz"
-
 package-all: docs-build admin-build capability-smoke-unit
 	GOOS=linux GOARCH=amd64 $(MAKE) package-one-no-docs
 	GOOS=linux GOARCH=arm64 $(MAKE) package-one-no-docs

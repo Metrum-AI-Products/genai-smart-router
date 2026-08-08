@@ -97,7 +97,7 @@ func NewEKSTenantDeploymentAdapters(ctx context.Context, profile TenantDeploymen
 		return nil, TenantDeploymentAdapters{}, errors.New("construct typed Kubernetes client")
 	}
 	a := &EKSTenantDeploymentAdapters{profile: profile, kube: kube, ssm: ssm.NewFromConfig(cfg), secrets: secretsmanager.NewFromConfig(cfg)}
-	return a, TenantDeploymentAdapters{Namespace: a, NetworkPolicy: a, SecretBinding: a, LicenseBinding: a, State: a, Router: a, Activation: a, Hostname: a}, nil
+	return a, TenantDeploymentAdapters{Namespace: a, NetworkPolicy: a, SecretBinding: a, LicenseBinding: a, State: a, Database: a, Router: a, Activation: a, Hostname: a}, nil
 }
 
 func eksAuthenticationToken(ctx context.Context, cfg aws.Config, cluster string) (string, error) {
@@ -115,7 +115,7 @@ func eksAuthenticationToken(ctx context.Context, cfg aws.Config, cluster string)
 }
 
 func (a *EKSTenantDeploymentAdapters) labels(plan TenantDeploymentPlan) map[string]string {
-	return map[string]string{tenantDeploymentOwnerLabel: plan.InstanceID, "app.kubernetes.io/name": "smart-llmrouter", "app.kubernetes.io/managed-by": "metrum-smartrouterctl"}
+	return map[string]string{tenantDeploymentOwnerLabel: plan.InstanceID, "app.kubernetes.io/name": "smart-llmrouter", "app.kubernetes.io/managed-by": "metrum-fleetctl"}
 }
 func owned(labels map[string]string, plan TenantDeploymentPlan) bool {
 	return labels != nil && labels[tenantDeploymentOwnerLabel] == plan.InstanceID
@@ -294,6 +294,22 @@ func (a *EKSTenantDeploymentAdapters) DeleteStatePVC(ctx context.Context, p Tena
 		return ownershipError()
 	}
 	return c.Delete(ctx, "router-state", metav1.DeleteOptions{})
+}
+
+// EnsureDedicatedRDS is deliberately fail-closed. The typed EKS lifecycle can
+// carry a dedicated-RDS plan and its fake adapter covers retry/retention
+// semantics, but live RDS mutation remains disabled until the #555 independent
+// non-production RDS adapter, credential-binding, and activation review gates
+// are accepted. It never resolves or emits a DSN.
+func (a *EKSTenantDeploymentAdapters) EnsureDedicatedRDS(_ context.Context, plan TenantDeploymentPlan) (string, error) {
+	if a.profile.DatabaseMode != "dedicated-rds" || plan.DatabaseID == "" {
+		return "", &TenantDeploymentAdapterError{Class: "rds_profile_invalid", Err: errors.New("dedicated RDS profile is required")}
+	}
+	return "", &TenantDeploymentAdapterError{Class: "rds_live_admission_required", Err: errors.New("dedicated RDS live adapter is not approved")}
+}
+
+func (a *EKSTenantDeploymentAdapters) DeleteDedicatedRDS(_ context.Context, _ TenantDeploymentPlan, _ string) error {
+	return &TenantDeploymentAdapterError{Class: "rds_live_admission_required", Err: errors.New("dedicated RDS live adapter is not approved")}
 }
 
 func (a *EKSTenantDeploymentAdapters) EnsureRouter(ctx context.Context, p TenantDeploymentPlan) (string, error) {
