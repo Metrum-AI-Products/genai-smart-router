@@ -18,7 +18,9 @@ smart-llmrouter-<version>-linux-<arch>/
     router-token-gen
     router-usage-report
     router-migrate
-    metrum-smartrouterctl
+    smartrouterctl
+    metrum-fleetctl
+    metrum-smartrouterctl  # one-release rename notice
   config/
     config.example.yaml
     env.example.json
@@ -30,6 +32,13 @@ smart-llmrouter-<version>-linux-<arch>/
 ```
 
 Use `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts. Release validation checks the package binaries against the selected architecture and rejects unexpected files, deployment-private notes, raw secrets, local state, and macOS archive metadata.
+
+`metrum-fleetctl` runs only from an extracted binary package on a separate
+trusted administration host. Its default lifecycle uses SQLite state with one
+Router container and one replica; it neither provisions nor binds RDS. A
+dedicated-RDS branch requires an explicit approved `database_profile` manifest
+and remains fail-closed pending separately accepted non-production evidence.
+Production profiles remain rejected.
 
 Create a dedicated service account, then create deployment-owned directories:
 
@@ -84,31 +93,28 @@ Install the binary and runtime files according to the host change-control proces
 sudo install -m 0755 bin/router /usr/local/bin/smart-llmrouter
 sudo install -m 0755 bin/router-token-gen /usr/local/bin/router-token-gen
 sudo install -m 0755 bin/router-usage-report /usr/local/bin/router-usage-report
-sudo install -m 0755 bin/metrum-smartrouterctl /usr/local/bin/metrum-smartrouterctl
+sudo install -m 0755 bin/smartrouterctl /usr/local/bin/smartrouterctl
+sudo install -m 0755 bin/metrum-fleetctl /usr/local/bin/metrum-fleetctl
 sudo install -m 0640 -o router -g router config/config.yaml /etc/smart-llmrouter/config.yaml
 sudo install -m 0640 -o router -g router config/env.json /etc/smart-llmrouter/env.json
 sudo install -m 0640 -o router -g router license.json /etc/smart-llmrouter/license.json
 ```
 
-`metrum-smartrouterctl` is the live customer EKS deployment driver. It uses
-typed AWS and Kubernetes clients with a strict reference-only
-manifest before live adapters are approved. With a protected mode-`0600`
-`file://` non-production profile, `plan` returns deterministic JSON without
-creating state; `deploy` creates or resumes one normalized local job; exact-job
-`status` is read-only; and `delete` requires an expiring mode-`0600` approval
-that explicitly selects database and state-PVC retention. These commands do
-not contact AWS, Kubernetes, RDS, DNS, a provider, or a production host.
-The plan returns a stable instance ID separately from its intent-bound job ID.
-New config revisions reconcile that instance in place, and superseded jobs
-cannot delete resources managed by a newer lifecycle.
+`smartrouterctl` is the customer-local operations CLI. It validates or safely
+compares local configuration, generates a caller token exactly once into a new
+mode-`0600` file, and reports safe local configuration, license, model, and
+aggregate-usage status. It cannot activate configuration, rotate keys, sign
+licenses, or access cloud/Fleet/cross-customer systems.
 
+`metrum-fleetctl` is the binary-package-only #555 Fleet lifecycle authority.
+It owns reference-only `plan`, idempotent `deploy`, exact-job `status`, and
+approved `delete`; it is not included in the standard Docker image. Dedicated
+RDS plans contain only safe scalar identifiers and remain live-mutation blocked
+until independent non-production evidence is accepted. Production profiles are
+rejected until #518.
 
-The CLI also maintains its established non-secret tenant inventory, independent
-schema observations, fake quota admission, and bounded inventory status.
-`promote`, `rollback`, protected-profile resolution, and all live adapters fail
-closed until deployment policy and validation gates pass. See the
-[multi-environment operator contract](../operations/deployment-patterns#multi-environment-operator-contract)
-before installing or invoking this optional administration-host CLI.
+`metrum-smartrouterctl` is a one-release compatibility command that only
+reports the rename to `metrum-fleetctl`.
 
 ## Runtime Configuration
 

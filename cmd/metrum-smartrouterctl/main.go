@@ -1,43 +1,12 @@
-// metrum-smartrouterctl is the sole customer EKS lifecycle operator. It uses
-// typed AWS and Kubernetes clients and intentionally has no command-shell
-// fallback.
+// metrum-smartrouterctl is a one-release compatibility notice for the renamed fleet CLI.
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-
-	"smart-llmrouter/internal/buildinfo"
 )
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "--version" {
-		fmt.Println(buildinfo.Text())
-		return
-	}
-	if len(os.Args) < 2 {
-		die("usage: metrum-smartrouterctl <plan|deploy|status|delete> [flags]")
-	}
-	switch os.Args[1] {
-	case "status":
-		deploymentStatus(os.Args[2:])
-	case "plan":
-		deploymentPlan(os.Args[2:])
-	case "deploy":
-		deploymentDeploy(os.Args[2:])
-	case "delete":
-		deploymentDelete(os.Args[2:])
-	default:
-		die("unsupported command %q", os.Args[1])
-	}
+	fmt.Fprintln(os.Stderr, "metrum-smartrouterctl was renamed to metrum-fleetctl; install and invoke metrum-fleetctl instead")
+	os.Exit(2)
 }
-
-func writeJSON(v any) {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		die("encode safe output: %v", err)
-	}
-	fmt.Println(string(b))
-}
-func die(format string, args ...any) { fmt.Fprintf(os.Stderr, format+"\n", args...); os.Exit(2) }

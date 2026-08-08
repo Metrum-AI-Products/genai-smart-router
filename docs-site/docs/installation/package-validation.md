@@ -17,7 +17,9 @@ smart-llmrouter-<version>-linux-<arch>/
   bin/router-token-gen
   bin/router-usage-report
   bin/router-migrate
-  bin/metrum-smartrouterctl
+  bin/smartrouterctl
+  bin/metrum-fleetctl
+  bin/metrum-smartrouterctl  # one-release rename notice
   config/config.example.yaml
   config/env.example.json
   config/scripts/router.ts
@@ -41,18 +43,20 @@ smart-llmrouter-<version>-docker-linux-<arch>/
   docs/
 ```
 
-`metrum-smartrouterctl` is required in the binary package. It is intentionally
-absent from the standard Docker image and Docker Compose package image. For a
-Docker-based deployment, run the CLI from an extracted binary package on a
-separate trusted administration host.
+`smartrouterctl` and `metrum-fleetctl` are required in the binary package.
+Only customer-local `smartrouterctl` is included in the standard Docker image
+and Docker Compose package image. `metrum-fleetctl` and its one-release
+compatibility command are excluded; run Fleet lifecycle work from an extracted
+binary package on a separate trusted administration host.
 
 Confirm the architecture suffix matches the host and, for Docker packages, that `compose/.env` pins `SMART_LLMROUTER_VERSION` to the loaded image tag.
 
-For Docker packages, the saved image also includes `/app/bin/router-migrate`. Version-check it before using the non-serving deployment job:
+For Docker packages, the saved image includes `/app/bin/router-migrate` and
+`/app/bin/smartrouterctl`. Version-check them before operation:
 
 ```bash
-docker run --rm --entrypoint /app/bin/router-migrate \
-  smart-llmrouter:<version>-linux-<arch> --version
+docker run --rm --entrypoint /app/bin/smartrouterctl \
+  smart-llmrouter:<version>-linux-<arch> version
 ```
 
 For `migration_policy: deployment-job`, follow the packaged `docs/DATA_MIGRATIONS.md` runbook before service startup: `plan`, approved backup, `apply`, every release-defined data job until each safe state is `validated`, `verify-serving`, then final read-only `status`. `verify-serving` runs schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. Generic Compose/Kubernetes installs use `--driver sqlite --db /app/state/usage.sqlite`; PostgreSQL is a separately configured deployment substitution using `--driver postgres --dsn "$ROUTER_USAGE_DB_DSN"`. Do not treat checkpoint ordinal `0` as completion or expose a connection string in commands/evidence. See [Upgrade Guide](../release-notes/upgrade-guide) for the release and rollback contract.

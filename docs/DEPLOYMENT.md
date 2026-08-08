@@ -20,7 +20,9 @@ bin/router
 bin/router-token-gen
 bin/router-usage-report
 bin/router-migrate
-bin/metrum-smartrouterctl
+bin/smartrouterctl
+bin/metrum-fleetctl
+bin/metrum-smartrouterctl  # one-release rename notice
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts

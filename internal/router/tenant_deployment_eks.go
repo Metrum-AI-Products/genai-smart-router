@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
+	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	appsv1 "k8s.io/api/apps/v1"
@@ -32,10 +33,11 @@ const tenantDeploymentOwnerLabel = "metrum.ai/smartrouter-instance"
 // EKS tenant deployment adapters use typed AWS and Kubernetes clients. No
 // command runner exists in this implementation.
 type EKSTenantDeploymentAdapters struct {
-	profile TenantDeploymentProfile
-	kube    kubernetes.Interface
-	ssm     *ssm.Client
-	secrets *secretsmanager.Client
+	profile  TenantDeploymentProfile
+	kube     kubernetes.Interface
+	ssm      *ssm.Client
+	secrets  *secretsmanager.Client
+	database TenantDatabaseAdapter
 }
 
 // ObserveTenantDeployment obtains a bounded live readback for status. It does
@@ -73,6 +75,20 @@ func ObserveTenantDeployment(ctx context.Context, profile TenantDeploymentProfil
 }
 
 func NewEKSTenantDeploymentAdapters(ctx context.Context, profile TenantDeploymentProfile) (*EKSTenantDeploymentAdapters, TenantDeploymentAdapters, error) {
+	return newEKSTenantDeploymentAdapters(ctx, profile, nil)
+}
+
+// NewApprovedEKSTenantDeploymentAdapters is intentionally separate from the
+// default constructor. Only a validated, time-bounded non-production admission
+// can attach the typed RDS adapter; the shipped Fleet CLI never calls it.
+func NewApprovedEKSTenantDeploymentAdapters(ctx context.Context, profile TenantDeploymentProfile, admission TenantDeploymentRDSAdmission) (*EKSTenantDeploymentAdapters, TenantDeploymentAdapters, error) {
+	if err := validateTenantDeploymentRDSAdmission(profile, admission, time.Now().UTC()); err != nil {
+		return nil, TenantDeploymentAdapters{}, err
+	}
+	return newEKSTenantDeploymentAdapters(ctx, profile, &admission)
+}
+
+func newEKSTenantDeploymentAdapters(ctx context.Context, profile TenantDeploymentProfile, admission *TenantDeploymentRDSAdmission) (*EKSTenantDeploymentAdapters, TenantDeploymentAdapters, error) {
 	cfg, err := tenantDeploymentAWSConfig(ctx, profile)
 	if err != nil {
 		return nil, TenantDeploymentAdapters{}, err
@@ -97,7 +113,15 @@ func NewEKSTenantDeploymentAdapters(ctx context.Context, profile TenantDeploymen
 		return nil, TenantDeploymentAdapters{}, errors.New("construct typed Kubernetes client")
 	}
 	a := &EKSTenantDeploymentAdapters{profile: profile, kube: kube, ssm: ssm.NewFromConfig(cfg), secrets: secretsmanager.NewFromConfig(cfg)}
-	return a, TenantDeploymentAdapters{Namespace: a, NetworkPolicy: a, SecretBinding: a, LicenseBinding: a, State: a, Router: a, Activation: a, Hostname: a}, nil
+	a.database = a
+	if admission != nil {
+		database, err := NewTenantDeploymentRDSAdapter(profile, *admission, rds.NewFromConfig(cfg))
+		if err != nil {
+			return nil, TenantDeploymentAdapters{}, err
+		}
+		a.database = database
+	}
+	return a, TenantDeploymentAdapters{Namespace: a, NetworkPolicy: a, SecretBinding: a, LicenseBinding: a, State: a, Database: a.database, Router: a, Activation: a, Hostname: a}, nil
 }
 
 func eksAuthenticationToken(ctx context.Context, cfg aws.Config, cluster string) (string, error) {
@@ -115,7 +139,7 @@ func eksAuthenticationToken(ctx context.Context, cfg aws.Config, cluster string)
 }
 
 func (a *EKSTenantDeploymentAdapters) labels(plan TenantDeploymentPlan) map[string]string {
-	return map[string]string{tenantDeploymentOwnerLabel: plan.InstanceID, "app.kubernetes.io/name": "smart-llmrouter", "app.kubernetes.io/managed-by": "metrum-smartrouterctl"}
+	return map[string]string{tenantDeploymentOwnerLabel: plan.InstanceID, "app.kubernetes.io/name": "smart-llmrouter", "app.kubernetes.io/managed-by": "metrum-fleetctl"}
 }
 func owned(labels map[string]string, plan TenantDeploymentPlan) bool {
 	return labels != nil && labels[tenantDeploymentOwnerLabel] == plan.InstanceID
@@ -294,6 +318,22 @@ func (a *EKSTenantDeploymentAdapters) DeleteStatePVC(ctx context.Context, p Tena
 		return ownershipError()
 	}
 	return c.Delete(ctx, "router-state", metav1.DeleteOptions{})
+}
+
+// EnsureDedicatedRDS is deliberately fail-closed. The typed EKS lifecycle can
+// carry a dedicated-RDS plan and its fake adapter covers retry/retention
+// semantics, but live RDS mutation remains disabled until the #555 independent
+// non-production RDS adapter, credential-binding, and activation review gates
+// are accepted. It never resolves or emits a DSN.
+func (a *EKSTenantDeploymentAdapters) EnsureDedicatedRDS(_ context.Context, plan TenantDeploymentPlan) (string, error) {
+	if a.profile.DatabaseMode != "dedicated-rds" || plan.DatabaseID == "" || plan.DatabaseProfile != a.profile.ApprovedDatabaseProfile {
+		return "", &TenantDeploymentAdapterError{Class: "rds_profile_invalid", Err: errors.New("dedicated RDS database profile is required")}
+	}
+	return "", &TenantDeploymentAdapterError{Class: "rds_live_admission_required", Err: errors.New("dedicated RDS live adapter is not approved")}
+}
+
+func (a *EKSTenantDeploymentAdapters) DeleteDedicatedRDS(_ context.Context, _ TenantDeploymentPlan, _ string) error {
+	return &TenantDeploymentAdapterError{Class: "rds_live_admission_required", Err: errors.New("dedicated RDS live adapter is not approved")}
 }
 
 func (a *EKSTenantDeploymentAdapters) EnsureRouter(ctx context.Context, p TenantDeploymentPlan) (string, error) {

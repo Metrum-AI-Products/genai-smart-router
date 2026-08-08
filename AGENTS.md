@@ -256,9 +256,19 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
 
 ## EKS Delivery Boundaries
 
-- `metrum-smartrouterctl` is shipped in binary packages, but currently implements only the completed #581 local safe-contract slice: registry, explicit schema observation, fake quota admission, and bounded local drift status. Live `deploy`, `promote`, and `rollback` remain disabled.
-- `scripts/eks_delivery.py` and the `eks-*` Make targets are source-only, target-policy-bound staging delivery controls. They are not a generic customer CLI and must not be presented or packaged as the #555 provisioner.
-- #555 is the sole implementation epic for one-command customer EKS deployment. Extend `metrum-smartrouterctl`; do not create a second provisioner, registry, lifecycle, activation authority, or smoke framework. The public lifecycle is limited to deterministic `plan`, idempotent `deploy`, bounded `status`, and separately approved `delete`.
+- `metrum-fleetctl` is shipped only in binary packages and is the #555 Fleet
+  lifecycle authority. It provides the bounded local safe-contract registry,
+  deterministic plan, fake-adapter idempotent deploy, exact-job status, and
+  separately approved delete. Live EKS/RDS mutation remains disabled.
+  `metrum-smartrouterctl` is a one-release rename notice only.
+- `scripts/eks_delivery.py` and the `eks-*` Make targets are source-only,
+  target-policy-bound staging delivery controls. They are not a generic
+  customer CLI and must not be presented or packaged as the #555 provisioner.
+- #555 is the sole implementation epic for one-command customer EKS deployment.
+  Extend `metrum-fleetctl`; do not create a second provisioner, registry,
+  lifecycle, activation authority, or smoke framework. The public lifecycle is
+  limited to deterministic `plan`, idempotent `deploy`, bounded `status`, and
+  separately approved `delete`.
 - A customer `deploy` must consume an approved profile plus a strict reference-only intent, create or resume one isolated licensed Router, and require no manual AWS, Kubernetes, RDS, DNS, certificate, secret, license, or workload steps after invocation. Raw credentials, DSNs, kubeconfigs, license payloads, full Router configs, and shell commands are forbidden inputs and evidence.
 - Configuration and release updates use the same deployment job with a new approved immutable intent: exact config/license revisions and one image digest are pinned across retries. Do not add an out-of-band config mutation path.
 - Keep mutations disabled until the #555 fake-adapter contract/security/activation suites, disposable non-production EKS E2E, and independent security/operations review pass. Production profiles remain rejected until #518 authorizes them. #545 and #586 supply approved customer/config/license intent; #507 supplies migration compatibility.
@@ -411,6 +421,37 @@ Before finalizing, check at minimum:
 rtk rg -n "MiniMax-Text-01|text-01|big-coder.*failover|failover route|does not yet have access|old image|openrouter/pareto|moonshotai/kimi|qwen|glm|hy3|kat-coder|nemotron|mercury|ling-2\\.6" README.md docs deployment.md internal scripts || true
 rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspeed" config.example.yaml README.md docs deployment.md scripts || true
 ```
+
+## Fleet And Customer CLI Boundary
+
+- `metrum-fleetctl` is the only #555 Fleet lifecycle authority. It owns
+  `plan`, `deploy`, `status`, and approved `delete` through the one normalized
+  lifecycle registry. `metrum-smartrouterctl` is a one-release rename notice
+  only; it MUST NOT retain lifecycle behavior.
+- `smartrouterctl` is customer-local. It MAY validate/diff local config,
+  generate a caller token into a new mode-`0600` file exactly once, and read
+  safe local config/license/model/aggregate-usage status. It MUST NOT access
+  AWS/EKS/RDS/DNS, Fleet state, cross-customer state, config activation, key
+  rotation, or license signing.
+- Fleet binaries belong only in binary packages. Customer Docker images MAY
+  contain `smartrouterctl` but MUST NOT contain `metrum-fleetctl` or the
+  compatibility command.
+- SQLite is the default deployment path: exactly one Router container and one
+  replica, with no RDS provision or binding. Dedicated RDS is OPTIONAL and
+  requires an explicit manifest `database_profile` equal to the protected
+  profile's approved database profile. Its action precedes runtime-secret
+  binding only on that branch.
+- Dedicated-RDS plans MUST retain only deterministic safe scalar identity and
+  profile evidence—NEVER a DSN, endpoint, credential, secret reference, or
+  raw adapter response. `tenant_deployment_rds.go` is a typed AWS adapter for
+  private, encrypted, RDS-Proxy-disabled instances with ownership-safe final
+  snapshots. It MUST stay unattached unless a validated, time-bounded
+  non-production admission is supplied; the shipped CLI MUST NOT create that
+  admission. Production profiles remain rejected until #518.
+- Every `metrum-smartrouterctl` occurrence outside its compatibility command
+  and package validation MUST explicitly say `one-release compatibility` or
+  `one-release rename notice`; treat those occurrences as intentional until
+  the compatibility release is removed, not as ambiguous stale references.
 
 ## References
 

@@ -10,7 +10,9 @@ Binary packages include:
 - `bin/router-token-gen`
 - `bin/router-usage-report`
 - `bin/router-migrate`
-- `bin/metrum-smartrouterctl`
+- `bin/smartrouterctl`
+- `bin/metrum-fleetctl`
+- `bin/metrum-smartrouterctl` (one-release rename notice)
 - `config/config.example.yaml`
 - `config/env.example.json`
 - `config/scripts/router.ts`
@@ -30,11 +32,20 @@ Docker Compose packages include:
 - `images/smart-llmrouter-<version>-linux-<arch>.tar`
 - `docs/`
 
-The saved Docker image includes `/app/bin/router-migrate`. Version-check it with `docker run --rm --entrypoint /app/bin/router-migrate smart-llmrouter:<version>-linux-<arch> --version`, then use the non-serving deployment-job gate in `DATA_MIGRATIONS.md` before starting a `deployment-job` router.
+The saved Docker image includes `/app/bin/router-migrate` and the customer-local
+`/app/bin/smartrouterctl`; Fleet lifecycle binaries are excluded. Version-check
+the runtime with `docker run --rm --entrypoint /app/bin/smartrouterctl
+smart-llmrouter:<version>-linux-<arch> version`.
 
 The standard Docker and Docker Compose images do not include
-`metrum-smartrouterctl`. Docker-based operators run the CLI from an extracted
-binary package on a separate trusted administration host.
+`metrum-fleetctl` or the compatibility command. Docker-based Fleet operators run
+`metrum-fleetctl` from a binary package on a separate trusted administration host.
+
+Docker and Compose packages use SQLite state with one Router container and one
+replica by default; they neither provision nor bind RDS. Dedicated RDS is an
+optional, binary-package-only Fleet branch selected by an explicit approved
+`database_profile` manifest and remains fail-closed pending its independent
+non-production admission evidence.
 
 Choose `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts.
 

@@ -71,36 +71,42 @@ Keep test provider keys separate from production BYOK credentials where policy r
 
 ### Multi-environment operator contract
 
-In binary tarballs, `metrum-smartrouterctl` provides two local, normalized
-control-plane records. The established inventory records explicit isolated
-tenant/router placement, dedicated database allocation identifiers, expected
-and independently observed schema versions, fake quota admission, and bounded
-drift. The EKS lifecycle adds deterministic `plan`, idempotent `deploy`,
-exact-job read-only `status`, and approved `delete` for a strict reference-only
-manifest.
+In binary tarballs, `metrum-fleetctl` is the sole #555 Fleet lifecycle
+authority. It owns deterministic `plan`, idempotent `deploy`, exact-job
+read-only `status`, and approved `delete` for a strict reference-only manifest.
+The one-release `metrum-smartrouterctl` compatibility command only reports the
+rename. Customer-local `smartrouterctl` safely validates/diffs local config,
+creates a caller token once in a new mode-`0600` file, and reports safe local
+status; it has no cloud or activation authority.
 
-The deployment lifecycle accepts only a protected mode-`0600` `file://`
-non-production profile in the shipped build. Plan is side-effect-free. Deploy
-records ordered namespace, network-policy, dedicated-database, protected
-binding, state-PVC, Router, activation, and hostname stages without contacting
-AWS, Kubernetes, RDS, DNS, a provider, or a production host. Hostname state is
-not published until activation passes. A classified safe failure can retry from
-its exact stage. An unknown outcome after durable database or PVC state becomes
+The lifecycle accepts only a protected mode-`0600` `file://` non-production
+profile in the shipped build. Plan is side-effect-free. The default SQLite path
+is namespace, network policy, protected runtime-secret binding, license
+binding, state PVC, one-replica single-container Router, activation, and
+hostname; it never provisions or binds RDS. An explicit approved
+`database_profile` manifest branch inserts dedicated private RDS after network
+policy and before runtime-secret/DSN-reference binding. Hostname is not
+published until activation passes. A classified safe failure can retry from its
+exact stage. An unknown outcome for a PVC or dedicated-RDS action becomes
 `operator_required` rather than guessing whether creation should repeat.
-Plans return a stable instance ID separately from the intent-bound job ID.
-Changing a config revision and supplying a new intent reconciles the same
-customer/stage namespace, hostname, database, and PVC records in place. The
-older job is then superseded and cannot delete resources managed by the newer
-lifecycle.
 
+Dedicated-RDS is optional: the manifest must select the exact approved profile.
+Its plan retains only deterministic database ID/profile evidence—never a DSN,
+endpoint, credential, secret reference, or raw adapter response. The typed
+adapter enforces private/encrypted/no-proxy policy, ownership tags, and
+final-snapshot deletion, but is unattached by the default EKS constructor. It
+requires a separately validated, time-bounded non-production admission that
+the shipped CLI cannot create. Mutation remains fail-closed pending independent
+non-production credential-binding, ownership, activation, disposable E2E,
+security, and operations evidence. Production profiles remain rejected until
+#518.
 
 Delete requires an expiring mode-`0600` approval bound to the exact job and
-explicit database/PVC retention decisions. It disables the hostname first and
-then applies reverse-order fake cleanup. A failed partial cleanup can resume
-with the same still-valid approval; the approval is consumed only when cleanup
-completes. Live profile resolution, cloud resource creation, customer handoff,
-promotion, and rollback remain disabled pending disposable non-production
-validation and independent review.
+explicit PVC/dedicated-RDS retention decisions. It disables the hostname first
+and then applies reverse-order cleanup only to owned resources. A failed
+partial cleanup can resume with the same still-valid approval. Live profile
+resolution, cloud resource creation, customer handoff, promotion, and rollback
+remain disabled pending the stated evidence and independent review.
 
 The CLI is not included in the standard Docker or Docker Compose image.
 Docker-based operators run it from an extracted binary package on a separate

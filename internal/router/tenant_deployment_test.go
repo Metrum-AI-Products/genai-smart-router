@@ -82,6 +82,9 @@ func TestTenantDeploymentContractDeterministicReferenceOnlyPlan(t *testing.T) {
 	if strings.Join(first.Actions, ",") != wantActions {
 		t.Fatalf("action order = %v", first.Actions)
 	}
+	if first.DatabaseID != "" || first.DatabaseProfile != "" || strings.Contains(strings.Join(first.Actions, ","), "dedicated_rds") {
+		t.Fatalf("SQLite default unexpectedly selected RDS: %+v", first)
+	}
 }
 
 func TestTenantDeploymentContractRejectsUnknownAndSecretShapedInput(t *testing.T) {
@@ -119,11 +122,14 @@ func TestTenantDeploymentContractRejectsUnprotectedOrProductionProfile(t *testin
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadTenantDeploymentProfile("file://" + path); err != nil {
-		t.Fatalf("local test fixture profile failed: %v", err)
+	if _, err := LoadTenantDeploymentProfile("file://" + path); err == nil || !strings.Contains(err.Error(), "permissions") {
+		t.Fatalf("unprotected local profile accepted: %v", err)
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := LoadTenantDeploymentProfile("file://" + path); err != nil {
+		t.Fatalf("protected local test fixture profile failed: %v", err)
 	}
 	production := strings.Replace(string(data), "environment: nonproduction", "environment: production", 1)
 	if err := os.WriteFile(path, []byte(production), 0o600); err != nil {
@@ -148,7 +154,7 @@ func TestTenantDeploymentAdaptersIdempotentResumeAndConcurrency(t *testing.T) {
 	if err != nil || second.JobID != first.JobID || second.State != TenantDeploymentReady {
 		t.Fatalf("idempotent retry = %+v err=%v", second, err)
 	}
-	if got := len(fake.SnapshotCalls()); got != len(tenantDeploymentActionOrder) {
+	if got := len(fake.SnapshotCalls()); got != len(plan.Actions) {
 		t.Fatalf("retry repeated adapter calls: %v", fake.SnapshotCalls())
 	}
 	conflicting := plan
@@ -157,7 +163,7 @@ func TestTenantDeploymentAdaptersIdempotentResumeAndConcurrency(t *testing.T) {
 		t.Fatalf("changed desired state reused intent: %v", conflictErr)
 	}
 	resources, err := engine.ListResources(context.Background(), plan.JobID)
-	if err != nil || len(resources) != len(tenantDeploymentActionOrder) {
+	if err != nil || len(resources) != len(plan.Actions) {
 		t.Fatalf("resources=%d err=%v", len(resources), err)
 	}
 	var jobs int64
@@ -210,7 +216,7 @@ func TestTenantDeploymentAdaptersConfigUpdateReusesInstance(t *testing.T) {
 		t.Fatalf("update status = %+v err=%v", status, err)
 	}
 	resources, err := engine.ListResources(context.Background(), secondPlan.JobID)
-	if err != nil || len(resources) != len(tenantDeploymentActionOrder) {
+	if err != nil || len(resources) != len(secondPlan.Actions) {
 		t.Fatalf("updated resources=%d err=%v", len(resources), err)
 	}
 	for _, resource := range resources {
@@ -218,7 +224,7 @@ func TestTenantDeploymentAdaptersConfigUpdateReusesInstance(t *testing.T) {
 			t.Fatalf("resource was not reconciled in place: %+v", resource)
 		}
 	}
-	if got := len(fake.SnapshotCalls()); got != 2*len(tenantDeploymentActionOrder) {
+	if got := len(fake.SnapshotCalls()); got != len(firstPlan.Actions)+len(secondPlan.Actions) {
 		t.Fatalf("update did not reconcile exact action set: %v", fake.SnapshotCalls())
 	}
 	approval := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: firstPlan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainPVC: true, Nonce: "superseded"}

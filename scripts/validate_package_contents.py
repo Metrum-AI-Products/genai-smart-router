@@ -17,8 +17,8 @@ TEXT_SCAN_LIMIT = 10 * 1024 * 1024
 BINARY_PACKAGE_FILES = {
     "bin/router",
     "bin/router-token-gen",
-    "bin/router-usage-report", "bin/router-migrate",
-    "bin/metrum-smartrouterctl",
+    "bin/router-usage-report", "bin/router-migrate", "bin/smartrouterctl",
+    "bin/metrum-fleetctl", "bin/metrum-smartrouterctl",
     "config/config.example.yaml",
     "config/env.example.json",
     "config/scripts/router.ts",
@@ -34,7 +34,7 @@ DOCKER_PACKAGE_FILES = {
     "config/env.example.json",
     "config/scripts/router.ts",
 }
-PACKAGE_BINARIES = {"bin/router", "bin/router-token-gen", "bin/router-usage-report", "bin/router-migrate", "bin/metrum-smartrouterctl"}
+PACKAGE_BINARIES = {"bin/router", "bin/router-token-gen", "bin/router-usage-report", "bin/router-migrate", "bin/smartrouterctl", "bin/metrum-fleetctl", "bin/metrum-smartrouterctl"}
 EXPECTED_ELF_MACHINE = {"amd64": 62, "arm64": 183}
 DOCKER_IMAGE_RE = re.compile(r"^images/smart-llmrouter-.+-linux-(amd64|arm64)\.tar$")
 FORBIDDEN_IMAGE_PATH_RE = re.compile(
@@ -169,7 +169,7 @@ def validate_elf_arch(blob: bytes, arch: str) -> str | None:
 
 def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes) -> list[str]:
     errors: list[str] = []
-    required = {"/app/bin/router", "/app/bin/router-token-gen", "/app/bin/router-usage-report", "/app/bin/router-migrate"}
+    required = {"/app/bin/router", "/app/bin/router-token-gen", "/app/bin/router-usage-report", "/app/bin/router-migrate", "/app/bin/smartrouterctl"}
     actual: set[str] = set()
     try:
         with tarfile.open(fileobj=io.BytesIO(blob), mode="r:*") as image:
@@ -208,6 +208,8 @@ def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes) -> lis
                             errors.append(f"{archive}: {image_rel} layer contains AppleDouble metadata entry: {layer_member.name}")
                         if FORBIDDEN_IMAGE_PATH_RE.search(normalized_layer_name):
                             errors.append(f"{archive}: {image_rel} layer contains forbidden runtime/source path: {layer_member.name}")
+                        if name in {"/app/bin/metrum-fleetctl", "/app/bin/metrum-smartrouterctl"}:
+                            errors.append(f"{archive}: {image_rel} contains forbidden fleet lifecycle binary {name}")
                         if name in required and layer_member.isfile():
                             actual.add(name)
     except (json.JSONDecodeError, tarfile.TarError, UnicodeDecodeError) as exc:

@@ -1,18 +1,18 @@
 # Customer Router Instance Operations Runbook
 
-> **Source-only internal runbook.** The safe-contract operator CLI is shipped in binary tarballs and is not included in the standard Docker or Docker Compose image. This document does not authorize AWS, EKS, RDS, DNS, or production mutations. Until the policy gates and implementation evidence below are complete, use the approved existing deployment runbooks for live operations.
+> **Internal runbook.** `metrum-fleetctl` is a binary-package-only Fleet lifecycle tool; `smartrouterctl` is the customer-local operations CLI and is included in Docker. This document grants no AWS, EKS, RDS, DNS, production, runtime-secret, credential, or Compose-to-EKS mutation authority.
 
 ## Purpose and ownership
 
 Use this runbook to operate one customer router instance through onboarding, configuration/release updates, status inspection, activation, recovery, and eventual retirement.
 
-At launch, one customer router instance maps to one isolated runtime identity and namespace, one `ReadWriteOnce` PVC-backed SQLite state volume, one Router replica, and one deployment-defined environment and region. Account and region are explicit profile data; no command, registry record, or fixture may infer a default region or derive a resource address from a customer name.
+At launch, one customer router instance maps to one isolated runtime identity and namespace, one approved state backend (single-writer PVC SQLite or an explicitly approved dedicated RDS profile), one Router replica, and one deployment-defined environment and region. Account and region are explicit profile data; no command, registry record, or fixture may infer a default region or derive a resource address from a customer name.
 
 | Owner | Responsibility |
 | --- | --- |
 | Customer administrator | Supplies approved upstream/BYOK information through the protected onboarding path and accepts the activated instance. |
 | Commercial/control-plane owner | Verifies entitlement and creates the authorized provisioning intent. #545 owns this durable customer job. |
-| Platform operator | Uses the shipped `metrum-smartrouterctl` lifecycle. It resolves approved AWS/EKS policy, applies only instance-owned Kubernetes resources, enforces one PVC-backed SQLite writer, and publishes ingress only after activation. |
+| Platform operator | Uses the binary-package-only `metrum-fleetctl` lifecycle when its independent non-production gates permit it. It resolves approved AWS/EKS policy, applies only instance-owned Kubernetes resources, and publishes ingress only after activation. |
 | Infra/Security approver | Approves account/region, network, KMS, IAM, durability, quota, DNS, and change-control policy before live execution. |
 | Release approver | Owns protected production-like rehearsal, change window, canary/cutover, and recovery authorization under #518. |
 
@@ -31,7 +31,7 @@ revokes access without changing the
 CLI or customer instance. See the credential-free profile and verification
 procedure in [EKS staging migration](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap).
 
-Issue #555 uses one strict reference-only manifest, one normalized deployment-job registry, and typed AWS/EKS and Kubernetes adapters in the shipped `metrum-smartrouterctl`. It performs deterministic plan, idempotent ownership-safe create/resume, classified state, activation-before-hostname, bounded status, explicit PVC retention, and exact-job deletion. The PVC-backed SQLite store is single-writer; HPA and multi-replica workloads are rejected.
+Issue #555 has one strict reference-only manifest, one normalized deployment-job registry, and typed AWS/EKS contracts in `metrum-fleetctl`. It provides deterministic plan, idempotent ownership-safe create/resume, classified state, activation-before-hostname, bounded status, explicit PVC/RDS retention, and exact-job deletion. Customer-local `smartrouterctl` has no Fleet, cloud, cross-customer, config-activation, key-rotation, or license-signing authority.
 
 ## Before any live action
 
@@ -76,26 +76,36 @@ the outstanding Anthropic-text and Codex-tool eligibility/retry findings.
 
 ## Onboard a new customer router instance
 
-The shipped command implements the live customer EKS lifecycle. Use an approved
-`aws-ssm:///` non-production profile and
-the reference-only manifest documented in [Multi-environment deployment CLI
-safe contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md) to run `plan`, `deploy`,
-exact-job `status`, and approved `delete`. Those commands mutate only a private
-local SQLite job registry and deterministic fake adapters.
-Each plan separates the desired instance identity from the lifecycle job. A
-new intent and config revision reconcile the same customer/stage resources in
-place; a superseded job cannot delete resources now owned by the newer job.
+The customer-local CLI is intentionally separate from Fleet authority:
 
+```bash
+smartrouterctl config validate --config /etc/smart-llmrouter/config.yaml
+smartrouterctl config diff --from current.yaml --to candidate.yaml
+smartrouterctl callers generate --owner-user example-admin --project example \
+  --allow <group-from-v1-models> --token-out /protected/caller.token
+smartrouterctl status --config /etc/smart-llmrouter/config.yaml
+smartrouterctl license status --config /etc/smart-llmrouter/config.yaml
+smartrouterctl models list --config /etc/smart-llmrouter/config.yaml
+smartrouterctl usage summary --config /etc/smart-llmrouter/config.yaml
+```
 
-The live workflow remains:
+`callers generate` creates a token once in a new mode-`0600` file and returns
+only safe caller metadata. It refuses an existing output path and never prints
+the raw token or token hash. The output requires the approved configuration
+controller to activate; the CLI cannot activate config, rotate keys, sign
+licenses, access AWS/EKS/RDS, or operate another customer.
 
-1. Verify the commercial entitlement and record an explicit, authorized provision intent. Select an approved account+region, environment, customer instance alias, domain policy, and deployment template. Do not put customer identifiers, provider keys, licenses, or full config in GitHub evidence.
-2. Create or resume the #555 durable provisioning job. Its first read-only status must identify the selected profile revision and safe intent reference.
-3. Run the #581 preflight against exactly that profile and instance. It must reject unknown capacity, an unavailable dedicated placement, missing policy evidence, unapproved namespace access, or an incompatible migration/release.
-4. Create the isolated runtime and PVC-backed SQLite state only after the typed EKS preflight passes. Every retry is idempotent and scoped to the instance record; an incomplete run must report a classified safe state instead of guessing whether to create again.
-5. Have #555 deliver customer secrets/BYOK through the secret manager, attach the instance-bound license, configure DNS/TLS and namespace/Linkerd/ingress, and retain only references in status evidence.
-6. Run the protected sandbox/activation path. #554 must produce passing, versioned activation evidence before the job becomes `ready`, before public ingress is enabled, or before a caller credential is handed off.
-7. Notify the customer administrator with the approved instance URL and protected credential-delivery path. Do not include raw credentials, provider keys, license files, or complete configuration in notification or status output.
+The default customer deployment is SQLite state with exactly one Router
+container and one replica; it does not provision or bind RDS. Dedicated RDS is
+optional and requires an explicit approved `database_profile` manifest branch.
+The typed AWS RDS adapter enforces private/encrypted/no-proxy policy, ownership
+tags, and final-snapshot deletion behind a time-bounded non-production
+admission that the shipped Fleet CLI cannot create. The default EKS adapter
+remains fail-closed; independent non-production credential-binding, ownership,
+activation, disposable E2E, security, and operations evidence is still
+required. Production profiles remain rejected until #518. See [the Fleet
+lifecycle contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md) and [CLI boundary
+ADR](ADR_FLEET_AND_CUSTOMER_CLI_BOUNDARIES.md).
 
 On any live failure, stop customer handoff. Retry only the classified safe
 stage. Compensation or cleanup is separately authorized and must not delete an

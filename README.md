@@ -63,7 +63,9 @@ bin/router
 bin/router-token-gen
 bin/router-usage-report
 bin/router-migrate
-bin/metrum-smartrouterctl
+bin/smartrouterctl
+bin/metrum-fleetctl
+bin/metrum-smartrouterctl # one-release rename notice
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts
@@ -75,12 +77,15 @@ docs/PACKAGE_VALIDATION.md
 docs/solution-brief.md
 caddy/Caddyfile
 ```
-`metrum-smartrouterctl plan|deploy|status|delete` provides the packaged,
-credential-free local lifecycle contract for an approved reference-only profile.
-It produces a stable instance identity across config revisions, reconciles
-updates in place, and requires an expiring job-bound approval for deletion.
-Cloud/provider adapters remain fail-closed. See
-[docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md](docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md).
+`metrum-fleetctl plan|deploy|status|delete` is the binary-package-only Fleet
+lifecycle contract for an approved reference-only profile. `smartrouterctl`
+provides customer-local safe config, caller-token-file, license, model, and
+aggregate-usage operations and is included in Docker images; Fleet binaries are
+not. The default deployment is SQLite state with one Router container and one
+replica; it neither provisions nor binds RDS. Dedicated RDS requires an
+explicit approved `database_profile` manifest branch and remains fail-closed.
+`metrum-smartrouterctl` is a one-release rename notice only. Production profiles
+remain rejected until #518. See [docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md](docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md).
 
 
 Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. That allowlist is limited to package-safe offline bootstrap docs such as `docs/PACKAGE_README.md`, quick install notes, validation notes, and the package-safe solution brief. Full customer/admin docs are built from `docs-site/` and served by the router under `/docs/`. Internal source-checkout runbooks such as `docs/DOCS_MAINTENANCE.md`, production runbooks, private host procedures, source-maintenance notes, and security-review working notes are intentionally not packaged. Private production runbooks, private host details, SSH paths, live compose config paths, raw token/provider-key patterns, AppleDouble `._*` metadata, and unexpected source/local-state files are blocked by package validation.

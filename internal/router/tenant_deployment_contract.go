@@ -50,6 +50,7 @@ type TenantDeploymentManifest struct {
 	Release           string                  `json:"release" yaml:"release"`
 	ResourceProfile   string                  `json:"resource_profile" yaml:"resource_profile"`
 	StateProfile      string                  `json:"state_profile" yaml:"state_profile"`
+	DatabaseProfile   string                  `json:"database_profile,omitempty" yaml:"database_profile,omitempty"`
 	UpstreamConfigRef string                  `json:"upstream_config_ref" yaml:"upstream_config_ref"`
 	ConfigRevision    string                  `json:"config_revision" yaml:"config_revision"`
 	License           TenantDeploymentLicense `json:"license" yaml:"license"`
@@ -81,6 +82,15 @@ type TenantDeploymentProfile struct {
 	IngressClassName        string `json:"ingress_class_name" yaml:"ingress_class_name"`
 	IngressNamespace        string `json:"ingress_namespace" yaml:"ingress_namespace"`
 	TLSSecretName           string `json:"tls_secret_name" yaml:"tls_secret_name"`
+	DatabaseMode            string `json:"database_mode" yaml:"database_mode"`
+	ApprovedDatabaseProfile string `json:"approved_database_profile" yaml:"approved_database_profile"`
+	RDSInstanceClass        string `json:"rds_instance_class" yaml:"rds_instance_class"`
+	RDSStorageGiB           int    `json:"rds_storage_gib" yaml:"rds_storage_gib"`
+	RDSBackupRetentionDays  int    `json:"rds_backup_retention_days" yaml:"rds_backup_retention_days"`
+	RDSSubnetGroup          string `json:"rds_subnet_group" yaml:"rds_subnet_group"`
+	RDSVPCSecurityGroup     string `json:"rds_vpc_security_group" yaml:"rds_vpc_security_group"`
+	RDSMasterUsername       string `json:"rds_master_username" yaml:"rds_master_username"`
+	RDSProxyDisabled        bool   `json:"rds_proxy_disabled" yaml:"rds_proxy_disabled"`
 }
 
 type TenantDeploymentPlan struct {
@@ -102,6 +112,8 @@ type TenantDeploymentPlan struct {
 	StateProfile      string   `json:"state_profile"`
 	ConfigRevision    string   `json:"config_revision"`
 	ManifestSHA256    string   `json:"manifest_sha256"`
+	DatabaseProfile   string   `json:"database_profile,omitempty"`
+	DatabaseID        string   `json:"database_id,omitempty"`
 	Actions           []string `json:"actions"`
 	upstreamConfigRef string
 	licenseRequestRef string
@@ -166,6 +178,10 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 	if manifest.Release != TenantReleaseLatestApproved {
 		return TenantDeploymentPlan{}, errors.New("release must be latest-approved")
 	}
+	dedicatedRDS := manifest.DatabaseProfile != ""
+	if dedicatedRDS && (profile.DatabaseMode != "dedicated-rds" || manifest.DatabaseProfile != profile.ApprovedDatabaseProfile) {
+		return TenantDeploymentPlan{}, errors.New("database_profile is not approved by the protected profile")
+	}
 	instanceIdentity := strings.Join([]string{profile.ProfileID, manifest.CustomerID, manifest.Stage}, "\x00")
 	instanceSum := sha256.Sum256([]byte(instanceIdentity))
 	instanceSuffix := hex.EncodeToString(instanceSum[:])[:20]
@@ -178,6 +194,10 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 		return TenantDeploymentPlan{}, fmt.Errorf("canonicalize deployment manifest: %w", err)
 	}
 	manifestSum := sha256.Sum256(manifestBytes)
+	databaseID := ""
+	if dedicatedRDS {
+		databaseID = "rds-" + instanceSuffix
+	}
 	return TenantDeploymentPlan{
 		Schema: "metrum.ai/smartrouter-deployment-plan/v1", Mode: "eks",
 		JobID: "job-" + jobSuffix, InstanceID: "instance-" + instanceSuffix,
@@ -188,8 +208,18 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 		StateProfile: manifest.StateProfile, ConfigRevision: manifest.ConfigRevision,
 		ManifestSHA256:    hex.EncodeToString(manifestSum[:]),
 		upstreamConfigRef: manifest.UpstreamConfigRef, licenseRequestRef: manifest.License.RequestRef,
-		Actions: []string{"namespace", "network_policy", "runtime_secret_binding", "license_binding", "state_pvc", "router", "activation", "hostname"},
+		DatabaseProfile: manifest.DatabaseProfile,
+		DatabaseID:      databaseID,
+		Actions:         tenantDeploymentActions(dedicatedRDS),
 	}, nil
+}
+
+func tenantDeploymentActions(dedicatedRDS bool) []string {
+	actions := []string{"namespace", "network_policy"}
+	if dedicatedRDS {
+		actions = append(actions, "dedicated_rds")
+	}
+	return append(actions, "runtime_secret_binding", "license_binding", "state_pvc", "router", "activation", "hostname")
 }
 
 func readDeploymentDocument(path string, stdin io.Reader, requirePrivate bool) ([]byte, error) {
@@ -270,6 +300,11 @@ func validateTenantDeploymentManifest(manifest TenantDeploymentManifest, raw []b
 	if !configRevisionPattern.MatchString(manifest.ConfigRevision) {
 		return errors.New("config_revision is required and must be an opaque revision identifier")
 	}
+	if manifest.DatabaseProfile != "" {
+		if err := validateDeploymentID("database_profile", manifest.DatabaseProfile); err != nil {
+			return err
+		}
+	}
 	for name, value := range map[string]string{"upstream_config_ref": manifest.UpstreamConfigRef, "license.request_ref": manifest.License.RequestRef} {
 		if !referencePattern.MatchString(value) {
 			return fmt.Errorf("%s must be an aws-ssm:/// or aws-secretsmanager:/// reference without query data", name)
@@ -295,6 +330,31 @@ func validateTenantDeploymentProfile(profile TenantDeploymentProfile, raw []byte
 	} {
 		if err := validateDeploymentID(name, value); err != nil {
 			return err
+		}
+	}
+	if profile.DatabaseMode != "" && profile.DatabaseMode != "dedicated-rds" {
+		return errors.New("database_mode must be dedicated-rds when set")
+	}
+	if profile.DatabaseMode == "dedicated-rds" {
+		for name, value := range map[string]string{
+			"approved_database_profile": profile.ApprovedDatabaseProfile,
+			"rds_instance_class":        profile.RDSInstanceClass,
+			"rds_subnet_group":          profile.RDSSubnetGroup,
+			"rds_vpc_security_group":    profile.RDSVPCSecurityGroup,
+			"rds_master_username":       profile.RDSMasterUsername,
+		} {
+			if err := validateDeploymentID(name, value); err != nil {
+				return err
+			}
+		}
+		if profile.RDSStorageGiB < 20 || profile.RDSStorageGiB > 65536 {
+			return errors.New("rds_storage_gib must be between 20 and 65536")
+		}
+		if profile.RDSBackupRetentionDays < 1 || profile.RDSBackupRetentionDays > 35 {
+			return errors.New("rds_backup_retention_days must be between 1 and 35")
+		}
+		if !profile.RDSProxyDisabled {
+			return errors.New("rds_proxy_disabled must be true")
 		}
 	}
 	if profile.Environment != "nonproduction" {

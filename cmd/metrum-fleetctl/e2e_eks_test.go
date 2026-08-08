@@ -17,7 +17,7 @@ func TestDisposableEKSPackagedCLI(t *testing.T) {
 	if profile == "" || manifest == "" || intent == "" {
 		t.Skip("set EKS_E2E_PROFILE_REF, EKS_E2E_MANIFEST, and EKS_E2E_INTENT_ID for disposable EKS E2E")
 	}
-	binary := filepath.Join(t.TempDir(), "metrum-smartrouterctl")
+	binary := filepath.Join(t.TempDir(), "metrum-fleetctl")
 	if output, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("package CLI: %v: %s", err, output)
 	}
