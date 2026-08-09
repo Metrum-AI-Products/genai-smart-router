@@ -87,6 +87,11 @@ metrum-fleetctl delete \
   --output json
 ```
 
+When a deletion approval selects `retain_database: false` for a
+dedicated-RDS job, pass the same still-valid `--rds-admission-file` used for
+that disposable E2E. Retained RDS data is never deleted and does not consume
+the RDS admission.
+
 ## Dedicated RDS contract
 
 An optional protected non-production `database_mode: dedicated-rds` profile
@@ -100,15 +105,36 @@ managed master-credential policy. The plan exposes only a deterministic
 and policy, provision only private encrypted PostgreSQL, and delete only
 owned instances with a final snapshot. It returns scalar evidence only.
 
-The typed adapter is unreachable from the default EKS constructor. It can be
-attached only through a validated, time-bounded non-production RDS admission;
-the shipped Fleet CLI does not create an admission. RDS mutation therefore
-remains fail-closed pending credential-binding, ownership, activation,
-disposable E2E, security, and operations evidence. One qualified reviewer
-records that review, and a single-maintainer deployment may self-review using
-[Recorded security and operations
-review](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review).
-Production profiles remain rejected until #518.
+The typed adapter is unreachable from the default EKS constructor. A first
+disposable E2E can attach it only with an external, mode-`0600`, strict-JSON
+admission document. `metrum-fleetctl` does not create, update, emit, or persist
+the document; it validates its non-secret content, expiry, and exact binding to
+the non-production profile, deterministic job ID/intent, namespace, database
+profile, and manifest digest before opening the lifecycle registry or AWS/EKS
+clients.
+
+After running the existing side-effect-free `plan`, an authorized maintainer
+obtains the scoped document outside Fleet and passes it only to the existing
+`deploy` verb:
+
+```bash
+metrum-fleetctl deploy \
+  --profile-ref file:///protected/profile.yaml \
+  --manifest deployment.yaml \
+  --intent-id intent-a \
+  --rds-admission-file /protected/disposable-e2e-rds-admission.json \
+  --registry /protected/tenant-deployments.sqlite \
+  --output json
+```
+
+The admission is valid only for `action: disposable-e2e` and expires within 24
+hours. It permits the first E2E, including its bounded cleanup, but not a
+production-like rehearsal or production. After its passing E2E evidence
+exists, one qualified reviewer records the security/operations review; the
+implementing maintainer may self-review. See [First disposable E2E
+admission](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#first-disposable-e2e-admission)
+for the full safe-field and ordering contract. Production profiles remain
+rejected until #518.
 
 ```bash
 metrum-fleetctl databases status --profile-ref file:///protected/profile.yaml \

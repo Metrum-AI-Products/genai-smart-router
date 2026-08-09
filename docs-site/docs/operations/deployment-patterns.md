@@ -101,22 +101,23 @@ Dedicated-RDS is optional: the manifest must select the exact approved profile.
 Its plan retains only deterministic database ID/profile evidence—never a DSN,
 endpoint, credential, secret reference, or raw adapter response. The typed
 adapter enforces private/encrypted/no-proxy policy, ownership tags, and
-final-snapshot deletion, but is unattached by the default EKS constructor. It
-requires a separately validated, time-bounded non-production admission that
-the shipped CLI cannot create. Mutation remains fail-closed pending recorded
-non-production credential-binding, ownership, activation, disposable E2E,
-security, and operations evidence approved by one qualified reviewer, which a
-single-operator team may supply itself. Production profiles remain rejected
-until #518.
+final-snapshot deletion, but is unattached by the default EKS constructor.
 
-Delete requires an expiring mode-`0600` approval bound to the exact job and
-explicit PVC/dedicated-RDS retention decisions. It disables the hostname first
-and then applies reverse-order cleanup only to owned resources. A failed
-partial cleanup can resume with the same still-valid approval. Live profile
-resolution, cloud resource creation, customer handoff, promotion, and rollback
-stay disabled until the stated evidence exists and one qualified reviewer
-records approval of it. A single-operator team can supply that review itself;
-the gate is the recorded evidence, not a second approver.
+The first disposable non-production E2E requires an external, expiring,
+mode-`0600` RDS admission file passed to the existing Fleet `deploy` command.
+The file is not a customer API input. Fleet validates its strict non-secret
+schema and exact profile, job/intent, namespace, database-profile, and
+immutable-plan binding before it opens the registry or cloud clients; it never
+creates, updates, prints, or persists the file. The same short-lived admission
+is required with `delete` only when that E2E deletes its dedicated RDS.
+
+This first-E2E admission is not a second reviewer, an approval chain, or a
+production authorization. Once the E2E passes its failure/retry and cleanup
+checks, one qualified reviewer records the required security/operations
+evidence before a production-like non-production rehearsal; a
+single-maintainer team may self-review. Customer handoff, promotion, and
+production profiles remain blocked until their stated evidence and #518's
+separate production gates pass.
 
 The CLI is not included in the standard Docker or Docker Compose image.
 Docker-based operators run it from an extracted binary package on a separate

@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"io"
 	"os"
+	"smart-llmrouter/internal/router"
 	"strings"
 	"time"
-
-	"smart-llmrouter/internal/router"
 )
 
 type deploymentCommandFlags struct {
@@ -73,18 +73,20 @@ func deploymentPlan(args []string) {
 func deploymentDeploy(args []string) {
 	fs := flag.NewFlagSet("deploy", flag.ExitOnError)
 	flags := addDeploymentFlags(fs, true)
+	rdsAdmissionFile := fs.String("rds-admission-file", "", "mode-0600, externally issued, expiring dedicated-RDS disposable-E2E admission JSON file")
 	fs.Parse(args)
 	requireJSONOutput(*flags.output)
 	plan := loadDeploymentPlan(flags, os.Stdin)
+	profile := routerProfileForPlan(flags)
+	_, adapters, err := deploymentAdaptersForPlan(context.Background(), profile, plan, *rdsAdmissionFile, plan.DatabaseID != "")
+	if err != nil {
+		die("configure AWS/EKS deployment adapters: %v", err)
+	}
 	store, err := router.OpenTenantDeploymentStore(*flags.registry)
 	if err != nil {
 		die("open deployment registry: %v", err)
 	}
 	defer store.Close()
-	_, adapters, err := router.NewEKSTenantDeploymentAdapters(context.Background(), routerProfileForPlan(flags))
-	if err != nil {
-		die("configure AWS/EKS deployment adapters: %v", err)
-	}
 	engine, err := router.NewTenantDeploymentEngine(store, adapters)
 	if err != nil {
 		die("configure deployment engine: %v", err)
@@ -133,6 +135,7 @@ func deploymentDelete(args []string) {
 	fs := flag.NewFlagSet("delete", flag.ExitOnError)
 	flags := addDeploymentFlags(fs, true)
 	confirmFile := fs.String("confirm-file", "", "mode-0600, job-bound, expiring deletion approval JSON file")
+	rdsAdmissionFile := fs.String("rds-admission-file", "", "mode-0600, externally issued, expiring dedicated-RDS disposable-E2E admission JSON file")
 	fs.Parse(args)
 	requireJSONOutput(*flags.output)
 	if *confirmFile == "" {
@@ -143,15 +146,17 @@ func deploymentDelete(args []string) {
 	if err != nil {
 		die("load deletion approval: %v", err)
 	}
+	profile := routerProfileForPlan(flags)
+	requireRDSAdmission := plan.DatabaseID != "" && !approval.RetainDatabase
+	_, adapters, err := deploymentAdaptersForPlan(context.Background(), profile, plan, *rdsAdmissionFile, requireRDSAdmission)
+	if err != nil {
+		die("configure AWS/EKS deployment adapters: %v", err)
+	}
 	store, err := router.OpenTenantDeploymentStore(*flags.registry)
 	if err != nil {
 		die("open deployment registry: %v", err)
 	}
 	defer store.Close()
-	_, adapters, err := router.NewEKSTenantDeploymentAdapters(context.Background(), routerProfileForPlan(flags))
-	if err != nil {
-		die("configure AWS/EKS deployment adapters: %v", err)
-	}
 	engine, err := router.NewTenantDeploymentEngine(store, adapters)
 	if err != nil {
 		die("configure deployment engine: %v", err)
@@ -172,6 +177,29 @@ func routerProfileForPlan(flags deploymentCommandFlags) router.TenantDeploymentP
 		die("load protected profile: %v", err)
 	}
 	return profile
+}
+
+func deploymentAdaptersForPlan(ctx context.Context, profile router.TenantDeploymentProfile, plan router.TenantDeploymentPlan, admissionFile string, requireRDSAdmission bool) (*router.EKSTenantDeploymentAdapters, router.TenantDeploymentAdapters, error) {
+	if plan.DatabaseID == "" {
+		if strings.TrimSpace(admissionFile) != "" {
+			return nil, router.TenantDeploymentAdapters{}, errors.New("rds-admission-file is only valid for a dedicated RDS deployment")
+		}
+		return router.NewEKSTenantDeploymentAdapters(ctx, profile)
+	}
+	if !requireRDSAdmission {
+		if strings.TrimSpace(admissionFile) != "" {
+			return nil, router.TenantDeploymentAdapters{}, errors.New("rds-admission-file is not needed when the dedicated RDS is retained")
+		}
+		return router.NewEKSTenantDeploymentAdapters(ctx, profile)
+	}
+	if strings.TrimSpace(admissionFile) == "" {
+		return nil, router.TenantDeploymentAdapters{}, errors.New("rds-admission-file is required for dedicated RDS mutation")
+	}
+	admission, _, err := router.LoadTenantDeploymentRDSAdmission(admissionFile, profile, plan, time.Now().UTC())
+	if err != nil {
+		return nil, router.TenantDeploymentAdapters{}, errors.New("load dedicated RDS admission")
+	}
+	return router.NewApprovedEKSTenantDeploymentAdapters(ctx, profile, admission)
 }
 
 func fleetDatabases(args []string) {

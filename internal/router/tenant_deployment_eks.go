@@ -81,7 +81,9 @@ func NewEKSTenantDeploymentAdapters(ctx context.Context, profile TenantDeploymen
 
 // NewApprovedEKSTenantDeploymentAdapters is intentionally separate from the
 // default constructor. Only a validated, time-bounded non-production admission
-// can attach the typed RDS adapter; the shipped Fleet CLI never calls it.
+// can attach the typed RDS adapter. The Fleet CLI reaches this constructor only
+// after it consumes an externally issued, protected admission document; it
+// never constructs that admission.
 func NewApprovedEKSTenantDeploymentAdapters(ctx context.Context, profile TenantDeploymentProfile, admission TenantDeploymentRDSAdmission) (*EKSTenantDeploymentAdapters, TenantDeploymentAdapters, error) {
 	if err := validateTenantDeploymentRDSAdmission(profile, admission, time.Now().UTC()); err != nil {
 		return nil, TenantDeploymentAdapters{}, err

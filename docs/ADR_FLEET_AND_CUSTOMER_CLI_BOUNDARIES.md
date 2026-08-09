@@ -52,22 +52,26 @@ The normalized lifecycle records retries and ownership-safe retention exactly
 as for the PVC path. `tenant_deployment_rds.go` provides the typed AWS RDS
 adapter for a private, encrypted PostgreSQL instance with ownership tags,
 RDS-Proxy-disabled policy, final-snapshot deletion, and scalar-only evidence.
-It is unattached by the default EKS constructor: only a separate, validated,
-time-bounded non-production RDS admission can attach it. The shipped Fleet CLI
-does not create that admission, so RDS mutation remains fail-closed pending
-credential-binding, activation, disposable E2E, security, and operations
-evidence. Production profiles remain rejected until #518.
+It is unattached by the default EKS constructor. The existing `deploy` and
+`delete` verbs can attach it only by consuming an external, mode-`0600`,
+time-bounded non-production disposable-E2E admission bound to the exact
+profile, deterministic job/intent, namespace, database profile, and manifest
+digest. `metrum-fleetctl` never creates, updates, emits, or persists that
+admission. Invalid, stale, or out-of-scope records fail before registry or
+AWS/EKS clients are opened. Production profiles remain rejected until #518.
 
 ## Review authority
 
-The security/operations review that releases those gates needs one qualified
-reviewer. A single-maintainer deployment may self-review, and the reviewer may be
-the person who implemented the change. The decision preserves the evidence
-requirement rather than the reviewer count: the review is recorded before live
-non-production mutation and cites the approved profile/intent IDs, immutable
-digest, config/license revisions, passing suite and disposable-E2E results,
-isolation and secret-handling checks, and the retention/rollback decision, per
-[Recorded security and operations
+The security/operations review needs one qualified reviewer. A
+single-maintainer deployment may self-review, and the reviewer may be the
+person who implemented the change. The external disposable-E2E admission
+allows only the first bounded E2E after #818 preflight; it is neither a second
+review nor a production authorization. Once the E2E evidence exists, the
+single review is recorded before the authorized production-like non-production
+rehearsal and cites the approved profile/intent IDs, immutable digest,
+config/license revisions, passing suite and disposable-E2E results, isolation
+and secret-handling checks, and the retention/rollback decision, per [Recorded
+security and operations
 review](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review).
 Separation of duties becomes a requirement when a second qualified person exists
 or a customer contract demands it. Production cutover authority remains #518's.

@@ -51,9 +51,12 @@ notice only. `smartrouterctl` provides local configuration, caller-token,
 license, model, and usage operations; it cannot activate config or access cloud
 systems. The default deployment is SQLite state with one Router container and
 one replica; it neither provisions nor binds RDS. Dedicated RDS requires an
-explicit approved `database_profile` manifest branch and remains fail-closed.
-Production profiles remain rejected until #518. The hosted **Operations >
-Deployment Patterns** page defines the input and approval contract.
+explicit approved `database_profile` manifest branch and a strictly scoped
+external admission file for its first disposable non-production E2E. Fleet
+consumes but never creates that file; the evidence review may be performed by
+the implementing maintainer. Production profiles remain rejected until #518.
+The hosted **Operations > Deployment Patterns** page defines the input and
+approval contract.
 
 
 Start the router in the foreground only after compatible/current final status:
