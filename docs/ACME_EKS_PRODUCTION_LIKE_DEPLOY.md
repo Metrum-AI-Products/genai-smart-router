@@ -31,7 +31,7 @@ Tracked work item: `task.acme_eks_production_like_deploy`.
 
 ## Fail-closed sequence
 
-1. **`#818` repair** — remove forbidden Deployment `delete` from the staging delivery Role/RoleBinding; obtain passing least-privilege delivery preflight under the approved delivery identity.
+1. **`#818` repair** — **DONE 2026-08-09.** Reconciled delivery Role/RoleBinding via `scripts/reconcile_staging_delivery_rbac.py` (outcome `reconciled`). Protected delivery preflight returned `{"action":"preflight","outcome":"passed"}` with deletion verbs denied. Issue #818 closed.
 2. **Disposable EKS/RDS E2E** — deterministic `metrum-fleetctl plan`, externally issued mode-`0600` `--rds-admission-file` with `action: disposable-e2e`, then packaged disposable E2E including failure/retry and confirmed cleanup (PR `#868`).
 3. **Recorded single-reviewer review** — checklist in [Recorded security and operations review](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review); self-review by the implementing maintainer is permitted for this non-production target.
 4. **ACME plan** — reference-only intent + protected profile + protected runtime bundle; no secrets in Git, NDJSON, argv, logs, or chat.
