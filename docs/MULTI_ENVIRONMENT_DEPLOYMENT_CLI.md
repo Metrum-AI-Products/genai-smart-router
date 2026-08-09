@@ -103,9 +103,12 @@ owned instances with a final snapshot. It returns scalar evidence only.
 The typed adapter is unreachable from the default EKS constructor. It can be
 attached only through a validated, time-bounded non-production RDS admission;
 the shipped Fleet CLI does not create an admission. RDS mutation therefore
-remains fail-closed pending independent credential-binding, ownership,
-activation, disposable E2E, security, and operations evidence. Production
-profiles remain rejected until #518.
+remains fail-closed pending credential-binding, ownership, activation,
+disposable E2E, security, and operations evidence. One qualified reviewer
+records that review, and a single-maintainer deployment may self-review using
+[Recorded security and operations
+review](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review).
+Production profiles remain rejected until #518.
 
 ```bash
 metrum-fleetctl databases status --profile-ref file:///protected/profile.yaml \

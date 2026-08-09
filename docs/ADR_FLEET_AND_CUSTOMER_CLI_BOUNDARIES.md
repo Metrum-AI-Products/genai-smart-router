@@ -55,8 +55,22 @@ RDS-Proxy-disabled policy, final-snapshot deletion, and scalar-only evidence.
 It is unattached by the default EKS constructor: only a separate, validated,
 time-bounded non-production RDS admission can attach it. The shipped Fleet CLI
 does not create that admission, so RDS mutation remains fail-closed pending
-independent credential-binding, activation, disposable E2E, security, and
-operations evidence. Production profiles remain rejected until #518.
+credential-binding, activation, disposable E2E, security, and operations
+evidence. Production profiles remain rejected until #518.
+
+## Review authority
+
+The security/operations review that releases those gates needs one qualified
+reviewer. A single-maintainer deployment may self-review, and the reviewer may be
+the person who implemented the change. The decision preserves the evidence
+requirement rather than the reviewer count: the review is recorded before live
+non-production mutation and cites the approved profile/intent IDs, immutable
+digest, config/license revisions, passing suite and disposable-E2E results,
+isolation and secret-handling checks, and the retention/rollback decision, per
+[Recorded security and operations
+review](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review).
+Separation of duties becomes a requirement when a second qualified person exists
+or a customer contract demands it. Production cutover authority remains #518's.
 
 ## Consequences
 

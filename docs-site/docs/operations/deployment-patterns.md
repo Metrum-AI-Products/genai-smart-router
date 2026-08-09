@@ -103,17 +103,20 @@ endpoint, credential, secret reference, or raw adapter response. The typed
 adapter enforces private/encrypted/no-proxy policy, ownership tags, and
 final-snapshot deletion, but is unattached by the default EKS constructor. It
 requires a separately validated, time-bounded non-production admission that
-the shipped CLI cannot create. Mutation remains fail-closed pending independent
+the shipped CLI cannot create. Mutation remains fail-closed pending recorded
 non-production credential-binding, ownership, activation, disposable E2E,
-security, and operations evidence. Production profiles remain rejected until
-#518.
+security, and operations evidence approved by one qualified reviewer, which a
+single-operator team may supply itself. Production profiles remain rejected
+until #518.
 
 Delete requires an expiring mode-`0600` approval bound to the exact job and
 explicit PVC/dedicated-RDS retention decisions. It disables the hostname first
 and then applies reverse-order cleanup only to owned resources. A failed
 partial cleanup can resume with the same still-valid approval. Live profile
 resolution, cloud resource creation, customer handoff, promotion, and rollback
-remain disabled pending the stated evidence and independent review.
+stay disabled until the stated evidence exists and one qualified reviewer
+records approval of it. A single-operator team can supply that review itself;
+the gate is the recorded evidence, not a second approver.
 
 The CLI is not included in the standard Docker or Docker Compose image.
 Docker-based operators run it from an extracted binary package on a separate

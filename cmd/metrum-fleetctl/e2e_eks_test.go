@@ -8,8 +8,8 @@ import (
 )
 
 // TestDisposableEKSPackagedCLI is intentionally environment-gated. CI can run
-// it only with an independently approved disposable EKS profile and a
-// reference-only manifest; it exercises the packaged binary, never go run.
+// it only with an approved disposable EKS profile and a reference-only
+// manifest; it exercises the packaged binary, never go run.
 func TestDisposableEKSPackagedCLI(t *testing.T) {
 	profile := os.Getenv("EKS_E2E_PROFILE_REF")
 	manifest := os.Getenv("EKS_E2E_MANIFEST")

@@ -53,8 +53,9 @@ infer the running version from a date written in documentation.
   and verify report authorization after upgrade.
 - CLI packaging: confirm customer Docker images include `smartrouterctl` and
   exclude `metrum-fleetctl`. Fleet RDS mutation remains fail-closed pending
-  independent non-production evidence; production profiles remain rejected
-  until #518.
+  recorded non-production evidence and a qualified reviewer's approval, which a
+  single-maintainer deployment may supply itself; production profiles remain
+  rejected until #518.
 
 ### Caller Impact
 
