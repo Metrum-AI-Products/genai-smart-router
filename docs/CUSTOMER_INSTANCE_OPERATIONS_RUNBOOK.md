@@ -12,9 +12,18 @@ At launch, one customer router instance maps to one isolated runtime identity an
 | --- | --- |
 | Customer administrator | Supplies approved upstream/BYOK information through the protected onboarding path and accepts the activated instance. |
 | Commercial/control-plane owner | Verifies entitlement and creates the authorized provisioning intent. #545 owns this durable customer job. |
-| Platform operator | Uses the binary-package-only `metrum-fleetctl` lifecycle when its independent non-production gates permit it. It resolves approved AWS/EKS policy, applies only instance-owned Kubernetes resources, and publishes ingress only after activation. |
+| Platform operator | Uses the binary-package-only `metrum-fleetctl` lifecycle when its non-production gates permit it. It resolves approved AWS/EKS policy, applies only instance-owned Kubernetes resources, and publishes ingress only after activation. |
 | Infra/Security approver | Approves account/region, network, KMS, IAM, durability, quota, DNS, and change-control policy before live execution. |
 | Release approver | Owns protected production-like rehearsal, change window, canary/cutover, and recovery authorization under #518. |
+
+These are responsibilities, not headcount. A single-maintainer deployment may
+hold every non-production role, and the same person may implement and review the
+change. The obligation that survives is the recorded evidence in [Recorded
+security and operations review](#recorded-security-and-operations-review), not a
+second signature. Split the roles across separate people and additional scoped
+EKS roles when more than one qualified person is available or a customer
+contract requires separation of duties. Production cutover authorization stays
+with #518 regardless of team size.
 
 Human authorization is role-based rather than username-based. Any user whose
 organization-controlled federated identity is assigned the approved operator
@@ -60,6 +69,34 @@ The following are mandatory fail-closed preflight conditions. An absent conditio
 | Public/customer traffic | #13 security remediation and the approved public/customer release gate. |
 
 RDS Proxy is disabled at launch. Cross-region backup is never implicit: it is disabled at launch and requires a later approved destination account/region profile, destination-region KMS policy, copy grant, account-wide capacity reservation, retention, and recovery evidence. A future proxy or shared database placement also requires an approved ADR, policy, adapter tests, and a separate rollout decision.
+
+## Recorded security and operations review
+
+Live non-production EKS/RDS mutation under #555 needs one qualified reviewer,
+not an approval chain. One maintainer may review their own change. The review is
+a written record, so it must be created after the evidence exists and before the
+first live mutation; a review that cannot cite the items below fails, and an
+unreviewed live mutation stays forbidden.
+
+Record these safe scalar values in the #555 durable provisioning job:
+
+| Review item | Recorded evidence |
+| --- | --- |
+| Reviewer and time | Reviewer identity or role alias, UTC review timestamp, and whether the reviewer also implemented the change. |
+| Target scope | Approved profile ID, environment, account/region reference, cluster reference, namespace prefix, hostname, customer/instance/intent IDs, and explicit non-production classification. |
+| Immutable inputs | Resolved `repository@sha256:...` digest, config revision, license revision, and the source commit that produced the package. |
+| Local gates | Passing contract, fake-adapter, security, and activation suite results with counts and run timestamps. |
+| Disposable proof | Disposable non-production EKS E2E result, including the injected failure/retry case and confirmed cleanup. |
+| Isolation checks | Namespace/RBAC/NetworkPolicy denial, cross-namespace denial, wrong-Host and default-backend denial, and ordinary-caller `/metrics` `403 metrics-forbidden`. |
+| Secret handling | Confirmation that runtime bundle values, DSNs, credentials, tokens, token hashes, and license payloads are absent from argv, plans, registry rows, statuses, logs, and evidence. |
+| Data decision | PVC and dedicated-RDS retention decision, backup/PITR class, rollback trigger, and who may approve cleanup. |
+| Outcome | Approved, approved with conditions, or rejected, plus the exact conditions and the next authorized action. |
+
+Never record credentials, DSNs, kubeconfigs, raw router tokens, token hashes,
+license payloads, full Router configuration, prompts, or upstream response
+bodies in the review. Add a second reviewer only when another qualified person
+is available or a customer contract requires separation of duties. Production
+cutover requires #518's stricter protected gates in addition to this review.
 
 ## Existing EKS staging repair lifecycle
 
@@ -110,9 +147,11 @@ optional and requires an explicit approved `database_profile` manifest branch.
 The typed AWS RDS adapter enforces private/encrypted/no-proxy policy, ownership
 tags, and final-snapshot deletion behind a time-bounded non-production
 admission that the shipped Fleet CLI cannot create. The default EKS adapter
-remains fail-closed; independent non-production credential-binding, ownership,
-activation, disposable E2E, security, and operations evidence is still
-required. Production profiles remain rejected until #518. See [the Fleet
+remains fail-closed; non-production credential-binding, ownership, activation,
+disposable E2E, security, and operations evidence is still required, recorded
+through [Recorded security and operations
+review](#recorded-security-and-operations-review). Production profiles remain
+rejected until #518. See [the Fleet
 lifecycle contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md) and [CLI boundary
 ADR](ADR_FLEET_AND_CUSTOMER_CLI_BOUNDARIES.md).
 

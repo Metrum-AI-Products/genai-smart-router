@@ -110,8 +110,9 @@ licenses, or access cloud/Fleet/cross-customer systems.
 It owns reference-only `plan`, idempotent `deploy`, exact-job `status`, and
 approved `delete`; it is not included in the standard Docker image. Dedicated
 RDS plans contain only safe scalar identifiers and remain live-mutation blocked
-until independent non-production evidence is accepted. Production profiles are
-rejected until #518.
+until recorded non-production evidence is reviewed and accepted; one qualified
+reviewer is enough, so a single-operator team is not blocked on a second
+approver. Production profiles are rejected until #518.
 
 `metrum-smartrouterctl` is a one-release compatibility command that only
 reports the rename to `metrum-fleetctl`.

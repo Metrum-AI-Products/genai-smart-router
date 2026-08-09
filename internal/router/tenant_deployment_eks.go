@@ -358,7 +358,7 @@ func (a *EKSTenantDeploymentAdapters) DeleteStatePVC(ctx context.Context, p Tena
 
 // EnsureDedicatedRDS is deliberately fail-closed. The typed EKS lifecycle can
 // carry a dedicated-RDS plan and its fake adapter covers retry/retention
-// semantics, but live RDS mutation remains disabled until the #555 independent
+// semantics, but live RDS mutation remains disabled until the #555 recorded
 // non-production RDS adapter, credential-binding, and activation review gates
 // are accepted. It never resolves or emits a DSN.
 func (a *EKSTenantDeploymentAdapters) EnsureDedicatedRDS(_ context.Context, plan TenantDeploymentPlan) (string, error) {

@@ -44,7 +44,7 @@ The standard Docker and Docker Compose images do not include
 Docker and Compose packages use SQLite state with one Router container and one
 replica by default; they neither provision nor bind RDS. Dedicated RDS is an
 optional, binary-package-only Fleet branch selected by an explicit approved
-`database_profile` manifest and remains fail-closed pending its independent
+`database_profile` manifest and remains fail-closed pending its recorded
 non-production admission evidence.
 
 Choose `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts.
