@@ -70,13 +70,48 @@ The following are mandatory fail-closed preflight conditions. An absent conditio
 
 RDS Proxy is disabled at launch. Cross-region backup is never implicit: it is disabled at launch and requires a later approved destination account/region profile, destination-region KMS policy, copy grant, account-wide capacity reservation, retention, and recovery evidence. A future proxy or shared database placement also requires an approved ADR, policy, adapter tests, and a separate rollout decision.
 
+## First disposable E2E admission
+
+The first disposable non-production EKS/RDS E2E is the narrow exception to the
+post-E2E review ordering. After #818's least-privilege preflight passes, an
+authorized qualified maintainer may obtain an out-of-band, mode-`0600` RDS
+admission document for that one E2E. The maintainer may also be the
+implementer and later self-reviewer. This is not a second review, an approval
+chain, a new CLI verb, or a production authorization.
+
+Run the existing side-effect-free `metrum-fleetctl plan` first. The external
+document must use `api_version:
+metrum.ai/smartrouter-rds-admission/v1`, `action: disposable-e2e`, and bind
+only the plan's `profile_id`, non-production `environment`,
+`database_profile`, `job_id` (which is derived from the exact intent),
+`namespace`, and `manifest_sha256`. It must also name a safe issuer-role
+alias, have an opaque approval ID, and expire within 24 hours of its UTC
+approval time. It contains no credentials, DSN, endpoint, secret reference,
+runtime configuration, or license payload.
+
+`metrum-fleetctl` never creates, updates, prints, or persists this document.
+It only consumes `--rds-admission-file` after validating its private file mode,
+strict JSON schema, non-secret content, exact plan binding, and expiry. A
+dedicated-RDS `deploy` requires it before the lifecycle registry or AWS/EKS
+clients are opened. A `delete` that deletes the dedicated RDS requires the
+same still-valid admission in addition to its existing job-bound deletion
+approval. Invalid, stale, or differently scoped documents leave the typed RDS
+adapter unattached.
+
+The authorized sequence is: #818 repair and passing preflight; local suite
+evidence and deterministic plan; external scoped admission; disposable E2E
+including failure/retry and confirmed cleanup; then the recorded
+single-reviewer review; then the separately authorized production-like
+non-production rehearsal. #518 remains the sole production-cutover authority.
+
 ## Recorded security and operations review
 
 Live non-production EKS/RDS mutation under #555 needs one qualified reviewer,
-not an approval chain. One maintainer may review their own change. The review is
-a written record, so it must be created after the evidence exists and before the
-first live mutation; a review that cannot cite the items below fails, and an
-unreviewed live mutation stays forbidden.
+not an approval chain. One maintainer may review their own change. Except for
+the narrowly admitted first disposable E2E above, the written review is created
+after the evidence exists and before a production-like non-production rehearsal.
+A review that cannot cite the items below fails, and an unreviewed rehearsal
+stays forbidden.
 
 Record these safe scalar values in the #555 durable provisioning job:
 
@@ -145,14 +180,15 @@ The default customer deployment is SQLite state with exactly one Router
 container and one replica; it does not provision or bind RDS. Dedicated RDS is
 optional and requires an explicit approved `database_profile` manifest branch.
 The typed AWS RDS adapter enforces private/encrypted/no-proxy policy, ownership
-tags, and final-snapshot deletion behind a time-bounded non-production
-admission that the shipped Fleet CLI cannot create. The default EKS adapter
-remains fail-closed; non-production credential-binding, ownership, activation,
-disposable E2E, security, and operations evidence is still required, recorded
-through [Recorded security and operations
-review](#recorded-security-and-operations-review). Production profiles remain
-rejected until #518. See [the Fleet
-lifecycle contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md) and [CLI boundary
+tags, and final-snapshot deletion. Its default EKS constructor remains
+fail-closed; the first disposable E2E may attach it only through the external
+time-bounded admission described in [First disposable E2E
+admission](#first-disposable-e2e-admission). The Fleet CLI consumes but never
+creates that document. Credential-binding, ownership, activation, disposable
+E2E, security, and operations evidence is then recorded through [Recorded
+security and operations review](#recorded-security-and-operations-review).
+Production profiles remain rejected until #518. See [the Fleet lifecycle
+contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md) and [CLI boundary
 ADR](ADR_FLEET_AND_CUSTOMER_CLI_BOUNDARIES.md).
 
 On any live failure, stop customer handoff. Retry only the classified safe

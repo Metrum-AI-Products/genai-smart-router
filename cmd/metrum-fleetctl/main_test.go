@@ -61,3 +61,50 @@ func TestTenantDeploymentCLIPlanIsReadOnly(t *testing.T) {
 		t.Fatalf("plan mutated registry: %v", err)
 	}
 }
+
+func TestDedicatedRDSDeployRequiresExternalAdmissionBeforeRegistryOrCloudAccess(t *testing.T) {
+	root := filepath.Join("..", "..", "testdata", "tenant-deployment")
+	profileBytes, err := os.ReadFile(filepath.Join(root, "profile.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profileBytes = append(profileBytes, []byte(`
+database_mode: dedicated-rds
+approved_database_profile: postgres-dedicated-small
+rds_instance_class: db-t4g-medium
+rds_storage_gib: 20
+rds_backup_retention_days: 7
+rds_subnet_group: router-private
+rds_vpc_security_group: sg-router-private
+rds_master_username: routeradmin
+rds_proxy_disabled: true
+`)...)
+	manifestBytes, err := os.ReadFile(filepath.Join(root, "manifest.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestBytes = []byte(strings.Replace(string(manifestBytes), "runtime_bundle_ref:", "database_profile: postgres-dedicated-small\nruntime_bundle_ref:", 1))
+	dir := t.TempDir()
+	profile := filepath.Join(dir, "profile.yaml")
+	manifest := filepath.Join(dir, "manifest.yaml")
+	registry := filepath.Join(dir, "lifecycle.sqlite")
+	if err := os.WriteFile(profile, profileBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifest, manifestBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command("go", "run", ".", "deploy",
+		"--profile-ref", "file://"+profile,
+		"--manifest", manifest,
+		"--intent-id", "intent-rds-admission",
+		"--registry", registry,
+		"--output", "json",
+	).CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "rds-admission-file is required") {
+		t.Fatalf("dedicated RDS deploy did not reject missing external admission: %v %s", err, output)
+	}
+	if _, err := os.Stat(registry); !os.IsNotExist(err) {
+		t.Fatalf("missing RDS admission created registry: %v", err)
+	}
+}

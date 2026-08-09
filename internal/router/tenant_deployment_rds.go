@@ -1,8 +1,13 @@
 package router
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"io"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -10,19 +15,28 @@ import (
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
 )
 
-const TenantDeploymentRDSAdmissionAPIVersion = "metrum.ai/smartrouter-rds-admission/v1"
+const (
+	TenantDeploymentRDSAdmissionAPIVersion          = "metrum.ai/smartrouter-rds-admission/v1"
+	TenantDeploymentRDSAdmissionActionDisposableE2E = "disposable-e2e"
+)
 
-// TenantDeploymentRDSAdmission is the explicit, bounded non-production gate for
-// typed RDS mutation. It carries no credentials, DSN, endpoint, or secret
-// reference. The current Fleet CLI does not construct this contract.
+// TenantDeploymentRDSAdmission is an externally issued, bounded,
+// non-production gate for typed RDS mutation. It carries no credentials, DSN,
+// endpoint, or secret reference. metrum-fleetctl only validates and consumes a
+// protected admission document; it never constructs one.
 type TenantDeploymentRDSAdmission struct {
-	APIVersion      string
-	ApprovalID      string
-	ProfileID       string
-	Environment     string
-	DatabaseProfile string
-	ApprovedAt      time.Time
-	ExpiresAt       time.Time
+	APIVersion      string    `json:"api_version"`
+	Action          string    `json:"action"`
+	ApprovalID      string    `json:"approval_id"`
+	IssuerRole      string    `json:"issuer_role"`
+	ProfileID       string    `json:"profile_id"`
+	Environment     string    `json:"environment"`
+	DatabaseProfile string    `json:"database_profile"`
+	JobID           string    `json:"job_id"`
+	Namespace       string    `json:"namespace"`
+	ManifestSHA256  string    `json:"manifest_sha256"`
+	ApprovedAt      time.Time `json:"approved_at"`
+	ExpiresAt       time.Time `json:"expires_at"`
 }
 
 type tenantDeploymentRDSClient interface {
@@ -36,8 +50,30 @@ type tenantDeploymentRDSClient interface {
 // instance. It intentionally returns only opaque scalar identifiers and never
 // reads, persists, or emits connection data.
 type TenantDeploymentRDSAdapter struct {
-	profile TenantDeploymentProfile
-	client  tenantDeploymentRDSClient
+	profile   TenantDeploymentProfile
+	admission TenantDeploymentRDSAdmission
+	client    tenantDeploymentRDSClient
+}
+
+func LoadTenantDeploymentRDSAdmission(path string, profile TenantDeploymentProfile, plan TenantDeploymentPlan, now time.Time) (TenantDeploymentRDSAdmission, string, error) {
+	data, err := readDeploymentDocument(path, nil, true)
+	if err != nil {
+		return TenantDeploymentRDSAdmission{}, "", errors.New("RDS admission cannot be read")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var admission TenantDeploymentRDSAdmission
+	if err := decoder.Decode(&admission); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return TenantDeploymentRDSAdmission{}, "", errors.New("RDS admission schema is invalid")
+	}
+	if err := rejectSecretShapedDeploymentData(data); err != nil {
+		return TenantDeploymentRDSAdmission{}, "", err
+	}
+	if err := validateTenantDeploymentRDSAdmissionForPlan(profile, admission, plan, now); err != nil {
+		return TenantDeploymentRDSAdmission{}, "", err
+	}
+	sum := sha256.Sum256(data)
+	return admission, hex.EncodeToString(sum[:]), nil
 }
 
 func NewTenantDeploymentRDSAdapter(profile TenantDeploymentProfile, admission TenantDeploymentRDSAdmission, client tenantDeploymentRDSClient) (*TenantDeploymentRDSAdapter, error) {
@@ -47,21 +83,63 @@ func NewTenantDeploymentRDSAdapter(profile TenantDeploymentProfile, admission Te
 	if err := validateTenantDeploymentRDSAdmission(profile, admission, time.Now().UTC()); err != nil {
 		return nil, err
 	}
-	return &TenantDeploymentRDSAdapter{profile: profile, client: client}, nil
+	return &TenantDeploymentRDSAdapter{profile: profile, admission: admission, client: client}, nil
 }
 
 func validateTenantDeploymentRDSAdmission(profile TenantDeploymentProfile, admission TenantDeploymentRDSAdmission, now time.Time) error {
 	if profile.Environment != "nonproduction" || profile.DatabaseMode != "dedicated-rds" {
 		return errors.New("non-production dedicated RDS profile is required")
 	}
-	if admission.APIVersion != TenantDeploymentRDSAdmissionAPIVersion || admission.ProfileID != profile.ProfileID || admission.Environment != profile.Environment || admission.DatabaseProfile != profile.ApprovedDatabaseProfile {
+	if admission.APIVersion != TenantDeploymentRDSAdmissionAPIVersion ||
+		admission.Action != TenantDeploymentRDSAdmissionActionDisposableE2E ||
+		admission.ProfileID != profile.ProfileID ||
+		admission.Environment != profile.Environment ||
+		admission.DatabaseProfile != profile.ApprovedDatabaseProfile {
 		return errors.New("approved non-production RDS admission is required")
 	}
-	if err := validateDeploymentID("rds_admission_id", admission.ApprovalID); err != nil {
+	for name, value := range map[string]string{
+		"rds_admission_id":        admission.ApprovalID,
+		"rds_admission_issuer":    admission.IssuerRole,
+		"rds_admission_job":       admission.JobID,
+		"rds_admission_namespace": admission.Namespace,
+	} {
+		if err := validateDeploymentID(name, value); err != nil {
+			return errors.New("approved non-production RDS admission is required")
+		}
+	}
+	if len(admission.ManifestSHA256) != sha256.Size*2 {
 		return errors.New("approved non-production RDS admission is required")
 	}
-	if admission.ApprovedAt.IsZero() || admission.ExpiresAt.IsZero() || !admission.ExpiresAt.After(now) || admission.ExpiresAt.Sub(admission.ApprovedAt) > 24*time.Hour {
+	if _, err := hex.DecodeString(admission.ManifestSHA256); err != nil {
+		return errors.New("approved non-production RDS admission is required")
+	}
+	if admission.ApprovedAt.IsZero() ||
+		admission.ExpiresAt.IsZero() ||
+		admission.ApprovedAt.After(now) ||
+		now.Sub(admission.ApprovedAt) > 24*time.Hour ||
+		!admission.ExpiresAt.After(now) ||
+		admission.ExpiresAt.Sub(admission.ApprovedAt) > 24*time.Hour {
 		return errors.New("approved non-production RDS admission is expired or invalid")
+	}
+	return nil
+}
+
+func validateTenantDeploymentRDSAdmissionForPlan(profile TenantDeploymentProfile, admission TenantDeploymentRDSAdmission, plan TenantDeploymentPlan, now time.Time) error {
+	if err := validateTenantDeploymentRDSAdmission(profile, admission, now); err != nil {
+		return err
+	}
+	if plan.DatabaseID == "" ||
+		plan.DatabaseProfile != profile.ApprovedDatabaseProfile ||
+		admission.JobID != plan.JobID ||
+		admission.Namespace != plan.Namespace ||
+		admission.ManifestSHA256 != plan.ManifestSHA256 {
+		return errors.New("RDS admission is not bound to this deployment plan")
+	}
+	return nil
+}
+func (a *TenantDeploymentRDSAdapter) validateAdmission(plan TenantDeploymentPlan) error {
+	if err := validateTenantDeploymentRDSAdmissionForPlan(a.profile, a.admission, plan, time.Now().UTC()); err != nil {
+		return &TenantDeploymentAdapterError{Class: "rds_admission_invalid", Err: errors.New("dedicated RDS admission is invalid")}
 	}
 	return nil
 }
@@ -70,6 +148,10 @@ func (a *TenantDeploymentRDSAdapter) EnsureDedicatedRDS(ctx context.Context, pla
 	if plan.DatabaseID == "" || plan.DatabaseProfile != a.profile.ApprovedDatabaseProfile {
 		return "", &TenantDeploymentAdapterError{Class: "rds_profile_invalid", Err: errors.New("dedicated RDS database profile is required")}
 	}
+	if err := a.validateAdmission(plan); err != nil {
+		return "", err
+	}
+
 	instance, found, err := a.observe(ctx, plan)
 	if err != nil {
 		return "", err
@@ -111,6 +193,9 @@ func (a *TenantDeploymentRDSAdapter) EnsureDedicatedRDS(ctx context.Context, pla
 func (a *TenantDeploymentRDSAdapter) DeleteDedicatedRDS(ctx context.Context, plan TenantDeploymentPlan, _ string) error {
 	if plan.DatabaseID == "" || plan.DatabaseProfile != a.profile.ApprovedDatabaseProfile {
 		return &TenantDeploymentAdapterError{Class: "rds_profile_invalid", Err: errors.New("dedicated RDS database profile is required")}
+	}
+	if err := a.validateAdmission(plan); err != nil {
+		return err
 	}
 	_, found, err := a.observe(ctx, plan)
 	if err != nil {

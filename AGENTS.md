@@ -259,8 +259,10 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
 - `metrum-fleetctl` is shipped only in binary packages and is the #555 Fleet
   lifecycle authority. It provides the bounded local safe-contract registry,
   deterministic plan, fake-adapter idempotent deploy, exact-job status, and
-  separately approved delete. Live EKS/RDS mutation remains disabled.
-  `metrum-smartrouterctl` is a one-release rename notice only.
+  separately approved delete. Live EKS/RDS mutation remains fail-closed by
+  default; only the first disposable non-production E2E may attach RDS through
+  a validated external admission. `metrum-smartrouterctl` is a one-release
+  rename notice only.
 - `scripts/eks_delivery.py` and the `eks-*` Make targets are source-only,
   target-policy-bound staging delivery controls. They are not a generic
   customer CLI and must not be presented or packaged as the #555 provisioner.
@@ -271,9 +273,32 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
   separately approved `delete`.
 - A customer `deploy` must consume an approved profile plus a strict reference-only intent, create or resume one isolated licensed Router, and require no manual AWS, Kubernetes, RDS, DNS, certificate, secret, license, or workload steps after invocation. Raw credentials, DSNs, kubeconfigs, license payloads, full Router configs, and shell commands are forbidden inputs and evidence.
 - Configuration and release updates use the same deployment job with a new approved immutable intent: exact config/license revisions and one image digest are pinned across retries. Do not add an out-of-band config mutation path.
-- Keep mutations disabled until the #555 fake-adapter contract/security/activation suites, disposable non-production EKS E2E, and the recorded security/operations review pass. Production profiles remain rejected until #518 authorizes them. #545 and #586 supply approved customer/config/license intent; #507 supplies migration compatibility.
-- The #555 security/operations review requires one qualified reviewer, and a single-maintainer deployment may self-review. The reviewer may be the same person who implemented the change; no second reviewer, approval committee, approval chain, or new CLI verb is required for this gate. Add separate reviewers or additional scoped EKS roles only when more than one qualified person is available or a customer contract requires separation of duties.
-- Self-review does not remove evidence. Record the review before live non-production EKS/RDS mutation, and cite the reviewer identity, UTC timestamp, approved profile and intent IDs, immutable image digest, config/license revisions, passing contract/security/activation suite results, disposable-E2E result, isolation and secret-handling checks, and the retention/rollback decision. A review that cannot cite that evidence fails; an unreviewed live mutation is still forbidden. See `docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md` for the recorded self-review checklist.
+- Keep live customer mutation disabled until the #555 fake-adapter
+  contract/security/activation suites, disposable non-production EKS E2E, and
+  recorded security/operations review pass. The first disposable E2E may occur
+  beforehand only after #818 preflight passes and an external, mode-`0600`,
+  time-bounded RDS admission exactly binds its non-production profile,
+  deterministic job/intent, namespace, database profile, and manifest digest.
+  `metrum-fleetctl` may consume but MUST NOT create, update, emit, or persist
+  that admission. Production profiles remain rejected until #518 authorizes
+  them. #545 and #586 supply approved customer/config/license intent; #507
+  supplies migration compatibility.
+- The #555 security/operations review requires one qualified reviewer, and a
+  single-maintainer deployment may self-review. The reviewer may be the same
+  person who implemented the change; no second reviewer, approval committee,
+  approval chain, or new CLI verb is required for this gate. Add separate
+  reviewers or additional scoped EKS roles only when more than one qualified
+  person is available or a customer contract requires separation of duties.
+- Self-review does not remove evidence. After the scoped first disposable E2E
+  evidence exists, record the review before any production-like
+  non-production rehearsal. Cite the reviewer identity, UTC timestamp,
+  approved profile and intent IDs, immutable image digest, config/license
+  revisions, passing contract/security/activation suite results,
+  disposable-E2E result, isolation and secret-handling checks, and the
+  retention/rollback decision. A review that cannot cite that evidence fails;
+  an unreviewed rehearsal is forbidden. See
+  `docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md` for the recorded self-review
+  checklist.
 - Production cutover keeps #518's stricter protected gates. Self-review authorizes non-production customer-like targets only.
 
 ### Current Metrum staging boundary

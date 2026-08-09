@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -91,11 +92,76 @@ func dedicatedRDSFixture(t *testing.T) (TenantDeploymentProfile, TenantDeploymen
 	}
 	now := time.Now().UTC()
 	admission := TenantDeploymentRDSAdmission{
-		APIVersion: TenantDeploymentRDSAdmissionAPIVersion, ApprovalID: "approved-rds-admission",
+		APIVersion: TenantDeploymentRDSAdmissionAPIVersion, Action: TenantDeploymentRDSAdmissionActionDisposableE2E,
+		ApprovalID: "approved-rds-admission", IssuerRole: "fleet-maintainer",
 		ProfileID: profile.ProfileID, Environment: profile.Environment, DatabaseProfile: profile.ApprovedDatabaseProfile,
+		JobID: plan.JobID, Namespace: plan.Namespace, ManifestSHA256: plan.ManifestSHA256,
 		ApprovedAt: now, ExpiresAt: now.Add(time.Hour),
 	}
 	return profile, plan, admission
+}
+
+func TestLoadTenantDeploymentRDSAdmissionRequiresPrivateExactScope(t *testing.T) {
+	profile, plan, admission := dedicatedRDSFixture(t)
+	data, err := json.Marshal(admission)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir() + "/rds-admission.json"
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, digest, err := LoadTenantDeploymentRDSAdmission(path, profile, plan, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded != admission || len(digest) != 64 {
+		t.Fatalf("loaded admission=%+v digest=%q", loaded, digest)
+	}
+	otherPlan := plan
+	otherPlan.Namespace = "other-namespace"
+	if _, _, err := LoadTenantDeploymentRDSAdmission(path, profile, otherPlan, time.Now().UTC()); err == nil {
+		t.Fatal("admission was accepted for another namespace")
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LoadTenantDeploymentRDSAdmission(path, profile, plan, time.Now().UTC()); err == nil {
+		t.Fatal("world-readable admission was accepted")
+	}
+}
+
+func TestTenantDeploymentRDSAdapterRejectsAdmissionForAnotherPlanBeforeClientCalls(t *testing.T) {
+	profile, plan, admission := dedicatedRDSFixture(t)
+	client := &fakeTenantDeploymentRDSClient{}
+	adapter, err := NewTenantDeploymentRDSAdapter(profile, admission, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherPlan := plan
+	otherPlan.ManifestSHA256 = strings.Repeat("b", 64)
+	if _, err := adapter.EnsureDedicatedRDS(context.Background(), otherPlan); err == nil {
+		t.Fatal("admission was accepted for another plan")
+	}
+	if client.calls != 0 {
+		t.Fatalf("out-of-scope admission invoked RDS client: %d calls", client.calls)
+	}
+}
+
+func TestTenantDeploymentRDSAdapterRevalidatesAdmissionBeforeClientCalls(t *testing.T) {
+	profile, plan, admission := dedicatedRDSFixture(t)
+	client := &fakeTenantDeploymentRDSClient{}
+	adapter, err := NewTenantDeploymentRDSAdapter(profile, admission, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter.admission.ExpiresAt = time.Now().UTC().Add(-time.Second)
+	if _, err := adapter.EnsureDedicatedRDS(context.Background(), plan); err == nil {
+		t.Fatal("expired admission reached RDS adapter")
+	}
+	if client.calls != 0 {
+		t.Fatalf("expired admission invoked RDS client: %d calls", client.calls)
+	}
 }
 
 func TestTenantDeploymentRDSAdapterRejectsAdmissionBeforeClientCalls(t *testing.T) {

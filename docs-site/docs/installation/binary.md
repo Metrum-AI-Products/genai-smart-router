@@ -36,8 +36,9 @@ Use `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts. Release va
 `metrum-fleetctl` runs only from an extracted binary package on a separate
 trusted administration host. Its default lifecycle uses SQLite state with one
 Router container and one replica; it neither provisions nor binds RDS. A
-dedicated-RDS branch requires an explicit approved `database_profile` manifest
-and remains fail-closed pending separately accepted non-production evidence.
+dedicated-RDS branch requires an explicit approved `database_profile`. Its
+first disposable non-production E2E also requires an external, expiring,
+mode-`0600` admission file that Fleet validates and consumes but never creates.
 Production profiles remain rejected.
 
 Create a dedicated service account, then create deployment-owned directories:
@@ -109,10 +110,11 @@ licenses, or access cloud/Fleet/cross-customer systems.
 `metrum-fleetctl` is the binary-package-only #555 Fleet lifecycle authority.
 It owns reference-only `plan`, idempotent `deploy`, exact-job `status`, and
 approved `delete`; it is not included in the standard Docker image. Dedicated
-RDS plans contain only safe scalar identifiers and remain live-mutation blocked
-until recorded non-production evidence is reviewed and accepted; one qualified
-reviewer is enough, so a single-operator team is not blocked on a second
-approver. Production profiles are rejected until #518.
+RDS plans contain only safe scalar identifiers. The first disposable
+non-production E2E may use a strictly scoped external admission file; after
+its evidence exists, one qualified reviewer records the required review before
+a production-like non-production rehearsal. A single-operator team may
+self-review. Production profiles are rejected until #518.
 
 `metrum-smartrouterctl` is a one-release compatibility command that only
 reports the rename to `metrum-fleetctl`.

@@ -83,7 +83,10 @@ provides customer-local safe config, caller-token-file, license, model, and
 aggregate-usage operations and is included in Docker images; Fleet binaries are
 not. The default deployment is SQLite state with one Router container and one
 replica; it neither provisions nor binds RDS. Dedicated RDS requires an
-explicit approved `database_profile` manifest branch and remains fail-closed.
+explicit approved `database_profile` manifest branch. Its first disposable
+non-production E2E consumes a strictly scoped external admission file that
+Fleet never creates; after E2E evidence exists, one qualified maintainer may
+self-review before a production-like non-production rehearsal.
 `metrum-smartrouterctl` is a one-release rename notice only. Production profiles
 remain rejected until #518. See [docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md](docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md).
 

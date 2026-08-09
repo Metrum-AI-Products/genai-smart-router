@@ -8,14 +8,15 @@ import (
 )
 
 // TestDisposableEKSPackagedCLI is intentionally environment-gated. CI can run
-// it only with an approved disposable EKS profile and a reference-only
-// manifest; it exercises the packaged binary, never go run.
+// it only with an approved disposable EKS profile, reference-only manifest, and
+// external scoped RDS admission; it exercises the packaged binary, never go run.
 func TestDisposableEKSPackagedCLI(t *testing.T) {
 	profile := os.Getenv("EKS_E2E_PROFILE_REF")
 	manifest := os.Getenv("EKS_E2E_MANIFEST")
 	intent := os.Getenv("EKS_E2E_INTENT_ID")
-	if profile == "" || manifest == "" || intent == "" {
-		t.Skip("set EKS_E2E_PROFILE_REF, EKS_E2E_MANIFEST, and EKS_E2E_INTENT_ID for disposable EKS E2E")
+	rdsAdmissionFile := os.Getenv("EKS_E2E_RDS_ADMISSION_FILE")
+	if profile == "" || manifest == "" || intent == "" || rdsAdmissionFile == "" {
+		t.Skip("set EKS_E2E_PROFILE_REF, EKS_E2E_MANIFEST, EKS_E2E_INTENT_ID, and EKS_E2E_RDS_ADMISSION_FILE for disposable EKS/RDS E2E")
 	}
 	binary := filepath.Join(t.TempDir(), "metrum-fleetctl")
 	if output, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
@@ -23,7 +24,11 @@ func TestDisposableEKSPackagedCLI(t *testing.T) {
 	}
 	registry := filepath.Join(t.TempDir(), "lifecycle.sqlite")
 	for _, command := range []string{"plan", "deploy"} {
-		cmd := exec.Command(binary, command, "--profile-ref", profile, "--manifest", manifest, "--intent-id", intent, "--registry", registry, "--output", "json")
+		args := []string{command, "--profile-ref", profile, "--manifest", manifest, "--intent-id", intent, "--registry", registry, "--output", "json"}
+		if command == "deploy" {
+			args = append(args, "--rds-admission-file", rdsAdmissionFile)
+		}
+		cmd := exec.Command(binary, args...)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("packaged CLI %s: %v: %s", command, err, output)
 		}
