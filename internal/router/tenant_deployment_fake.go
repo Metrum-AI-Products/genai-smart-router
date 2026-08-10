@@ -132,13 +132,33 @@ type TenantDeletionApproval struct {
 	APIVersion     string    `json:"api_version"`
 	JobID          string    `json:"job_id"`
 	Action         string    `json:"action"`
+	IssuerRole     string    `json:"issuer_role"`
+	Signature      string    `json:"signature"`
 	ExpiresAt      time.Time `json:"expires_at"`
 	RetainPVC      bool      `json:"retain_pvc"`
 	RetainDatabase bool      `json:"retain_database"`
 	Nonce          string    `json:"nonce"`
+	authenticated  bool
 }
 
-func LoadTenantDeletionApproval(path string, now time.Time) (TenantDeletionApproval, string, error) {
+func deletionApprovalSigningPayload(approval TenantDeletionApproval) ([]byte, error) {
+	return json.Marshal(struct {
+		APIVersion     string    `json:"api_version"`
+		JobID          string    `json:"job_id"`
+		Action         string    `json:"action"`
+		IssuerRole     string    `json:"issuer_role"`
+		ExpiresAt      time.Time `json:"expires_at"`
+		RetainPVC      bool      `json:"retain_pvc"`
+		RetainDatabase bool      `json:"retain_database"`
+		Nonce          string    `json:"nonce"`
+	}{
+		APIVersion: approval.APIVersion, JobID: approval.JobID, Action: approval.Action,
+		IssuerRole: approval.IssuerRole, ExpiresAt: approval.ExpiresAt,
+		RetainPVC: approval.RetainPVC, RetainDatabase: approval.RetainDatabase, Nonce: approval.Nonce,
+	})
+}
+
+func LoadTenantDeletionApproval(path string, profile TenantDeploymentProfile, now time.Time) (TenantDeletionApproval, string, error) {
 	data, err := readDeploymentDocument(path, nil, true)
 	if err != nil {
 		return TenantDeletionApproval{}, "", fmt.Errorf("read deletion approval: %w", err)
@@ -158,6 +178,11 @@ func LoadTenantDeletionApproval(path string, now time.Time) (TenantDeletionAppro
 	if err := rejectSecretShapedDeploymentData(data); err != nil {
 		return TenantDeletionApproval{}, "", err
 	}
+	payload, err := deletionApprovalSigningPayload(approval)
+	if err != nil || verifyLifecycleApprovalSignature(profile, approval.IssuerRole, approval.Signature, payload) != nil {
+		return TenantDeletionApproval{}, "", errors.New("deletion approval is not authenticated")
+	}
+	approval.authenticated = true
 	sum := sha256.Sum256(data)
 	return approval, hex.EncodeToString(sum[:]), nil
 }
@@ -183,6 +208,9 @@ func (e *TenantDeploymentEngine) Delete(ctx context.Context, plan TenantDeployme
 	now := time.Now().UTC()
 	if err := validateTenantDeletionApproval(approval, now); err != nil {
 		return TenantDeploymentStatus{}, err
+	}
+	if !approval.authenticated {
+		return TenantDeploymentStatus{}, errors.New("deletion approval is not authenticated")
 	}
 	if len(approvalSHA256) != sha256.Size*2 {
 		return TenantDeploymentStatus{}, errors.New("deletion approval digest is invalid")

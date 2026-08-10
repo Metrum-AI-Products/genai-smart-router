@@ -10,5 +10,6 @@
   "namespace": "REPLACE_FROM_PLAN_NAMESPACE",
   "manifest_sha256": "REPLACE_FROM_PLAN_MANIFEST_SHA256",
   "approved_at": "REPLACE_UTC_RFC3339",
-  "expires_at": "REPLACE_UTC_RFC3339_WITHIN_24H"
+  "expires_at": "REPLACE_UTC_RFC3339_WITHIN_24H",
+  "signature": "REPLACE_BASE64_ED25519_SIGNATURE"
 }

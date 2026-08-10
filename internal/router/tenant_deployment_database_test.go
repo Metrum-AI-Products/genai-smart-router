@@ -36,7 +36,7 @@ func TestTenantDeploymentDedicatedRDSPlanFakeRetryAndRetention(t *testing.T) {
 	if got := fake.SnapshotCalls(); strings.Join(got[:3], ",") != "ensure:namespace,ensure:network_policy,ensure:dedicated_rds" {
 		t.Fatalf("dedicated RDS did not precede secret binding: %v", got)
 	}
-	approval := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: plan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainDatabase: true, Nonce: "retain-rds"}
+	approval := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: plan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainDatabase: true, Nonce: "retain-rds", authenticated: true}
 	status, err = engine.Delete(context.Background(), plan, approval, strings.Repeat("a", 64))
 	if err != nil || status.State != TenantDeploymentDeleted {
 		t.Fatalf("RDS deletion status=%#v err=%v", status, err)

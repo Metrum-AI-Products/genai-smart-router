@@ -40,7 +40,7 @@ revokes access without changing the
 CLI or customer instance. See the credential-free profile and verification
 procedure in [EKS staging migration](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap).
 
-Issue #555 has one strict reference-only manifest, one normalized deployment-job registry, and typed AWS/EKS contracts in `metrum-fleetctl`. It provides deterministic plan, idempotent ownership-safe create/resume, classified state, activation-before-hostname, bounded status, explicit PVC/RDS retention, and exact-job deletion. Customer-local `smartrouterctl` has no Fleet, cloud, cross-customer, config-activation, key-rotation, or license-signing authority.
+Issue #555 has one strict reference-only manifest, one normalized deployment-job registry, and typed AWS/EKS contracts in `metrum-fleetctl`. It provides deterministic plan, idempotent ownership-safe create/resume, classified state, activation-before-hostname, bounded status, explicit PVC/RDS retention, and exact-job deletion. Live `deploy`, deployment `status`, and `delete` accept only a protected `aws-ssm:///` profile reference; `file://` is limited to the local fake `plan` contract. Customer-local `smartrouterctl` has no Fleet, cloud, cross-customer, config-activation, key-rotation, or license-signing authority.
 
 The Fleet-only manifest carries `runtime_bundle_ref`, not raw runtime files. It
 is an `aws-ssm:///` or `aws-secretsmanager:///` reference without query data.
@@ -84,19 +84,39 @@ document must use `api_version:
 metrum.ai/smartrouter-rds-admission/v1`, `action: disposable-e2e`, and bind
 only the plan's `profile_id`, non-production `environment`,
 `database_profile`, `job_id` (which is derived from the exact intent),
-`namespace`, and `manifest_sha256`. It must also name a safe issuer-role
-alias, have an opaque approval ID, and expire within 24 hours of its UTC
-approval time. It contains no credentials, DSN, endpoint, secret reference,
-runtime configuration, or license payload.
+`namespace`, and `manifest_sha256`. It also carries a safe issuer-role alias,
+opaque approval ID, UTC approval and expiry timestamps within 24 hours, and an
+Ed25519 signature. It contains no credentials, DSN, endpoint, secret
+reference, runtime configuration, license payload, or signing key.
 
-`metrum-fleetctl` never creates, updates, prints, or persists this document.
-It only consumes `--rds-admission-file` after validating its private file mode,
-strict JSON schema, non-secret content, exact plan binding, and expiry. A
-dedicated-RDS `deploy` requires it before the lifecycle registry or AWS/EKS
-clients are opened. A `delete` that deletes the dedicated RDS requires the
-same still-valid admission in addition to its existing job-bound deletion
-approval. Invalid, stale, or differently scoped documents leave the typed RDS
-adapter unattached.
+The approved profile supplies only the non-secret
+`lifecycle_approval_public_key` that verifies the document. `metrum-fleetctl`
+never creates, updates, prints, or persists either an admission or signing
+material. It consumes `--rds-admission-file` only after validating private
+file mode, strict JSON schema, non-secret content, signature, exact plan
+binding, and expiry. A dedicated-RDS `deploy` requires it before the lifecycle
+registry or AWS/EKS clients are opened. A `delete` that deletes the dedicated
+RDS requires the same still-valid admission in addition to its existing
+job-bound deletion approval. Invalid, stale, unsigned, or differently scoped
+documents leave the typed RDS adapter unattached.
+
+### Admission issuance under a single maintainer
+
+One qualified maintainer may hold multiple non-production responsibilities, but
+each is exercised through a separately scoped federated session:
+
+| Session | Permitted activity | Must not hold |
+| --- | --- | --- |
+| Delivery | Read the approved SSM profile, complete the #818 preflight, and run the existing Fleet lifecycle command. | Admission-signing key or service authority; policy/RoleBinding mutation; general resource deletion. |
+| Admission issuer | Verify the safe deterministic plan fields and produce one signed, mode-`0600` admission outside Fleet. | EKS/RDS delivery, runtime-secret, registry, or production-cutover authority. |
+| Reviewer | Record the checklist evidence after the first E2E. | Any additional signature requirement merely because the reviewer is also the implementer. |
+
+The same person may use these roles in sequence. The admission issuer can be a
+protected signing service or an approved isolated signing workflow; the private
+key never enters the Fleet process, manifest, profile, registry, logs, or
+evidence. Record only the issuer-role alias and the admission's opaque ID and
+digest. This preserves an external, independently constrained admission
+without introducing a second approver or a new Fleet command.
 
 The authorized sequence is: #818 repair and passing preflight; local suite
 evidence and deterministic plan; external scoped admission; disposable E2E
@@ -236,12 +256,13 @@ Store policy, requests, attempts, immutable artifact references, restore approva
 The shipped command has two read-only status modes. Inventory `status` remains
 bounded to 1–100 local rows and reports tenant/stage identity, schema drift,
 release digest, and dedicated placement. Deployment `status --profile-ref
-<file-ref> --job <exact-job>` opens the existing local job registry read-only
-and returns one safe lifecycle record. Neither mode probes Router health,
-Kubernetes, AWS, RDS, DNS, credentials, or customer databases.
+aws-ssm:///... --job <exact-job>` accepts only a protected profile reference,
+opens the exact local job registry read-only, and performs scoped read-only EKS
+observation for that profile. Neither mode reads Router health, RDS state,
+credentials, configuration, or customer databases.
 
-The future live status adapter must also be authorized and scoped to an
-explicit profile/environment/instance. It must answer:
+The status adapter is authorized and scoped to an explicit
+profile/environment/instance. It answers:
 
 
 | Question | Safe status/evidence |

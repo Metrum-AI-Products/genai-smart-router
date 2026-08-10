@@ -9,6 +9,8 @@ hostname_suffix: apps.example.test
 approved_release_digest: registry.example.test/smart-router@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 approved_resource_profile: small
 approved_state_profile: sqlite-rwo-small
+lifecycle_approval_issuer: fleet-lifecycle-admin
+lifecycle_approval_public_key: 11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=
 storage_class: gp3
 state_storage_gib: 20
 ingress_class_name: nginx

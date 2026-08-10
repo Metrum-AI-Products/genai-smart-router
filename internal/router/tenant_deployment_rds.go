@@ -29,6 +29,7 @@ type TenantDeploymentRDSAdmission struct {
 	Action          string    `json:"action"`
 	ApprovalID      string    `json:"approval_id"`
 	IssuerRole      string    `json:"issuer_role"`
+	Signature       string    `json:"signature"`
 	ProfileID       string    `json:"profile_id"`
 	Environment     string    `json:"environment"`
 	DatabaseProfile string    `json:"database_profile"`
@@ -37,6 +38,28 @@ type TenantDeploymentRDSAdmission struct {
 	ManifestSHA256  string    `json:"manifest_sha256"`
 	ApprovedAt      time.Time `json:"approved_at"`
 	ExpiresAt       time.Time `json:"expires_at"`
+}
+
+func rdsAdmissionSigningPayload(admission TenantDeploymentRDSAdmission) ([]byte, error) {
+	return json.Marshal(struct {
+		APIVersion      string    `json:"api_version"`
+		Action          string    `json:"action"`
+		ApprovalID      string    `json:"approval_id"`
+		IssuerRole      string    `json:"issuer_role"`
+		ProfileID       string    `json:"profile_id"`
+		Environment     string    `json:"environment"`
+		DatabaseProfile string    `json:"database_profile"`
+		JobID           string    `json:"job_id"`
+		Namespace       string    `json:"namespace"`
+		ManifestSHA256  string    `json:"manifest_sha256"`
+		ApprovedAt      time.Time `json:"approved_at"`
+		ExpiresAt       time.Time `json:"expires_at"`
+	}{
+		APIVersion: admission.APIVersion, Action: admission.Action, ApprovalID: admission.ApprovalID,
+		IssuerRole: admission.IssuerRole, ProfileID: admission.ProfileID, Environment: admission.Environment,
+		DatabaseProfile: admission.DatabaseProfile, JobID: admission.JobID, Namespace: admission.Namespace,
+		ManifestSHA256: admission.ManifestSHA256, ApprovedAt: admission.ApprovedAt, ExpiresAt: admission.ExpiresAt,
+	})
 }
 
 type tenantDeploymentRDSClient interface {
@@ -120,6 +143,10 @@ func validateTenantDeploymentRDSAdmission(profile TenantDeploymentProfile, admis
 		!admission.ExpiresAt.After(now) ||
 		admission.ExpiresAt.Sub(admission.ApprovedAt) > 24*time.Hour {
 		return errors.New("approved non-production RDS admission is expired or invalid")
+	}
+	payload, err := rdsAdmissionSigningPayload(admission)
+	if err != nil || verifyLifecycleApprovalSignature(profile, admission.IssuerRole, admission.Signature, payload) != nil {
+		return errors.New("approved non-production RDS admission is not authenticated")
 	}
 	return nil
 }

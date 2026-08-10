@@ -79,16 +79,17 @@ rename. Customer-local `smartrouterctl` safely validates/diffs local config,
 creates a caller token once in a new mode-`0600` file, and reports safe local
 status; it has no cloud or activation authority.
 
-The lifecycle accepts only a protected mode-`0600` `file://` non-production
-profile in the shipped build. Plan is side-effect-free. The default SQLite path
-is namespace, network policy, protected runtime-secret binding, license
-binding, state PVC, one-replica single-container Router, activation, and
-hostname; it never provisions or binds RDS. An explicit approved
-`database_profile` manifest branch inserts dedicated private RDS after network
-policy and before runtime-secret/DSN-reference binding. Hostname is not
-published until activation passes. A classified safe failure can retry from its
-exact stage. An unknown outcome for a PVC or dedicated-RDS action becomes
-`operator_required` rather than guessing whether creation should repeat.
+Live Fleet lifecycle commands accept only a protected `aws-ssm:///`
+non-production profile; `file://` is limited to the local-fake plan contract.
+Plan is side-effect-free. The default SQLite path is namespace, network policy,
+protected runtime-secret binding, license binding, state PVC, one-replica
+single-container Router, activation, and hostname; it never provisions or
+binds RDS. An explicit approved `database_profile` manifest branch inserts
+dedicated private RDS after network policy and before runtime-secret/DSN-reference
+binding. Hostname is not published until activation passes. A classified safe
+failure can retry from its exact stage. An unknown outcome for a PVC or
+dedicated-RDS action becomes `operator_required` rather than guessing whether
+creation should repeat.
 
 The Fleet manifest accepts one protected `runtime_bundle_ref`, never raw
 runtime configuration or credentials. Its resolved JSON payload is validated
@@ -106,10 +107,11 @@ final-snapshot deletion, but is unattached by the default EKS constructor.
 The first disposable non-production E2E requires an external, expiring,
 mode-`0600` RDS admission file passed to the existing Fleet `deploy` command.
 The file is not a customer API input. Fleet validates its strict non-secret
-schema and exact profile, job/intent, namespace, database-profile, and
-immutable-plan binding before it opens the registry or cloud clients; it never
-creates, updates, prints, or persists the file. The same short-lived admission
-is required with `delete` only when that E2E deletes its dedicated RDS.
+schema, signature against the approved profile key, and exact profile,
+job/intent, namespace, database-profile, and immutable-plan binding before it
+opens the registry or cloud clients; it never creates, updates, prints, or
+persists the file or signing material. The same short-lived admission is
+required with `delete` only when that E2E deletes its dedicated RDS.
 
 This first-E2E admission is not a second reviewer, an approval chain, or a
 production authorization. Once the E2E passes its failure/retry and cleanup

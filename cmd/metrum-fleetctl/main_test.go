@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"smart-llmrouter/internal/router"
 )
 
 func TestLifecycleCommandsRejectUnsupportedVerbs(t *testing.T) {
@@ -62,7 +65,7 @@ func TestTenantDeploymentCLIPlanIsReadOnly(t *testing.T) {
 	}
 }
 
-func TestDedicatedRDSDeployRequiresExternalAdmissionBeforeRegistryOrCloudAccess(t *testing.T) {
+func TestDedicatedRDSDeployRequiresProtectedProfileBeforeRegistryOrCloudAccess(t *testing.T) {
 	root := filepath.Join("..", "..", "testdata", "tenant-deployment")
 	profileBytes, err := os.ReadFile(filepath.Join(root, "profile.yaml"))
 	if err != nil {
@@ -101,10 +104,58 @@ rds_proxy_disabled: true
 		"--registry", registry,
 		"--output", "json",
 	).CombinedOutput()
-	if err == nil || !strings.Contains(string(output), "rds-admission-file is required") {
-		t.Fatalf("dedicated RDS deploy did not reject missing external admission: %v %s", err, output)
+	if err == nil || !strings.Contains(string(output), "protected aws-ssm profile") {
+		t.Fatalf("dedicated RDS deploy accepted a local profile: %v %s", err, output)
 	}
 	if _, err := os.Stat(registry); !os.IsNotExist(err) {
 		t.Fatalf("missing RDS admission created registry: %v", err)
+	}
+}
+
+func TestDedicatedRDSAdaptersRequireExternalAdmissionBeforeCloudAccess(t *testing.T) {
+	root := filepath.Join("..", "..", "testdata", "tenant-deployment")
+	profileBytes, err := os.ReadFile(filepath.Join(root, "profile.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profileBytes = append(profileBytes, []byte(`
+database_mode: dedicated-rds
+approved_database_profile: postgres-dedicated-small
+rds_instance_class: db-t4g-medium
+rds_storage_gib: 20
+rds_backup_retention_days: 7
+rds_subnet_group: router-private
+rds_vpc_security_group: sg-router-private
+rds_master_username: routeradmin
+rds_proxy_disabled: true
+`)...)
+	manifestBytes, err := os.ReadFile(filepath.Join(root, "manifest.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestBytes = []byte(strings.Replace(string(manifestBytes), "runtime_bundle_ref:", "database_profile: postgres-dedicated-small\nruntime_bundle_ref:", 1))
+	dir := t.TempDir()
+	profilePath := filepath.Join(dir, "profile.yaml")
+	manifestPath := filepath.Join(dir, "manifest.yaml")
+	if err := os.WriteFile(profilePath, profileBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, manifestBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := router.LoadTenantDeploymentProfile("file://" + profilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := router.LoadTenantDeploymentManifest(manifestPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := router.BuildTenantDeploymentPlan(profile, manifest, "intent-rds-admission")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := deploymentAdaptersForPlan(context.Background(), profile, "aws-ssm:///approved/nonproduction/profile", plan, "", true); err == nil || !strings.Contains(err.Error(), "rds-admission-file is required") {
+		t.Fatalf("missing RDS admission reached cloud-adapter setup: %v", err)
 	}
 }

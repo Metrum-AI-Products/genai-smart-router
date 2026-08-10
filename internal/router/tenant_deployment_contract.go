@@ -2,7 +2,9 @@ package router
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -65,32 +67,34 @@ type TenantDeploymentLicense struct {
 // The local fake-first implementation resolves only mode-0600 file:// profiles;
 // live protected-profile adapters remain a separate, explicit gate.
 type TenantDeploymentProfile struct {
-	APIVersion              string `json:"api_version" yaml:"api_version"`
-	ProfileID               string `json:"profile_id" yaml:"profile_id"`
-	Environment             string `json:"environment" yaml:"environment"`
-	AccountAlias            string `json:"account_alias" yaml:"account_alias"`
-	Region                  string `json:"region" yaml:"region"`
-	ClusterAlias            string `json:"cluster_alias" yaml:"cluster_alias"`
-	NamespacePrefix         string `json:"namespace_prefix" yaml:"namespace_prefix"`
-	HostnameSuffix          string `json:"hostname_suffix" yaml:"hostname_suffix"`
-	ApprovedReleaseDigest   string `json:"approved_release_digest" yaml:"approved_release_digest"`
-	ApprovedResourceProfile string `json:"approved_resource_profile" yaml:"approved_resource_profile"`
-	ApprovedStateProfile    string `json:"approved_state_profile" yaml:"approved_state_profile"`
-	AWSProfile              string `json:"aws_profile" yaml:"aws_profile"`
-	StorageClass            string `json:"storage_class" yaml:"storage_class"`
-	StateStorageGiB         int    `json:"state_storage_gib" yaml:"state_storage_gib"`
-	IngressClassName        string `json:"ingress_class_name" yaml:"ingress_class_name"`
-	IngressNamespace        string `json:"ingress_namespace" yaml:"ingress_namespace"`
-	TLSSecretName           string `json:"tls_secret_name" yaml:"tls_secret_name"`
-	DatabaseMode            string `json:"database_mode" yaml:"database_mode"`
-	ApprovedDatabaseProfile string `json:"approved_database_profile" yaml:"approved_database_profile"`
-	RDSInstanceClass        string `json:"rds_instance_class" yaml:"rds_instance_class"`
-	RDSStorageGiB           int    `json:"rds_storage_gib" yaml:"rds_storage_gib"`
-	RDSBackupRetentionDays  int    `json:"rds_backup_retention_days" yaml:"rds_backup_retention_days"`
-	RDSSubnetGroup          string `json:"rds_subnet_group" yaml:"rds_subnet_group"`
-	RDSVPCSecurityGroup     string `json:"rds_vpc_security_group" yaml:"rds_vpc_security_group"`
-	RDSMasterUsername       string `json:"rds_master_username" yaml:"rds_master_username"`
-	RDSProxyDisabled        bool   `json:"rds_proxy_disabled" yaml:"rds_proxy_disabled"`
+	APIVersion                 string `json:"api_version" yaml:"api_version"`
+	ProfileID                  string `json:"profile_id" yaml:"profile_id"`
+	Environment                string `json:"environment" yaml:"environment"`
+	AccountAlias               string `json:"account_alias" yaml:"account_alias"`
+	Region                     string `json:"region" yaml:"region"`
+	ClusterAlias               string `json:"cluster_alias" yaml:"cluster_alias"`
+	NamespacePrefix            string `json:"namespace_prefix" yaml:"namespace_prefix"`
+	HostnameSuffix             string `json:"hostname_suffix" yaml:"hostname_suffix"`
+	ApprovedReleaseDigest      string `json:"approved_release_digest" yaml:"approved_release_digest"`
+	ApprovedResourceProfile    string `json:"approved_resource_profile" yaml:"approved_resource_profile"`
+	ApprovedStateProfile       string `json:"approved_state_profile" yaml:"approved_state_profile"`
+	AWSProfile                 string `json:"aws_profile" yaml:"aws_profile"`
+	LifecycleApprovalIssuer    string `json:"lifecycle_approval_issuer" yaml:"lifecycle_approval_issuer"`
+	LifecycleApprovalPublicKey string `json:"lifecycle_approval_public_key" yaml:"lifecycle_approval_public_key"`
+	StorageClass               string `json:"storage_class" yaml:"storage_class"`
+	StateStorageGiB            int    `json:"state_storage_gib" yaml:"state_storage_gib"`
+	IngressClassName           string `json:"ingress_class_name" yaml:"ingress_class_name"`
+	IngressNamespace           string `json:"ingress_namespace" yaml:"ingress_namespace"`
+	TLSSecretName              string `json:"tls_secret_name" yaml:"tls_secret_name"`
+	DatabaseMode               string `json:"database_mode" yaml:"database_mode"`
+	ApprovedDatabaseProfile    string `json:"approved_database_profile" yaml:"approved_database_profile"`
+	RDSInstanceClass           string `json:"rds_instance_class" yaml:"rds_instance_class"`
+	RDSStorageGiB              int    `json:"rds_storage_gib" yaml:"rds_storage_gib"`
+	RDSBackupRetentionDays     int    `json:"rds_backup_retention_days" yaml:"rds_backup_retention_days"`
+	RDSSubnetGroup             string `json:"rds_subnet_group" yaml:"rds_subnet_group"`
+	RDSVPCSecurityGroup        string `json:"rds_vpc_security_group" yaml:"rds_vpc_security_group"`
+	RDSMasterUsername          string `json:"rds_master_username" yaml:"rds_master_username"`
+	RDSProxyDisabled           bool   `json:"rds_proxy_disabled" yaml:"rds_proxy_disabled"`
 }
 
 type TenantDeploymentPlan struct {
@@ -332,6 +336,9 @@ func validateTenantDeploymentProfile(profile TenantDeploymentProfile, raw []byte
 			return err
 		}
 	}
+	if _, err := lifecycleApprovalPublicKey(profile); err != nil {
+		return errors.New("lifecycle approval authority is invalid")
+	}
 	if profile.DatabaseMode != "" && profile.DatabaseMode != "dedicated-rds" {
 		return errors.New("database_mode must be dedicated-rds when set")
 	}
@@ -373,6 +380,29 @@ func validateTenantDeploymentProfile(profile TenantDeploymentProfile, raw []byte
 		return errors.New("state_storage_gib must be between 1 and 1024")
 	}
 	return rejectSecretShapedDeploymentData(raw)
+}
+
+func lifecycleApprovalPublicKey(profile TenantDeploymentProfile) (ed25519.PublicKey, error) {
+	if err := validateDeploymentID("lifecycle_approval_issuer", profile.LifecycleApprovalIssuer); err != nil {
+		return nil, err
+	}
+	publicKey, err := base64.StdEncoding.DecodeString(profile.LifecycleApprovalPublicKey)
+	if err != nil || len(publicKey) != ed25519.PublicKeySize {
+		return nil, errors.New("lifecycle approval public key is invalid")
+	}
+	return ed25519.PublicKey(publicKey), nil
+}
+
+func verifyLifecycleApprovalSignature(profile TenantDeploymentProfile, issuer, signature string, payload []byte) error {
+	publicKey, err := lifecycleApprovalPublicKey(profile)
+	if err != nil || issuer != profile.LifecycleApprovalIssuer {
+		return errors.New("lifecycle approval is not authenticated")
+	}
+	signed, err := base64.StdEncoding.DecodeString(signature)
+	if err != nil || len(signed) != ed25519.SignatureSize || !ed25519.Verify(publicKey, payload, signed) {
+		return errors.New("lifecycle approval is not authenticated")
+	}
+	return nil
 }
 
 func validateDeploymentID(name, value string) error {

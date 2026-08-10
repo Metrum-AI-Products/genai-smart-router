@@ -21,8 +21,10 @@ The manifest is reference-only. It never accepts or emits provider keys, raw
 Router tokens or hashes, license payloads, DSNs, kubeconfigs, full
 configuration, secret values, or raw adapter errors. Protected profiles carry
 non-secret policy: account/region/cluster, immutable release digest, approved
-profiles, storage or RDS sizing, and ingress policy. Profile files are
-mode-`0600`; a live profile is resolved only from `aws-ssm:///`.
+profiles, storage or RDS sizing, ingress policy, and the
+`lifecycle_approval_public_key` for externally issued admissions. Live Fleet
+commands resolve profiles only from `aws-ssm:///`; `file://` is limited to the
+local-fake `plan` contract.
 
 Every Fleet status is bounded scalar evidence: job/instance/profile IDs,
 environment, region/cluster, namespace, release/config revision, lifecycle
@@ -44,20 +46,20 @@ continues to be a separate `license.json` Secret and mount.
 
 ```bash
 metrum-fleetctl plan \
-  --profile-ref file:///protected/profile.yaml \
+  --profile-ref aws-ssm:///approved/nonproduction/profile \
   --manifest deployment.yaml \
   --intent-id intent-a \
   --output json
 
 metrum-fleetctl deploy \
-  --profile-ref file:///protected/profile.yaml \
+  --profile-ref aws-ssm:///approved/nonproduction/profile \
   --manifest deployment.yaml \
   --intent-id intent-a \
   --registry /protected/tenant-deployments.sqlite \
   --output json
 
 metrum-fleetctl status \
-  --profile-ref file:///protected/profile.yaml \
+  --profile-ref aws-ssm:///approved/nonproduction/profile \
   --job job-<opaque-id> \
   --registry /protected/tenant-deployments.sqlite \
   --output json
@@ -79,7 +81,7 @@ controls dedicated-RDS retention. Deletion never guesses ownership.
 
 ```bash
 metrum-fleetctl delete \
-  --profile-ref file:///protected/profile.yaml \
+  --profile-ref aws-ssm:///approved/nonproduction/profile \
   --manifest deployment.yaml \
   --intent-id intent-a \
   --registry /protected/tenant-deployments.sqlite \
@@ -106,20 +108,23 @@ and policy, provision only private encrypted PostgreSQL, and delete only
 owned instances with a final snapshot. It returns scalar evidence only.
 
 The typed adapter is unreachable from the default EKS constructor. A first
-disposable E2E can attach it only with an external, mode-`0600`, strict-JSON
-admission document. `metrum-fleetctl` does not create, update, emit, or persist
-the document; it validates its non-secret content, expiry, and exact binding to
-the non-production profile, deterministic job ID/intent, namespace, database
-profile, and manifest digest before opening the lifecycle registry or AWS/EKS
-clients.
+disposable E2E can attach it only with an externally issued, mode-`0600`,
+strict-JSON admission document signed by the profile's
+`lifecycle_approval_public_key`. `metrum-fleetctl` does not create, update,
+emit, or persist the document or signing material; it validates non-secret
+content, signature, expiry, and exact binding to the non-production profile,
+deterministic job ID/intent, namespace, database profile, and manifest digest
+before opening the lifecycle registry or AWS/EKS clients.
 
 After running the existing side-effect-free `plan`, an authorized maintainer
 obtains the scoped document outside Fleet and passes it only to the existing
-`deploy` verb:
+`deploy` verb. The delivery and admission-issuer sessions are separately scoped
+even when one qualified maintainer performs both roles; see [Admission issuance
+under a single maintainer](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#admission-issuance-under-a-single-maintainer).
 
 ```bash
 metrum-fleetctl deploy \
-  --profile-ref file:///protected/profile.yaml \
+  --profile-ref aws-ssm:///approved/nonproduction/profile \
   --manifest deployment.yaml \
   --intent-id intent-a \
   --rds-admission-file /protected/disposable-e2e-rds-admission.json \
@@ -137,9 +142,9 @@ for the full safe-field and ordering contract. Production profiles remain
 rejected until #518.
 
 ```bash
-metrum-fleetctl databases status --profile-ref file:///protected/profile.yaml \
+metrum-fleetctl databases status --profile-ref aws-ssm:///approved/nonproduction/profile \
   --job job-<opaque-id> --registry /protected/tenant-deployments.sqlite
-metrum-fleetctl smoke run activation --profile-ref file:///protected/profile.yaml \
+metrum-fleetctl smoke run activation --profile-ref aws-ssm:///approved/nonproduction/profile \
   --job job-<opaque-id> --registry /protected/tenant-deployments.sqlite
 ```
 

@@ -32,10 +32,10 @@ Tracked work item: `task.acme_eks_production_like_deploy`.
 ## Fail-closed sequence
 
 1. **`#818` repair** — **DONE 2026-08-09.** Reconciled delivery Role/RoleBinding via `scripts/reconcile_staging_delivery_rbac.py` (outcome `reconciled`). Protected delivery preflight returned `{"action":"preflight","outcome":"passed"}` with deletion verbs denied. Issue #818 closed.
-2. **Disposable EKS/RDS E2E** — deterministic `metrum-fleetctl plan`, externally issued mode-`0600` `--rds-admission-file` with `action: disposable-e2e`, then packaged disposable E2E including failure/retry and confirmed cleanup (PR `#868`).
+2. **Disposable EKS/RDS E2E** — deterministic `metrum-fleetctl plan`, an externally issued and profile-key-signed mode-`0600` `--rds-admission-file` with `action: disposable-e2e`, then packaged disposable E2E including failure/retry and confirmed cleanup (PR `#868`).
 3. **Recorded single-reviewer review** — checklist in [Recorded security and operations review](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review); self-review by the implementing maintainer is permitted for this non-production target.
 4. **ACME plan** — reference-only intent + protected profile + protected runtime bundle; no secrets in Git, NDJSON, argv, logs, or chat.
-5. **ACME deploy** — `metrum-fleetctl deploy` with a fresh scoped admission bound to the ACME job/intent/namespace/manifest digest; activation before Host publish.
+5. **ACME deploy** — `metrum-fleetctl deploy` with a fresh profile-key-signed scoped admission bound to the ACME job/intent/namespace/manifest digest; activation before Host publish.
 6. **Smoke** — `/readyz`, `/v1/models`, Chat/Responses/Messages as exposed, Codex/Claude Code for the coding group, ordinary-caller `/metrics` → `403 metrics-forbidden`, sanitized usage evidence.
 7. **Retention** — record keep-or-destroy for namespace/RDS/PVC/Secrets/Host; Compose production untouched.
 
@@ -55,14 +55,14 @@ Real protected files live only under mode-`0600` paths outside the repository (f
 ```bash
 # Read-only plan (no mutation)
 rtk ./bin/metrum-fleetctl plan \
-  --profile-ref <approved-nonproduction-profile-ref> \
+  --profile-ref aws-ssm:///approved/nonproduction/acme-profile \
   --manifest /protected/acme/intent.yaml \
   --intent-id <unique-acme-intent-id> \
   --output json
 
 # Deploy only with a still-valid scoped admission
 rtk ./bin/metrum-fleetctl deploy \
-  --profile-ref <approved-nonproduction-profile-ref> \
+  --profile-ref aws-ssm:///approved/nonproduction/acme-profile \
   --manifest /protected/acme/intent.yaml \
   --intent-id <same-unique-acme-intent-id> \
   --rds-admission-file /protected/acme/rds-admission.json \
