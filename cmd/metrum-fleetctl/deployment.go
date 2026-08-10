@@ -25,7 +25,7 @@ func addDeploymentFlags(fs *flag.FlagSet, requireManifest bool) deploymentComman
 		manifestDefault = "-"
 	}
 	return deploymentCommandFlags{
-		profileRef: fs.String("profile-ref", "", "protected deployment profile reference (local fake mode accepts file:// only)"),
+		profileRef: fs.String("profile-ref", "", "protected Fleet profile reference; plan local-fake contract also accepts file://"),
 		manifest:   fs.String("manifest", manifestDefault, "strict reference-only deployment manifest path or - for stdin"),
 		intentID:   fs.String("intent-id", "", "caller-supplied idempotency intent identifier"),
 		registry:   fs.String("registry", "tenant-deployments.sqlite", "private local deployment lifecycle SQLite path"),
@@ -36,6 +36,15 @@ func addDeploymentFlags(fs *flag.FlagSet, requireManifest bool) deploymentComman
 func requireJSONOutput(value string) {
 	if value != "json" {
 		die("output must be json")
+	}
+}
+
+func requireProtectedFleetProfileReference(value string) {
+	if strings.TrimSpace(value) == "" {
+		die("profile-ref is required")
+	}
+	if !strings.HasPrefix(strings.TrimSpace(value), "aws-ssm:///") {
+		die("live Fleet lifecycle requires a protected aws-ssm profile reference")
 	}
 }
 
@@ -76,9 +85,10 @@ func deploymentDeploy(args []string) {
 	rdsAdmissionFile := fs.String("rds-admission-file", "", "mode-0600, externally issued, expiring dedicated-RDS disposable-E2E admission JSON file")
 	fs.Parse(args)
 	requireJSONOutput(*flags.output)
+	requireProtectedFleetProfileReference(*flags.profileRef)
 	plan := loadDeploymentPlan(flags, os.Stdin)
 	profile := routerProfileForPlan(flags)
-	_, adapters, err := deploymentAdaptersForPlan(context.Background(), profile, plan, *rdsAdmissionFile, plan.DatabaseID != "")
+	_, adapters, err := deploymentAdaptersForPlan(context.Background(), profile, *flags.profileRef, plan, *rdsAdmissionFile, plan.DatabaseID != "")
 	if err != nil {
 		die("configure AWS/EKS deployment adapters: %v", err)
 	}
@@ -110,6 +120,7 @@ func deploymentStatus(args []string) {
 	if *profileRef == "" || *jobID == "" {
 		die("profile-ref and job are required for deployment status")
 	}
+	requireProtectedFleetProfileReference(*profileRef)
 	profile, err := router.LoadTenantDeploymentProfile(*profileRef)
 	if err != nil {
 		die("load protected profile: %v", err)
@@ -141,14 +152,15 @@ func deploymentDelete(args []string) {
 	if *confirmFile == "" {
 		die("confirm-file is required")
 	}
+	requireProtectedFleetProfileReference(*flags.profileRef)
 	plan := loadDeploymentPlan(flags, os.Stdin)
-	approval, approvalSHA256, err := router.LoadTenantDeletionApproval(*confirmFile, time.Now().UTC())
+	profile := routerProfileForPlan(flags)
+	approval, approvalSHA256, err := router.LoadTenantDeletionApproval(*confirmFile, profile, time.Now().UTC())
 	if err != nil {
 		die("load deletion approval: %v", err)
 	}
-	profile := routerProfileForPlan(flags)
 	requireRDSAdmission := plan.DatabaseID != "" && !approval.RetainDatabase
-	_, adapters, err := deploymentAdaptersForPlan(context.Background(), profile, plan, *rdsAdmissionFile, requireRDSAdmission)
+	_, adapters, err := deploymentAdaptersForPlan(context.Background(), profile, *flags.profileRef, plan, *rdsAdmissionFile, requireRDSAdmission)
 	if err != nil {
 		die("configure AWS/EKS deployment adapters: %v", err)
 	}
@@ -179,7 +191,7 @@ func routerProfileForPlan(flags deploymentCommandFlags) router.TenantDeploymentP
 	return profile
 }
 
-func deploymentAdaptersForPlan(ctx context.Context, profile router.TenantDeploymentProfile, plan router.TenantDeploymentPlan, admissionFile string, requireRDSAdmission bool) (*router.EKSTenantDeploymentAdapters, router.TenantDeploymentAdapters, error) {
+func deploymentAdaptersForPlan(ctx context.Context, profile router.TenantDeploymentProfile, profileRef string, plan router.TenantDeploymentPlan, admissionFile string, requireRDSAdmission bool) (*router.EKSTenantDeploymentAdapters, router.TenantDeploymentAdapters, error) {
 	if plan.DatabaseID == "" {
 		if strings.TrimSpace(admissionFile) != "" {
 			return nil, router.TenantDeploymentAdapters{}, errors.New("rds-admission-file is only valid for a dedicated RDS deployment")
@@ -194,6 +206,9 @@ func deploymentAdaptersForPlan(ctx context.Context, profile router.TenantDeploym
 	}
 	if strings.TrimSpace(admissionFile) == "" {
 		return nil, router.TenantDeploymentAdapters{}, errors.New("rds-admission-file is required for dedicated RDS mutation")
+	}
+	if !strings.HasPrefix(profileRef, "aws-ssm:///") {
+		return nil, router.TenantDeploymentAdapters{}, errors.New("dedicated RDS mutation requires a protected aws-ssm profile reference")
 	}
 	admission, _, err := router.LoadTenantDeploymentRDSAdmission(admissionFile, profile, plan, time.Now().UTC())
 	if err != nil {

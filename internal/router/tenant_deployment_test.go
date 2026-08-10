@@ -2,6 +2,8 @@ package router
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,6 +41,35 @@ func tenantDeploymentFixture(t *testing.T) (TenantDeploymentProfile, TenantDeplo
 		t.Fatal(err)
 	}
 	return profile, manifest, plan
+}
+
+func testLifecycleApprovalPrivateKey(t *testing.T) ed25519.PrivateKey {
+	t.Helper()
+	seed, err := base64.StdEncoding.DecodeString("nWGxne/9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ed25519.NewKeyFromSeed(seed)
+}
+
+func signRDSAdmission(t *testing.T, profile TenantDeploymentProfile, admission *TenantDeploymentRDSAdmission) {
+	t.Helper()
+	admission.IssuerRole = profile.LifecycleApprovalIssuer
+	payload, err := rdsAdmissionSigningPayload(*admission)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admission.Signature = base64.StdEncoding.EncodeToString(ed25519.Sign(testLifecycleApprovalPrivateKey(t), payload))
+}
+
+func signDeletionApproval(t *testing.T, profile TenantDeploymentProfile, approval *TenantDeletionApproval) {
+	t.Helper()
+	approval.IssuerRole = profile.LifecycleApprovalIssuer
+	payload, err := deletionApprovalSigningPayload(*approval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval.Signature = base64.StdEncoding.EncodeToString(ed25519.Sign(testLifecycleApprovalPrivateKey(t), payload))
 }
 
 func openTenantDeploymentTestEngine(t *testing.T) (*TenantDeploymentStore, *FakeTenantDeploymentAdapters, *TenantDeploymentEngine, string) {
@@ -227,7 +258,7 @@ func TestTenantDeploymentAdaptersConfigUpdateReusesInstance(t *testing.T) {
 	if got := len(fake.SnapshotCalls()); got != len(firstPlan.Actions)+len(secondPlan.Actions) {
 		t.Fatalf("update did not reconcile exact action set: %v", fake.SnapshotCalls())
 	}
-	approval := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: firstPlan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainPVC: true, Nonce: "superseded"}
+	approval := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: firstPlan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainPVC: true, Nonce: "superseded", authenticated: true}
 	if _, err := engine.Delete(context.Background(), firstPlan, approval, strings.Repeat("d", 64)); err == nil || !strings.Contains(err.Error(), "superseded") {
 		t.Fatalf("superseded job deletion was not rejected: %v", err)
 	}
@@ -355,20 +386,38 @@ func TestTenantDeploymentSecurityHostnameRequiresActivation(t *testing.T) {
 }
 
 func TestTenantDeploymentSecurityDeletionApprovalAndRetention(t *testing.T) {
-	_, _, plan := tenantDeploymentFixture(t)
+	profile, _, plan := tenantDeploymentFixture(t)
 	store, fake, engine, _ := openTenantDeploymentTestEngine(t)
 	if _, err := engine.Deploy(context.Background(), plan, "intent-a"); err != nil {
 		t.Fatal(err)
 	}
+	untrusted := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: plan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainPVC: true, Nonce: "untrusted"}
+	if _, err := engine.Delete(context.Background(), plan, untrusted, strings.Repeat("b", 64)); err == nil || !strings.Contains(err.Error(), "not authenticated") {
+		t.Fatalf("untrusted deletion approval was not rejected: %v", err)
+	}
 	approval := TenantDeletionApproval{APIVersion: TenantDeletionApprovalAPIVersion, JobID: plan.JobID, Action: "delete", ExpiresAt: time.Now().UTC().Add(time.Hour), RetainPVC: true, Nonce: "approval-a"}
+	signDeletionApproval(t, profile, &approval)
 	approvalBytes, _ := json.Marshal(approval)
 	approvalPath := filepath.Join(t.TempDir(), "approval.json")
 	if err := os.WriteFile(approvalPath, approvalBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	loaded, sum, err := LoadTenantDeletionApproval(approvalPath, time.Now().UTC())
+	loaded, sum, err := LoadTenantDeletionApproval(approvalPath, profile, time.Now().UTC())
 	if err != nil {
 		t.Fatal(err)
+	}
+	forged := approval
+	forged.RetainPVC = false
+	forgedBytes, err := json.Marshal(forged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forgedPath := filepath.Join(t.TempDir(), "forged-approval.json")
+	if err := os.WriteFile(forgedPath, forgedBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LoadTenantDeletionApproval(forgedPath, profile, time.Now().UTC()); err == nil {
+		t.Fatal("forged deletion approval was accepted")
 	}
 	fake.FailAction = "delete:router"
 	if _, err := engine.Delete(context.Background(), plan, loaded, sum); err == nil {
@@ -420,7 +469,7 @@ func TestTenantDeploymentSecurityDeletionApprovalAndRetention(t *testing.T) {
 	if err := os.Chmod(approvalPath, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := LoadTenantDeletionApproval(approvalPath, time.Now().UTC()); err == nil {
+	if _, _, err := LoadTenantDeletionApproval(approvalPath, profile, time.Now().UTC()); err == nil {
 		t.Fatal("world-readable approval accepted")
 	}
 	_ = store

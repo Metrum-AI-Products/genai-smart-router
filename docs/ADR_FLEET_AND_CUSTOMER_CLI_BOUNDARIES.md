@@ -53,12 +53,14 @@ as for the PVC path. `tenant_deployment_rds.go` provides the typed AWS RDS
 adapter for a private, encrypted PostgreSQL instance with ownership tags,
 RDS-Proxy-disabled policy, final-snapshot deletion, and scalar-only evidence.
 It is unattached by the default EKS constructor. The existing `deploy` and
-`delete` verbs can attach it only by consuming an external, mode-`0600`,
-time-bounded non-production disposable-E2E admission bound to the exact
+`delete` verbs can attach it only by consuming an externally issued,
+mode-`0600`, time-bounded non-production disposable-E2E admission, signed by
+the approved profile's `lifecycle_approval_public_key`, and bound to the exact
 profile, deterministic job/intent, namespace, database profile, and manifest
 digest. `metrum-fleetctl` never creates, updates, emits, or persists that
-admission. Invalid, stale, or out-of-scope records fail before registry or
-AWS/EKS clients are opened. Production profiles remain rejected until #518.
+admission or signing material. Invalid, unsigned, stale, or out-of-scope
+records fail before registry or AWS/EKS clients are opened. Production profiles
+remain rejected until #518.
 
 ## Review authority
 
@@ -73,8 +75,9 @@ config/license revisions, passing suite and disposable-E2E results, isolation
 and secret-handling checks, and the retention/rollback decision, per [Recorded
 security and operations
 review](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review).
-Separation of duties becomes a requirement when a second qualified person exists
-or a customer contract demands it. Production cutover authority remains #518's.
+Separate reviewers or additional scoped EKS roles may be used when more than
+one qualified person is available or a customer contract demands separation of
+duties. Production cutover authority remains #518's.
 
 ## Consequences
 

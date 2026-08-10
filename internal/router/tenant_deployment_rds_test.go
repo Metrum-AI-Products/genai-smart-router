@@ -93,11 +93,12 @@ func dedicatedRDSFixture(t *testing.T) (TenantDeploymentProfile, TenantDeploymen
 	now := time.Now().UTC()
 	admission := TenantDeploymentRDSAdmission{
 		APIVersion: TenantDeploymentRDSAdmissionAPIVersion, Action: TenantDeploymentRDSAdmissionActionDisposableE2E,
-		ApprovalID: "approved-rds-admission", IssuerRole: "fleet-maintainer",
-		ProfileID: profile.ProfileID, Environment: profile.Environment, DatabaseProfile: profile.ApprovedDatabaseProfile,
+		ApprovalID: "approved-rds-admission",
+		ProfileID:  profile.ProfileID, Environment: profile.Environment, DatabaseProfile: profile.ApprovedDatabaseProfile,
 		JobID: plan.JobID, Namespace: plan.Namespace, ManifestSHA256: plan.ManifestSHA256,
 		ApprovedAt: now, ExpiresAt: now.Add(time.Hour),
 	}
+	signRDSAdmission(t, profile, &admission)
 	return profile, plan, admission
 }
 
@@ -117,6 +118,19 @@ func TestLoadTenantDeploymentRDSAdmissionRequiresPrivateExactScope(t *testing.T)
 	}
 	if loaded != admission || len(digest) != 64 {
 		t.Fatalf("loaded admission=%+v digest=%q", loaded, digest)
+	}
+	forged := admission
+	forged.ApprovalID = "forged-rds-admission"
+	forgedData, err := json.Marshal(forged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forgedPath := t.TempDir() + "/forged-rds-admission.json"
+	if err := os.WriteFile(forgedPath, forgedData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LoadTenantDeploymentRDSAdmission(forgedPath, profile, plan, time.Now().UTC()); err == nil {
+		t.Fatal("forged RDS admission was accepted")
 	}
 	otherPlan := plan
 	otherPlan.Namespace = "other-namespace"
