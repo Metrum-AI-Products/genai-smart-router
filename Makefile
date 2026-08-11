@@ -242,6 +242,8 @@ production-promotion-validate:
 ci-eks-staging-contract:
 	$(PYTHON) scripts/eks_delivery_contract_test.py
 	$(PYTHON) scripts/makefile_security_test.py
+	$(PYTHON) scripts/validate_eks_bootstrap_assets_test.py
+	$(PYTHON) scripts/validate_eks_bootstrap_assets.py
 	$(PYTHON) scripts/validate_staging_supply_chain_test.py
 	$(PYTHON) scripts/validate_eks_staging_workflow_test.py
 	$(PYTHON) scripts/validate_production_promotion_test.py

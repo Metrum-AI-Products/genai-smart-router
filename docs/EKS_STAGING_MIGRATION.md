@@ -11,18 +11,31 @@ The validation deployment was originally activated on 2026-07-14 with one
 `f52a918-linux-amd64` router replica, the private `smartrouter-gp3` EBS-backed
 state PVC, a fresh encrypted single-AZ PostgreSQL 18.3 `db.t4g.medium` RDS
 instance, and a dedicated staging caller token stored in AWS Secrets Manager
-as `smartrouter/staging/caller-token`. On 2026-08-06, public probes for
-`/healthz`, `/readyz`, `/docs/`, and `/version` all returned HTTP 503. Treat
-staging as unavailable until the repair lifecycle below completes and new
-evidence supersedes that observation. The required
-`genai-smart-router-eks-staging-delivery` IAM role was also absent at that
-checkpoint; issue #792 tracks the reviewed IAM/EKS RBAC prerequisite.
+as `smartrouter/staging/caller-token`. The 2026-08-06 HTTP 503 observation is
+historical. Recovery subsequently restored the Router: public `/readyz`
+returned HTTP 200 and unauthenticated `/v1/models` returned HTTP 401, proving
+both readiness and the caller-auth boundary. On 2026-08-09 the scoped RBAC
+reconciliation completed, protected delivery preflight passed, deletion verbs
+were denied, and issue #818 closed.
+
+Do not interpret those checks as full caller acceptance. Authenticated model
+discovery, OpenAI Responses, Anthropic Messages/tools, Codex CLI, and Claude
+Code CLI evidence still requires an authorized mechanism for the protected
+staging caller. Independent-operator validation also remains pending until its
+MFA/session prerequisite is available. These are validation blockers, not an
+instruction to repeat the obsolete delivery-role repair or declare the public
+staging endpoint unavailable.
 
 The image remains in the Metrum ECR repository and the runtime Secret remains
 Kubernetes-only. No customer traffic or EC2 usage history has moved. The
 staging browser-admin Basic credential is stored separately as
 `smartrouter/staging/basic-admin`; retain only its bcrypt hash in the runtime
 Secret.
+
+ECR cleanup is approval-driven. Never apply the `cleanup-approved-` tag to the
+live Deployment digest or any rollback-approved ReplicaSet digest during its
+retention window; the lifecycle policy expires only explicitly marked images
+after seven days.
 
 ## Current And Target Topology
 

@@ -55,6 +55,70 @@ STAGING_DELIVERY_ADMISSION = (
 )
 
 
+def resource_body(template: str, logical_name: str) -> str:
+    match = re.search(
+        rf"(?ms)^  {re.escape(logical_name)}:\n(?P<body>.*?)(?=^  \w|\Z)",
+        template,
+    )
+    if match is None:
+        raise ValueError(f"staging identity stack lacks {logical_name}")
+    return match.group("body")
+
+
+def validate_staging_ecr_contract(template: str) -> None:
+    repository = resource_body(template, "SmartRouterStagingImageRepository")
+    policy_match = re.search(
+        r"(?ms)^      LifecyclePolicy:\n        LifecyclePolicyText: \|\n(?P<json>(?:          .*\n)+?)(?=^      Tags:)",
+        repository,
+    )
+    if policy_match is None:
+        raise ValueError("staging ECR repository lacks a lifecycle policy")
+    policy_text = "\n".join(
+        line[10:] for line in policy_match.group("json").splitlines()
+    )
+    try:
+        rules = json.loads(policy_text)["rules"]
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("staging ECR lifecycle policy is invalid") from exc
+    if len(rules) != 1:
+        raise ValueError("staging ECR lifecycle may contain only explicit cleanup rules")
+    selection = rules[0].get("selection", {})
+    if (
+        rules[0].get("action") != {"type": "expire"}
+        or selection.get("tagStatus") != "tagged"
+        or selection.get("tagPrefixList") != ["cleanup-approved-"]
+        or selection.get("countType") != "sinceImagePushed"
+        or selection.get("countUnit") != "days"
+        or selection.get("countNumber") != 7
+    ):
+        raise ValueError(
+            "staging ECR expiration must target only explicitly cleanup-approved tags"
+        )
+
+    publisher = resource_body(template, "StagingImagePublisherRole")
+    statements = {
+        match.group("sid"): match.group("body")
+        for match in re.finditer(
+            r"(?ms)^              - Sid: (?P<sid>[^\n]+)\n(?P<body>.*?)(?=^              - Sid: |^      Tags:)",
+            publisher,
+        )
+    }
+    token = statements.get("AuthenticateToECR", "")
+    if (
+        "Action: ecr:GetAuthorizationToken" not in token
+        or 'Resource: "*"' not in token
+        or token.count("Action:") != 1
+    ):
+        raise ValueError(
+            "ECR wildcard resource must be bound to the token-only IAM statement"
+        )
+    for sid, body in statements.items():
+        if sid != "AuthenticateToECR" and 'Resource: "*"' in body:
+            raise ValueError(f"ECR publisher statement {sid} has forbidden wildcard scope")
+    if template.count('Resource: "*"') != 1:
+        raise ValueError("only the token-only ECR statement may use wildcard resource scope")
+
+
 def main() -> int:
     content = RBAC.read_text(encoding="utf-8")
     forbidden = ("resources: [\"secrets\"]", "resources: [\"deployments\"]", "resources: [\"serviceaccounts\"]", "kind: ClusterRole", "kind: ClusterRoleBinding", "pods/exec", "verbs: [\"*\"]")
@@ -319,8 +383,10 @@ def main() -> int:
         or any(value in lifecycle_group for value in ("Action: iam:", "Action: eks:", "Action: ecr:", "Action: secretsmanager:", 'Resource: "*"'))
     ):
         raise SystemExit("lifecycle operator group may only enter the lifecycle operator role without a dependency cycle")
-    if staging_identity.count('Resource: "*"') != 1 or "Action: ecr:GetAuthorizationToken" not in staging_identity:
-        raise SystemExit("only the required ECR authorization token action may use wildcard resource scope")
+    try:
+        validate_staging_ecr_contract(staging_identity)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     bootstrap_role_match = re.search(
         r"(?ms)^  StagingBootstrapRole:\n(?P<body>.*?)(?=^  \w|\Z)",
         staging_identity,

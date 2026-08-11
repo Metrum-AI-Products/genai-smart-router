@@ -104,7 +104,21 @@ test("admin report filter model splits global and tab filters without overlap", 
   expect(result.hasEveryGlobal).toBe(true);
   expect(result.hasEveryTab).toBe(true);
   expect(globalFilterFields.map(([name]) => name)).toContain("since");
-  expect(tabFilterFields.map(([name]) => name)).toEqual(["baseline", "status", "cache", "traffic_shape_bucket", "traffic_shape_scope", "sort", "direction", "limit"]);
+  expect(tabFilterFields.map(([name]) => name)).toEqual([
+    "baseline",
+    "status",
+    "cache",
+    "traffic_shape_bucket",
+    "traffic_shape_scope",
+    "sort",
+    "direction",
+    "limit",
+    "scope",
+    "release",
+    "state",
+    "type",
+    "date",
+  ]);
 });
 
 test("admin reports shell renders every tab with mocked report APIs", async ({ page }) => {
