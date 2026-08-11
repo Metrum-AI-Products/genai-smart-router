@@ -57,8 +57,11 @@ the private `smart-llmrouter` ECR repository, protected non-secret target
 Parameter, and EKS access entries mapped to the
 `genai-smart-router-eks-staging-delivery` and
 `genai-smart-router-eks-staging-bootstrap` Kubernetes groups. The repository
-has immutable tags, scan-on-push, retained resource deletion policy, seven-day
-untagged cleanup, and a thirty-image `staging-` tag retention window.
+has immutable tags, scan-on-push, and a retained resource deletion policy.
+Lifecycle expiration applies only to images carrying an explicit
+`cleanup-approved-` tag for at least seven days. Active deployment digests and
+rollback-approved ReplicaSet digests must remain unmarked, so age or image
+count alone cannot remove them during the supported rollback window.
 
 The required `AuthorizedOperatorRoleArn` remains one exact
 organization-controlled federated or SSO role. It may assume the target roles

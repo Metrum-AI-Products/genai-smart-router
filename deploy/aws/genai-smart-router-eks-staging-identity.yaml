@@ -170,23 +170,13 @@ Resources:
             "rules": [
               {
                 "rulePriority": 1,
-                "description": "Expire untagged image manifests after seven days.",
+                "description": "Expire only images explicitly tagged for approved cleanup after seven days.",
                 "selection": {
-                  "tagStatus": "untagged",
+                  "tagStatus": "tagged",
+                  "tagPrefixList": ["cleanup-approved-"],
                   "countType": "sinceImagePushed",
                   "countUnit": "days",
                   "countNumber": 7
-                },
-                "action": {"type": "expire"}
-              },
-              {
-                "rulePriority": 2,
-                "description": "Retain the newest thirty immutable tagged images.",
-                "selection": {
-                  "tagStatus": "tagged",
-                  "tagPrefixList": ["staging-"],
-                  "countType": "imageCountMoreThan",
-                  "countNumber": 30
                 },
                 "action": {"type": "expire"}
               }
