@@ -25,9 +25,9 @@ Tracked work item: `task.acme_eks_production_like_deploy`.
 | Lifecycle CLI | `metrum-fleetctl` only |
 | Image | clean reviewed `origin/main` pinned as `repository@sha256:...` |
 | Upstream | production-equivalent provider keys + model groups in a **separate** ACME Secret/bundle |
-| Identities | new ACME caller, browser-admin, license, PVC, dedicated RDS |
+| Identities | new ACME caller, browser-admin, license, and PVC |
 | TLS | existing `*.apps.metrum.ai` wildcard; exact Host rule only after activation |
-| Database | dedicated private RDS (`#555` default) unless an explicit SQLite exception is recorded |
+| Database | SQLite single-writer default; dedicated private RDS only with an explicit approved `database_profile` |
 
 ## Fail-closed sequence
 
@@ -45,7 +45,7 @@ Tracked work item: `task.acme_eks_production_like_deploy`.
 
 Checked-in placeholders contain no credentials, DSNs, tokens, or production host secrets:
 
-- Reference-only intent shape: [`testdata/acme-eks/manifest.placeholder.yaml`](../testdata/acme-eks/manifest.placeholder.yaml)
+- Signed reference-only intent shape: `metrum.ai/smartrouter-deployment-intent/v1` under protected storage
 - RDS admission JSON shape: [`testdata/acme-eks/rds-admission.placeholder.json`](../testdata/acme-eks/rds-admission.placeholder.json)
 
 Real protected files live only under mode-`0600` paths outside the repository (for example `/protected/acme/`).
@@ -55,16 +55,12 @@ Real protected files live only under mode-`0600` paths outside the repository (f
 ```bash
 # Read-only plan (no mutation)
 rtk ./bin/metrum-fleetctl plan \
-  --profile-ref aws-ssm:///approved/nonproduction/acme-profile \
-  --manifest /protected/acme/intent.yaml \
-  --intent-id <unique-acme-intent-id> \
+  --intent /protected/acme/acme2-deploy-intent.json \
   --output json
 
-# Deploy only with a still-valid scoped admission
+# Deploy only with a still-valid scoped admission when the signed intent selects RDS.
 rtk ./bin/metrum-fleetctl deploy \
-  --profile-ref aws-ssm:///approved/nonproduction/acme-profile \
-  --manifest /protected/acme/intent.yaml \
-  --intent-id <same-unique-acme-intent-id> \
+  --intent /protected/acme/acme2-deploy-intent.json \
   --rds-admission-file /protected/acme/rds-admission.json \
   --output json
 ```

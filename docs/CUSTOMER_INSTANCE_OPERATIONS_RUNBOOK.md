@@ -40,7 +40,7 @@ revokes access without changing the
 CLI or customer instance. See the credential-free profile and verification
 procedure in [EKS staging migration](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap).
 
-Issue #555 has one strict reference-only manifest, one normalized deployment-job registry, and typed AWS/EKS contracts in `metrum-fleetctl`. It provides deterministic plan, idempotent ownership-safe create/resume, classified state, activation-before-hostname, bounded status, explicit PVC/RDS retention, and exact-job deletion. Live `deploy`, deployment `status`, and `delete` accept only a protected `aws-ssm:///` profile reference; `file://` is limited to the local fake `plan` contract. Customer-local `smartrouterctl` has no Fleet, cloud, cross-customer, config-activation, key-rotation, or license-signing authority.
+Issue #555 has one strict signed reference-only deployment intent, one normalized deployment-job registry, and typed AWS/EKS contracts in `metrum-fleetctl`. It provides deterministic plan, idempotent ownership-safe create/resume, classified state, activation-before-hostname, bounded status, explicit PVC/RDS retention, and exact-job deletion. Live `plan`, `deploy`, and `delete` load the mode-`0600` signed intent, whose protected `aws-ssm:///` profile reference is authenticated before cloud access; `file://` is limited to the local fake `plan` contract. Deployment `status` accepts an exact job plus protected profile reference. Customer-local `smartrouterctl` has no Fleet, cloud, cross-customer, config-activation, key-rotation, or license-signing authority.
 
 The Fleet-only manifest carries `runtime_bundle_ref`, not raw runtime files. It
 is an `aws-ssm:///` or `aws-secretsmanager:///` reference without query data.

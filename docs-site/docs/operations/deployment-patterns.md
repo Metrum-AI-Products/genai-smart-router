@@ -73,14 +73,13 @@ Keep test provider keys separate from production BYOK credentials where policy r
 
 In binary tarballs, `metrum-fleetctl` is the sole #555 Fleet lifecycle
 authority. It owns deterministic `plan`, idempotent `deploy`, exact-job
-read-only `status`, and approved `delete` for a strict reference-only manifest.
-The one-release `metrum-smartrouterctl` compatibility command only reports the
-rename. Customer-local `smartrouterctl` safely validates/diffs local config,
-creates a caller token once in a new mode-`0600` file, and reports safe local
-status; it has no cloud or activation authority.
-
-Live Fleet lifecycle commands accept only a protected `aws-ssm:///`
-non-production profile; `file://` is limited to the local-fake plan contract.
+read-only `status`, and approved `delete`. `plan`, `deploy`, and `delete`
+consume one mode-`0600`, profile-key-signed, reference-only deployment intent;
+it binds the protected profile and immutable manifest without exposing resolved
+configuration. The one-release `metrum-smartrouterctl` compatibility command
+only reports the rename. Customer-local `smartrouterctl` safely validates/diffs
+local config, creates a caller token once in a new mode-`0600` file, and
+reports safe local status; it has no cloud or activation authority.
 Plan is side-effect-free. The default SQLite path is namespace, network policy,
 protected runtime-secret binding, license binding, state PVC, one-replica
 single-container Router, activation, and hostname; it never provisions or
@@ -91,14 +90,14 @@ failure can retry from its exact stage. An unknown outcome for a PVC or
 dedicated-RDS action becomes `operator_required` rather than guessing whether
 creation should repeat.
 
-The Fleet manifest accepts one protected `runtime_bundle_ref`, never raw
-runtime configuration or credentials. Its resolved JSON payload is validated
-only in memory and contains exactly `config.yaml` and `env.json`; the owned
-`router-runtime` Secret exposes those two files read-only at `/app/config`.
-The license remains in a separate `router-license` Secret. Plans, status, and
-errors retain neither protected references nor bundle values.
-
-Dedicated-RDS is optional: the manifest must select the exact approved profile.
+The signed intent manifest accepts one protected `runtime_bundle_ref`, never
+raw runtime configuration or credentials. Its resolved JSON payload is
+validated only in memory and contains exactly `config.yaml` and `env.json`; the
+owned `router-runtime` Secret exposes those two files read-only at
+`/app/config`. The license remains in a separate `router-license` Secret.
+Plans, status, and errors retain neither protected references nor bundle
+values. Dedicated-RDS is optional: the manifest must select the exact approved
+profile.
 Its plan retains only deterministic database ID/profile evidence—never a DSN,
 endpoint, credential, secret reference, or raw adapter response. The typed
 adapter enforces private/encrypted/no-proxy policy, ownership tags, and
