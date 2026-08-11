@@ -22,10 +22,12 @@ import (
 
 const (
 	TenantDeploymentManifestAPIVersion = "metrum.ai/smartrouter-deployment/v1"
+	TenantDeploymentIntentAPIVersion   = "metrum.ai/smartrouter-deployment-intent/v1"
 	TenantDeploymentProfileAPIVersion  = "metrum.ai/smartrouter-profile/v1"
 	TenantDeletionApprovalAPIVersion   = "metrum.ai/smartrouter-delete-approval/v1"
 	TenantReleaseLatestApproved        = "latest-approved"
 	maxTenantDeploymentDocumentBytes   = 64 << 10
+	maxTenantDeploymentIntentLifetime  = 24 * time.Hour
 )
 
 var (
@@ -61,6 +63,20 @@ type TenantDeploymentManifest struct {
 type TenantDeploymentLicense struct {
 	RequestRef string `json:"request_ref" yaml:"request_ref"`
 	Validity   string `json:"validity" yaml:"validity"`
+}
+
+// TenantDeploymentIntent is the one sealed input to Fleet deployment commands.
+// It binds protected references to one immutable requested lifecycle operation.
+// The document may contain references, but never the values they resolve to.
+type TenantDeploymentIntent struct {
+	APIVersion string                   `json:"api_version" yaml:"api_version"`
+	IntentID   string                   `json:"intent_id" yaml:"intent_id"`
+	IssuerRole string                   `json:"issuer_role" yaml:"issuer_role"`
+	IssuedAt   time.Time                `json:"issued_at" yaml:"issued_at"`
+	ExpiresAt  time.Time                `json:"expires_at" yaml:"expires_at"`
+	ProfileRef string                   `json:"profile_ref" yaml:"profile_ref"`
+	Manifest   TenantDeploymentManifest `json:"manifest" yaml:"manifest"`
+	Signature  string                   `json:"signature" yaml:"signature"`
 }
 
 // TenantDeploymentProfile is protected deployment policy, not caller intent.
@@ -138,6 +154,53 @@ func LoadTenantDeploymentManifest(path string, stdin io.Reader) (TenantDeploymen
 	return manifest, nil
 }
 
+// LoadTenantDeploymentIntent loads and authenticates one sealed Fleet intent.
+// Local file:// profiles are accepted only for test fixtures; live callers must
+// use the protected aws-ssm profile reference enforced by the Fleet command.
+func LoadTenantDeploymentIntent(path string, now time.Time) (TenantDeploymentIntent, TenantDeploymentProfile, error) {
+	if path == "-" {
+		return TenantDeploymentIntent{}, TenantDeploymentProfile{}, errors.New("deployment intent must be a protected regular file")
+	}
+	data, err := readDeploymentDocument(path, nil, true)
+	if err != nil {
+		return TenantDeploymentIntent{}, TenantDeploymentProfile{}, errors.New("read deployment intent")
+	}
+	var intent TenantDeploymentIntent
+	if err := decodeStrictDeploymentDocument(data, path, &intent); err != nil {
+		return TenantDeploymentIntent{}, TenantDeploymentProfile{}, errors.New("deployment intent schema is invalid")
+	}
+	if err := validateTenantDeploymentIntent(intent, data, now); err != nil {
+		return TenantDeploymentIntent{}, TenantDeploymentProfile{}, err
+	}
+	profile, err := LoadTenantDeploymentProfile(intent.ProfileRef)
+	if err != nil {
+		return TenantDeploymentIntent{}, TenantDeploymentProfile{}, errors.New("load deployment profile for intent")
+	}
+	payload, err := TenantDeploymentIntentSigningPayload(intent)
+	if err != nil || verifyLifecycleApprovalSignature(profile, intent.IssuerRole, intent.Signature, payload) != nil {
+		return TenantDeploymentIntent{}, TenantDeploymentProfile{}, errors.New("deployment intent is not authenticated")
+	}
+	return intent, profile, nil
+}
+
+// TenantDeploymentIntentSigningPayload returns the exact canonical payload an
+// authorized control-plane issuer signs before handing the intent to Fleet.
+func TenantDeploymentIntentSigningPayload(intent TenantDeploymentIntent) ([]byte, error) {
+	return json.Marshal(struct {
+		APIVersion string                   `json:"api_version"`
+		IntentID   string                   `json:"intent_id"`
+		IssuerRole string                   `json:"issuer_role"`
+		IssuedAt   time.Time                `json:"issued_at"`
+		ExpiresAt  time.Time                `json:"expires_at"`
+		ProfileRef string                   `json:"profile_ref"`
+		Manifest   TenantDeploymentManifest `json:"manifest"`
+	}{
+		APIVersion: intent.APIVersion, IntentID: intent.IntentID, IssuerRole: intent.IssuerRole,
+		IssuedAt: intent.IssuedAt, ExpiresAt: intent.ExpiresAt, ProfileRef: intent.ProfileRef,
+		Manifest: intent.Manifest,
+	})
+}
+
 func LoadTenantDeploymentProfile(ref string) (TenantDeploymentProfile, error) {
 	parsed, err := url.Parse(ref)
 	if err != nil || parsed.Scheme == "" {
@@ -167,6 +230,44 @@ func LoadTenantDeploymentProfile(ref string) (TenantDeploymentProfile, error) {
 		return TenantDeploymentProfile{}, err
 	}
 	return profile, nil
+}
+func validateTenantDeploymentIntent(intent TenantDeploymentIntent, raw []byte, now time.Time) error {
+	if intent.APIVersion != TenantDeploymentIntentAPIVersion {
+		return fmt.Errorf("api_version must be %q", TenantDeploymentIntentAPIVersion)
+	}
+	for name, value := range map[string]string{"intent_id": intent.IntentID, "issuer_role": intent.IssuerRole} {
+		if err := validateDeploymentID(name, value); err != nil {
+			return err
+		}
+	}
+	parsed, err := url.Parse(intent.ProfileRef)
+	if err != nil || parsed.Scheme == "" || parsed.Host != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("profile_ref must be a protected aws-ssm:/// reference or a local file:// test fixture")
+	}
+	if parsed.Scheme == "aws-ssm" && !referencePattern.MatchString(intent.ProfileRef) {
+		return errors.New("profile_ref must be a protected aws-ssm:/// reference or a local file:// test fixture")
+	}
+	if parsed.Scheme == "file" && parsed.Path == "" {
+		return errors.New("profile_ref must be a protected aws-ssm:/// reference or a local file:// test fixture")
+	}
+	if parsed.Scheme != "aws-ssm" && parsed.Scheme != "file" {
+		return errors.New("profile_ref must be a protected aws-ssm:/// reference or a local file:// test fixture")
+	}
+	if intent.IssuedAt.IsZero() || intent.ExpiresAt.IsZero() || !intent.ExpiresAt.After(intent.IssuedAt) ||
+		intent.ExpiresAt.Sub(intent.IssuedAt) > maxTenantDeploymentIntentLifetime || !intent.ExpiresAt.After(now.UTC()) {
+		return errors.New("deployment intent lifetime is invalid or expired")
+	}
+	manifestRaw, err := json.Marshal(intent.Manifest)
+	if err != nil {
+		return errors.New("deployment intent manifest cannot be canonicalized")
+	}
+	if err := validateTenantDeploymentManifest(intent.Manifest, manifestRaw); err != nil {
+		return err
+	}
+	if _, err := base64.StdEncoding.DecodeString(intent.Signature); err != nil {
+		return errors.New("deployment intent signature is malformed")
+	}
+	return rejectSecretShapedDeploymentData(raw)
 }
 
 func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantDeploymentManifest, intentID string) (TenantDeploymentPlan, error) {

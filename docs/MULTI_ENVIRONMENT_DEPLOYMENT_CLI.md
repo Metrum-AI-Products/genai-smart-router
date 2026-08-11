@@ -17,14 +17,15 @@ trusted administration host.
 
 ## Authority and secret boundary
 
-The manifest is reference-only. It never accepts or emits provider keys, raw
-Router tokens or hashes, license payloads, DSNs, kubeconfigs, full
-configuration, secret values, or raw adapter errors. Protected profiles carry
+The signed deployment intent is reference-only. It never accepts or emits
+provider keys, raw Router tokens or hashes, license payloads, DSNs, kubeconfigs,
+full configuration, secret values, or raw adapter errors. Its mode-`0600` JSON
+contains an opaque `intent_id`, issuer/timestamps/signature, protected
+`profile_ref`, and the immutable deployment manifest. Protected profiles carry
 non-secret policy: account/region/cluster, immutable release digest, approved
 profiles, storage or RDS sizing, ingress policy, and the
-`lifecycle_approval_public_key` for externally issued admissions. Live Fleet
-commands resolve profiles only from `aws-ssm:///`; `file://` is limited to the
-local-fake `plan` contract.
+`lifecycle_approval_public_key`. Live Fleet commands resolve profiles only from
+`aws-ssm:///`; `file://` is limited to the local-fake `plan` contract.
 
 Every Fleet status is bounded scalar evidence: job/instance/profile IDs,
 environment, region/cluster, namespace, release/config revision, lifecycle
@@ -32,29 +33,54 @@ state, safe error class, retryability, action progress, and hostname only once
 activation succeeds. It never contains DSNs, endpoints other than the
 activated caller hostname, credentials, references, or configuration.
 
-The manifest's `runtime_bundle_ref` is the sole runtime configuration input.
-It accepts only an `aws-ssm:///` or `aws-secretsmanager:///` reference without
-query data; it never accepts raw configuration, credentials, or environment
-values. The resolver handles its protected JSON payload only in memory. The
-payload has exactly `config.yaml` (a YAML mapping) and `env.json` (a JSON
-string map); malformed, additional, or empty fields fail without echoing
-protected data. The adapter writes an owned `router-runtime` Secret with those
-two exact keys and mounts it read-only at `/app/config`. `router-license`
-continues to be a separate `license.json` Secret and mount.
+The intent manifest's `runtime_bundle_ref` is the sole runtime configuration
+input. It accepts only an `aws-ssm:///` or `aws-secretsmanager:///` reference
+without query data; it never accepts raw configuration, credentials, or
+environment values. The resolver handles its protected JSON payload only in
+memory. The payload has exactly `config.yaml` (a YAML mapping) and `env.json`
+(a JSON string map); malformed, additional, or empty fields fail without
+echoing protected data. The adapter writes an owned `router-runtime` Secret
+with those two exact keys and mounts it read-only at `/app/config`.
+`router-license` continues to be a separate `license.json` Secret and mount.
+The control plane writes this file outside the repository and signs the
+canonical fields with the profile approval key:
+
+```json
+{
+  "api_version": "metrum.ai/smartrouter-deployment-intent/v1",
+  "intent_id": "acme2-initial",
+  "issuer_role": "fleet-lifecycle-admin",
+  "issued_at": "2026-08-11T12:00:00Z",
+  "expires_at": "2026-08-11T13:00:00Z",
+  "profile_ref": "aws-ssm:///approved/nonproduction/acme2-profile",
+  "manifest": {
+    "api_version": "metrum.ai/smartrouter-deployment/v1",
+    "customer_id": "acme2",
+    "stage": "nonproduction",
+    "release": "latest-approved",
+    "resource_profile": "small",
+    "state_profile": "sqlite-rwo-small",
+    "runtime_bundle_ref": "aws-secretsmanager:///tenants/acme2/runtime",
+    "config_revision": "acme2-r1",
+    "license": {
+      "request_ref": "aws-ssm:///tenants/acme2/license-request",
+      "validity": "168h"
+    }
+  },
+  "signature": "<base64-ed25519-signature>"
+}
+```
+
 
 ## Non-production lifecycle
 
 ```bash
 metrum-fleetctl plan \
-  --profile-ref aws-ssm:///approved/nonproduction/profile \
-  --manifest deployment.yaml \
-  --intent-id intent-a \
+  --intent /protected/acme2-deploy-intent.json \
   --output json
 
 metrum-fleetctl deploy \
-  --profile-ref aws-ssm:///approved/nonproduction/profile \
-  --manifest deployment.yaml \
-  --intent-id intent-a \
+  --intent /protected/acme2-deploy-intent.json \
   --registry /protected/tenant-deployments.sqlite \
   --output json
 
@@ -75,15 +101,13 @@ impossible before activation. Reuse the same intent to resume; use a new
 immutable config revision/intent to reconcile the same instance. Unknown RDS
 or PVC outcomes require operator reconciliation.
 
-Deletion requires the matching manifest, intent, and a mode-`0600`, expiring,
+Deletion requires the same signed intent and a mode-`0600`, expiring,
 job-bound approval. `retain_pvc` controls PVC retention; `retain_database`
 controls dedicated-RDS retention. Deletion never guesses ownership.
 
 ```bash
 metrum-fleetctl delete \
-  --profile-ref aws-ssm:///approved/nonproduction/profile \
-  --manifest deployment.yaml \
-  --intent-id intent-a \
+  --intent /protected/acme2-deploy-intent.json \
   --registry /protected/tenant-deployments.sqlite \
   --confirm-file /protected/delete-approval.json \
   --output json
@@ -116,17 +140,15 @@ content, signature, expiry, and exact binding to the non-production profile,
 deterministic job ID/intent, namespace, database profile, and manifest digest
 before opening the lifecycle registry or AWS/EKS clients.
 
-After running the existing side-effect-free `plan`, an authorized maintainer
-obtains the scoped document outside Fleet and passes it only to the existing
-`deploy` verb. The delivery and admission-issuer sessions are separately scoped
-even when one qualified maintainer performs both roles; see [Admission issuance
-under a single maintainer](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#admission-issuance-under-a-single-maintainer).
+After running the existing side-effect-free `plan` with the signed intent, an
+authorized maintainer obtains the scoped document outside Fleet and passes it
+only to the existing `deploy` verb. The delivery and admission-issuer sessions
+are separately scoped even when one qualified maintainer performs both roles;
+see [Admission issuance under a single maintainer](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#admission-issuance-under-a-single-maintainer).
 
 ```bash
 metrum-fleetctl deploy \
-  --profile-ref aws-ssm:///approved/nonproduction/profile \
-  --manifest deployment.yaml \
-  --intent-id intent-a \
+  --intent /protected/acme2-deploy-intent.json \
   --rds-admission-file /protected/disposable-e2e-rds-admission.json \
   --registry /protected/tenant-deployments.sqlite \
   --output json
@@ -150,6 +172,11 @@ metrum-fleetctl smoke run activation --profile-ref aws-ssm:///approved/nonproduc
 
 Both commands are bounded status readbacks; they do not create resources or
 activate configuration.
+
+The packaged disposable EKS E2E requires `EKS_E2E_INTENT` and
+`EKS_E2E_DELETE_APPROVAL_FILE`. SQLite intents require no RDS admission.
+Only intents whose manifest selects `database_profile` additionally require
+`EKS_E2E_RDS_ADMISSION_FILE`.
 
 ## Validation
 

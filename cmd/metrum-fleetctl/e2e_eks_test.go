@@ -5,21 +5,34 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"smart-llmrouter/internal/router"
 )
 
+func requiresDisposableRDSAdmission(manifest router.TenantDeploymentManifest) bool {
+	return manifest.DatabaseProfile != ""
+}
+
 // TestDisposableEKSPackagedCLI is intentionally environment-gated. CI can run
-// it only with an approved disposable EKS profile, reference-only manifest,
-// external scoped RDS admission, and separately authorized deletion approval.
-// It exercises the packaged binary and always attempts job-bound cleanup after
-// deploy begins, including when deployment itself fails.
+// it only with an approved disposable EKS profile embedded in a signed,
+// reference-only intent, external scoped RDS admission, and separately
+// authorized deletion approval. It exercises the packaged binary and always
+// attempts job-bound cleanup after deploy begins, including when deployment
+// itself fails.
 func TestDisposableEKSPackagedCLI(t *testing.T) {
-	profile := os.Getenv("EKS_E2E_PROFILE_REF")
-	manifest := os.Getenv("EKS_E2E_MANIFEST")
-	intent := os.Getenv("EKS_E2E_INTENT_ID")
+	intentPath := os.Getenv("EKS_E2E_INTENT")
 	rdsAdmissionFile := os.Getenv("EKS_E2E_RDS_ADMISSION_FILE")
 	deleteApprovalFile := os.Getenv("EKS_E2E_DELETE_APPROVAL_FILE")
-	if profile == "" || manifest == "" || intent == "" || rdsAdmissionFile == "" || deleteApprovalFile == "" {
-		t.Skip("set EKS_E2E_PROFILE_REF, EKS_E2E_MANIFEST, EKS_E2E_INTENT_ID, EKS_E2E_RDS_ADMISSION_FILE, and EKS_E2E_DELETE_APPROVAL_FILE for disposable EKS/RDS E2E")
+	if intentPath == "" || deleteApprovalFile == "" {
+		t.Skip("set EKS_E2E_INTENT and EKS_E2E_DELETE_APPROVAL_FILE for disposable EKS E2E")
+	}
+	intent, _, err := router.LoadTenantDeploymentIntent(intentPath, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("load disposable EKS intent: %v", err)
+	}
+	if requiresDisposableRDSAdmission(intent.Manifest) && rdsAdmissionFile == "" {
+		t.Skip("set EKS_E2E_RDS_ADMISSION_FILE for a dedicated-RDS disposable EKS E2E")
 	}
 	binary := filepath.Join(t.TempDir(), "metrum-fleetctl")
 	if output, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
@@ -27,7 +40,7 @@ func TestDisposableEKSPackagedCLI(t *testing.T) {
 	}
 	registry := filepath.Join(t.TempDir(), "lifecycle.sqlite")
 	run := func(command string, extra ...string) ([]byte, error) {
-		args := []string{command, "--profile-ref", profile, "--manifest", manifest, "--intent-id", intent, "--registry", registry, "--output", "json"}
+		args := []string{command, "--intent", intentPath, "--registry", registry, "--output", "json"}
 		args = append(args, extra...)
 		return exec.Command(binary, args...).CombinedOutput()
 	}

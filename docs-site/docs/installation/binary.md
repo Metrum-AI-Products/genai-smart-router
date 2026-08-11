@@ -34,12 +34,14 @@ smart-llmrouter-<version>-linux-<arch>/
 Use `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts. Release validation checks the package binaries against the selected architecture and rejects unexpected files, deployment-private notes, raw secrets, local state, and macOS archive metadata.
 
 `metrum-fleetctl` runs only from an extracted binary package on a separate
-trusted administration host. Its default lifecycle uses SQLite state with one
-Router container and one replica; it neither provisions nor binds RDS. A
-dedicated-RDS branch requires an explicit approved `database_profile`. Its
-first disposable non-production E2E also requires an external, expiring,
-mode-`0600` admission file that Fleet validates and consumes but never creates.
-Production profiles remain rejected.
+trusted administration host. Its `plan`, `deploy`, and `delete` commands
+consume one mode-`0600`, profile-key-signed deployment-intent JSON file; it
+contains only references to the protected profile, runtime bundle, and license.
+Its default lifecycle uses SQLite state with one Router container and one
+replica; it neither provisions nor binds RDS. A dedicated-RDS branch requires
+an explicit approved `database_profile` and an external, expiring, mode-`0600`
+admission file that Fleet validates and consumes but never creates. Production
+profiles remain rejected.
 
 Create a dedicated service account, then create deployment-owned directories:
 
@@ -109,12 +111,13 @@ licenses, or access cloud/Fleet/cross-customer systems.
 
 `metrum-fleetctl` is the binary-package-only #555 Fleet lifecycle authority.
 It owns reference-only `plan`, idempotent `deploy`, exact-job `status`, and
-approved `delete`; it is not included in the standard Docker image. Dedicated
-RDS plans contain only safe scalar identifiers. The first disposable
-non-production E2E may use a strictly scoped external admission file; after
-its evidence exists, one qualified reviewer records the required review before
-a production-like non-production rehearsal. A single-operator team may
-self-review. Production profiles are rejected until #518.
+approved `delete`; each mutating or planning command accepts a signed
+reference-only deployment intent, and it is not included in the standard Docker
+image. Dedicated RDS plans contain only safe scalar identifiers. The first
+disposable non-production E2E may use a strictly scoped external admission
+file; after its evidence exists, one qualified reviewer records the required
+review before a production-like non-production rehearsal. A single-operator
+team may self-review. Production profiles are rejected until #518.
 
 `metrum-smartrouterctl` is a one-release compatibility command that only
 reports the rename to `metrum-fleetctl`.

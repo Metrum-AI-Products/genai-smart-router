@@ -4,32 +4,29 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"io"
-	"os"
 	"smart-llmrouter/internal/router"
 	"strings"
 	"time"
 )
 
 type deploymentCommandFlags struct {
-	profileRef *string
-	manifest   *string
-	intentID   *string
-	registry   *string
-	output     *string
+	intent   *string
+	registry *string
+	output   *string
 }
 
-func addDeploymentFlags(fs *flag.FlagSet, requireManifest bool) deploymentCommandFlags {
-	manifestDefault := ""
-	if requireManifest {
-		manifestDefault = "-"
-	}
+type deploymentInput struct {
+	plan       router.TenantDeploymentPlan
+	profile    router.TenantDeploymentProfile
+	profileRef string
+	intentID   string
+}
+
+func addDeploymentFlags(fs *flag.FlagSet) deploymentCommandFlags {
 	return deploymentCommandFlags{
-		profileRef: fs.String("profile-ref", "", "protected Fleet profile reference; plan local-fake contract also accepts file://"),
-		manifest:   fs.String("manifest", manifestDefault, "strict reference-only deployment manifest path or - for stdin"),
-		intentID:   fs.String("intent-id", "", "caller-supplied idempotency intent identifier"),
-		registry:   fs.String("registry", "tenant-deployments.sqlite", "private local deployment lifecycle SQLite path"),
-		output:     fs.String("output", "json", "safe output format (json)"),
+		intent:   fs.String("intent", "", "mode-0600, signed, reference-only Fleet deployment intent JSON file"),
+		registry: fs.String("registry", "tenant-deployments.sqlite", "private local deployment lifecycle SQLite path"),
+		output:   fs.String("output", "json", "safe output format (json)"),
 	}
 }
 
@@ -48,47 +45,39 @@ func requireProtectedFleetProfileReference(value string) {
 	}
 }
 
-func loadDeploymentPlan(flags deploymentCommandFlags, stdin io.Reader) router.TenantDeploymentPlan {
-	if strings.TrimSpace(*flags.profileRef) == "" {
-		die("profile-ref is required")
+func loadDeploymentInput(flags deploymentCommandFlags) deploymentInput {
+	if strings.TrimSpace(*flags.intent) == "" {
+		die("intent is required")
 	}
-	if strings.TrimSpace(*flags.manifest) == "" {
-		die("manifest is required")
-	}
-	profile, err := router.LoadTenantDeploymentProfile(*flags.profileRef)
+	intent, profile, err := router.LoadTenantDeploymentIntent(*flags.intent, time.Now().UTC())
 	if err != nil {
-		die("load protected profile: %v", err)
+		die("load signed deployment intent: %v", err)
 	}
-	manifest, err := router.LoadTenantDeploymentManifest(*flags.manifest, stdin)
-	if err != nil {
-		die("load deployment manifest: %v", err)
-	}
-	plan, err := router.BuildTenantDeploymentPlan(profile, manifest, *flags.intentID)
+	plan, err := router.BuildTenantDeploymentPlan(profile, intent.Manifest, intent.IntentID)
 	if err != nil {
 		die("build deployment plan: %v", err)
 	}
-	return plan
+	return deploymentInput{plan: plan, profile: profile, profileRef: intent.ProfileRef, intentID: intent.IntentID}
 }
 
 func deploymentPlan(args []string) {
 	fs := flag.NewFlagSet("plan", flag.ExitOnError)
-	flags := addDeploymentFlags(fs, true)
+	flags := addDeploymentFlags(fs)
 	fs.Parse(args)
 	requireJSONOutput(*flags.output)
-	plan := loadDeploymentPlan(flags, os.Stdin)
-	writeJSON(plan)
+	input := loadDeploymentInput(flags)
+	writeJSON(input.plan)
 }
 
 func deploymentDeploy(args []string) {
 	fs := flag.NewFlagSet("deploy", flag.ExitOnError)
-	flags := addDeploymentFlags(fs, true)
+	flags := addDeploymentFlags(fs)
 	rdsAdmissionFile := fs.String("rds-admission-file", "", "mode-0600, externally issued, expiring dedicated-RDS disposable-E2E admission JSON file")
 	fs.Parse(args)
 	requireJSONOutput(*flags.output)
-	requireProtectedFleetProfileReference(*flags.profileRef)
-	plan := loadDeploymentPlan(flags, os.Stdin)
-	profile := routerProfileForPlan(flags)
-	_, adapters, err := deploymentAdaptersForPlan(context.Background(), profile, *flags.profileRef, plan, *rdsAdmissionFile, plan.DatabaseID != "")
+	input := loadDeploymentInput(flags)
+	requireProtectedFleetProfileReference(input.profileRef)
+	_, adapters, err := deploymentAdaptersForPlan(context.Background(), input.profile, input.profileRef, input.plan, *rdsAdmissionFile, input.plan.DatabaseID != "")
 	if err != nil {
 		die("configure AWS/EKS deployment adapters: %v", err)
 	}
@@ -101,7 +90,7 @@ func deploymentDeploy(args []string) {
 	if err != nil {
 		die("configure deployment engine: %v", err)
 	}
-	status, err := engine.Deploy(context.Background(), plan, *flags.intentID)
+	status, err := engine.Deploy(context.Background(), input.plan, input.intentID)
 	if err != nil {
 		writeJSON(status)
 		die("deploy failed: %v", err)
@@ -144,7 +133,7 @@ func deploymentStatus(args []string) {
 
 func deploymentDelete(args []string) {
 	fs := flag.NewFlagSet("delete", flag.ExitOnError)
-	flags := addDeploymentFlags(fs, true)
+	flags := addDeploymentFlags(fs)
 	confirmFile := fs.String("confirm-file", "", "mode-0600, job-bound, expiring deletion approval JSON file")
 	rdsAdmissionFile := fs.String("rds-admission-file", "", "mode-0600, externally issued, expiring dedicated-RDS disposable-E2E admission JSON file")
 	fs.Parse(args)
@@ -152,15 +141,14 @@ func deploymentDelete(args []string) {
 	if *confirmFile == "" {
 		die("confirm-file is required")
 	}
-	requireProtectedFleetProfileReference(*flags.profileRef)
-	plan := loadDeploymentPlan(flags, os.Stdin)
-	profile := routerProfileForPlan(flags)
-	approval, approvalSHA256, err := router.LoadTenantDeletionApproval(*confirmFile, profile, time.Now().UTC())
+	input := loadDeploymentInput(flags)
+	requireProtectedFleetProfileReference(input.profileRef)
+	approval, approvalSHA256, err := router.LoadTenantDeletionApproval(*confirmFile, input.profile, time.Now().UTC())
 	if err != nil {
 		die("load deletion approval: %v", err)
 	}
-	requireRDSAdmission := plan.DatabaseID != "" && !approval.RetainDatabase
-	_, adapters, err := deploymentAdaptersForPlan(context.Background(), profile, *flags.profileRef, plan, *rdsAdmissionFile, requireRDSAdmission)
+	requireRDSAdmission := input.plan.DatabaseID != "" && !approval.RetainDatabase
+	_, adapters, err := deploymentAdaptersForPlan(context.Background(), input.profile, input.profileRef, input.plan, *rdsAdmissionFile, requireRDSAdmission)
 	if err != nil {
 		die("configure AWS/EKS deployment adapters: %v", err)
 	}
@@ -173,7 +161,7 @@ func deploymentDelete(args []string) {
 	if err != nil {
 		die("configure deployment engine: %v", err)
 	}
-	status, err := engine.Delete(context.Background(), plan, approval, approvalSHA256)
+	status, err := engine.Delete(context.Background(), input.plan, approval, approvalSHA256)
 	if err != nil {
 		if status.JobID != "" {
 			writeJSON(status)
@@ -181,14 +169,6 @@ func deploymentDelete(args []string) {
 		die("delete failed: %v", err)
 	}
 	writeJSON(status)
-}
-
-func routerProfileForPlan(flags deploymentCommandFlags) router.TenantDeploymentProfile {
-	profile, err := router.LoadTenantDeploymentProfile(*flags.profileRef)
-	if err != nil {
-		die("load protected profile: %v", err)
-	}
-	return profile
 }
 
 func deploymentAdaptersForPlan(ctx context.Context, profile router.TenantDeploymentProfile, profileRef string, plan router.TenantDeploymentPlan, admissionFile string, requireRDSAdmission bool) (*router.EKSTenantDeploymentAdapters, router.TenantDeploymentAdapters, error) {

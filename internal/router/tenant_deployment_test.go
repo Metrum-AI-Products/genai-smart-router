@@ -72,6 +72,113 @@ func signDeletionApproval(t *testing.T, profile TenantDeploymentProfile, approva
 	approval.Signature = base64.StdEncoding.EncodeToString(ed25519.Sign(testLifecycleApprovalPrivateKey(t), payload))
 }
 
+func writeSignedDeploymentIntent(t *testing.T, path, profileRef string, manifest TenantDeploymentManifest, intentID string, issuedAt, expiresAt time.Time) {
+	t.Helper()
+	intent := TenantDeploymentIntent{
+		APIVersion: TenantDeploymentIntentAPIVersion,
+		IntentID:   intentID,
+		IssuerRole: "fleet-lifecycle-admin",
+		IssuedAt:   issuedAt,
+		ExpiresAt:  expiresAt,
+		ProfileRef: profileRef,
+		Manifest:   manifest,
+	}
+	payload, err := TenantDeploymentIntentSigningPayload(intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent.Signature = base64.StdEncoding.EncodeToString(ed25519.Sign(testLifecycleApprovalPrivateKey(t), payload))
+	data, err := json.Marshal(intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTenantDeploymentIntentAuthenticatesOneReferenceOnlyFleetInput(t *testing.T) {
+	root := filepath.Join("..", "..", "testdata", "tenant-deployment")
+	dir := t.TempDir()
+	profilePath := filepath.Join(dir, "profile.yaml")
+	profileBytes, err := os.ReadFile(filepath.Join(root, "profile.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(profilePath, profileBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := LoadTenantDeploymentManifest(filepath.Join(root, "manifest.yaml"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
+	intentPath := filepath.Join(dir, "intent.json")
+	writeSignedDeploymentIntent(t, intentPath, "file://"+profilePath, manifest, "intent-a", now.Add(-time.Minute), now.Add(time.Hour))
+
+	intent, profile, err := LoadTenantDeploymentIntent(intentPath, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildTenantDeploymentPlan(profile, intent.Manifest, intent.IntentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.ConfigRevision != manifest.ConfigRevision || strings.Contains(string(mustJSON(t, plan)), manifest.RuntimeBundleRef) {
+		t.Fatalf("authenticated intent did not preserve safe plan boundary: %+v", plan)
+	}
+
+	data, err := os.ReadFile(intentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(data), "revision-17", "revision-18", 1)
+	if err := os.WriteFile(intentPath, []byte(tampered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LoadTenantDeploymentIntent(intentPath, now); err == nil || !strings.Contains(err.Error(), "not authenticated") {
+		t.Fatalf("tampered intent accepted: %v", err)
+	}
+}
+
+func TestTenantDeploymentIntentRejectsExpiredOrUnprotectedInput(t *testing.T) {
+	root := filepath.Join("..", "..", "testdata", "tenant-deployment")
+	dir := t.TempDir()
+	profilePath := filepath.Join(dir, "profile.yaml")
+	profileBytes, err := os.ReadFile(filepath.Join(root, "profile.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(profilePath, profileBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := LoadTenantDeploymentManifest(filepath.Join(root, "manifest.yaml"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
+	intentPath := filepath.Join(dir, "intent.json")
+	writeSignedDeploymentIntent(t, intentPath, "file://"+profilePath, manifest, "intent-a", now.Add(-2*time.Hour), now.Add(-time.Hour))
+	if _, _, err := LoadTenantDeploymentIntent(intentPath, now); err == nil || !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("expired intent accepted: %v", err)
+	}
+	if err := os.Chmod(intentPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LoadTenantDeploymentIntent(intentPath, now); err == nil {
+		t.Fatal("unprotected intent accepted")
+	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
 func openTenantDeploymentTestEngine(t *testing.T) (*TenantDeploymentStore, *FakeTenantDeploymentAdapters, *TenantDeploymentEngine, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "deployments.sqlite")
