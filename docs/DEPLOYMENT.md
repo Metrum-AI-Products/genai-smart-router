@@ -23,6 +23,7 @@ bin/router-migrate
 bin/smartrouterctl
 bin/metrum-fleetctl
 bin/metrum-smartrouterctl  # one-release rename notice
+bin/metrum-fleet-sign
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts

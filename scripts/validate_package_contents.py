@@ -18,7 +18,7 @@ BINARY_PACKAGE_FILES = {
     "bin/router",
     "bin/router-token-gen",
     "bin/router-usage-report", "bin/router-migrate", "bin/smartrouterctl",
-    "bin/metrum-fleetctl", "bin/metrum-smartrouterctl",
+    "bin/metrum-fleetctl", "bin/metrum-smartrouterctl", "bin/metrum-fleet-sign",
     "config/config.example.yaml",
     "config/env.example.json",
     "config/scripts/router.ts",
@@ -34,7 +34,16 @@ DOCKER_PACKAGE_FILES = {
     "config/env.example.json",
     "config/scripts/router.ts",
 }
-PACKAGE_BINARIES = {"bin/router", "bin/router-token-gen", "bin/router-usage-report", "bin/router-migrate", "bin/smartrouterctl", "bin/metrum-fleetctl", "bin/metrum-smartrouterctl"}
+PACKAGE_BINARIES = {
+    "bin/router",
+    "bin/router-token-gen",
+    "bin/router-usage-report",
+    "bin/router-migrate",
+    "bin/smartrouterctl",
+    "bin/metrum-fleetctl",
+    "bin/metrum-smartrouterctl",
+    "bin/metrum-fleet-sign",
+}
 EXPECTED_ELF_MACHINE = {"amd64": 62, "arm64": 183}
 DOCKER_IMAGE_RE = re.compile(r"^images/smart-llmrouter-.+-linux-(amd64|arm64)\.tar$")
 FORBIDDEN_IMAGE_PATH_RE = re.compile(
@@ -43,11 +52,26 @@ FORBIDDEN_IMAGE_PATH_RE = re.compile(
     r"app/(?:docs/|docs-site/|internal/|cmd/|go\.mod|go\.sum|env\.json|config\.production\.yaml|ROUTER_TOKEN[^/]*\.txt|license\.json)|"
     r"docs/|"
     r"docs-site/|"
+    r".*\.go$|"
     r".*\.map|"
     r".*\.log|"
     r".*\.jsonl|"
     r".*\.sqlite3?|"
     r".*\.db"
+    r")"
+)
+
+# Packaged artifacts must never include Go source or repo layout for CLIs.
+FORBIDDEN_SOURCE_PATH_RE = re.compile(
+    r"(^|/)"
+    r"(?:"
+    r"cmd/|"
+    r"internal/|"
+    r"docs-site/|"
+    r"\.git/|"
+    r"go\.mod$|"
+    r"go\.sum$|"
+    r".*\.go$"
     r")"
 )
 
@@ -208,7 +232,7 @@ def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes) -> lis
                             errors.append(f"{archive}: {image_rel} layer contains AppleDouble metadata entry: {layer_member.name}")
                         if FORBIDDEN_IMAGE_PATH_RE.search(normalized_layer_name):
                             errors.append(f"{archive}: {image_rel} layer contains forbidden runtime/source path: {layer_member.name}")
-                        if name in {"/app/bin/metrum-fleetctl", "/app/bin/metrum-smartrouterctl"}:
+                        if name in {"/app/bin/metrum-fleetctl", "/app/bin/metrum-smartrouterctl", "/app/bin/metrum-fleet-sign"}:
                             errors.append(f"{archive}: {image_rel} contains forbidden fleet lifecycle binary {name}")
                         if name in required and layer_member.isfile():
                             actual.add(name)
@@ -257,6 +281,8 @@ def validate_archive(archive: Path, allowed_docs: set[str]) -> list[str]:
                 errors.append(f"{archive}: AppleDouble metadata entry included: {rel}")
             if FORBIDDEN_NAME_RE.search(member.name):
                 errors.append(f"{archive}: forbidden local secret/state file included: {rel}")
+            if FORBIDDEN_SOURCE_PATH_RE.search(rel):
+                errors.append(f"{archive}: forbidden source path included: {rel}")
 
             if member.isfile():
                 actual_files.add(rel)

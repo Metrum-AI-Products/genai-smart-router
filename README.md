@@ -66,6 +66,7 @@ bin/router-migrate
 bin/smartrouterctl
 bin/metrum-fleetctl
 bin/metrum-smartrouterctl # one-release rename notice
+bin/metrum-fleet-sign
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts
@@ -78,7 +79,9 @@ docs/solution-brief.md
 caddy/Caddyfile
 ```
 `metrum-fleetctl plan|deploy|status|delete` is the binary-package-only Fleet
-lifecycle contract. `plan`, `deploy`, and `delete` consume one mode-`0600`,
+lifecycle contract. `metrum-fleet-sign` issues protected intent/admission/delete
+documents and ships only in binary packages (never in customer Docker images).
+`plan`, `deploy`, and `delete` consume one mode-`0600`,
 profile-key-signed, reference-only deployment intent; it contains the protected
 profile, runtime bundle, and license references without their resolved values.
 `smartrouterctl` provides customer-local safe config, caller-token-file,

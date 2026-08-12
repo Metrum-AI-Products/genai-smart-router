@@ -2,6 +2,8 @@
 """Single-command Fleet SQLite customer lifecycle (operator-only).
 
 Not a customer CLI. Not packaged into Docker images.
+Fleet CLIs (metrum-fleetctl, router-token-gen, metrum-fleet-sign) must come from a
+release binary package or METRUM_FLEET_BIN_DIR — never go build/go run on operator hosts.
 
 Commands:
   create        SQLite deploy from production-identical upstream bundle
@@ -115,17 +117,65 @@ def ensure_keys(home: Path) -> tuple[Path, Path]:
     die("missing lifecycle approval keys under ~/.local/share/metrum-fleet/")
 
 
-def build_binaries(bin_dir: Path, skip_build: bool) -> tuple[Path, Path]:
+def _copy_or_link_binary(src: Path, dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists() or dest.is_symlink():
+        dest.unlink()
+    shutil.copy2(src, dest)
+    dest.chmod(0o755)
+
+
+def resolve_packaged_binary(name: str, bin_dir: Path) -> Path | None:
+    """Locate a packaged CLI binary. Never returns a source path."""
+    candidates: list[Path] = []
+    env_dir = os.environ.get("METRUM_FLEET_BIN_DIR", "").strip()
+    if env_dir:
+        candidates.append(Path(env_dir).expanduser() / name)
+    candidates.append(bin_dir / name)
+    which = shutil.which(name)
+    if which:
+        candidates.append(Path(which))
+    for path in candidates:
+        if path.is_file() and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def resolve_operator_binaries(bin_dir: Path, *, build_from_source: bool) -> tuple[Path, Path, Path]:
+    """
+    Fleet operator CLIs are distributed as binaries only.
+
+    Default: use METRUM_FLEET_BIN_DIR, workspace bin/, or PATH packaged binaries.
+    --build-from-source is a developer escape hatch that still writes binaries
+    into bin_dir and must never be required on customer or operator hosts.
+    """
     bin_dir.mkdir(parents=True, exist_ok=True)
-    fleet = bin_dir / "metrum-fleetctl"
-    token_gen = bin_dir / "router-token-gen"
-    if skip_build:
-        if not fleet.is_file() or not token_gen.is_file():
-            die(f"missing binaries under {bin_dir}; omit --skip-build")
-        return fleet, token_gen
-    require_ok(run(["go", "build", "-o", str(fleet), "./cmd/metrum-fleetctl"]), "build metrum-fleetctl")
-    require_ok(run(["go", "build", "-o", str(token_gen), "./cmd/router-token-gen"]), "build router-token-gen")
-    return fleet, token_gen
+    names = ("metrum-fleetctl", "router-token-gen", "metrum-fleet-sign")
+    if build_from_source:
+        require_ok(run(["go", "build", "-o", str(bin_dir / "metrum-fleetctl"), "./cmd/metrum-fleetctl"]), "build metrum-fleetctl")
+        require_ok(run(["go", "build", "-o", str(bin_dir / "router-token-gen"), "./cmd/router-token-gen"]), "build router-token-gen")
+        require_ok(run(["go", "build", "-o", str(bin_dir / "metrum-fleet-sign"), "./cmd/metrum-fleet-sign"]), "build metrum-fleet-sign")
+        return bin_dir / "metrum-fleetctl", bin_dir / "router-token-gen", bin_dir / "metrum-fleet-sign"
+
+    resolved: dict[str, Path] = {}
+    missing: list[str] = []
+    for name in names:
+        found = resolve_packaged_binary(name, bin_dir)
+        if found is None:
+            missing.append(name)
+            continue
+        dest = bin_dir / name
+        if found.resolve() != dest.resolve():
+            _copy_or_link_binary(found, dest)
+        resolved[name] = dest
+    if missing:
+        die(
+            "missing packaged Fleet binaries: "
+            + ", ".join(missing)
+            + ". Install from a release binary package (bin/), set METRUM_FLEET_BIN_DIR, "
+            + "or pass --build-from-source only on a trusted development checkout."
+        )
+    return resolved["metrum-fleetctl"], resolved["router-token-gen"], resolved["metrum-fleet-sign"]
 
 
 def operator_env() -> dict[str, str]:
@@ -352,12 +402,10 @@ def write_manifest(home: Path, customer_id: str, runtime_bundle: str, license_re
     return path
 
 
-def sign_intent(priv: Path, intent_id: str, profile_ref: str, manifest: Path, out: Path) -> None:
+def sign_intent(sign_bin: Path, priv: Path, intent_id: str, profile_ref: str, manifest: Path, out: Path) -> None:
     proc = run(
         [
-            "go",
-            "run",
-            "scripts/fleet_sign_docs.go",
+            str(sign_bin),
             "intent",
             str(priv),
             intent_id,
@@ -371,13 +419,11 @@ def sign_intent(priv: Path, intent_id: str, profile_ref: str, manifest: Path, ou
     out.chmod(0o600)
 
 
-def sign_delete(priv: Path, job_id: str, out: Path, retain_pvc: bool) -> None:
+def sign_delete(sign_bin: Path, priv: Path, job_id: str, out: Path, retain_pvc: bool) -> None:
     nonce = f"delete-{job_id}-{int(time.time())}"
     proc = run(
         [
-            "go",
-            "run",
-            "scripts/fleet_sign_docs.go",
+            str(sign_bin),
             "delete",
             str(priv),
             job_id,
@@ -392,6 +438,7 @@ def sign_delete(priv: Path, job_id: str, out: Path, retain_pvc: bool) -> None:
 
 
 def sign_admission(
+    sign_bin: Path,
     priv: Path,
     approval_id: str,
     profile_id: str,
@@ -404,9 +451,7 @@ def sign_admission(
 ) -> None:
     proc = run(
         [
-            "go",
-            "run",
-            "scripts/fleet_sign_docs.go",
+            str(sign_bin),
             "admission",
             str(priv),
             approval_id,
@@ -463,6 +508,7 @@ def plan_and_deploy(
     *,
     home: Path,
     fleet: Path,
+    sign_bin: Path,
     priv: Path,
     customer_id: str,
     profile_ref: str,
@@ -475,7 +521,7 @@ def plan_and_deploy(
     intent_id = f"intent-{customer_id}-{time.strftime('%Y%m%dt%H%M%Sz', time.gmtime())}"
     (home / "intent-id.txt").write_text(intent_id + "\n", encoding="utf-8")
     intent_path = home / "intent.json"
-    sign_intent(priv, intent_id, profile_ref, manifest, intent_path)
+    sign_intent(sign_bin, priv, intent_id, profile_ref, manifest, intent_path)
     plan = fleetctl_json(fleet, ["plan", "--intent", str(intent_path), "--output", "json"], fleet_env)
     if plan.get("database_id") or plan.get("database_profile") or "dedicated_rds" in (plan.get("actions") or []):
         die("refusing deploy: plan selected dedicated RDS; omit database_profile for SQLite")
@@ -520,12 +566,13 @@ def cmd_create(args: argparse.Namespace) -> None:
     customer_id = normalize_customer_id(args.customer_id)
     home = prepare_home(customer_id)
     priv, _ = ensure_keys(home)
-    fleet, _ = build_binaries(home / "bin", args.skip_build)
+    fleet, _, sign_bin = resolve_operator_binaries(home / "bin", build_from_source=args.build_from_source)
     fleet_env = assume_fleet_role(home, customer_id)
     runtime_ref = args.runtime_bundle_ref
     result = plan_and_deploy(
         home=home,
         fleet=fleet,
+        sign_bin=sign_bin,
         priv=priv,
         customer_id=customer_id,
         profile_ref=args.profile_ref,
@@ -541,7 +588,7 @@ def cmd_create(args: argparse.Namespace) -> None:
 def cmd_status(args: argparse.Namespace) -> None:
     customer_id = normalize_customer_id(args.customer_id)
     home = prepare_home(customer_id)
-    fleet, _ = build_binaries(home / "bin", args.skip_build)
+    fleet, _, sign_bin = resolve_operator_binaries(home / "bin", build_from_source=args.build_from_source)
     fleet_env = assume_fleet_role(home, customer_id)
     state = load_state(home)
     plan = json.loads((home / "plan.json").read_text(encoding="utf-8")) if (home / "plan.json").is_file() else {}
@@ -671,7 +718,7 @@ def cmd_grant_caller(args: argparse.Namespace) -> None:
     customer_id = normalize_customer_id(args.customer_id)
     home = prepare_home(customer_id)
     priv, _ = ensure_keys(home)
-    fleet, token_gen = build_binaries(home / "bin", args.skip_build)
+    fleet, token_gen, sign_bin = resolve_operator_binaries(home / "bin", build_from_source=args.build_from_source)
     op_env = operator_env()
     fleet_env = assume_fleet_role(home, customer_id)
     source_ref = current_bundle_ref(home, args.runtime_bundle_ref)
@@ -725,6 +772,7 @@ def cmd_grant_caller(args: argparse.Namespace) -> None:
     plan_and_deploy(
         home=home,
         fleet=fleet,
+        sign_bin=sign_bin,
         priv=priv,
         customer_id=customer_id,
         profile_ref=args.profile_ref,
@@ -745,7 +793,7 @@ def cmd_update_config(args: argparse.Namespace) -> None:
     customer_id = normalize_customer_id(args.customer_id)
     home = prepare_home(customer_id)
     priv, _ = ensure_keys(home)
-    fleet, _ = build_binaries(home / "bin", args.skip_build)
+    fleet, _, sign_bin = resolve_operator_binaries(home / "bin", build_from_source=args.build_from_source)
     op_env = operator_env()
     fleet_env = assume_fleet_role(home, customer_id)
     patch_path = Path(args.patch_file).expanduser()
@@ -762,6 +810,7 @@ def cmd_update_config(args: argparse.Namespace) -> None:
     plan_and_deploy(
         home=home,
         fleet=fleet,
+        sign_bin=sign_bin,
         priv=priv,
         customer_id=customer_id,
         profile_ref=args.profile_ref,
@@ -777,7 +826,7 @@ def cmd_delete(args: argparse.Namespace) -> None:
     customer_id = normalize_customer_id(args.customer_id)
     home = prepare_home(customer_id)
     priv, _ = ensure_keys(home)
-    fleet, _ = build_binaries(home / "bin", args.skip_build)
+    fleet, _, sign_bin = resolve_operator_binaries(home / "bin", build_from_source=args.build_from_source)
     fleet_env = assume_fleet_role(home, customer_id)
     intent_path = home / "intent.json"
     plan_path = home / "plan.json"
@@ -786,7 +835,7 @@ def cmd_delete(args: argparse.Namespace) -> None:
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     job_id = plan["job_id"]
     delete_path = home / "delete-approval.json"
-    sign_delete(priv, job_id, delete_path, retain_pvc=args.retain_pvc)
+    sign_delete(sign_bin, priv, job_id, delete_path, retain_pvc=args.retain_pvc)
     del_args = [
         "delete",
         "--intent",
@@ -801,6 +850,7 @@ def cmd_delete(args: argparse.Namespace) -> None:
     if plan.get("database_id"):
         admission = home / "rds-admission.json"
         sign_admission(
+            sign_bin,
             priv,
             approval_id=f"adm-{customer_id}-{time.strftime('%Y%m%dt%H%M%Sz', time.gmtime())}",
             profile_id=plan.get("profile_id") or "staging-fleet-nonprod",
@@ -823,7 +873,7 @@ def cmd_delete(args: argparse.Namespace) -> None:
             ["deploy", "--intent", str(intent_path), "--registry", registry_path(home), "--output", "json"],
             fleet_env,
         )
-        sign_delete(priv, job_id, delete_path, retain_pvc=args.retain_pvc)
+        sign_delete(sign_bin, priv, job_id, delete_path, retain_pvc=args.retain_pvc)
         result = fleetctl_json(fleet, del_args, fleet_env)
 
     if result.get("_exit"):
@@ -854,7 +904,13 @@ def add_common(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--profile-ref", default=DEFAULT_PROFILE_REF)
     sp.add_argument("--runtime-bundle-ref", default=DEFAULT_RUNTIME_BUNDLE)
     sp.add_argument("--license-ref", default=DEFAULT_LICENSE_REF)
-    sp.add_argument("--skip-build", action="store_true")
+    sp.add_argument(
+        "--build-from-source",
+        action="store_true",
+        help="developer-only: build Fleet CLIs from this checkout; operators must use packaged binaries",
+    )
+    # Deprecated alias kept so existing operator scripts do not break; packaged binaries are always preferred.
+    sp.add_argument("--skip-build", action="store_true", help=argparse.SUPPRESS)
 
 
 def main() -> None:

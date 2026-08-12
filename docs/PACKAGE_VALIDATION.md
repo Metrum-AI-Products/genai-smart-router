@@ -44,7 +44,10 @@ Packages must not contain:
 - raw router tokens, token hashes, provider keys, GitHub tokens, or signing material;
 - real `license.json`, license state, local usage databases, logs, or JSONL state;
 - source checkout directories such as `docs-site/`, `internal/`, `cmd/`, or `.git`;
+- Go source files (`.go`), `go.mod`, or `go.sum`;
 - full production config files.
+
+Packaged CLIs (`router`, `smartrouterctl`, `metrum-fleetctl`, `metrum-fleet-sign`, and related tools) are prebuilt ELF binaries only. Operator and customer hosts must not require a Go toolchain or product source tree to run them.
 
 ## Runtime Health Checks
 

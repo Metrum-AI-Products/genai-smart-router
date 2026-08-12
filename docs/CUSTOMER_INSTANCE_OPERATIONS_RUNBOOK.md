@@ -204,7 +204,10 @@ Omit `database_profile` for SQLite even when the protected profile's
 
 For repeatable non-production SQLite customer instances (`acme3`, `acme4`, …)
 use the operator lifecycle helper (not a customer CLI; not packaged into Docker
-images). Default create uses the production-identical runtime bundle (same
+images). Point `METRUM_FLEET_BIN_DIR` at a release package `bin/` directory (or
+put `metrum-fleetctl`, `router-token-gen`, and `metrum-fleet-sign` on `PATH`).
+Do not `go build` / `go run` on operator hosts; packaged CLIs are binaries only.
+Default create uses the production-identical runtime bundle (same
 upstream provider keys as the Metrum reference) and omits `database_profile`
 so Fleet stays on SQLite + `auto-safe` rewrite at secret bind time.
 
