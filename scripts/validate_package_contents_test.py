@@ -49,7 +49,7 @@ def assert_offline_package_documentation_contract() -> None:
     if docker_start == -1:
         raise AssertionError("docs/PACKAGE_README.md: missing Docker Compose package manifest")
     docker_manifest = docker_section[docker_start:]
-    for fleet_binary in ("bin/metrum-fleetctl", "bin/metrum-smartrouterctl", "bin/metrum-fleet-sign"):
+    for fleet_binary in ("bin/metrum-fleetctl", "bin/metrum-smartrouterctl", "bin/metrum-fleet-sign", "bin/router-license"):
         if fleet_binary in docker_manifest:
             raise AssertionError(f"docs/PACKAGE_README.md: Docker package manifest must omit {fleet_binary}")
     for guidance in (
@@ -64,7 +64,7 @@ def assert_offline_package_documentation_contract() -> None:
         expected_copy = f"COPY --from=build /out/{runtime_binary} /app/bin/{runtime_binary}"
         if expected_copy not in dockerfile:
             raise AssertionError(f"Dockerfile: missing runtime binary copy: {runtime_binary}")
-    for fleet_binary in ("metrum-fleetctl", "metrum-smartrouterctl", "metrum-fleet-sign"):
+    for fleet_binary in ("metrum-fleetctl", "metrum-smartrouterctl", "metrum-fleet-sign", "router-license"):
         if fleet_binary in dockerfile:
             raise AssertionError(f"Dockerfile: standard image must not include {fleet_binary}")
 
@@ -116,8 +116,10 @@ def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> di
         f"{root}/bin/metrum-fleetctl": elf(62),
         f"{root}/bin/metrum-smartrouterctl": elf(62),
         f"{root}/bin/metrum-fleet-sign": elf(62),
+        f"{root}/bin/router-license": elf(62),
         f"{root}/config/config.example.yaml": "server: {}\n",
         f"{root}/config/env.example.json": "{}\n",
+        f"{root}/config/enterprise-license-skus.json": '{"skus":[]}\n',
         f"{root}/config/scripts/router.ts": "export function route() {}\n",
         f"{root}/caddy/Caddyfile": ":80\n",
     }

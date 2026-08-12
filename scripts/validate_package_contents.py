@@ -19,8 +19,10 @@ BINARY_PACKAGE_FILES = {
     "bin/router-token-gen",
     "bin/router-usage-report", "bin/router-migrate", "bin/smartrouterctl",
     "bin/metrum-fleetctl", "bin/metrum-smartrouterctl", "bin/metrum-fleet-sign",
+    "bin/router-license",
     "config/config.example.yaml",
     "config/env.example.json",
+    "config/enterprise-license-skus.json",
     "config/scripts/router.ts",
     "caddy/Caddyfile",
 }
@@ -43,6 +45,7 @@ PACKAGE_BINARIES = {
     "bin/metrum-fleetctl",
     "bin/metrum-smartrouterctl",
     "bin/metrum-fleet-sign",
+    "bin/router-license",
 }
 EXPECTED_ELF_MACHINE = {"amd64": 62, "arm64": 183}
 DOCKER_IMAGE_RE = re.compile(r"^images/smart-llmrouter-.+-linux-(amd64|arm64)\.tar$")
@@ -232,7 +235,12 @@ def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes) -> lis
                             errors.append(f"{archive}: {image_rel} layer contains AppleDouble metadata entry: {layer_member.name}")
                         if FORBIDDEN_IMAGE_PATH_RE.search(normalized_layer_name):
                             errors.append(f"{archive}: {image_rel} layer contains forbidden runtime/source path: {layer_member.name}")
-                        if name in {"/app/bin/metrum-fleetctl", "/app/bin/metrum-smartrouterctl", "/app/bin/metrum-fleet-sign"}:
+                        if name in {
+                            "/app/bin/metrum-fleetctl",
+                            "/app/bin/metrum-smartrouterctl",
+                            "/app/bin/metrum-fleet-sign",
+                            "/app/bin/router-license",
+                        }:
                             errors.append(f"{archive}: {image_rel} contains forbidden fleet lifecycle binary {name}")
                         if name in required and layer_member.isfile():
                             actual.add(name)
