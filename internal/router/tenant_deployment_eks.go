@@ -2,7 +2,9 @@ package router
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -28,7 +30,15 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-const tenantDeploymentOwnerLabel = "metrum.ai/smartrouter-instance"
+const (
+	tenantDeploymentOwnerLabel                  = "metrum.ai/smartrouter-instance"
+	tenantDeploymentRuntimeBundleHashAnnotation = "metrum.ai/runtime-bundle-sha256"
+)
+
+// tenantDeploymentActivationWait bounds live readiness polling before hostname
+// publish. Tests set it to zero so fake clients fail closed immediately.
+var tenantDeploymentActivationWait = 3 * time.Minute
+var tenantDeploymentActivationPoll = 5 * time.Second
 
 // EKS tenant deployment adapters use typed AWS and Kubernetes clients. No
 // command runner exists in this implementation.
@@ -133,9 +143,15 @@ func eksAuthenticationToken(ctx context.Context, cfg aws.Config, cluster string)
 	if err != nil {
 		return "", errors.New("retrieve AWS operator credentials")
 	}
-	u, _ := url.Parse("https://sts." + cfg.Region + ".amazonaws.com/?Action=GetCallerIdentity&Version=2011-06-15")
+	// EKS bearer tokens are a base64url-wrapped STS GetCallerIdentity presign.
+	// X-Amz-Expires must be present before signing; an empty-body SHA-256 is required.
+	const emptyPayloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	u, err := url.Parse("https://sts." + cfg.Region + ".amazonaws.com/?Action=GetCallerIdentity&Version=2011-06-15&X-Amz-Expires=60")
+	if err != nil {
+		return "", errors.New("build EKS authentication URL")
+	}
 	req := &http.Request{Method: http.MethodGet, URL: u, Header: http.Header{"x-k8s-aws-id": []string{cluster}}}
-	presigned, _, err := v4.NewSigner().PresignHTTP(ctx, credentials, req, "", "sts", cfg.Region, time.Now().UTC().Add(14*time.Minute))
+	presigned, _, err := v4.NewSigner().PresignHTTP(ctx, credentials, req, emptyPayloadHash, "sts", cfg.Region, time.Now().UTC())
 	if err != nil {
 		return "", errors.New("presign EKS authentication token")
 	}
@@ -243,7 +259,35 @@ func (a *EKSTenantDeploymentAdapters) ensureRuntimeBundleSecret(ctx context.Cont
 	if err != nil {
 		return "", err
 	}
-	data := map[string][]byte{"config.yaml": []byte(bundle.ConfigYAML), "env.json": []byte(bundle.EnvJSON)}
+	configYAML := bundle.ConfigYAML
+	envJSON := bundle.EnvJSON
+	if p.DatabaseID != "" {
+		rdsAdapter, ok := a.database.(*TenantDeploymentRDSAdapter)
+		if !ok || rdsAdapter == nil {
+			return "", &TenantDeploymentAdapterError{Class: "rds_credential_binding_failed", Err: errors.New("dedicated RDS adapter is required for usage DSN binding")}
+		}
+		dsn, err := rdsAdapter.UsageDSN(ctx, p, a.secrets)
+		if err != nil {
+			return "", err
+		}
+		envJSON, err = injectRuntimeEnvJSONValue(envJSON, tenantDeploymentUsageDSNEnvKey, dsn)
+		if err != nil {
+			return "", &TenantDeploymentAdapterError{Class: "rds_credential_binding_failed", Err: errors.New("bind dedicated RDS usage DSN")}
+		}
+	} else {
+		// Default Fleet path: SQLite on the owned PVC. Rewrite postgres /
+		// deployment-job bundles so deploy is self-contained and repeatable.
+		rewritten, err := applySQLiteUsageDBConfig(configYAML)
+		if err != nil {
+			return "", err
+		}
+		configYAML = rewritten
+		envJSON, err = stripRuntimeEnvJSONKey(envJSON, tenantDeploymentUsageDSNEnvKey)
+		if err != nil {
+			return "", err
+		}
+	}
+	data := map[string][]byte{"config.yaml": []byte(configYAML), "env.json": []byte(envJSON)}
 	c := a.kube.CoreV1().Secrets(p.Namespace)
 	existing, err := c.Get(ctx, "router-runtime", metav1.GetOptions{})
 	if err == nil {
@@ -308,6 +352,9 @@ func (a *EKSTenantDeploymentAdapters) resolveProtectedReference(ctx context.Cont
 func (a *EKSTenantDeploymentAdapters) referenceValue(ctx context.Context, ref string) ([]byte, error) {
 	if strings.HasPrefix(ref, "aws-ssm:///") {
 		name := strings.TrimPrefix(ref, "aws-ssm:///")
+		if name != "" && !strings.HasPrefix(name, "/") {
+			name = "/" + name
+		}
 		r, e := a.ssm.GetParameter(ctx, &ssm.GetParameterInput{Name: &name, WithDecryption: aws.Bool(true)})
 		if e != nil || r.Parameter == nil || r.Parameter.Value == nil {
 			return nil, errors.New("read protected deployment reference")
@@ -380,10 +427,20 @@ func (a *EKSTenantDeploymentAdapters) EnsureRouter(ctx context.Context, p Tenant
 	}
 	const name = "router"
 	client := a.kube.AppsV1().Deployments(p.Namespace)
+	bundleHash, err := a.runtimeBundleSHA256(ctx, p)
+	if err != nil {
+		return "", err
+	}
 	existing, err := client.Get(ctx, name, metav1.GetOptions{})
 	if err == nil {
 		if !owned(existing.Labels, p) || existing.Spec.Replicas == nil || *existing.Spec.Replicas != 1 {
 			return "", ownershipError()
+		}
+		if err := a.applyRouterPodTemplate(existing, p, bundleHash); err != nil {
+			return "", err
+		}
+		if _, err := client.Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
+			return "", errors.New("update router deployment")
 		}
 		return "deployment/" + name, nil
 	}
@@ -395,16 +452,74 @@ func (a *EKSTenantDeploymentAdapters) EnsureRouter(ctx context.Context, p Tenant
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: p.Namespace, Labels: labels},
 		Spec: appsv1.DeploymentSpec{Replicas: &one, Selector: &metav1.LabelSelector{MatchLabels: map[string]string{tenantDeploymentOwnerLabel: p.InstanceID}},
-			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: corev1.PodSpec{
-				Containers: []corev1.Container{{Name: "router", Image: p.ReleaseDigest, Ports: []corev1.ContainerPort{{ContainerPort: 8080}},
-					VolumeMounts:   []corev1.VolumeMount{{Name: "state", MountPath: "/var/lib/smart-llmrouter"}, {Name: "runtime", MountPath: "/app/config", ReadOnly: true}, {Name: "license", MountPath: "/etc/smart-llmrouter-license", ReadOnly: true}},
-					ReadinessProbe: &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/readyz", Port: intstr.FromInt(8080)}}, InitialDelaySeconds: 5, PeriodSeconds: 5}}},
-				Volumes: []corev1.Volume{{Name: "state", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "router-state"}}}, {Name: "runtime", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "router-runtime"}}}, {Name: "license", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "router-license"}}}},
-			}},
-		},
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: corev1.PodSpec{}}},
+	}
+	if err := a.applyRouterPodTemplate(deployment, p, bundleHash); err != nil {
+		return "", err
 	}
 	_, err = client.Create(ctx, deployment, metav1.CreateOptions{})
 	return "deployment/" + name, err
+}
+
+func (a *EKSTenantDeploymentAdapters) runtimeBundleSHA256(ctx context.Context, p TenantDeploymentPlan) (string, error) {
+	secret, err := a.kube.CoreV1().Secrets(p.Namespace).Get(ctx, "router-runtime", metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", errors.New("read router-runtime secret for rollout hash")
+	}
+	sum := sha256.New()
+	_, _ = sum.Write(secret.Data["config.yaml"])
+	_, _ = sum.Write([]byte{0})
+	_, _ = sum.Write(secret.Data["env.json"])
+	return hex.EncodeToString(sum.Sum(nil)), nil
+}
+
+func (a *EKSTenantDeploymentAdapters) applyRouterPodTemplate(deployment *appsv1.Deployment, p TenantDeploymentPlan, bundleHash string) error {
+	nonRoot := int64(65532)
+	labels := a.labels(p)
+	if deployment.Spec.Template.ObjectMeta.Labels == nil {
+		deployment.Spec.Template.ObjectMeta.Labels = map[string]string{}
+	}
+	for k, v := range labels {
+		deployment.Spec.Template.ObjectMeta.Labels[k] = v
+	}
+	if deployment.Spec.Template.ObjectMeta.Annotations == nil {
+		deployment.Spec.Template.ObjectMeta.Annotations = map[string]string{}
+	}
+	if bundleHash != "" {
+		deployment.Spec.Template.ObjectMeta.Annotations[tenantDeploymentRuntimeBundleHashAnnotation] = bundleHash
+	}
+	deployment.Spec.Template.Spec.SecurityContext = &corev1.PodSecurityContext{RunAsNonRoot: aws.Bool(true), RunAsUser: &nonRoot, RunAsGroup: &nonRoot, FSGroup: &nonRoot}
+	container := corev1.Container{
+		Name:  "router",
+		Image: p.ReleaseDigest,
+		Ports: []corev1.ContainerPort{{ContainerPort: 8080}},
+		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot:             aws.Bool(true),
+			RunAsUser:                &nonRoot,
+			RunAsGroup:               &nonRoot,
+			AllowPrivilegeEscalation: aws.Bool(false),
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: "state", MountPath: "/var/lib/smart-llmrouter"},
+			{Name: "runtime", MountPath: "/app/config", ReadOnly: true},
+			{Name: "license", MountPath: "/etc/smart-llmrouter-license", ReadOnly: true},
+		},
+		ReadinessProbe: &corev1.Probe{
+			ProbeHandler:        corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/readyz", Port: intstr.FromInt(8080)}},
+			InitialDelaySeconds: 5,
+			PeriodSeconds:       5,
+		},
+	}
+	deployment.Spec.Template.Spec.Containers = []corev1.Container{container}
+	deployment.Spec.Template.Spec.Volumes = []corev1.Volume{
+		{Name: "state", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "router-state"}}},
+		{Name: "runtime", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "router-runtime"}}},
+		{Name: "license", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "router-license"}}},
+	}
+	return nil
 }
 func (a *EKSTenantDeploymentAdapters) DeleteRouter(ctx context.Context, p TenantDeploymentPlan, _ string) error {
 	c := a.kube.AppsV1().Deployments(p.Namespace)
@@ -437,15 +552,29 @@ func (a *EKSTenantDeploymentAdapters) ValidateActivation(ctx context.Context, p 
 	if err := a.rejectHPA(ctx, p); err != nil {
 		return "", err
 	}
-	pvc, e := a.kube.CoreV1().PersistentVolumeClaims(p.Namespace).Get(ctx, "router-state", metav1.GetOptions{})
-	if e != nil || pvc.Status.Phase != corev1.ClaimBound {
-		return "", &TenantDeploymentAdapterError{Class: "state_not_bound", Err: errors.New("state PVC is not bound")}
+	deadline := time.Now().UTC().Add(tenantDeploymentActivationWait)
+	var last error
+	for {
+		pvc, e := a.kube.CoreV1().PersistentVolumeClaims(p.Namespace).Get(ctx, "router-state", metav1.GetOptions{})
+		if e != nil || pvc.Status.Phase != corev1.ClaimBound {
+			last = &TenantDeploymentAdapterError{Class: "state_not_bound", Err: errors.New("state PVC is not bound")}
+		} else {
+			d, e := a.kube.AppsV1().Deployments(p.Namespace).Get(ctx, "router", metav1.GetOptions{})
+			if e != nil || !owned(d.Labels, p) || d.Status.AvailableReplicas != 1 {
+				last = &TenantDeploymentAdapterError{Class: "router_not_ready", Err: errors.New("router deployment is not ready")}
+			} else {
+				return "activation/router-ready", nil
+			}
+		}
+		if !deadline.After(time.Now().UTC()) {
+			return "", last
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(tenantDeploymentActivationPoll):
+		}
 	}
-	d, e := a.kube.AppsV1().Deployments(p.Namespace).Get(ctx, "router", metav1.GetOptions{})
-	if e != nil || !owned(d.Labels, p) || d.Status.AvailableReplicas != 1 {
-		return "", &TenantDeploymentAdapterError{Class: "router_not_ready", Err: errors.New("router deployment is not ready")}
-	}
-	return "activation/router-ready", nil
 }
 func (a *EKSTenantDeploymentAdapters) DeleteActivation(context.Context, TenantDeploymentPlan, string) error {
 	return nil

@@ -292,7 +292,13 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 	instanceSuffix := hex.EncodeToString(instanceSum[:])[:20]
 	jobSum := sha256.Sum256([]byte(instanceIdentity + "\x00" + intentID))
 	jobSuffix := hex.EncodeToString(jobSum[:])[:20]
-	namespace := truncateDNSLabel(profile.NamespacePrefix+"-"+instanceSuffix, 63)
+	// Namespace and public hostname are the deployment-defined customer_id so
+	// callers reach https://{customer_id}.{hostname_suffix}. Instance/job IDs
+	// remain hash-derived for ownership uniqueness across profile revisions.
+	namespace := truncateDNSLabel(manifest.CustomerID, 63)
+	if namespace == "" || namespace != manifest.CustomerID {
+		return TenantDeploymentPlan{}, errors.New("customer_id must be a DNS label namespace")
+	}
 	hostname := namespace + "." + profile.HostnameSuffix
 	manifestBytes, err := json.Marshal(manifest)
 	if err != nil {

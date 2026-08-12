@@ -164,7 +164,7 @@ func TestTenantDeploymentCLIPlansIsolatedAcme2Namespace(t *testing.T) {
 	if err := json.Unmarshal(output, &plan); err != nil {
 		t.Fatalf("decode Acme2 Fleet CLI plan: %v: %s", err, output)
 	}
-	if plan.CustomerID != "acme2" || !strings.HasPrefix(plan.Namespace, "router-") || plan.Hostname != plan.Namespace+".apps.example.test" {
+	if plan.CustomerID != "acme2" || plan.Namespace != "acme2" || plan.Hostname != "acme2.apps.example.test" {
 		t.Fatalf("unexpected isolated Acme2 plan: %#v", plan)
 	}
 	if strings.Contains(string(output), "aws-secretsmanager") || strings.Contains(string(output), "aws-ssm") {

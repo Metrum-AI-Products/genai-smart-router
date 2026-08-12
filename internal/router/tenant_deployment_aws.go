@@ -34,6 +34,9 @@ func loadTenantDeploymentProfileSSM(ref string) (TenantDeploymentProfile, error)
 	if path == ref || path == "" {
 		return TenantDeploymentProfile{}, errors.New("SSM profile reference is invalid")
 	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
 	// Region and optional shared profile for the policy resolver come from the
 	// standard AWS SDK environment/config chain. The decoded policy chooses the
 	// target region for all subsequent calls.

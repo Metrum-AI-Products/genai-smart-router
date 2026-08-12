@@ -199,6 +199,23 @@ licenses, access AWS/EKS/RDS, or operate another customer.
 The default customer deployment is SQLite state with exactly one Router
 container and one replica; it does not provision or bind RDS. Dedicated RDS is
 optional and requires an explicit approved `database_profile` manifest branch.
+Omit `database_profile` for SQLite even when the protected profile's
+`database_mode` is `dedicated-rds`.
+
+For repeatable non-production SQLite rehearsals (`acme3`, `acme4`, …) use the
+operator helper (not a customer CLI; not packaged into Docker images):
+
+```bash
+rtk python3 scripts/fleet_sqlite_customer_deploy.py --customer-id acme3
+rtk python3 scripts/fleet_sqlite_customer_deploy.py --customer-id acme4 --delete-first
+```
+
+That single command assumes the Fleet lifecycle role, signs a reference-only
+intent without `database_profile`, runs `metrum-fleetctl plan` then `deploy`,
+and stores protected artifacts under `~/.local/share/metrum-fleet/<customer_id>/`.
+Fleet rewrites production-identical runtime bundles to `sqlite` + `auto-safe` at
+secret bind time so deploy does not require one-off migrate Jobs or kubectl.
+
 The typed AWS RDS adapter enforces private/encrypted/no-proxy policy, ownership
 tags, and final-snapshot deletion. Its default EKS constructor remains
 fail-closed; the first disposable E2E may attach it only through the external

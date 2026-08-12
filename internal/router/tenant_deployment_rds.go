@@ -7,12 +7,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
 
 const (
@@ -187,13 +190,16 @@ func (a *TenantDeploymentRDSAdapter) EnsureDedicatedRDS(ctx context.Context, pla
 		if err := a.validateInstance(ctx, plan, instance); err != nil {
 			return "", err
 		}
+		if err := a.waitUntilAvailable(ctx, plan); err != nil {
+			return "", err
+		}
 		return rdsResourceReference(plan), nil
 	}
 	created, err := a.client.CreateDBInstance(ctx, &rds.CreateDBInstanceInput{
 		AllocatedStorage:         aws.Int32(int32(a.profile.RDSStorageGiB)),
 		BackupRetentionPeriod:    aws.Int32(int32(a.profile.RDSBackupRetentionDays)),
 		CopyTagsToSnapshot:       aws.Bool(true),
-		DBInstanceClass:          aws.String(a.profile.RDSInstanceClass),
+		DBInstanceClass:          aws.String(normalizeRDSInstanceClass(a.profile.RDSInstanceClass)),
 		DBInstanceIdentifier:     aws.String(plan.DatabaseID),
 		DBSubnetGroupName:        aws.String(a.profile.RDSSubnetGroup),
 		DeletionProtection:       aws.Bool(false),
@@ -214,7 +220,73 @@ func (a *TenantDeploymentRDSAdapter) EnsureDedicatedRDS(ctx context.Context, pla
 	if err := a.validateInstance(ctx, plan, created.DBInstance); err != nil {
 		return "", err
 	}
+	if err := a.waitUntilAvailable(ctx, plan); err != nil {
+		return "", err
+	}
 	return rdsResourceReference(plan), nil
+}
+
+func (a *TenantDeploymentRDSAdapter) waitUntilAvailable(ctx context.Context, plan TenantDeploymentPlan) error {
+	deadline := time.Now().Add(30 * time.Minute)
+	for {
+		instance, found, err := a.observe(ctx, plan)
+		if err != nil {
+			return err
+		}
+		if found && instance != nil && aws.ToString(instance.DBInstanceStatus) == "available" &&
+			instance.Endpoint != nil && aws.ToString(instance.Endpoint.Address) != "" {
+			if err := a.validateInstance(ctx, plan, instance); err != nil {
+				return err
+			}
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return &TenantDeploymentAdapterError{Class: "rds_not_available", Err: errors.New("dedicated RDS instance did not become available")}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(15 * time.Second):
+		}
+	}
+}
+
+// UsageDSN returns a postgres DSN for the owned available instance. The value
+// stays in memory for runtime-secret binding and is never logged or persisted
+// into Fleet status/registry rows.
+func (a *TenantDeploymentRDSAdapter) UsageDSN(ctx context.Context, plan TenantDeploymentPlan, secrets *secretsmanager.Client) (string, error) {
+	if secrets == nil {
+		return "", &TenantDeploymentAdapterError{Class: "rds_credential_binding_failed", Err: errors.New("secrets client is required")}
+	}
+	if err := a.waitUntilAvailable(ctx, plan); err != nil {
+		return "", err
+	}
+	instance, found, err := a.observe(ctx, plan)
+	if err != nil {
+		return "", err
+	}
+	if !found || instance == nil || instance.Endpoint == nil || instance.MasterUserSecret == nil ||
+		aws.ToString(instance.MasterUserSecret.SecretArn) == "" {
+		return "", &TenantDeploymentAdapterError{Class: "rds_credential_binding_failed", Err: errors.New("dedicated RDS endpoint or master secret is unavailable")}
+	}
+	secretOut, err := secrets.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{SecretId: instance.MasterUserSecret.SecretArn})
+	if err != nil || secretOut == nil || secretOut.SecretString == nil {
+		return "", &TenantDeploymentAdapterError{Class: "rds_credential_binding_failed", Err: errors.New("read dedicated RDS master secret")}
+	}
+	var cred struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.Unmarshal([]byte(*secretOut.SecretString), &cred); err != nil || cred.Username == "" || cred.Password == "" {
+		return "", &TenantDeploymentAdapterError{Class: "rds_credential_binding_failed", Err: errors.New("parse dedicated RDS master secret")}
+	}
+	host := aws.ToString(instance.Endpoint.Address)
+	port := aws.ToInt32(instance.Endpoint.Port)
+	if port == 0 {
+		port = 5432
+	}
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=require TimeZone=UTC",
+		host, port, cred.Username, cred.Password), nil
 }
 
 func (a *TenantDeploymentRDSAdapter) DeleteDedicatedRDS(ctx context.Context, plan TenantDeploymentPlan, _ string) error {
@@ -262,7 +334,7 @@ func (a *TenantDeploymentRDSAdapter) validateInstance(ctx context.Context, plan 
 	if instance == nil || instance.DBInstanceArn == nil || instance.DBSubnetGroup == nil || instance.DBSubnetGroup.DBSubnetGroupName == nil ||
 		aws.ToString(instance.DBSubnetGroup.DBSubnetGroupName) != a.profile.RDSSubnetGroup ||
 		aws.ToBool(instance.PubliclyAccessible) || !aws.ToBool(instance.StorageEncrypted) || aws.ToBool(instance.DeletionProtection) ||
-		aws.ToString(instance.DBInstanceClass) != a.profile.RDSInstanceClass ||
+		aws.ToString(instance.DBInstanceClass) != normalizeRDSInstanceClass(a.profile.RDSInstanceClass) ||
 		aws.ToString(instance.MasterUsername) != a.profile.RDSMasterUsername ||
 		aws.ToInt32(instance.AllocatedStorage) != int32(a.profile.RDSStorageGiB) ||
 		aws.ToInt32(instance.BackupRetentionPeriod) != int32(a.profile.RDSBackupRetentionDays) ||
@@ -297,6 +369,19 @@ func hasRDSTag(output *rds.ListTagsForResourceOutput, key, value string) bool {
 		}
 	}
 	return false
+}
+
+// normalizeRDSInstanceClass accepts profile values written with hyphens
+// (db-t4g-medium) and returns the AWS API form (db.t4g.medium).
+func normalizeRDSInstanceClass(class string) string {
+	class = strings.TrimSpace(class)
+	if class == "" || strings.Contains(class, ".") {
+		return class
+	}
+	if strings.HasPrefix(class, "db-") {
+		return "db." + strings.ReplaceAll(strings.TrimPrefix(class, "db-"), "-", ".")
+	}
+	return class
 }
 
 var _ TenantDatabaseAdapter = (*TenantDeploymentRDSAdapter)(nil)

@@ -46,3 +46,31 @@ func TestParseTenantDeploymentRuntimeBundleRejectsMalformedOrExtraFieldsWithoutL
 		}
 	}
 }
+
+func TestApplySQLiteUsageDBConfigRewritesPostgresDeploymentJobBundle(t *testing.T) {
+	in := "server:\n  listen: :8080\n  usage_db:\n    enabled: true\n    driver: postgres\n    dsn: ${ROUTER_USAGE_DB_DSN}\n    migration_policy: deployment-job\nproviders: {}\n"
+	out, err := applySQLiteUsageDBConfig(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "postgres") || strings.Contains(out, "deployment-job") || strings.Contains(out, "ROUTER_USAGE_DB_DSN") {
+		t.Fatalf("sqlite rewrite left postgres/deployment-job values: %s", out)
+	}
+	if !strings.Contains(out, "driver: sqlite") || !strings.Contains(out, "migration_policy: auto-safe") {
+		t.Fatalf("sqlite rewrite missing expected usage_db: %s", out)
+	}
+}
+
+func TestStripRuntimeEnvJSONKeyRemovesUsageDSN(t *testing.T) {
+	in := `{"PROVIDER_API_KEY":"synthetic","ROUTER_USAGE_DB_DSN":"synthetic-dsn"}`
+	out, err := stripRuntimeEnvJSONKey(in, tenantDeploymentUsageDSNEnvKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "ROUTER_USAGE_DB_DSN") || strings.Contains(out, "synthetic-dsn") {
+		t.Fatalf("strip left usage DSN: %s", out)
+	}
+	if !strings.Contains(out, "PROVIDER_API_KEY") {
+		t.Fatalf("strip removed unrelated keys: %s", out)
+	}
+}
