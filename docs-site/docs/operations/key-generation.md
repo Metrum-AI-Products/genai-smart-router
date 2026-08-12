@@ -67,3 +67,12 @@ Generate a new router token, add its hashed caller entry to config, reload or re
 To suspend access without deleting history, set the caller token `status: suspended`, `disabled`, `expired`, or `rotated` and restart or reload the deployment. Disabling a user, project, or project membership should be done by removing or correcting active caller-token references first, because config validation requires active account references for all enabled caller tokens.
 
 After each issue, rotation, or disablement, ask the caller to run `/v1/models`. That response is the source of truth for the model groups the caller token can request.
+
+## Activation Boundary
+
+Generating a token is not the same as activating it.
+
+- **Self-hosted / file-owned installs:** use `smartrouterctl callers generate` (or `router-token-gen`) to create a mode-`0600` token file and a hashed caller entry, then have your configuration controller merge that entry into the live router config and reload or restart the router. `smartrouterctl` itself never activates config, rotates keys, or signs licenses.
+- **Private managed / Fleet-operated installs:** the same local generate step may be used as a draft, but the deployment operator activates the caller through the Fleet configuration controller (a new approved config revision / runtime bundle and deploy). Ordinary customer operators should not expect `smartrouterctl` alone to change a live managed hostname.
+
+Never paste raw tokens, token hashes, or provider keys into tickets, chat, or public docs. Distribute the raw token once over an approved channel, then confirm access with `/v1/models`.
