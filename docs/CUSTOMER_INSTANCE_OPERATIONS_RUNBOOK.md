@@ -202,19 +202,48 @@ optional and requires an explicit approved `database_profile` manifest branch.
 Omit `database_profile` for SQLite even when the protected profile's
 `database_mode` is `dedicated-rds`.
 
-For repeatable non-production SQLite rehearsals (`acme3`, `acme4`, …) use the
-operator helper (not a customer CLI; not packaged into Docker images):
+For repeatable non-production SQLite customer instances (`acme3`, `acme4`, …)
+use the operator lifecycle helper (not a customer CLI; not packaged into Docker
+images). Default create uses the production-identical runtime bundle (same
+upstream provider keys as the Metrum reference) and omits `database_profile`
+so Fleet stays on SQLite + `auto-safe` rewrite at secret bind time.
 
 ```bash
-rtk python3 scripts/fleet_sqlite_customer_deploy.py --customer-id acme3
-rtk python3 scripts/fleet_sqlite_customer_deploy.py --customer-id acme4 --delete-first
+# Create (hostname https://{id}.apps.metrum.ai)
+rtk python3 scripts/fleet_customer_lifecycle.py create --customer-id acme4
+
+# Status / smoke
+rtk python3 scripts/fleet_customer_lifecycle.py status --customer-id acme4
+rtk python3 scripts/fleet_customer_lifecycle.py smoke --customer-id acme4
+
+# Grant a caller and activate it (Fleet publishes per-customer SM bundle + redeploy)
+rtk python3 scripts/fleet_customer_lifecycle.py grant-caller --customer-id acme4 \
+  --owner-user acme-admin --project acme --allow high \
+  --token-out ~/.local/share/metrum-fleet/acme4/CALLER_TOKEN_ADMIN.txt
+
+# Update live config (YAML patch merged into runtime bundle, then redeploy)
+rtk python3 scripts/fleet_customer_lifecycle.py update-config --customer-id acme4 \
+  --patch-file /protected/acme4-config-patch.yaml
+
+# Delete (signed Fleet delete; SQLite path; no kubectl)
+rtk python3 scripts/fleet_customer_lifecycle.py delete --customer-id acme4
 ```
 
-That single command assumes the Fleet lifecycle role, signs a reference-only
-intent without `database_profile`, runs `metrum-fleetctl plan` then `deploy`,
-and stores protected artifacts under `~/.local/share/metrum-fleet/<customer_id>/`.
-Fleet rewrites production-identical runtime bundles to `sqlite` + `auto-safe` at
-secret bind time so deploy does not require one-off migrate Jobs or kubectl.
+Compatibility alias (create only):
+
+```bash
+rtk python3 scripts/fleet_sqlite_customer_deploy.py --customer-id acme4
+```
+
+`smartrouterctl callers generate` remains the customer-local draft tool and
+returns `activation: configuration-controller-required`. On Metrum-managed EKS
+SQLite customers, Fleet `grant-caller` / `update-config` is the configuration
+controller: it writes
+`aws-secretsmanager:///smartrouter/fleet/customers/<id>/runtime-bundle` with the
+operator IAM identity (CreateSecret/PutSecretValue), then deploys with the Fleet
+lifecycle role (read + EKS). Do not use kubectl or one-off migrate Jobs.
+
+Artifacts stay under `~/.local/share/metrum-fleet/<customer_id>/` (mode `0700`).
 
 The typed AWS RDS adapter enforces private/encrypted/no-proxy policy, ownership
 tags, and final-snapshot deletion. Its default EKS constructor remains

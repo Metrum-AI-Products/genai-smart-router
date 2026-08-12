@@ -562,6 +562,8 @@ func (a *EKSTenantDeploymentAdapters) ValidateActivation(ctx context.Context, p 
 			d, e := a.kube.AppsV1().Deployments(p.Namespace).Get(ctx, "router", metav1.GetOptions{})
 			if e != nil || !owned(d.Labels, p) || d.Status.AvailableReplicas != 1 {
 				last = &TenantDeploymentAdapterError{Class: "router_not_ready", Err: errors.New("router deployment is not ready")}
+			} else if d.Status.UpdatedReplicas != 1 || d.Status.ReadyReplicas != 1 || d.Status.ObservedGeneration < d.Generation {
+				last = &TenantDeploymentAdapterError{Class: "router_not_ready", Err: errors.New("router deployment rollout is not complete")}
 			} else {
 				return "activation/router-ready", nil
 			}
