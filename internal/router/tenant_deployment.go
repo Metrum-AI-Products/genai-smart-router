@@ -157,11 +157,16 @@ func safeRegistryScalar(v string) bool {
 		return false
 	}
 	lower := strings.ToLower(v)
-	if strings.Contains(lower, "dsn") || strings.Contains(lower, "token") || strings.Contains(lower, "secret") {
+	if strings.Contains(lower, "dsn") || strings.Contains(lower, "token") {
+		return false
+	}
+	// Kubernetes object refs use kind/name (including secret/...). Reject other
+	// secret-shaped scalars that are not an owned object reference.
+	if strings.Contains(lower, "secret") && !strings.HasPrefix(lower, "secret/") {
 		return false
 	}
 	for _, r := range v {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-_.:", r)) {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-_.:/", r)) {
 			return false
 		}
 	}

@@ -32,8 +32,16 @@ func TestEKSRuntimeBindingCreatesExactConfigAndEnvironmentSecret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(secret.Data) != 2 || string(secret.Data["config.yaml"]) != configYAML || string(secret.Data["env.json"]) != envJSON {
+	if len(secret.Data) != 2 {
 		t.Fatal("runtime secret does not contain exactly config.yaml and env.json")
+	}
+	if string(secret.Data["env.json"]) != envJSON {
+		t.Fatal("SQLite path must preserve env.json except stripped usage DSN")
+	}
+	if !strings.Contains(string(secret.Data["config.yaml"]), "driver: sqlite") ||
+		!strings.Contains(string(secret.Data["config.yaml"]), "migration_policy: auto-safe") ||
+		!strings.Contains(string(secret.Data["config.yaml"]), tenantDeploymentSQLiteUsageDBPath) {
+		t.Fatalf("SQLite path must rewrite usage_db: %s", secret.Data["config.yaml"])
 	}
 	planJSON, err := json.Marshal(plan)
 	if err != nil {

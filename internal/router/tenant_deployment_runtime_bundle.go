@@ -10,6 +10,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	tenantDeploymentSQLiteUsageDBPath = "/var/lib/smart-llmrouter/usage.sqlite"
+	tenantDeploymentUsageDSNEnvKey    = "ROUTER_USAGE_DB_DSN"
+)
+
 var errInvalidTenantDeploymentRuntimeBundle = errors.New("invalid protected runtime bundle")
 
 // tenantDeploymentRuntimeBundle is the only accepted resolved runtime-secret
@@ -49,4 +54,65 @@ func parseTenantDeploymentRuntimeBundle(value []byte) (tenantDeploymentRuntimeBu
 		}
 	}
 	return bundle, nil
+}
+
+func injectRuntimeEnvJSONValue(envJSON, key, value string) (string, error) {
+	key = strings.TrimSpace(key)
+	if key == "" || value == "" {
+		return "", errors.New("runtime env injection requires a key and value")
+	}
+	var environment map[string]string
+	if err := json.Unmarshal([]byte(envJSON), &environment); err != nil || environment == nil {
+		return "", errInvalidTenantDeploymentRuntimeBundle
+	}
+	environment[key] = value
+	encoded, err := json.Marshal(environment)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
+func stripRuntimeEnvJSONKey(envJSON, key string) (string, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return "", errors.New("runtime env strip requires a key")
+	}
+	var environment map[string]string
+	if err := json.Unmarshal([]byte(envJSON), &environment); err != nil || environment == nil {
+		return "", errInvalidTenantDeploymentRuntimeBundle
+	}
+	delete(environment, key)
+	encoded, err := json.Marshal(environment)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
+// applySQLiteUsageDBConfig rewrites server.usage_db for the default Fleet path
+// (no dedicated RDS). Production-identical bundles ship postgres +
+// deployment-job; SQLite customers need sqlite + auto-safe on the PVC path so
+// metrum-fleetctl deploy is repeatable without one-off migrate Jobs.
+func applySQLiteUsageDBConfig(configYAML string) (string, error) {
+	var root map[string]any
+	if err := yaml.Unmarshal([]byte(configYAML), &root); err != nil || root == nil {
+		return "", errInvalidTenantDeploymentRuntimeBundle
+	}
+	server, _ := root["server"].(map[string]any)
+	if server == nil {
+		server = map[string]any{}
+		root["server"] = server
+	}
+	server["usage_db"] = map[string]any{
+		"enabled":          true,
+		"driver":           "sqlite",
+		"path":             tenantDeploymentSQLiteUsageDBPath,
+		"migration_policy": usageDBMigrationPolicyAutoSafe,
+	}
+	out, err := yaml.Marshal(root)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }

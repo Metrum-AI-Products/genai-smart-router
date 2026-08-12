@@ -19,6 +19,13 @@ import (
 
 func tenantDeploymentFixture(t *testing.T) (TenantDeploymentProfile, TenantDeploymentManifest, TenantDeploymentPlan) {
 	t.Helper()
+	prevWait, prevPoll := tenantDeploymentActivationWait, tenantDeploymentActivationPoll
+	tenantDeploymentActivationWait = 0
+	tenantDeploymentActivationPoll = time.Millisecond
+	t.Cleanup(func() {
+		tenantDeploymentActivationWait = prevWait
+		tenantDeploymentActivationPoll = prevPoll
+	})
 	root := filepath.Join("..", "..", "testdata", "tenant-deployment")
 	profilePath := filepath.Join(t.TempDir(), "profile.yaml")
 	profileBytes, err := os.ReadFile(filepath.Join(root, "profile.yaml"))
