@@ -9,6 +9,11 @@ GOARCH ?= $(shell go env GOARCH)
 HOST_GOOS := $(shell go env GOHOSTOS)
 HOST_GOARCH := $(shell go env GOHOSTARCH)
 PYTHON ?= python3
+# Packaged CLIs are ELF binaries only. Release packages never ship Go source,
+# cmd/, internal/, or go.mod. Fleet-only CLIs stay out of customer Docker images.
+PACKAGE_BINARIES := router router-token-gen router-usage-report router-migrate smartrouterctl metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign
+FLEET_ONLY_BINARIES := metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign
+DOCKER_RUNTIME_BINARIES := router router-token-gen router-usage-report router-migrate smartrouterctl
 
 # Inspect coding evaluations are deliberately opt-in: they call a live endpoint
 # and may start Docker sandboxes.  They are never prerequisites of test/build.
@@ -123,7 +128,7 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test test-migration-operational-postgres test-migration-data-jobs-postgres test-migration-data-job-ownership-postgres test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test test-migration-operational-postgres test-migration-data-jobs-postgres test-migration-data-job-ownership-postgres test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-package-binaries build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
 
 help: eks-help
 
@@ -459,43 +464,31 @@ admin-e2e: admin-build
 	npx --prefix internal/router/admindist/web playwright install chromium
 	npm run e2e --prefix internal/router/admindist/web
 
+build-package-binaries:
+	@set -e; \
+	for bin in $(PACKAGE_BINARIES); do \
+		echo "building $$bin"; \
+		go build -ldflags "$(BUILD_LDFLAGS)" -o "$$bin" "./cmd/$$bin"; \
+	done
+
 build: docs-build admin-build capability-smoke-unit
 	$(MAKE) validate-build-metadata
-	go build -ldflags "$(BUILD_LDFLAGS)" -o router ./cmd/router
-	go build -ldflags "$(BUILD_LDFLAGS)" -o router-token-gen ./cmd/router-token-gen
-	go build -ldflags "$(BUILD_LDFLAGS)" -o router-usage-report ./cmd/router-usage-report
-	go build -ldflags "$(BUILD_LDFLAGS)" -o router-migrate ./cmd/router-migrate
-	go build -ldflags "$(BUILD_LDFLAGS)" -o smartrouterctl ./cmd/smartrouterctl
-	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-fleetctl ./cmd/metrum-fleetctl
-	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-smartrouterctl ./cmd/metrum-smartrouterctl
+	$(MAKE) build-package-binaries
 
 build-go-only: capability-smoke-unit
 	$(MAKE) validate-build-metadata
-	go build -ldflags "$(BUILD_LDFLAGS)" -o router ./cmd/router
-	go build -ldflags "$(BUILD_LDFLAGS)" -o router-token-gen ./cmd/router-token-gen
-	go build -ldflags "$(BUILD_LDFLAGS)" -o router-usage-report ./cmd/router-usage-report
-	go build -ldflags "$(BUILD_LDFLAGS)" -o router-migrate ./cmd/router-migrate
-	go build -ldflags "$(BUILD_LDFLAGS)" -o smartrouterctl ./cmd/smartrouterctl
-	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-fleetctl ./cmd/metrum-fleetctl
-	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-smartrouterctl ./cmd/metrum-smartrouterctl
+	$(MAKE) build-package-binaries
 
 build-all: docs-build admin-build capability-smoke-unit
 	$(MAKE) validate-build-metadata
 	mkdir -p "$${DIST_DIR}/build/linux-amd64" "$${DIST_DIR}/build/linux-arm64"
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/router" ./cmd/router
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/router-token-gen" ./cmd/router-token-gen
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/router-usage-report" ./cmd/router-usage-report
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/router-migrate" ./cmd/router-migrate
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/smartrouterctl" ./cmd/smartrouterctl
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/metrum-fleetctl" ./cmd/metrum-fleetctl
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/metrum-smartrouterctl" ./cmd/metrum-smartrouterctl
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/router" ./cmd/router
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/router-token-gen" ./cmd/router-token-gen
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/router-usage-report" ./cmd/router-usage-report
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/router-migrate" ./cmd/router-migrate
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/smartrouterctl" ./cmd/smartrouterctl
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/metrum-fleetctl" ./cmd/metrum-fleetctl
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/metrum-smartrouterctl" ./cmd/metrum-smartrouterctl
+	@set -e; \
+	for arch in amd64 arm64; do \
+		for bin in $(PACKAGE_BINARIES); do \
+			echo "building linux-$$arch/$$bin"; \
+			CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-$$arch/$$bin" "./cmd/$$bin"; \
+		done; \
+	done
 
 package: package-all
 
@@ -507,13 +500,11 @@ package-one-no-docs: capability-smoke-unit
 	pkg_dir="$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}"; \
 	rm -rf "$${pkg_dir}"; \
 	mkdir -p "$${pkg_dir}/bin" "$${pkg_dir}/config/scripts" "$${pkg_dir}/docs" "$${pkg_dir}/caddy"; \
-	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/router" ./cmd/router; \
-	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/router-token-gen" ./cmd/router-token-gen; \
-	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/router-usage-report" ./cmd/router-usage-report; \
-	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/router-migrate" ./cmd/router-migrate; \
-	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/smartrouterctl" ./cmd/smartrouterctl; \
-	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/metrum-fleetctl" ./cmd/metrum-fleetctl; \
-	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/metrum-smartrouterctl" ./cmd/metrum-smartrouterctl; \
+	set -e; \
+	for bin in $(PACKAGE_BINARIES); do \
+		echo "packaging $$bin for $${GOOS}/$${GOARCH}"; \
+		CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/$$bin" "./cmd/$$bin"; \
+	done; \
 	cp config.example.yaml "$${pkg_dir}/config/config.example.yaml"; \
 	cp env.example.json "$${pkg_dir}/config/env.example.json"; \
 	cp scripts/router.ts "$${pkg_dir}/config/scripts/router.ts"; \
@@ -524,7 +515,7 @@ package-one-no-docs: capability-smoke-unit
 	done < "$(PACKAGE_DOC_ALLOWLIST)"
 	find "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}" -type d -exec chmod 0755 {} \;
 	find "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}" -type f -exec chmod 0644 {} \;
-	chmod 0755 "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-token-gen" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-usage-report" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-migrate" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/smartrouterctl" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/metrum-fleetctl" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/metrum-smartrouterctl"
+	chmod 0755 $${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/*
 	$(TAR_ENV) tar --owner=0 --group=0 --numeric-owner -C "$${DIST_DIR}/pkg" -czf "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz" "$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}"
 	python3 scripts/validate_package_contents.py --allowlist "$(PACKAGE_DOC_ALLOWLIST)" "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz"
 package-all: docs-build admin-build capability-smoke-unit

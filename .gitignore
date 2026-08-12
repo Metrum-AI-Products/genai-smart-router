@@ -41,6 +41,11 @@ smart-llmrouter
 /router
 /router-token-gen
 /router-usage-report
+/router-migrate
+/smartrouterctl
+/metrum-fleetctl
+/metrum-smartrouterctl
+/metrum-fleet-sign
 usage.sqlite
 examples/cli-e2e-c/cli-e2e
 dist/

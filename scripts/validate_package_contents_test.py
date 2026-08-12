@@ -49,7 +49,7 @@ def assert_offline_package_documentation_contract() -> None:
     if docker_start == -1:
         raise AssertionError("docs/PACKAGE_README.md: missing Docker Compose package manifest")
     docker_manifest = docker_section[docker_start:]
-    for fleet_binary in ("bin/metrum-fleetctl", "bin/metrum-smartrouterctl"):
+    for fleet_binary in ("bin/metrum-fleetctl", "bin/metrum-smartrouterctl", "bin/metrum-fleet-sign"):
         if fleet_binary in docker_manifest:
             raise AssertionError(f"docs/PACKAGE_README.md: Docker package manifest must omit {fleet_binary}")
     for guidance in (
@@ -64,7 +64,7 @@ def assert_offline_package_documentation_contract() -> None:
         expected_copy = f"COPY --from=build /out/{runtime_binary} /app/bin/{runtime_binary}"
         if expected_copy not in dockerfile:
             raise AssertionError(f"Dockerfile: missing runtime binary copy: {runtime_binary}")
-    for fleet_binary in ("metrum-fleetctl", "metrum-smartrouterctl"):
+    for fleet_binary in ("metrum-fleetctl", "metrum-smartrouterctl", "metrum-fleet-sign"):
         if fleet_binary in dockerfile:
             raise AssertionError(f"Dockerfile: standard image must not include {fleet_binary}")
 
@@ -115,6 +115,7 @@ def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> di
         f"{root}/bin/smartrouterctl": elf(62),
         f"{root}/bin/metrum-fleetctl": elf(62),
         f"{root}/bin/metrum-smartrouterctl": elf(62),
+        f"{root}/bin/metrum-fleet-sign": elf(62),
         f"{root}/config/config.example.yaml": "server: {}\n",
         f"{root}/config/env.example.json": "{}\n",
         f"{root}/config/scripts/router.ts": "export function route() {}\n",
@@ -213,6 +214,12 @@ def main() -> int:
         )
         write_tar(image_source_dot_path, image_source_dot_files)
         expect_errors(image_source_dot_path, allowlist, ["forbidden runtime/source path"])
+
+        binary_source_path = root / "binary-source-path.tar.gz"
+        binary_source_files = binary_package_files()
+        binary_source_files["smart-llmrouter-v1.0.0-linux-amd64/cmd/metrum-fleetctl/main.go"] = "package main\n"
+        write_tar(binary_source_path, binary_source_files)
+        expect_errors(binary_source_path, allowlist, ["forbidden source path"])
 
         apple_double = root / "appledouble.tar.gz"
         apple_files = binary_package_files()

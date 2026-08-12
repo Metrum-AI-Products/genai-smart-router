@@ -13,6 +13,7 @@ Binary packages include:
 - `bin/smartrouterctl`
 - `bin/metrum-fleetctl`
 - `bin/metrum-smartrouterctl` (one-release rename notice)
+- `bin/metrum-fleet-sign`
 - `config/config.example.yaml`
 - `config/env.example.json`
 - `config/scripts/router.ts`
@@ -39,7 +40,8 @@ smart-llmrouter:<version>-linux-<arch> version`.
 
 The standard Docker and Docker Compose images do not include
 `metrum-fleetctl` or the compatibility command. Docker-based Fleet operators run
-`metrum-fleetctl` from a binary package on a separate trusted administration host.
+`metrum-fleetctl` and `metrum-fleet-sign` from a binary package on a separate trusted administration host.
+Fleet CLIs are distributed as prebuilt binaries only; operator hosts must not require a Go toolchain or product source tree.
 
 Docker and Compose packages use SQLite state with one Router container and one
 replica by default; they neither provision nor bind RDS. Dedicated RDS is an
