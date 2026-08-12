@@ -24,8 +24,10 @@ bin/smartrouterctl
 bin/metrum-fleetctl
 bin/metrum-smartrouterctl  # one-release rename notice
 bin/metrum-fleet-sign
+bin/router-license
 config/config.example.yaml
 config/env.example.json
+config/enterprise-license-skus.json
 config/scripts/router.ts
 docs/PACKAGE_README.md
 docs/BINARY_INSTALL.md

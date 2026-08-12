@@ -47,7 +47,7 @@ Packages must not contain:
 - Go source files (`.go`), `go.mod`, or `go.sum`;
 - full production config files.
 
-Packaged CLIs (`router`, `smartrouterctl`, `metrum-fleetctl`, `metrum-fleet-sign`, and related tools) are prebuilt ELF binaries only. Operator and customer hosts must not require a Go toolchain or product source tree to run them.
+Packaged CLIs (`router`, `smartrouterctl`, `metrum-fleetctl`, `metrum-fleet-sign`, `router-license`, and related tools) are prebuilt ELF binaries only. Operator and customer hosts must not require a Go toolchain or product source tree to run them. `router-license` is Metrum-only and must not appear in customer Docker images.
 
 ## Runtime Health Checks
 

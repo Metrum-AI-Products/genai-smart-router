@@ -11,8 +11,8 @@ HOST_GOARCH := $(shell go env GOHOSTARCH)
 PYTHON ?= python3
 # Packaged CLIs are ELF binaries only. Release packages never ship Go source,
 # cmd/, internal/, or go.mod. Fleet-only CLIs stay out of customer Docker images.
-PACKAGE_BINARIES := router router-token-gen router-usage-report router-migrate smartrouterctl metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign
-FLEET_ONLY_BINARIES := metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign
+PACKAGE_BINARIES := router router-token-gen router-usage-report router-migrate smartrouterctl metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
+FLEET_ONLY_BINARIES := metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
 DOCKER_RUNTIME_BINARIES := router router-token-gen router-usage-report router-migrate smartrouterctl
 
 # Inspect coding evaluations are deliberately opt-in: they call a live endpoint
@@ -507,6 +507,7 @@ package-one-no-docs: capability-smoke-unit
 	done; \
 	cp config.example.yaml "$${pkg_dir}/config/config.example.yaml"; \
 	cp env.example.json "$${pkg_dir}/config/env.example.json"; \
+	cp docs/enterprise-license-skus.json "$${pkg_dir}/config/enterprise-license-skus.json"; \
 	cp scripts/router.ts "$${pkg_dir}/config/scripts/router.ts"; \
 	cp deploy/Caddyfile "$${pkg_dir}/caddy/Caddyfile"
 	while IFS= read -r doc; do \
