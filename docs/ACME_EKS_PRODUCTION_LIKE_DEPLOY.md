@@ -1,20 +1,25 @@
-# ACME production-like EKS deploy (no Compose cutover)
+# ACME production-like EKS deployment result (no Compose cutover)
 
-> **Internal plan for issue [#869](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/869).**
-> This document grants no AWS, EKS, RDS, DNS, production, runtime-secret, or Compose-to-EKS mutation authority until the fail-closed prerequisites below pass.
+> **Internal execution record for issue [#869](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/869).**
+> This execution record grants no authority to repeat EKS/RDS, DNS, runtime-secret, production, or Compose-to-EKS mutation.
 
-## Decision
+## Completed outcome
 
-Deploy one isolated licensed customer-like Router for **ACME** at
-`https://acme.apps.metrum.ai` on the shared `metrum` EKS cluster. Reuse the
-current Compose production **upstream provider credential values and
-provider/model-group routing contract** through a separate ACME runtime Secret
-and protected `runtime_bundle_ref`. Keep
-`https://llm-api-engg.metrum.ai` as the unchanged Compose production authority.
+On 2026-08-10, Fleet deployed, validated, and then authorizedly destroyed one
+isolated, production-like ACME Router on the shared `metrum` EKS cluster.
+`https://acme.apps.metrum.ai` served only after activation; the exact ACME
+namespace, dedicated RDS, PVC, runtime bundle, license binding, and Ingress
+belonged to the Fleet job. The job finished `deleted` with
+`database_state=deleted`.
 
-This is **not** `#518` production cutover.
+The test bundle contained the protected production-equivalent upstream routing
+contract, including all 25 deployed model groups. It was bound only through a
+separate runtime Secret and protected `runtime_bundle_ref`; no values entered
+Git, NDJSON, command arguments, logs, or this record.
 
-Tracked work item: `task.acme_eks_production_like_deploy`.
+`https://llm-api-engg.metrum.ai` remains the unchanged Compose production
+authority. This completed non-production rehearsal is not `#518` production
+authorization.
 
 ## Target shape
 
@@ -30,17 +35,27 @@ Tracked work item: `task.acme_eks_production_like_deploy`.
 | Database | SQLite single-writer default; dedicated private RDS only with an explicit approved `database_profile` |
 | Compute | Optional manifesto `compute_profile`; default `t3a.medium` from protected `approved_compute_profiles` (K8s scheduling only) |
 
-## Fail-closed sequence
+## Completed gate and smoke evidence
 
-1. **`#818` repair** — **DONE 2026-08-09.** Reconciled delivery Role/RoleBinding via `scripts/reconcile_staging_delivery_rbac.py` (outcome `reconciled`). Protected delivery preflight returned `{"action":"preflight","outcome":"passed"}` with deletion verbs denied. Issue #818 closed.
-2. **Disposable EKS/RDS E2E** — deterministic `metrum-fleetctl plan`, an externally issued and profile-key-signed mode-`0600` `--rds-admission-file` with `action: disposable-e2e`, then packaged disposable E2E including failure/retry and confirmed cleanup (PR `#868`).
-3. **Recorded single-reviewer review** — checklist in [Recorded security and operations review](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review); self-review by the implementing maintainer is permitted for this non-production target.
-4. **ACME plan** — reference-only intent + protected profile + protected runtime bundle; no secrets in Git, NDJSON, argv, logs, or chat.
-5. **ACME deploy** — `metrum-fleetctl deploy` with a fresh profile-key-signed scoped admission bound to the ACME job/intent/namespace/manifest digest; activation before Host publish.
-6. **Smoke** — `/readyz`, `/v1/models`, Chat/Responses/Messages as exposed, Codex/Claude Code for the coding group, ordinary-caller `/metrics` → `403 metrics-forbidden`, sanitized usage evidence.
-7. **Retention** — record keep-or-destroy for namespace/RDS/PVC/Secrets/Host; Compose production untouched.
+1. **`#818` repair** — completed 2026-08-09. The delivery Role/RoleBinding
+   reconciliation passed protected preflight with deletion verbs denied.
+2. **Disposable EKS/RDS E2E** — completed with the external, signed,
+   mode-`0600` admission; it exercised failure/retry and confirmed cleanup.
+3. **Recorded security and operations review** — completed as permitted
+   single-maintainer self-review for this non-production target.
+4. **ACME lifecycle** — Fleet derived `namespace=acme` from `customer_id`,
+   created the dedicated RDS, bound `ROUTER_USAGE_DB_DSN` only through the
+   runtime environment, activated the Router, then published the exact Host.
+5. **Smokes and isolation** — cluster and public-host `/readyz` passed;
+   `/v1/models` returned 25 groups including `default` and `big-coder`;
+   ordinary caller `/metrics` returned `403`; owned-resource isolation passed.
+6. **Cleanup** — the separately authorized delete completed, including
+   `database_state=deleted`. Compose production remained untouched.
 
-`#518` remains the sole authority for any later production-profile or Compose cutover work.
+The sanitized execution outcome is recorded in
+[#869](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/869#issuecomment-5245520939).
+`#518` remains the sole authority for production-profile or Compose cutover
+work.
 
 ## Placeholder artifacts (safe)
 
@@ -51,31 +66,21 @@ Checked-in placeholders contain no credentials, DSNs, tokens, or production host
 
 Real protected files live only under mode-`0600` paths outside the repository (for example `/protected/acme/`).
 
-## Operator commands (after gates pass)
+## Historical command shape
+
+The following commands illustrate the protected reference-only lifecycle shape
+used by the completed rehearsal; they are not an authorization to repeat it:
 
 ```bash
-# Read-only plan (no mutation)
 rtk ./bin/metrum-fleetctl plan \
   --intent /protected/acme/acme2-deploy-intent.json \
   --output json
 
-# Deploy only with a still-valid scoped admission when the signed intent selects RDS.
 rtk ./bin/metrum-fleetctl deploy \
   --intent /protected/acme/acme2-deploy-intent.json \
   --rds-admission-file /protected/acme/rds-admission.json \
   --output json
 ```
-
-## Open human decisions
-
-Record answers in the protected approval channel; store only safe non-secret
-identifiers in NDJSON evidence:
-
-1. `#818` preflight owner session and passing evidence location (sanitized)?
-2. Confirm production upstream credential reuse into a separate ACME Secret?
-3. Dedicated RDS vs explicit SQLite exception?
-4. Admission `issuer_role` alias for ACME?
-5. Post-smoke retain vs destroy schedule and cleanup authority?
 
 ## Related
 
