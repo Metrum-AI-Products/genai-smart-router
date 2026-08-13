@@ -26,18 +26,22 @@ const (
 	TenantDeploymentProfileAPIVersion  = "metrum.ai/smartrouter-profile/v1"
 	TenantDeletionApprovalAPIVersion   = "metrum.ai/smartrouter-delete-approval/v1"
 	TenantReleaseLatestApproved        = "latest-approved"
-	maxTenantDeploymentDocumentBytes   = 64 << 10
-	maxTenantDeploymentIntentLifetime  = 24 * time.Hour
+	// DefaultTenantComputeProfile is selected when the sealed manifesto omits compute_profile.
+	DefaultTenantComputeProfile       = "t3a.medium"
+	maxTenantDeploymentDocumentBytes  = 64 << 10
+	maxTenantDeploymentIntentLifetime = 24 * time.Hour
 )
 
 var (
-	deploymentIDPattern     = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
-	awsRegionPattern        = regexp.MustCompile(`^[a-z]{2}(-gov)?-[a-z]+-[0-9]$`)
-	sha256DigestPattern     = regexp.MustCompile(`^[a-z0-9][a-z0-9./_-]{0,127}@sha256:[0-9a-f]{64}$`)
-	configRevisionPattern   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$`)
-	referencePattern        = regexp.MustCompile(`^aws-(ssm|secretsmanager):///[A-Za-z0-9/_.+=@-]{1,512}$`)
-	hostnameSuffixPattern   = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$`)
-	secretValueLikePatterns = []*regexp.Regexp{
+	deploymentIDPattern       = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+	computeProfileNamePattern = regexp.MustCompile(`^[a-z][a-z0-9.-]{0,62}$`)
+	resourceQuantityPattern   = regexp.MustCompile(`^[0-9]+([.][0-9]+)?(m|Mi|Gi|Ki)?$`)
+	awsRegionPattern          = regexp.MustCompile(`^[a-z]{2}(-gov)?-[a-z]+-[0-9]$`)
+	sha256DigestPattern       = regexp.MustCompile(`^[a-z0-9][a-z0-9./_-]{0,127}@sha256:[0-9a-f]{64}$`)
+	configRevisionPattern     = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$`)
+	referencePattern          = regexp.MustCompile(`^aws-(ssm|secretsmanager):///[A-Za-z0-9/_.+=@-]{1,512}$`)
+	hostnameSuffixPattern     = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$`)
+	secretValueLikePatterns   = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9]{12,}|xox[baprs]-[a-z0-9-]{12,}|akia[0-9a-z]{12,})(?:$|[^a-z0-9])`),
 		regexp.MustCompile(`(?i)-----BEGIN [A-Z ]*PRIVATE KEY-----`),
 		regexp.MustCompile(`(?i)(authorization|api[_-]?key|password|private[_-]?key|router[_-]?token)\s*[:=]`),
@@ -54,10 +58,34 @@ type TenantDeploymentManifest struct {
 	Release          string                  `json:"release" yaml:"release"`
 	ResourceProfile  string                  `json:"resource_profile" yaml:"resource_profile"`
 	StateProfile     string                  `json:"state_profile" yaml:"state_profile"`
+	ComputeProfile   string                  `json:"compute_profile,omitempty" yaml:"compute_profile,omitempty"`
 	DatabaseProfile  string                  `json:"database_profile,omitempty" yaml:"database_profile,omitempty"`
 	RuntimeBundleRef string                  `json:"runtime_bundle_ref" yaml:"runtime_bundle_ref"`
 	ConfigRevision   string                  `json:"config_revision" yaml:"config_revision"`
 	License          TenantDeploymentLicense `json:"license" yaml:"license"`
+}
+
+// TenantComputeProfile is protected Kubernetes scheduling/resource policy for one
+// approved compute profile name. It never provisions EC2, node groups, ASGs, or Karpenter.
+type TenantComputeProfile struct {
+	Architecture              string                    `json:"architecture" yaml:"architecture"`
+	CPURequest                string                    `json:"cpu_request" yaml:"cpu_request"`
+	CPULimit                  string                    `json:"cpu_limit" yaml:"cpu_limit"`
+	MemoryRequest             string                    `json:"memory_request" yaml:"memory_request"`
+	MemoryLimit               string                    `json:"memory_limit" yaml:"memory_limit"`
+	NodeClassAlias            string                    `json:"node_class_alias" yaml:"node_class_alias"`
+	NodeSelector              map[string]string         `json:"node_selector,omitempty" yaml:"node_selector,omitempty"`
+	Tolerations               []TenantComputeToleration `json:"tolerations,omitempty" yaml:"tolerations,omitempty"`
+	CapacityClass             string                    `json:"capacity_class,omitempty" yaml:"capacity_class,omitempty"`
+	AllowSharedWorkerFallback bool                      `json:"allow_shared_worker_fallback,omitempty" yaml:"allow_shared_worker_fallback,omitempty"`
+}
+
+// TenantComputeToleration is a bounded Kubernetes toleration allowlisted by the protected profile.
+type TenantComputeToleration struct {
+	Key      string `json:"key" yaml:"key"`
+	Operator string `json:"operator,omitempty" yaml:"operator,omitempty"`
+	Value    string `json:"value,omitempty" yaml:"value,omitempty"`
+	Effect   string `json:"effect,omitempty" yaml:"effect,omitempty"`
 }
 
 type TenantDeploymentLicense struct {
@@ -83,34 +111,35 @@ type TenantDeploymentIntent struct {
 // The local fake-first implementation resolves only mode-0600 file:// profiles;
 // live protected-profile adapters remain a separate, explicit gate.
 type TenantDeploymentProfile struct {
-	APIVersion                 string `json:"api_version" yaml:"api_version"`
-	ProfileID                  string `json:"profile_id" yaml:"profile_id"`
-	Environment                string `json:"environment" yaml:"environment"`
-	AccountAlias               string `json:"account_alias" yaml:"account_alias"`
-	Region                     string `json:"region" yaml:"region"`
-	ClusterAlias               string `json:"cluster_alias" yaml:"cluster_alias"`
-	NamespacePrefix            string `json:"namespace_prefix" yaml:"namespace_prefix"`
-	HostnameSuffix             string `json:"hostname_suffix" yaml:"hostname_suffix"`
-	ApprovedReleaseDigest      string `json:"approved_release_digest" yaml:"approved_release_digest"`
-	ApprovedResourceProfile    string `json:"approved_resource_profile" yaml:"approved_resource_profile"`
-	ApprovedStateProfile       string `json:"approved_state_profile" yaml:"approved_state_profile"`
-	AWSProfile                 string `json:"aws_profile" yaml:"aws_profile"`
-	LifecycleApprovalIssuer    string `json:"lifecycle_approval_issuer" yaml:"lifecycle_approval_issuer"`
-	LifecycleApprovalPublicKey string `json:"lifecycle_approval_public_key" yaml:"lifecycle_approval_public_key"`
-	StorageClass               string `json:"storage_class" yaml:"storage_class"`
-	StateStorageGiB            int    `json:"state_storage_gib" yaml:"state_storage_gib"`
-	IngressClassName           string `json:"ingress_class_name" yaml:"ingress_class_name"`
-	IngressNamespace           string `json:"ingress_namespace" yaml:"ingress_namespace"`
-	TLSSecretName              string `json:"tls_secret_name" yaml:"tls_secret_name"`
-	DatabaseMode               string `json:"database_mode" yaml:"database_mode"`
-	ApprovedDatabaseProfile    string `json:"approved_database_profile" yaml:"approved_database_profile"`
-	RDSInstanceClass           string `json:"rds_instance_class" yaml:"rds_instance_class"`
-	RDSStorageGiB              int    `json:"rds_storage_gib" yaml:"rds_storage_gib"`
-	RDSBackupRetentionDays     int    `json:"rds_backup_retention_days" yaml:"rds_backup_retention_days"`
-	RDSSubnetGroup             string `json:"rds_subnet_group" yaml:"rds_subnet_group"`
-	RDSVPCSecurityGroup        string `json:"rds_vpc_security_group" yaml:"rds_vpc_security_group"`
-	RDSMasterUsername          string `json:"rds_master_username" yaml:"rds_master_username"`
-	RDSProxyDisabled           bool   `json:"rds_proxy_disabled" yaml:"rds_proxy_disabled"`
+	APIVersion                 string                          `json:"api_version" yaml:"api_version"`
+	ProfileID                  string                          `json:"profile_id" yaml:"profile_id"`
+	Environment                string                          `json:"environment" yaml:"environment"`
+	AccountAlias               string                          `json:"account_alias" yaml:"account_alias"`
+	Region                     string                          `json:"region" yaml:"region"`
+	ClusterAlias               string                          `json:"cluster_alias" yaml:"cluster_alias"`
+	NamespacePrefix            string                          `json:"namespace_prefix" yaml:"namespace_prefix"`
+	HostnameSuffix             string                          `json:"hostname_suffix" yaml:"hostname_suffix"`
+	ApprovedReleaseDigest      string                          `json:"approved_release_digest" yaml:"approved_release_digest"`
+	ApprovedResourceProfile    string                          `json:"approved_resource_profile" yaml:"approved_resource_profile"`
+	ApprovedStateProfile       string                          `json:"approved_state_profile" yaml:"approved_state_profile"`
+	ApprovedComputeProfiles    map[string]TenantComputeProfile `json:"approved_compute_profiles" yaml:"approved_compute_profiles"`
+	AWSProfile                 string                          `json:"aws_profile" yaml:"aws_profile"`
+	LifecycleApprovalIssuer    string                          `json:"lifecycle_approval_issuer" yaml:"lifecycle_approval_issuer"`
+	LifecycleApprovalPublicKey string                          `json:"lifecycle_approval_public_key" yaml:"lifecycle_approval_public_key"`
+	StorageClass               string                          `json:"storage_class" yaml:"storage_class"`
+	StateStorageGiB            int                             `json:"state_storage_gib" yaml:"state_storage_gib"`
+	IngressClassName           string                          `json:"ingress_class_name" yaml:"ingress_class_name"`
+	IngressNamespace           string                          `json:"ingress_namespace" yaml:"ingress_namespace"`
+	TLSSecretName              string                          `json:"tls_secret_name" yaml:"tls_secret_name"`
+	DatabaseMode               string                          `json:"database_mode" yaml:"database_mode"`
+	ApprovedDatabaseProfile    string                          `json:"approved_database_profile" yaml:"approved_database_profile"`
+	RDSInstanceClass           string                          `json:"rds_instance_class" yaml:"rds_instance_class"`
+	RDSStorageGiB              int                             `json:"rds_storage_gib" yaml:"rds_storage_gib"`
+	RDSBackupRetentionDays     int                             `json:"rds_backup_retention_days" yaml:"rds_backup_retention_days"`
+	RDSSubnetGroup             string                          `json:"rds_subnet_group" yaml:"rds_subnet_group"`
+	RDSVPCSecurityGroup        string                          `json:"rds_vpc_security_group" yaml:"rds_vpc_security_group"`
+	RDSMasterUsername          string                          `json:"rds_master_username" yaml:"rds_master_username"`
+	RDSProxyDisabled           bool                            `json:"rds_proxy_disabled" yaml:"rds_proxy_disabled"`
 }
 
 type TenantDeploymentPlan struct {
@@ -130,6 +159,13 @@ type TenantDeploymentPlan struct {
 	ReleaseDigest     string   `json:"release_digest"`
 	ResourceProfile   string   `json:"resource_profile"`
 	StateProfile      string   `json:"state_profile"`
+	ComputeProfile    string   `json:"compute_profile"`
+	NodeClassAlias    string   `json:"node_class_alias,omitempty"`
+	Architecture      string   `json:"architecture,omitempty"`
+	CPURequest        string   `json:"cpu_request,omitempty"`
+	CPULimit          string   `json:"cpu_limit,omitempty"`
+	MemoryRequest     string   `json:"memory_request,omitempty"`
+	MemoryLimit       string   `json:"memory_limit,omitempty"`
 	ConfigRevision    string   `json:"config_revision"`
 	ManifestSHA256    string   `json:"manifest_sha256"`
 	DatabaseProfile   string   `json:"database_profile,omitempty"`
@@ -137,6 +173,7 @@ type TenantDeploymentPlan struct {
 	Actions           []string `json:"actions"`
 	runtimeBundleRef  string
 	licenseRequestRef string
+	computePolicy     TenantComputeProfile
 }
 
 func LoadTenantDeploymentManifest(path string, stdin io.Reader) (TenantDeploymentManifest, error) {
@@ -280,6 +317,10 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 	if manifest.StateProfile != profile.ApprovedStateProfile {
 		return TenantDeploymentPlan{}, errors.New("state_profile is not approved by the protected profile")
 	}
+	computeName, computePolicy, err := resolveTenantComputeProfile(profile, manifest.ComputeProfile)
+	if err != nil {
+		return TenantDeploymentPlan{}, err
+	}
 	if manifest.Release != TenantReleaseLatestApproved {
 		return TenantDeploymentPlan{}, errors.New("release must be latest-approved")
 	}
@@ -316,13 +357,105 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 		Region: profile.Region, ClusterAlias: profile.ClusterAlias, CustomerID: manifest.CustomerID,
 		Stage: manifest.Stage, Namespace: namespace, Hostname: hostname,
 		ReleaseDigest: profile.ApprovedReleaseDigest, ResourceProfile: manifest.ResourceProfile,
-		StateProfile: manifest.StateProfile, ConfigRevision: manifest.ConfigRevision,
+		StateProfile: manifest.StateProfile, ComputeProfile: computeName,
+		NodeClassAlias: computePolicy.NodeClassAlias, Architecture: computePolicy.Architecture,
+		CPURequest: computePolicy.CPURequest, CPULimit: computePolicy.CPULimit,
+		MemoryRequest: computePolicy.MemoryRequest, MemoryLimit: computePolicy.MemoryLimit,
+		ConfigRevision:   manifest.ConfigRevision,
 		ManifestSHA256:   hex.EncodeToString(manifestSum[:]),
 		runtimeBundleRef: manifest.RuntimeBundleRef, licenseRequestRef: manifest.License.RequestRef,
 		DatabaseProfile: manifest.DatabaseProfile,
 		DatabaseID:      databaseID,
 		Actions:         tenantDeploymentActions(dedicatedRDS),
+		computePolicy:   computePolicy,
 	}, nil
+}
+
+// resolveTenantComputeProfile selects an approved compute profile. Empty
+// selection defaults to DefaultTenantComputeProfile and fails closed when that
+// name is absent or cannot be represented by the protected scheduling contract.
+func resolveTenantComputeProfile(profile TenantDeploymentProfile, selected string) (string, TenantComputeProfile, error) {
+	name := strings.TrimSpace(selected)
+	if name == "" {
+		name = DefaultTenantComputeProfile
+	}
+	if err := validateComputeProfileName("compute_profile", name); err != nil {
+		return "", TenantComputeProfile{}, err
+	}
+	policy, ok := profile.ApprovedComputeProfiles[name]
+	if !ok {
+		return "", TenantComputeProfile{}, errors.New("compute_profile is not approved by the protected profile")
+	}
+	if err := validateTenantComputeProfile(name, policy); err != nil {
+		return "", TenantComputeProfile{}, err
+	}
+	return name, policy, nil
+}
+
+func validateTenantComputeProfile(name string, policy TenantComputeProfile) error {
+	if err := validateComputeProfileName("approved_compute_profiles."+name, name); err != nil {
+		return err
+	}
+	for field, value := range map[string]string{
+		"architecture":     policy.Architecture,
+		"cpu_request":      policy.CPURequest,
+		"cpu_limit":        policy.CPULimit,
+		"memory_request":   policy.MemoryRequest,
+		"memory_limit":     policy.MemoryLimit,
+		"node_class_alias": policy.NodeClassAlias,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("approved compute profile %q is missing %s", name, field)
+		}
+	}
+	if policy.Architecture != "amd64" && policy.Architecture != "arm64" {
+		return fmt.Errorf("approved compute profile %q architecture must be amd64 or arm64", name)
+	}
+	for field, value := range map[string]string{
+		"cpu_request":    policy.CPURequest,
+		"cpu_limit":      policy.CPULimit,
+		"memory_request": policy.MemoryRequest,
+		"memory_limit":   policy.MemoryLimit,
+	} {
+		if !resourceQuantityPattern.MatchString(value) {
+			return fmt.Errorf("approved compute profile %q %s is invalid", name, field)
+		}
+	}
+	if err := validateComputeProfileName("node_class_alias", policy.NodeClassAlias); err != nil {
+		return err
+	}
+	if policy.CapacityClass != "" {
+		if err := validateDeploymentID("capacity_class", policy.CapacityClass); err != nil {
+			return err
+		}
+	}
+	if !policy.AllowSharedWorkerFallback {
+		if len(policy.NodeSelector) == 0 {
+			return fmt.Errorf("approved compute profile %q requires node_selector when allow_shared_worker_fallback is false", name)
+		}
+	}
+	for key, value := range policy.NodeSelector {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" || len(key) > 253 || len(value) > 63 {
+			return fmt.Errorf("approved compute profile %q node_selector is invalid", name)
+		}
+		if strings.Contains(strings.ToLower(key), "secret") || strings.Contains(strings.ToLower(value), "token") {
+			return fmt.Errorf("approved compute profile %q node_selector contains forbidden content", name)
+		}
+	}
+	for _, toleration := range policy.Tolerations {
+		if strings.TrimSpace(toleration.Key) == "" {
+			return fmt.Errorf("approved compute profile %q toleration key is required", name)
+		}
+		op := strings.ToLower(toleration.Operator)
+		if op != "" && op != "equal" && op != "exists" {
+			return fmt.Errorf("approved compute profile %q toleration operator is invalid", name)
+		}
+		effect := strings.ToLower(toleration.Effect)
+		if effect != "" && effect != "noschedule" && effect != "prefernoschedule" && effect != "noexecute" {
+			return fmt.Errorf("approved compute profile %q toleration effect is invalid", name)
+		}
+	}
+	return nil
 }
 
 func tenantDeploymentActions(dedicatedRDS bool) []string {
@@ -416,6 +549,11 @@ func validateTenantDeploymentManifest(manifest TenantDeploymentManifest, raw []b
 			return err
 		}
 	}
+	if manifest.ComputeProfile != "" {
+		if err := validateComputeProfileName("compute_profile", manifest.ComputeProfile); err != nil {
+			return err
+		}
+	}
 	for name, value := range map[string]string{"runtime_bundle_ref": manifest.RuntimeBundleRef, "license.request_ref": manifest.License.RequestRef} {
 		if !referencePattern.MatchString(value) {
 			return fmt.Errorf("%s must be an aws-ssm:/// or aws-secretsmanager:/// reference without query data", name)
@@ -486,6 +624,17 @@ func validateTenantDeploymentProfile(profile TenantDeploymentProfile, raw []byte
 	if profile.StateStorageGiB < 1 || profile.StateStorageGiB > 1024 {
 		return errors.New("state_storage_gib must be between 1 and 1024")
 	}
+	if len(profile.ApprovedComputeProfiles) == 0 {
+		return errors.New("approved_compute_profiles must include at least one compute profile")
+	}
+	if _, ok := profile.ApprovedComputeProfiles[DefaultTenantComputeProfile]; !ok {
+		return fmt.Errorf("approved_compute_profiles must include default %q", DefaultTenantComputeProfile)
+	}
+	for name, policy := range profile.ApprovedComputeProfiles {
+		if err := validateTenantComputeProfile(name, policy); err != nil {
+			return err
+		}
+	}
 	return rejectSecretShapedDeploymentData(raw)
 }
 
@@ -515,6 +664,14 @@ func verifyLifecycleApprovalSignature(profile TenantDeploymentProfile, issuer, s
 func validateDeploymentID(name, value string) error {
 	if !deploymentIDPattern.MatchString(value) || strings.Contains(strings.ToLower(value), "secret") || strings.Contains(strings.ToLower(value), "token") {
 		return fmt.Errorf("%s must be a lowercase DNS-safe non-secret identifier", name)
+	}
+	return nil
+}
+
+func validateComputeProfileName(name, value string) error {
+	if !computeProfileNamePattern.MatchString(value) || strings.Contains(value, "..") ||
+		strings.Contains(strings.ToLower(value), "secret") || strings.Contains(strings.ToLower(value), "token") {
+		return fmt.Errorf("%s must be a lowercase compute-profile identifier", name)
 	}
 	return nil
 }

@@ -52,37 +52,175 @@ type EKSTenantDeploymentAdapters struct {
 }
 
 // ObserveTenantDeployment obtains a bounded live readback for status. It does
-// not mutate the registry or the cluster and returns only a safe state class.
-func ObserveTenantDeployment(ctx context.Context, profile TenantDeploymentProfile, status TenantDeploymentStatus) (string, error) {
+// not mutate the registry or the cluster and returns only safe scalar fields.
+func ObserveTenantDeployment(ctx context.Context, profile TenantDeploymentProfile, status TenantDeploymentStatus) (TenantDeploymentStatus, error) {
 	adapter, _, err := NewEKSTenantDeploymentAdapters(ctx, profile)
 	if err != nil {
-		return "", err
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "unauthorized") || strings.Contains(msg, "accessdenied") || strings.Contains(msg, "forbidden") || strings.Contains(msg, "expired") {
+			status.ObservedState = "access_denied"
+			status.Workload = &TenantDeploymentWorkloadStatus{Ownership: TenantOwnershipAccessDenied}
+			status.PVC = &TenantDeploymentResourceStatus{NameAlias: "router-state", Ownership: TenantOwnershipAccessDenied}
+			status.Ingress = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipAccessDenied}
+			status.Service = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipAccessDenied}
+			if status.Database == nil {
+				status.Database = &TenantDeploymentDatabaseStatus{Ownership: TenantOwnershipNotApplicable}
+			}
+			return status, nil
+		}
+		return status, err
 	}
-	plan := TenantDeploymentPlan{InstanceID: status.InstanceID, Namespace: status.Namespace}
-	deployment, err := adapter.kube.AppsV1().Deployments(plan.Namespace).Get(ctx, "router", metav1.GetOptions{})
-	if apierrors.IsNotFound(err) {
-		return "absent", nil
+	plan := TenantDeploymentPlan{InstanceID: status.InstanceID, Namespace: status.Namespace, DatabaseID: "", ComputeProfile: status.ComputeProfile}
+	if status.ComputeProfile == "" {
+		status.ComputeProfile = DefaultTenantComputeProfile
 	}
-	if err != nil {
-		return "", err
+	if policy, ok := profile.ApprovedComputeProfiles[status.ComputeProfile]; ok {
+		status.NodeClassAlias = policy.NodeClassAlias
+		status.Architecture = policy.Architecture
+		status.CPURequest = policy.CPURequest
+		status.CPULimit = policy.CPULimit
+		status.MemoryRequest = policy.MemoryRequest
+		status.MemoryLimit = policy.MemoryLimit
+		plan.computePolicy = policy
 	}
-	if !owned(deployment.Labels, plan) || deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != 1 {
-		return "ownership_or_replica_mismatch", nil
-	}
-	pvc, err := adapter.kube.CoreV1().PersistentVolumeClaims(plan.Namespace).Get(ctx, "router-state", metav1.GetOptions{})
-	if err != nil {
-		return "not_ready", nil
-	}
-	if pvc.Status.Phase != corev1.ClaimBound || deployment.Status.AvailableReplicas != 1 {
-		return "not_ready", nil
-	}
-	if status.State == TenantDeploymentReady {
-		ingress, err := adapter.kube.NetworkingV1().Ingresses(plan.Namespace).Get(ctx, "router", metav1.GetOptions{})
-		if err != nil || !owned(ingress.Labels, plan) {
-			return "activation_or_ingress_mismatch", nil
+	status.Database = &TenantDeploymentDatabaseStatus{Ownership: TenantOwnershipNotApplicable}
+	if status.DatabaseState != "" {
+		status.Database = &TenantDeploymentDatabaseStatus{
+			DatabaseIDAlias:        "rds-" + strings.TrimPrefix(status.InstanceID, "instance-"),
+			Status:                 status.DatabaseState,
+			OwnershipBindingResult: status.DatabaseState,
+			Ownership:              TenantOwnershipOwned,
 		}
 	}
-	return "ready", nil
+
+	deployment, err := adapter.kube.AppsV1().Deployments(plan.Namespace).Get(ctx, "router", metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		status.ObservedState = "absent"
+		status.Workload = &TenantDeploymentWorkloadStatus{Ownership: TenantOwnershipExpectedMissing}
+		status.PVC = &TenantDeploymentResourceStatus{NameAlias: "router-state", Ownership: TenantOwnershipExpectedMissing}
+		status.Ingress = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipExpectedMissing}
+		status.Service = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipExpectedMissing}
+		return status, nil
+	}
+	if err != nil {
+		if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
+			status.ObservedState = "access_denied"
+			status.Workload = &TenantDeploymentWorkloadStatus{Ownership: TenantOwnershipAccessDenied}
+			return status, nil
+		}
+		return status, err
+	}
+	if !owned(deployment.Labels, plan) {
+		status.ObservedState = "ownership_or_replica_mismatch"
+		status.Workload = &TenantDeploymentWorkloadStatus{Ownership: TenantOwnershipForeignOrUnverified}
+		return status, nil
+	}
+	desired := int32(0)
+	if deployment.Spec.Replicas != nil {
+		desired = *deployment.Spec.Replicas
+	}
+	if desired != 1 {
+		status.ObservedState = "ownership_or_replica_mismatch"
+		status.Workload = &TenantDeploymentWorkloadStatus{
+			DesiredReplicas: desired, ReadyReplicas: deployment.Status.ReadyReplicas,
+			AvailableReplicas: deployment.Status.AvailableReplicas, Ownership: TenantOwnershipForeignOrUnverified,
+		}
+		return status, nil
+	}
+	phaseCounts := map[string]int{}
+	var restarts int32
+	pods, err := adapter.kube.CoreV1().Pods(plan.Namespace).List(ctx, metav1.ListOptions{LabelSelector: tenantDeploymentOwnerLabel + "=" + plan.InstanceID})
+	if err == nil {
+		for _, pod := range pods.Items {
+			if !owned(pod.Labels, plan) {
+				continue
+			}
+			phaseCounts[string(pod.Status.Phase)]++
+			for _, cs := range pod.Status.ContainerStatuses {
+				restarts += cs.RestartCount
+			}
+		}
+	}
+	status.Workload = &TenantDeploymentWorkloadStatus{
+		DesiredReplicas: desired, ReadyReplicas: deployment.Status.ReadyReplicas,
+		AvailableReplicas: deployment.Status.AvailableReplicas, PodPhaseCounts: phaseCounts,
+		RestartCount: restarts, Ownership: TenantOwnershipOwned,
+	}
+
+	pvc, err := adapter.kube.CoreV1().PersistentVolumeClaims(plan.Namespace).Get(ctx, "router-state", metav1.GetOptions{})
+	switch {
+	case apierrors.IsNotFound(err):
+		status.PVC = &TenantDeploymentResourceStatus{NameAlias: "router-state", Ownership: TenantOwnershipExpectedMissing}
+		status.ObservedState = "not_ready"
+	case err != nil:
+		if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
+			status.PVC = &TenantDeploymentResourceStatus{NameAlias: "router-state", Ownership: TenantOwnershipAccessDenied}
+			status.ObservedState = "access_denied"
+			return status, nil
+		}
+		return status, err
+	case !owned(pvc.Labels, plan):
+		status.PVC = &TenantDeploymentResourceStatus{NameAlias: "router-state", Ownership: TenantOwnershipForeignOrUnverified}
+		status.ObservedState = "ownership_or_replica_mismatch"
+		return status, nil
+	default:
+		sc := ""
+		if pvc.Spec.StorageClassName != nil {
+			sc = *pvc.Spec.StorageClassName
+		}
+		capBucket := ""
+		if q, ok := pvc.Status.Capacity[corev1.ResourceStorage]; ok {
+			capBucket = q.String()
+		}
+		status.PVC = &TenantDeploymentResourceStatus{
+			NameAlias: "router-state", Phase: string(pvc.Status.Phase), StorageClassAlias: sc,
+			CapacityBucket: capBucket, Ownership: TenantOwnershipOwned,
+		}
+		if pvc.Status.Phase != corev1.ClaimBound || deployment.Status.AvailableReplicas != 1 {
+			status.ObservedState = "not_ready"
+		}
+	}
+
+	svc, err := adapter.kube.CoreV1().Services(plan.Namespace).Get(ctx, "router", metav1.GetOptions{})
+	switch {
+	case apierrors.IsNotFound(err):
+		status.Service = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipExpectedMissing, ReadyClass: "absent"}
+	case err != nil:
+		status.Service = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipAccessDenied, ReadyClass: "access_denied"}
+	case !owned(svc.Labels, plan):
+		status.Service = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipForeignOrUnverified, ReadyClass: "foreign"}
+	default:
+		status.Service = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipOwned, ReadyClass: "present"}
+	}
+
+	if status.State == TenantDeploymentReady {
+		ingress, err := adapter.kube.NetworkingV1().Ingresses(plan.Namespace).Get(ctx, "router", metav1.GetOptions{})
+		switch {
+		case apierrors.IsNotFound(err):
+			status.Ingress = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipExpectedMissing, ReadyClass: "absent"}
+			status.ObservedState = "activation_or_ingress_mismatch"
+		case err != nil:
+			status.Ingress = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipAccessDenied, ReadyClass: "access_denied"}
+			status.ObservedState = "access_denied"
+		case !owned(ingress.Labels, plan):
+			status.Ingress = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipForeignOrUnverified, ReadyClass: "foreign"}
+			status.ObservedState = "activation_or_ingress_mismatch"
+		default:
+			status.Ingress = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipOwned, ReadyClass: "present"}
+		}
+	} else if status.Ingress == nil {
+		status.Ingress = &TenantDeploymentResourceStatus{NameAlias: "router", Ownership: TenantOwnershipNotApplicable, ReadyClass: "not_applicable"}
+	}
+
+	if status.ObservedState == "" {
+		if status.PVC != nil && status.PVC.Ownership == TenantOwnershipOwned &&
+			status.Workload != nil && status.Workload.AvailableReplicas == 1 {
+			status.ObservedState = "ready"
+		} else {
+			status.ObservedState = "not_ready"
+		}
+	}
+	return status, nil
 }
 
 func NewEKSTenantDeploymentAdapters(ctx context.Context, profile TenantDeploymentProfile) (*EKSTenantDeploymentAdapters, TenantDeploymentAdapters, error) {
@@ -162,7 +300,9 @@ func (a *EKSTenantDeploymentAdapters) labels(plan TenantDeploymentPlan) map[stri
 	return map[string]string{tenantDeploymentOwnerLabel: plan.InstanceID, "app.kubernetes.io/name": "smart-llmrouter", "app.kubernetes.io/managed-by": "metrum-fleetctl"}
 }
 func owned(labels map[string]string, plan TenantDeploymentPlan) bool {
-	return labels != nil && labels[tenantDeploymentOwnerLabel] == plan.InstanceID
+	return labels != nil &&
+		labels[tenantDeploymentOwnerLabel] == plan.InstanceID &&
+		labels["app.kubernetes.io/managed-by"] == "metrum-fleetctl"
 }
 func ownershipError() error {
 	return &TenantDeploymentAdapterError{Class: "ownership_conflict", UnknownOutcome: true, Err: errors.New("Kubernetes object is not owned by this deployment")}
@@ -513,7 +653,70 @@ func (a *EKSTenantDeploymentAdapters) applyRouterPodTemplate(deployment *appsv1.
 			PeriodSeconds:       5,
 		},
 	}
+	policy := p.computePolicy
+	if policy.CPURequest != "" || policy.MemoryRequest != "" {
+		requests := corev1.ResourceList{}
+		limits := corev1.ResourceList{}
+		if policy.CPURequest != "" {
+			requests[corev1.ResourceCPU] = resource.MustParse(policy.CPURequest)
+		}
+		if policy.MemoryRequest != "" {
+			requests[corev1.ResourceMemory] = resource.MustParse(policy.MemoryRequest)
+		}
+		if policy.CPULimit != "" {
+			limits[corev1.ResourceCPU] = resource.MustParse(policy.CPULimit)
+		}
+		if policy.MemoryLimit != "" {
+			limits[corev1.ResourceMemory] = resource.MustParse(policy.MemoryLimit)
+		}
+		container.Resources = corev1.ResourceRequirements{Requests: requests, Limits: limits}
+	}
 	deployment.Spec.Template.Spec.Containers = []corev1.Container{container}
+	if len(policy.NodeSelector) > 0 {
+		deployment.Spec.Template.Spec.NodeSelector = map[string]string{}
+		for k, v := range policy.NodeSelector {
+			deployment.Spec.Template.Spec.NodeSelector[k] = v
+		}
+	} else {
+		deployment.Spec.Template.Spec.NodeSelector = nil
+	}
+	if policy.Architecture == "amd64" || policy.Architecture == "arm64" {
+		deployment.Spec.Template.Spec.Affinity = &corev1.Affinity{
+			NodeAffinity: &corev1.NodeAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+					NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+						MatchExpressions: []corev1.NodeSelectorRequirement{{
+							Key: "kubernetes.io/arch", Operator: corev1.NodeSelectorOpIn, Values: []string{policy.Architecture},
+						}},
+					}},
+				},
+			},
+		}
+	}
+	if len(policy.Tolerations) > 0 {
+		tols := make([]corev1.Toleration, 0, len(policy.Tolerations))
+		for _, t := range policy.Tolerations {
+			tol := corev1.Toleration{Key: t.Key, Value: t.Value}
+			switch strings.ToLower(t.Operator) {
+			case "exists":
+				tol.Operator = corev1.TolerationOpExists
+			case "equal", "":
+				tol.Operator = corev1.TolerationOpEqual
+			}
+			switch strings.ToLower(t.Effect) {
+			case "noschedule":
+				tol.Effect = corev1.TaintEffectNoSchedule
+			case "prefernoschedule":
+				tol.Effect = corev1.TaintEffectPreferNoSchedule
+			case "noexecute":
+				tol.Effect = corev1.TaintEffectNoExecute
+			}
+			tols = append(tols, tol)
+		}
+		deployment.Spec.Template.Spec.Tolerations = tols
+	} else {
+		deployment.Spec.Template.Spec.Tolerations = nil
+	}
 	deployment.Spec.Template.Spec.Volumes = []corev1.Volume{
 		{Name: "state", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "router-state"}}},
 		{Name: "runtime", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "router-runtime"}}},

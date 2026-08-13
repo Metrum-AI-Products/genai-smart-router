@@ -28,6 +28,7 @@ Tracked work item: `task.acme_eks_production_like_deploy`.
 | Identities | new ACME caller, browser-admin, license, and PVC |
 | TLS | existing `*.apps.metrum.ai` wildcard; exact Host rule only after activation |
 | Database | SQLite single-writer default; dedicated private RDS only with an explicit approved `database_profile` |
+| Compute | Optional manifesto `compute_profile`; default `t3a.medium` from protected `approved_compute_profiles` (K8s scheduling only) |
 
 ## Fail-closed sequence
 

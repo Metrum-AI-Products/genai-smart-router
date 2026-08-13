@@ -123,11 +123,10 @@ func deploymentStatus(args []string) {
 	if err != nil {
 		die("read deployment status: %v", err)
 	}
-	observed, err := router.ObserveTenantDeployment(context.Background(), profile, status)
+	status, err = router.ObserveTenantDeployment(context.Background(), profile, status)
 	if err != nil {
 		die("observe EKS deployment status: %v", err)
 	}
-	status.ObservedState = observed
 	writeJSON(status)
 }
 

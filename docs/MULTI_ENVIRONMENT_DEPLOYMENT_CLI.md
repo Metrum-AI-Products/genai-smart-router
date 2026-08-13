@@ -23,15 +23,33 @@ full configuration, secret values, or raw adapter errors. Its mode-`0600` JSON
 contains an opaque `intent_id`, issuer/timestamps/signature, protected
 `profile_ref`, and the immutable deployment manifest. Protected profiles carry
 non-secret policy: account/region/cluster, immutable release digest, approved
-profiles, storage or RDS sizing, ingress policy, and the
+resource/state profiles, `approved_compute_profiles` (Kubernetes scheduling
+contracts only), storage or RDS sizing, ingress policy, and the
 `lifecycle_approval_public_key`. Live Fleet commands resolve profiles only from
 `aws-ssm:///`; `file://` is limited to the local-fake `plan` contract.
 
-Every Fleet status is bounded scalar evidence: job/instance/profile IDs,
-environment, region/cluster, namespace, release/config revision, lifecycle
-state, safe error class, retryability, action progress, and hostname only once
-activation succeeds. It never contains DSNs, endpoints other than the
-activated caller hostname, credentials, references, or configuration.
+Every Fleet status is bounded scalar evidence for **one** `--profile-ref`,
+`--job`, and private `--registry` record. It reports customer/instance/job IDs,
+environment, region/cluster aliases, namespace, resource/state/compute profile
+names, node-class alias and CPU/memory buckets, desired/ready/available
+replicas, pod phase counts and restart aggregate, PVC/service/ingress ownership
+classes, and dedicated-RDS opaque identity only when applicable. Hostname
+appears only once activation succeeds. Status is **not** an account-wide EC2,
+EKS, or RDS inventory. It never contains DSNs, endpoints other than the
+activated caller hostname, credentials, secret references, raw Kubernetes
+objects, logs, or configuration.
+
+Compute selection is an approved profile name, not free-form EC2 mutation.
+Omit `compute_profile` on the sealed manifesto to select the default
+`t3a.medium` from the protected allowlist. Alternate names must exist in
+`approved_compute_profiles`. Each entry maps to architecture, CPU/memory
+requests and limits, a `node_class_alias`, and required `node_selector` when
+`allow_shared_worker_fallback` is false (the default). Fleet fails closed before
+deploy when the selected name is missing or cannot be represented. Fleet does
+not create EC2 instances, node groups, ASGs, Karpenter resources, or launch
+templates. Shared `c6a`/`c6g` workers are not a silent fallback unless the
+protected profile explicitly sets `allow_shared_worker_fallback: true` for that
+compute profile.
 
 The intent manifest's `runtime_bundle_ref` is the sole runtime configuration
 input. It accepts only an `aws-ssm:///` or `aws-secretsmanager:///` reference
@@ -60,6 +78,7 @@ canonical fields with the profile approval key:
     "release": "latest-approved",
     "resource_profile": "small",
     "state_profile": "sqlite-rwo-small",
+    "compute_profile": "t3a.medium",
     "runtime_bundle_ref": "aws-secretsmanager:///tenants/acme2/runtime",
     "config_revision": "acme2-r1",
     "license": {

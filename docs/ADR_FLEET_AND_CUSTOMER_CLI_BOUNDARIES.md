@@ -8,8 +8,13 @@
 `metrum-fleetctl` is the only Fleet authority. It owns the one #555 lifecycle
 registry and the deterministic `plan`, idempotent `deploy`, exact-job `status`,
 and separately approved `delete` vocabulary. Its reference-only manifests,
-protected profiles, ownership labels, activation evidence, and retention
-approvals are the only deployment authority. The legacy
+protected profiles (including `approved_compute_profiles` for Kubernetes
+scheduling defaults such as `t3a.medium`), ownership labels
+(`app.kubernetes.io/managed-by=metrum-fleetctl` and
+`metrum.ai/smartrouter-instance`), activation evidence, and retention
+approvals are the only deployment authority. Status is job-scoped and is not
+an account inventory; free-form EC2/`instance_type` intent fields and
+node-group/ASG/Karpenter mutation are out of scope. The legacy
 `metrum-smartrouterctl` binary exists for one release only; it exits after
 reporting the rename and performs no operation.
 
