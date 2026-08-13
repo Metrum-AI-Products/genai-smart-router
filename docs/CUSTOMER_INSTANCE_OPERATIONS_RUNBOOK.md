@@ -202,6 +202,17 @@ optional and requires an explicit approved `database_profile` manifest branch.
 Omit `database_profile` for SQLite even when the protected profile's
 `database_mode` is `dedicated-rds`.
 
+Protected profiles also carry `approved_compute_profiles`. Manifests may set
+optional `compute_profile` (default `t3a.medium`). That name selects Kubernetes
+scheduling/resource policy only; it is not free-form EC2/`instance_type`
+mutation and does not create node groups. Exact-job
+`metrum-fleetctl status` reports customer/instance ownership and compute
+scalars for Fleet-labelled objects only
+(`app.kubernetes.io/managed-by=metrum-fleetctl` and
+`metrum.ai/smartrouter-instance=<instance_id>`). Status is not cluster inventory.
+Cleanup of disposable customers uses signed `metrum-fleetctl delete` (or the
+lifecycle helper) with a fresh job-bound approval—never direct kubectl.
+
 For repeatable non-production SQLite customer instances (`acme3`, `acme4`, …)
 use the operator lifecycle helper (not a customer CLI; not packaged into Docker
 images). Point `METRUM_FLEET_BIN_DIR` at a release package `bin/` directory (or

@@ -259,7 +259,11 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
 - `metrum-fleetctl` is shipped only in binary packages and is the #555 Fleet
   lifecycle authority. It provides the bounded local safe-contract registry,
   deterministic plan, fake-adapter idempotent deploy, exact-job status, and
-  separately approved delete. Live EKS/RDS mutation remains fail-closed by
+  separately approved delete. Protected profiles include
+  `approved_compute_profiles` (default selection `t3a.medium`) for Kubernetes
+  scheduling/resource policy only—never free-form EC2 or node-group mutation.
+  Exact-job status reports ownership-scoped safe scalars and is not cluster
+  inventory. Live EKS/RDS mutation remains fail-closed by
   default; only the first disposable non-production E2E may attach RDS through
   a validated external admission. `metrum-smartrouterctl` is a one-release
   rename notice only.

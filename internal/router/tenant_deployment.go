@@ -40,30 +40,81 @@ var tenantDeploymentActionOrder = []string{
 // deploy and status. It intentionally omits endpoints other than the caller
 // hostname, credential references, error text, and provider configuration.
 type TenantDeploymentStatus struct {
-	Schema           string    `json:"schema"`
-	Mode             string    `json:"mode"`
-	JobID            string    `json:"job_id"`
-	InstanceID       string    `json:"instance_id"`
-	ProfileID        string    `json:"profile_id"`
-	CustomerID       string    `json:"customer_id"`
-	Stage            string    `json:"stage"`
-	Environment      string    `json:"environment"`
-	Region           string    `json:"region"`
-	ClusterAlias     string    `json:"cluster_alias"`
-	Namespace        string    `json:"namespace"`
-	Hostname         string    `json:"hostname,omitempty"`
-	ReleaseDigest    string    `json:"release_digest"`
-	ConfigRevision   string    `json:"config_revision"`
-	State            string    `json:"state"`
-	ObservedState    string    `json:"observed_state,omitempty"`
-	CompletedAction  string    `json:"completed_action,omitempty"`
-	NextAction       string    `json:"next_action,omitempty"`
-	ErrorClass       string    `json:"error_class,omitempty"`
-	Retryable        bool      `json:"retryable"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	ActivationPassed bool      `json:"activation_passed"`
-	DatabaseState    string    `json:"database_state,omitempty"`
+	Schema           string                          `json:"schema"`
+	Mode             string                          `json:"mode"`
+	JobID            string                          `json:"job_id"`
+	InstanceID       string                          `json:"instance_id"`
+	ProfileID        string                          `json:"profile_id"`
+	CustomerID       string                          `json:"customer_id"`
+	Stage            string                          `json:"stage"`
+	Environment      string                          `json:"environment"`
+	Region           string                          `json:"region"`
+	ClusterAlias     string                          `json:"cluster_alias"`
+	Namespace        string                          `json:"namespace"`
+	Hostname         string                          `json:"hostname,omitempty"`
+	ReleaseDigest    string                          `json:"release_digest"`
+	ResourceProfile  string                          `json:"resource_profile,omitempty"`
+	StateProfile     string                          `json:"state_profile,omitempty"`
+	ComputeProfile   string                          `json:"compute_profile,omitempty"`
+	NodeClassAlias   string                          `json:"node_class_alias,omitempty"`
+	Architecture     string                          `json:"architecture,omitempty"`
+	CPURequest       string                          `json:"cpu_request,omitempty"`
+	CPULimit         string                          `json:"cpu_limit,omitempty"`
+	MemoryRequest    string                          `json:"memory_request,omitempty"`
+	MemoryLimit      string                          `json:"memory_limit,omitempty"`
+	ConfigRevision   string                          `json:"config_revision"`
+	State            string                          `json:"state"`
+	ObservedState    string                          `json:"observed_state,omitempty"`
+	CompletedAction  string                          `json:"completed_action,omitempty"`
+	NextAction       string                          `json:"next_action,omitempty"`
+	ErrorClass       string                          `json:"error_class,omitempty"`
+	Retryable        bool                            `json:"retryable"`
+	CreatedAt        time.Time                       `json:"created_at"`
+	UpdatedAt        time.Time                       `json:"updated_at"`
+	ActivationPassed bool                            `json:"activation_passed"`
+	DatabaseState    string                          `json:"database_state,omitempty"`
+	Workload         *TenantDeploymentWorkloadStatus `json:"workload,omitempty"`
+	PVC              *TenantDeploymentResourceStatus `json:"pvc,omitempty"`
+	Ingress          *TenantDeploymentResourceStatus `json:"ingress,omitempty"`
+	Service          *TenantDeploymentResourceStatus `json:"service,omitempty"`
+	Database         *TenantDeploymentDatabaseStatus `json:"database,omitempty"`
+}
+
+const (
+	TenantOwnershipOwned               = "owned"
+	TenantOwnershipExpectedMissing     = "expected_missing"
+	TenantOwnershipNotApplicable       = "not_applicable"
+	TenantOwnershipForeignOrUnverified = "foreign_or_unverified"
+	TenantOwnershipAccessDenied        = "access_denied"
+)
+
+// TenantDeploymentWorkloadStatus is safe replica/pod aggregate evidence for one exact job.
+type TenantDeploymentWorkloadStatus struct {
+	DesiredReplicas   int32          `json:"desired_replicas"`
+	ReadyReplicas     int32          `json:"ready_replicas"`
+	AvailableReplicas int32          `json:"available_replicas"`
+	PodPhaseCounts    map[string]int `json:"pod_phase_counts,omitempty"`
+	RestartCount      int32          `json:"restart_count"`
+	Ownership         string         `json:"ownership"`
+}
+
+// TenantDeploymentResourceStatus is ownership-scoped existence/readiness for one Fleet resource.
+type TenantDeploymentResourceStatus struct {
+	NameAlias         string `json:"name_alias,omitempty"`
+	Phase             string `json:"phase,omitempty"`
+	StorageClassAlias string `json:"storage_class_alias,omitempty"`
+	CapacityBucket    string `json:"capacity_bucket,omitempty"`
+	ReadyClass        string `json:"ready_class,omitempty"`
+	Ownership         string `json:"ownership"`
+}
+
+// TenantDeploymentDatabaseStatus is dedicated-RDS-only scalar evidence.
+type TenantDeploymentDatabaseStatus struct {
+	DatabaseIDAlias        string `json:"database_id_alias,omitempty"`
+	EngineClass            string `json:"engine_class,omitempty"`
+	Status                 string `json:"status,omitempty"`
+	OwnershipBindingResult string `json:"ownership_binding_result,omitempty"`
+	Ownership              string `json:"ownership"`
 }
 
 type tenantDeploymentJobRecord struct {
@@ -82,6 +133,7 @@ type tenantDeploymentJobRecord struct {
 	ReleaseDigest    string    `gorm:"column:release_digest;type:text;not null"`
 	ResourceProfile  string    `gorm:"column:resource_profile;type:text;not null"`
 	StateProfile     string    `gorm:"column:state_profile;type:text;not null"`
+	ComputeProfile   string    `gorm:"column:compute_profile;type:text;not null"`
 	ConfigRevision   string    `gorm:"column:config_revision;type:text;not null"`
 	State            string    `gorm:"column:state;type:text;not null"`
 	CompletedAction  string    `gorm:"column:completed_action;type:text;not null"`
@@ -190,7 +242,7 @@ func OpenTenantDeploymentStore(path string) (*TenantDeploymentStore, error) {
 	}
 	store := &TenantDeploymentStore{db: db}
 	statements := []string{
-		`CREATE TABLE IF NOT EXISTS tenant_deployment_jobs (job_id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, manifest_sha256 TEXT NOT NULL, profile_id TEXT NOT NULL, customer_id TEXT NOT NULL, stage TEXT NOT NULL, environment TEXT NOT NULL, region TEXT NOT NULL, cluster_alias TEXT NOT NULL, namespace TEXT NOT NULL, hostname TEXT NOT NULL, release_digest TEXT NOT NULL, resource_profile TEXT NOT NULL, state_profile TEXT NOT NULL, config_revision TEXT NOT NULL, state TEXT NOT NULL, completed_action TEXT NOT NULL, next_action TEXT NOT NULL, error_class TEXT NOT NULL, retryable NUMERIC NOT NULL, activation_passed NUMERIC NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS tenant_deployment_jobs (job_id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, manifest_sha256 TEXT NOT NULL, profile_id TEXT NOT NULL, customer_id TEXT NOT NULL, stage TEXT NOT NULL, environment TEXT NOT NULL, region TEXT NOT NULL, cluster_alias TEXT NOT NULL, namespace TEXT NOT NULL, hostname TEXT NOT NULL, release_digest TEXT NOT NULL, resource_profile TEXT NOT NULL, state_profile TEXT NOT NULL, compute_profile TEXT NOT NULL DEFAULT '', config_revision TEXT NOT NULL, state TEXT NOT NULL, completed_action TEXT NOT NULL, next_action TEXT NOT NULL, error_class TEXT NOT NULL, retryable NUMERIC NOT NULL, activation_passed NUMERIC NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)`,
 		`CREATE INDEX IF NOT EXISTS idx_tenant_deployment_jobs_instance_id ON tenant_deployment_jobs(instance_id)`,
 		`CREATE TABLE IF NOT EXISTS tenant_deployment_attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, action TEXT NOT NULL, attempt INTEGER NOT NULL, state TEXT NOT NULL, error_class TEXT NOT NULL, started_at DATETIME NOT NULL, completed_at DATETIME, UNIQUE(job_id, action, attempt), FOREIGN KEY(job_id) REFERENCES tenant_deployment_jobs(job_id) ON UPDATE CASCADE ON DELETE RESTRICT)`,
 		`CREATE TABLE IF NOT EXISTS tenant_deployment_resources (id INTEGER PRIMARY KEY AUTOINCREMENT, instance_id TEXT NOT NULL, job_id TEXT NOT NULL, resource_kind TEXT NOT NULL, resource_ref TEXT NOT NULL UNIQUE, ownership_key TEXT NOT NULL UNIQUE, desired_revision TEXT NOT NULL, state TEXT NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, UNIQUE(instance_id, resource_kind), FOREIGN KEY(job_id) REFERENCES tenant_deployment_jobs(job_id) ON UPDATE CASCADE ON DELETE RESTRICT)`,
@@ -203,6 +255,8 @@ func OpenTenantDeploymentStore(path string) (*TenantDeploymentStore, error) {
 			return nil, fmt.Errorf("initialize tenant deployment store: %w", err)
 		}
 	}
+	// Backward-compatible column for registries created before compute profiles.
+	_ = db.Exec(`ALTER TABLE tenant_deployment_jobs ADD COLUMN compute_profile TEXT NOT NULL DEFAULT ''`).Error
 	return store, nil
 }
 
@@ -249,7 +303,7 @@ func (s *TenantDeploymentStore) createOrLoad(ctx context.Context, plan TenantDep
 		ProfileID: plan.ProfileID, CustomerID: plan.CustomerID, Stage: plan.Stage, Environment: plan.Environment,
 		Region: plan.Region, ClusterAlias: plan.ClusterAlias, Namespace: plan.Namespace, Hostname: plan.Hostname,
 		ReleaseDigest: plan.ReleaseDigest, ResourceProfile: plan.ResourceProfile, StateProfile: plan.StateProfile,
-		ConfigRevision: plan.ConfigRevision, State: TenantDeploymentRequested, NextAction: plan.Actions[0],
+		ComputeProfile: plan.ComputeProfile, ConfigRevision: plan.ConfigRevision, State: TenantDeploymentRequested, NextAction: plan.Actions[0],
 		CreatedAt: now, UpdatedAt: now,
 	}
 	result := s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&record)
@@ -297,7 +351,8 @@ func statusFromDeploymentRecord(record tenantDeploymentJobRecord) TenantDeployme
 		InstanceID: record.InstanceID,
 		ProfileID:  record.ProfileID, CustomerID: record.CustomerID, Stage: record.Stage, Environment: record.Environment,
 		Region: record.Region, ClusterAlias: record.ClusterAlias, Namespace: record.Namespace, Hostname: hostname,
-		ReleaseDigest: record.ReleaseDigest, ConfigRevision: record.ConfigRevision, State: record.State,
+		ReleaseDigest: record.ReleaseDigest, ResourceProfile: record.ResourceProfile, StateProfile: record.StateProfile,
+		ComputeProfile: record.ComputeProfile, ConfigRevision: record.ConfigRevision, State: record.State,
 		CompletedAction: record.CompletedAction, NextAction: record.NextAction, ErrorClass: record.ErrorClass,
 		Retryable: record.Retryable, ActivationPassed: record.ActivationPassed,
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
