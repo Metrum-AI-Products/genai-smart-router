@@ -2,9 +2,11 @@
 
 `metrum-fleetctl` is the only #555 deployment authority. It uses typed AWS and
 Kubernetes clients; it never invokes `aws`, `kubectl`, Helm, Terraform, Make,
-or a shell command. It owns one normalized deployment-job registry and only
-the deterministic `plan`, idempotent `deploy`, exact-job `status`, and
-separately approved `delete` operations.
+or a shell command. It owns one normalized GORM+SQLite lifecycle registry for
+deployment jobs plus operator inventory of tenants and license safe-summaries.
+Lifecycle verbs remain deterministic `plan`, idempotent `deploy`, exact-job
+`status`, and separately approved `delete`. Inventory verbs are
+`tenants list|get|sync` and `licenses list|get|register`.
 
 `metrum-smartrouterctl` is a one-release compatibility binary. It reports the
 rename to `metrum-fleetctl` and exits; it has no lifecycle behavior. Customer
@@ -109,6 +111,30 @@ metrum-fleetctl status \
   --registry /protected/tenant-deployments.sqlite \
   --output json
 ```
+
+Use one shared `--registry` SQLite file for the Fleet admin host so
+`tenants`/`licenses` inventory spans every customer. Deploy and delete upsert
+`fleet_tenants`, `fleet_tenant_instances`, and intended/bound/retired
+`fleet_license_bindings` with safe scalars only (including
+`license_ref_digest` and `license_validity_hours` on the plan). Register full
+license inventory from `router-license safe-summary` output—never from signed
+envelopes or protected refs:
+
+```bash
+metrum-fleetctl tenants list --registry /protected/tenant-deployments.sqlite
+metrum-fleetctl tenants get --customer-id acme2 --registry /protected/tenant-deployments.sqlite
+metrum-fleetctl tenants sync --registry /protected/tenant-deployments.sqlite
+
+router-license safe-summary --license /protected/acme2-license.json > /protected/acme2-license-summary.json
+chmod 0600 /protected/acme2-license-summary.json
+metrum-fleetctl licenses register \
+  --summary-file /protected/acme2-license-summary.json \
+  --registry /protected/tenant-deployments.sqlite
+metrum-fleetctl licenses list --registry /protected/tenant-deployments.sqlite
+```
+
+Tenant/license list is operator inventory of this registry, not an AWS/EKS/RDS
+account scan. Exact-job `status` remains the live ownership-scoped observe path.
 
 The default path is SQLite state with exactly one Router container and one
 replica; it does not provision or bind RDS. The ordered SQLite lifecycle is

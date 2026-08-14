@@ -143,37 +143,39 @@ type TenantDeploymentProfile struct {
 }
 
 type TenantDeploymentPlan struct {
-	Schema            string   `json:"schema"`
-	Mode              string   `json:"mode"`
-	JobID             string   `json:"job_id"`
-	InstanceID        string   `json:"instance_id"`
-	ProfileID         string   `json:"profile_id"`
-	Environment       string   `json:"environment"`
-	AccountAlias      string   `json:"account_alias"`
-	Region            string   `json:"region"`
-	ClusterAlias      string   `json:"cluster_alias"`
-	CustomerID        string   `json:"customer_id"`
-	Stage             string   `json:"stage"`
-	Namespace         string   `json:"namespace"`
-	Hostname          string   `json:"hostname"`
-	ReleaseDigest     string   `json:"release_digest"`
-	ResourceProfile   string   `json:"resource_profile"`
-	StateProfile      string   `json:"state_profile"`
-	ComputeProfile    string   `json:"compute_profile"`
-	NodeClassAlias    string   `json:"node_class_alias,omitempty"`
-	Architecture      string   `json:"architecture,omitempty"`
-	CPURequest        string   `json:"cpu_request,omitempty"`
-	CPULimit          string   `json:"cpu_limit,omitempty"`
-	MemoryRequest     string   `json:"memory_request,omitempty"`
-	MemoryLimit       string   `json:"memory_limit,omitempty"`
-	ConfigRevision    string   `json:"config_revision"`
-	ManifestSHA256    string   `json:"manifest_sha256"`
-	DatabaseProfile   string   `json:"database_profile,omitempty"`
-	DatabaseID        string   `json:"database_id,omitempty"`
-	Actions           []string `json:"actions"`
-	runtimeBundleRef  string
-	licenseRequestRef string
-	computePolicy     TenantComputeProfile
+	Schema               string   `json:"schema"`
+	Mode                 string   `json:"mode"`
+	JobID                string   `json:"job_id"`
+	InstanceID           string   `json:"instance_id"`
+	ProfileID            string   `json:"profile_id"`
+	Environment          string   `json:"environment"`
+	AccountAlias         string   `json:"account_alias"`
+	Region               string   `json:"region"`
+	ClusterAlias         string   `json:"cluster_alias"`
+	CustomerID           string   `json:"customer_id"`
+	Stage                string   `json:"stage"`
+	Namespace            string   `json:"namespace"`
+	Hostname             string   `json:"hostname"`
+	ReleaseDigest        string   `json:"release_digest"`
+	ResourceProfile      string   `json:"resource_profile"`
+	StateProfile         string   `json:"state_profile"`
+	ComputeProfile       string   `json:"compute_profile"`
+	NodeClassAlias       string   `json:"node_class_alias,omitempty"`
+	Architecture         string   `json:"architecture,omitempty"`
+	CPURequest           string   `json:"cpu_request,omitempty"`
+	CPULimit             string   `json:"cpu_limit,omitempty"`
+	MemoryRequest        string   `json:"memory_request,omitempty"`
+	MemoryLimit          string   `json:"memory_limit,omitempty"`
+	ConfigRevision       string   `json:"config_revision"`
+	ManifestSHA256       string   `json:"manifest_sha256"`
+	DatabaseProfile      string   `json:"database_profile,omitempty"`
+	DatabaseID           string   `json:"database_id,omitempty"`
+	LicenseValidityHours int      `json:"license_validity_hours,omitempty"`
+	LicenseRefDigest     string   `json:"license_ref_digest,omitempty"`
+	Actions              []string `json:"actions"`
+	runtimeBundleRef     string
+	licenseRequestRef    string
+	computePolicy        TenantComputeProfile
 }
 
 func LoadTenantDeploymentManifest(path string, stdin io.Reader) (TenantDeploymentManifest, error) {
@@ -350,6 +352,10 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 	if dedicatedRDS {
 		databaseID = "rds-" + instanceSuffix
 	}
+	validityHours, err := parseLicenseValidityHours(manifest.License.Validity)
+	if err != nil {
+		return TenantDeploymentPlan{}, err
+	}
 	return TenantDeploymentPlan{
 		Schema: "metrum.ai/smartrouter-deployment-plan/v1", Mode: "eks",
 		JobID: "job-" + jobSuffix, InstanceID: "instance-" + instanceSuffix,
@@ -364,10 +370,12 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 		ConfigRevision:   manifest.ConfigRevision,
 		ManifestSHA256:   hex.EncodeToString(manifestSum[:]),
 		runtimeBundleRef: manifest.RuntimeBundleRef, licenseRequestRef: manifest.License.RequestRef,
-		DatabaseProfile: manifest.DatabaseProfile,
-		DatabaseID:      databaseID,
-		Actions:         tenantDeploymentActions(dedicatedRDS),
-		computePolicy:   computePolicy,
+		LicenseValidityHours: validityHours,
+		LicenseRefDigest:     digestProtectedRef(manifest.License.RequestRef),
+		DatabaseProfile:      manifest.DatabaseProfile,
+		DatabaseID:           databaseID,
+		Actions:              tenantDeploymentActions(dedicatedRDS),
+		computePolicy:        computePolicy,
 	}, nil
 }
 
