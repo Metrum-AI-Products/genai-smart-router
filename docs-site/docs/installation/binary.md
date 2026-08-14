@@ -45,10 +45,22 @@ commands consume signed reference-only deployment intents (or orchestrate them
 for disposable SQLite customers); intents contain only references to the
 protected profile, runtime bundle, and license.
 Its default lifecycle uses SQLite state with one Router container and one
-replica; it neither provisions nor binds RDS. A dedicated-RDS branch requires
-an explicit approved `database_profile` and an external, expiring, mode-`0600`
-admission file that Fleet validates and consumes but never creates. Production
-profiles remain rejected.
+replica; it neither provisions nor binds RDS.
+
+Packaged `customer` convenience verbs (`write-manifest`, `create`, `status`,
+`smoke`, `grant-caller`, `update-config`, `delete`) are SQLite-only operator
+helpers: they require explicit reference-only inputs (no built-in ACME or
+staging defaults), never hold or copy lifecycle private keys, and mutate only
+with externally issued mode-`0600` signed intents or delete approvals. Typical
+flow: `customer write-manifest` prepares an unsigned SQLite manifesto, an
+approved signing workflow issues the intent, then `customer create --intent`
+activates it. Those helpers refuse dedicated-RDS selection.
+
+A dedicated-RDS branch remains an optional **core** Fleet `deploy`/`delete`
+path: it requires an explicit approved `database_profile` and an external,
+expiring, mode-`0600` admission file that Fleet validates and consumes but
+never creates. It is not a `customer` verb input. Production profiles remain
+rejected.
 
 Create a dedicated service account, then create deployment-owned directories:
 

@@ -116,6 +116,10 @@ func foreignDefaultRefError(customerID, licenseRef string) error {
 	return nil
 }
 
+// writeManifest prepares an unsigned SQLite-only deployment manifest for the
+// customer convenience path. It never emits database_profile; dedicated RDS
+// remains a core Fleet deploy choice with an external admission, not a
+// customer-verb input.
 func writeManifest(ws customerWorkspace, profileRef, runtimeBundle, licenseRef, revisionPrefix string) string {
 	profileRef = strings.TrimSpace(profileRef)
 	runtimeBundle = strings.TrimSpace(runtimeBundle)
@@ -188,30 +192,47 @@ func peekIntentEnvelope(intentPath string) intentEnvelope {
 	if err != nil {
 		die("read intent: %v", err)
 	}
+	env, err := parseIntentEnvelope(raw)
+	if err != nil {
+		die("%v", err)
+	}
+	return env
+}
+
+func parseIntentEnvelope(raw []byte) (intentEnvelope, error) {
 	var env intentEnvelope
 	if err := json.Unmarshal(raw, &env); err != nil {
-		die("intent JSON is invalid")
+		return intentEnvelope{}, fmt.Errorf("intent JSON is invalid")
 	}
+	if err := validateIntentEnvelope(env); err != nil {
+		return intentEnvelope{}, err
+	}
+	return env, nil
+}
+
+// validateIntentEnvelope enforces the SQLite-only customer convenience path:
+// dedicated RDS intents must use core Fleet deploy with an external admission.
+func validateIntentEnvelope(env intentEnvelope) error {
 	if strings.TrimSpace(env.Manifest.CustomerID) == "" {
-		die("intent manifest.customer_id is required")
+		return fmt.Errorf("intent manifest.customer_id is required")
 	}
 	if strings.TrimSpace(env.ProfileRef) == "" {
-		die("intent profile_ref is required")
+		return fmt.Errorf("intent profile_ref is required")
 	}
 	if strings.TrimSpace(env.Manifest.RuntimeBundleRef) == "" {
-		die("intent manifest.runtime_bundle_ref is required")
+		return fmt.Errorf("intent manifest.runtime_bundle_ref is required")
 	}
 	if strings.TrimSpace(env.Manifest.License.RequestRef) == "" {
-		die("intent manifest.license.request_ref is required")
+		return fmt.Errorf("intent manifest.license.request_ref is required")
 	}
 	if strings.TrimSpace(env.Manifest.DatabaseProfile) != "" {
-		die("refusing customer convenience path: intent selects dedicated RDS; use core Fleet deploy with a validated admission")
+		return fmt.Errorf("refusing customer convenience path: intent selects dedicated RDS; use core Fleet deploy with a validated admission")
 	}
 	stage := strings.ToLower(strings.TrimSpace(env.Manifest.Stage))
 	if stage != "" && stage != "nonproduction" && stage != "test" && stage != "staging" {
-		die("refusing customer convenience path: intent stage %q is not non-production", env.Manifest.Stage)
+		return fmt.Errorf("refusing customer convenience path: intent stage %q is not non-production", env.Manifest.Stage)
 	}
-	return env
+	return nil
 }
 
 func runLogged(cmd *exec.Cmd) (stdout, stderr string, exitCode int) {

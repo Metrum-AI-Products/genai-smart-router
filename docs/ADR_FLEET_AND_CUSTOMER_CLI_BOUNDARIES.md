@@ -100,5 +100,7 @@ duties. Production cutover authority remains #518's.
   environment.
 - A Fleet operator cannot obtain Router/provider credentials or DSNs from
   plans, registries, statuses, or error output.
+- Packaged `customer` convenience verbs cannot select or attach dedicated RDS;
+  that remains a core Fleet deploy branch with an external admission only.
 - Compose-to-EKS cutover remains an externally gated operation; this ADR grants
   no production, DNS, secret, credential, or migration mutation authority.
