@@ -274,16 +274,29 @@ def main() -> int:
         "RoleName: genai-smart-router-eks-staging-delivery",
         "RoleName: genai-smart-router-eks-staging-bootstrap",
         "RoleName: genai-smart-router-eks-staging-lifecycle-operator",
+        "RoleName: genai-smart-router-eks-staging-platform-iac",
         "GroupName: genai-smart-router-eks-staging-lifecycle-operators",
         "AuthorizedOperatorRoleArn:",
+        "AuthorizedPlatformIacRoleArn:",
         "AllowedPattern: ^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/",
         "AWS: !Ref AuthorizedOperatorRoleArn",
+        "AWS: !Ref AuthorizedPlatformIacRoleArn",
         "Action: eks:DescribeCluster",
         "Action: ssm:GetParameter",
         "Name: /metrum/genai-smart-router/staging-delivery-target",
         "Type: AWS::EKS::AccessEntry",
         "- genai-smart-router-eks-staging-delivery",
         "- genai-smart-router-eks-staging-bootstrap",
+        "iam:GetUser",
+        "iam:ListUserTags",
+        "iam:GetGroup",
+        "iam:ListGroupsForUser",
+        "iam:AddUserToGroup",
+        "iam:RemoveUserFromGroup",
+        "user/smart-router-lifecycle/*",
+        "group/genai-smart-router-eks-staging-lifecycle-operators",
+        "purpose",
+        "eks-staging-platform-iac",
     ):
         if required not in staging_identity:
             raise SystemExit(f"staging identity stack lacks required boundary: {required}")
@@ -320,15 +333,35 @@ def main() -> int:
         "iam:PassRole",
         "Default: smartrouter",
         "AWS::IAM::UserPolicy",
+        "AWS::IAM::User",
     ):
         if forbidden_value in staging_identity:
             raise SystemExit(f"staging identity stack contains forbidden authority: {forbidden_value}")
-    if len(re.findall(r"^\s+Action: sts:AssumeRole$", staging_identity, re.MULTILINE)) != 10:
+    if len(re.findall(r"^\s+Action: sts:AssumeRole$", staging_identity, re.MULTILINE)) != 11:
         raise SystemExit(
             "staging identity stack must grant the fixed group only entry to the "
-            "lifecycle operator role and retain direct federated plus delegated "
-            "target-role access"
+            "lifecycle operator role, retain direct federated plus delegated "
+            "target-role access, and trust exactly one platform-IaC federated role"
         )
+    platform_iac_match = re.search(
+        r"(?ms)^  StagingPlatformIacRole:\n(?P<body>.*?)(?=^  \w|\Z)",
+        staging_identity,
+    )
+    if platform_iac_match is None:
+        raise SystemExit("staging identity stack lacks the platform-IaC enrollment role")
+    platform_iac = platform_iac_match.group("body")
+    for required in (
+        "AuthorizedPlatformIacRoleArn",
+        "iam:GetUser",
+        "iam:AddUserToGroup",
+        "iam:RemoveUserFromGroup",
+        "user/smart-router-lifecycle/*",
+        "group/genai-smart-router-eks-staging-lifecycle-operators",
+    ):
+        if required not in platform_iac:
+            raise SystemExit(f"platform-IaC role lacks required boundary: {required}")
+    if any(value in platform_iac for value in ("secretsmanager:", "eks:", "ecr:", 'Resource: "*"', "iam:PassRole", "iam:CreateUser")):
+        raise SystemExit("platform-IaC role may only enroll reviewed lifecycle operators")
     lifecycle_operator_match = re.search(
         r"(?ms)^  StagingLifecycleOperatorRole:\n(?P<body>.*?)(?=^  \w|\Z)",
         staging_identity,

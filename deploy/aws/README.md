@@ -65,31 +65,44 @@ count alone cannot remove them during the supported rollback window.
 
 The required `AuthorizedOperatorRoleArn` remains one exact
 organization-controlled federated or SSO role. It may assume the target roles
-directly through its separately reviewed source-role policy. The permanent IAM
-user path is separate: a platform owner permanently adds users created under
-`/smart-router-lifecycle/` to the fixed lifecycle-operators group. That group
-may only assume `genai-smart-router-eks-staging-lifecycle-operator`; the
-intermediary may only assume the three reviewed target roles. The IAM-user
-path, required `GenAISmartRouterLifecycle=true` principal tag, and group policy
-are all required. The template names no individual user, creates no user, and
-creates no credentials. Users outside that path, missing the tag, or outside
-the group cannot enter the lifecycle role. Do not pass an IAM user ARN, account
-root, wildcard principal, access key, session token, or MFA value as the
-federated-role parameter.
+directly through its separately reviewed source-role policy. The required
+`AuthorizedPlatformIacRoleArn` is a separate exact federated or SSO role that
+may assume only `genai-smart-router-eks-staging-platform-iac`. That platform-IaC
+role may enroll or remove path-tagged IAM users under `/smart-router-lifecycle/`
+into `genai-smart-router-eks-staging-lifecycle-operators` and has no EKS,
+Secret, ECR, or PassRole authority. The permanent IAM-user operator path is
+group membership: after enrollment, group members may only assume
+`genai-smart-router-eks-staging-lifecycle-operator`; the intermediary may only
+assume the three reviewed target roles. The IAM-user path, required
+`GenAISmartRouterLifecycle=true` principal tag, and group policy are all
+required. The template names no individual user, creates no user, and creates
+no credentials. Users outside that path, missing the tag, or outside the group
+cannot enter the lifecycle role. Do not pass an IAM user ARN, account root,
+wildcard principal, access key, session token, or MFA value as either federated
+role parameter.
 
-Deploy or update it only from the approved platform-IaC identity:
+Deploy or update it only from an approved non-root identity that can update the
+stack. After deploy, assign humans to the SSO/federated role used as
+`AuthorizedPlatformIacRoleArn`, assume platform-IaC, and enroll operators with
+runtime ARNs only:
 
 ```bash
 aws cloudformation deploy \
-  --profile <approved-platform-iac-profile> \
+  --profile <approved-stack-deploy-profile> \
   --region us-east-1 \
   --stack-name genai-smart-router-eks-staging-identity \
   --template-file deploy/aws/genai-smart-router-eks-staging-identity.yaml \
   --parameter-overrides \
     AuthorizedOperatorRoleArn=<exact-federated-operator-role-arn> \
+    AuthorizedPlatformIacRoleArn=<exact-federated-platform-iac-role-arn> \
     ClusterName=metrum \
   --capabilities CAPABILITY_NAMED_IAM \
   --no-fail-on-empty-changeset
+
+# After org assignment to AuthorizedPlatformIacRoleArn, assume platform-IaC:
+rtk python3 scripts/enroll_fleet_operator.py \
+  --profile genai-smart-router-eks-staging-platform-iac \
+  --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/smart-router-lifecycle/<operator>
 ```
 
 ### Scoped Bootstrap Recovery

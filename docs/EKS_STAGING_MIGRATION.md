@@ -128,9 +128,13 @@ region = us-east-1
 role_session_name = <operator-change-id>
 ```
 
-The platform-IaC owner permanently manages membership in
-`genai-smart-router-eks-staging-lifecycle-operators` outside this repository.
-Each member must be an IAM user under `/smart-router-lifecycle/` with the
+The platform-IaC enrollment role
+`genai-smart-router-eks-staging-platform-iac` permanently manages membership in
+`genai-smart-router-eks-staging-lifecycle-operators`. Org administrators assign
+humans to the federated/SSO role supplied as `AuthorizedPlatformIacRoleArn`;
+that principal assumes platform-IaC and runs
+`scripts/enroll_fleet_operator.py` with a runtime `--principal-arn` only.
+Each group member must be an IAM user under `/smart-router-lifecycle/` with the
 principal tag `GenAISmartRouterLifecycle=true`; the group can only enter the
 intermediary lifecycle role, which can only delegate to the three reviewed
 target roles. Do not add an individual user to a target-role trust policy or
@@ -156,21 +160,23 @@ membership group:
 
 | Identity | Allowed lifecycle surface | Explicit boundary |
 | --- | --- | --- |
+| `AuthorizedPlatformIacRoleArn` (federated/SSO) | Org assignment for humans who may assume platform-IaC | No EKS/delivery authority by itself; must assume the named platform-IaC role |
+| `genai-smart-router-eks-staging-platform-iac` | Enroll/de-enroll reviewed lifecycle IAM users into the operators group | Scoped IAM only on `/smart-router-lifecycle/*` users and the operators group; no EKS, Secret, ECR, or PassRole |
 | `genai-smart-router-eks-staging-lifecycle-operators` | Permanent IAM-user membership to begin a lifecycle session | May only assume the intermediary role; users must have the required IAM path |
 | `genai-smart-router-eks-staging-lifecycle-operator` | Delegates a validated lifecycle session to a reviewed target role | May only assume delivery, bootstrap, or image-publisher; no EKS, Secret, ECR, or direct workload authority |
 | `genai-smart-router-eks-staging-delivery` | Reviewed staging workload create, update, and patch through the checked-in delivery contract | No delete, Secret read, wildcard, cluster-wide, or admission-policy mutation authority |
 | `genai-smart-router-eks-staging-bootstrap` | Exact reviewed delivery `Role` and `RoleBinding` recovery after its admission guard is installed | No workload, Secret, arbitrary RBAC, or cluster-scoped mutation authority |
 | `genai-smart-router-eks-staging-image-publisher` | Immutable image publication to the reviewed staging ECR repository | No EKS, Secret, or deployment authority |
 
-The platform-IaC owner is a separately approved non-root organization role. It
-deploys the identity stack and its AWS infrastructure; it is not a runtime
-delivery identity and is not named by this repository. The separately
-authorized cluster-bootstrap owner creates the one-time Kubernetes admission
-and RBAC objects described in the bootstrap sequence. An individual operator,
-including an IAM-user-backed operator, never appears in the stack trust policy.
-Instead, the organization's federated/SSO source role is the exact value
-supplied as `AuthorizedOperatorRoleArn`, and its reviewed permission set must
-grant only:
+Platform-IaC is the named role `genai-smart-router-eks-staging-platform-iac`,
+trusted only by the exact federated/SSO principal supplied as
+`AuthorizedPlatformIacRoleArn`. It is not a runtime delivery identity and must
+not be used for Fleet deploy/delete. The separately authorized cluster-bootstrap
+owner creates the one-time Kubernetes admission and RBAC objects described in
+the bootstrap sequence. An individual operator, including an IAM-user-backed
+operator, never appears in the stack trust policy. Instead, the organization's
+federated/SSO operator source role is the exact value supplied as
+`AuthorizedOperatorRoleArn`, and its reviewed permission set must grant only:
 
 ```json
 {

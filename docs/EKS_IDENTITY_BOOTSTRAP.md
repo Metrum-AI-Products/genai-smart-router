@@ -67,6 +67,75 @@ RBAC before selecting or mutating EKS. Removing the federated assignment or
 the IAM-group membership revokes operator entry without changing deployment
 state.
 
+### Role assignment matrix
+
+Protected tasks are granted by **role and group assignment**, never by
+hardcoding IAM user ARNs in this repository:
+
+| Assignment | Principal | Protected tasks |
+| --- | --- | --- |
+| Org attaches human to federated/SSO role passed as `AuthorizedPlatformIacRoleArn` | assumes `genai-smart-router-eks-staging-platform-iac` | Enroll/de-enroll path-tagged lifecycle users into the operators group only |
+| Org adds IAM user under `/smart-router-lifecycle/` with tag `GenAISmartRouterLifecycle=true` to `genai-smart-router-eks-staging-lifecycle-operators` | assumes `genai-smart-router-eks-staging-lifecycle-operator` | Second hop only to delivery, bootstrap, or image-publisher |
+| Federated/SSO role passed as `AuthorizedOperatorRoleArn` | may assume target roles per its reviewed source policy | Delivery / bootstrap / image-publisher as separately authorized |
+
+No individual user name or ARN belongs in CloudFormation, the enrollment
+helper source, tickets, or sanitized evidence.
+
+### Generic IAM-User Enrollment
+
+Federation/Identity Center is preferred for both platform-IaC and operator
+entry. When the documented IAM-user fallback is necessary for operators, a
+caller that has assumed `genai-smart-router-eks-staging-platform-iac` may use
+the source-only helper to enroll one externally selected user. The principal
+ARN is runtime input only: never commit it, place it in a ticket, save command
+output containing it, or add it to a template.
+
+Configure a local profile that assumes the platform-IaC role from the
+organization-controlled federated source role (the same principal supplied as
+`AuthorizedPlatformIacRoleArn` when the identity stack is deployed):
+
+```ini
+[profile <platform-iac-source-profile>]
+region = us-east-1
+
+[profile genai-smart-router-eks-staging-platform-iac]
+role_arn = arn:aws:iam::<ACCOUNT_ID>:role/genai-smart-router-eks-staging-platform-iac
+source_profile = <platform-iac-source-profile>
+region = us-east-1
+role_session_name = <change-id>
+```
+
+The helper requires that assumed-role caller. It rejects root, direct IAM-user
+sessions, lifecycle-operator sessions, and delivery/bootstrap/image-publisher
+sessions. It also rejects another account, users outside
+`/smart-router-lifecycle/`, and users without `GenAISmartRouterLifecycle=true`.
+A preflight makes no mutation:
+
+```bash
+rtk python3 scripts/enroll_fleet_operator.py \
+  --profile genai-smart-router-eks-staging-platform-iac \
+  --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/smart-router-lifecycle/<operator>
+```
+
+After reviewing the sanitized `ready` result, perform the one group-membership
+mutation with the exact confirmation:
+
+```bash
+rtk python3 scripts/enroll_fleet_operator.py \
+  --profile genai-smart-router-eks-staging-platform-iac \
+  --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/smart-router-lifecycle/<operator> \
+  --apply \
+  --confirm ENROLL_FLEET_OPERATOR
+```
+
+The result deliberately reports only account, principal class/path, required
+tag, reviewed group, outcome, and membership state. It never reports the
+runtime IAM user name or ARN. Then authenticate as the enrolled operator with
+short-lived credentials and prove only the normal role chain; direct
+delivery/bootstrap/image-publisher access and all mutation must remain denied
+until their independently authorized gate. Enrolled operators must not use the
+platform-IaC role for Fleet deploy/delete.
+
 See [EKS staging migration: One-time authorization
 bootstrap](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap) for the
 credential-free profile shape, verification command, privileged
