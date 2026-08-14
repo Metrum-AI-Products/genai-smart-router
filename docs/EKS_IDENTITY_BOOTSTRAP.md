@@ -67,6 +67,45 @@ RBAC before selecting or mutating EKS. Removing the federated assignment or
 the IAM-group membership revokes operator entry without changing deployment
 state.
 
+### Generic IAM-User Enrollment
+
+Federation/Identity Center is preferred. When the documented IAM-user fallback
+is necessary, a platform-IaC administrator may use the source-only helper to
+enroll one externally selected user. The principal ARN is runtime input only:
+never commit it, place it in a ticket, save command output containing it, or
+add it to a template.
+
+The administrator must use an approved **non-root**, MFA-backed session with
+only the reviewed `iam:GetUser`, `iam:ListUserTags`, `iam:GetGroup`,
+`iam:ListGroupsForUser`, and `iam:AddUserToGroup` permissions for the exact
+lifecycle path and group. The helper rejects root callers, another account,
+users outside `/smart-router-lifecycle/`, and users without
+`GenAISmartRouterLifecycle=true`. A preflight makes no mutation:
+
+```bash
+rtk python3 scripts/enroll_fleet_operator.py \
+  --profile <approved-platform-iac-profile> \
+  --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/smart-router-lifecycle/<operator>
+```
+
+After reviewing the sanitized `ready` result, perform the one group-membership
+mutation with the exact confirmation:
+
+```bash
+rtk python3 scripts/enroll_fleet_operator.py \
+  --profile <approved-platform-iac-profile> \
+  --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/smart-router-lifecycle/<operator> \
+  --apply \
+  --confirm ENROLL_FLEET_OPERATOR
+```
+
+The result deliberately reports only account, principal class/path, required
+tag, reviewed group, outcome, and membership state. It never reports the
+runtime IAM user name or ARN. Then authenticate as the enrolled operator with
+short-lived credentials and prove only the normal role chain; direct
+delivery/bootstrap/image-publisher access and all mutation must remain denied
+until their independently authorized gate.
+
 See [EKS staging migration: One-time authorization
 bootstrap](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap) for the
 credential-free profile shape, verification command, privileged
