@@ -63,6 +63,10 @@ bin/router
 bin/router-token-gen
 bin/router-usage-report
 bin/router-migrate
+bin/metrum-genai-smartrouterctl
+bin/metrum-genai-smartrouter-fleetctl
+bin/metrum-genai-smartrouter-fleet-sign
+bin/metrum-genai-smartrouter-license
 bin/smartrouterctl
 bin/metrum-fleetctl
 bin/metrum-smartrouterctl # one-release rename notice
@@ -80,15 +84,19 @@ docs/PACKAGE_VALIDATION.md
 docs/solution-brief.md
 caddy/Caddyfile
 ```
-`metrum-fleetctl plan|deploy|status|delete` is the binary-package-only Fleet
-lifecycle contract. `metrum-fleet-sign` issues protected intent/admission/delete
-documents and ships only in binary packages (never in customer Docker images).
-`router-license` issues signed `license.json` files for Metrum operators only and
-also ships only in binary packages (never in customer Docker images).
+`metrum-genai-smartrouter-fleetctl plan|deploy|status|delete|customer` is the
+binary-package-only Fleet lifecycle contract. `metrum-genai-smartrouter-fleet-sign`
+issues protected intent/admission/delete documents and ships only in binary
+packages (never in customer Docker images).
+`metrum-genai-smartrouter-license` issues signed `license.json` files for Metrum
+operators only and also ships only in binary packages (never in customer Docker
+images).
 `plan`, `deploy`, and `delete` consume one mode-`0600`,
 profile-key-signed, reference-only deployment intent; it contains the protected
 profile, runtime bundle, and license references without their resolved values.
-`smartrouterctl` provides customer-local safe config, caller-token-file,
+`customer create|status|smoke|grant-caller|update-config|delete` orchestrates
+disposable SQLite Fleet instances from the packaged binary alone (no Python/repo).
+`metrum-genai-smartrouterctl` provides customer-local safe config, caller-token-file,
 license, model, and aggregate-usage operations and is included in Docker images;
 Fleet binaries are not. The default deployment is SQLite state with one Router
 container and one replica; it neither provisions nor binds RDS. Dedicated RDS
@@ -96,7 +104,8 @@ requires an explicit approved `database_profile` manifest branch and a
 separately signed, scoped external admission that Fleet never creates. After
 disposable-E2E evidence exists, one qualified maintainer may self-review before
 a production-like non-production rehearsal.
-`metrum-smartrouterctl` is a one-release rename notice only. Production profiles
+`metrum-fleetctl`, `metrum-smartrouterctl`, `metrum-fleet-sign`, `router-license`,
+and `smartrouterctl` are one-release rename notices only. Production profiles
 remain rejected until #518. See [docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md](docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md).
 
 

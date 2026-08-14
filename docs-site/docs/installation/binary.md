@@ -18,9 +18,15 @@ smart-llmrouter-<version>-linux-<arch>/
     router-token-gen
     router-usage-report
     router-migrate
-    smartrouterctl
-    metrum-fleetctl
-    metrum-smartrouterctl  # one-release rename notice
+    metrum-genai-smartrouterctl
+    metrum-genai-smartrouter-fleetctl
+    metrum-genai-smartrouter-fleet-sign
+    metrum-genai-smartrouter-license
+    smartrouterctl            # one-release rename notice
+    metrum-fleetctl           # one-release rename notice
+    metrum-smartrouterctl     # one-release rename notice
+    metrum-fleet-sign         # one-release rename notice
+    router-license            # one-release rename notice
   config/
     config.example.yaml
     env.example.json
@@ -33,10 +39,11 @@ smart-llmrouter-<version>-linux-<arch>/
 
 Use `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts. Release validation checks the package binaries against the selected architecture and rejects unexpected files, deployment-private notes, raw secrets, local state, and macOS archive metadata.
 
-`metrum-fleetctl` runs only from an extracted binary package on a separate
-trusted administration host. Its `plan`, `deploy`, and `delete` commands
-consume one mode-`0600`, profile-key-signed deployment-intent JSON file; it
-contains only references to the protected profile, runtime bundle, and license.
+`metrum-genai-smartrouter-fleetctl` runs only from an extracted binary package on a separate
+trusted administration host. Its `plan`, `deploy`, `delete`, and `customer`
+commands consume signed reference-only deployment intents (or orchestrate them
+for disposable SQLite customers); intents contain only references to the
+protected profile, runtime bundle, and license.
 Its default lifecycle uses SQLite state with one Router container and one
 replica; it neither provisions nor binds RDS. A dedicated-RDS branch requires
 an explicit approved `database_profile` and an external, expiring, mode-`0600`
@@ -96,22 +103,23 @@ Install the binary and runtime files according to the host change-control proces
 sudo install -m 0755 bin/router /usr/local/bin/smart-llmrouter
 sudo install -m 0755 bin/router-token-gen /usr/local/bin/router-token-gen
 sudo install -m 0755 bin/router-usage-report /usr/local/bin/router-usage-report
-sudo install -m 0755 bin/smartrouterctl /usr/local/bin/smartrouterctl
-sudo install -m 0755 bin/metrum-fleetctl /usr/local/bin/metrum-fleetctl
+sudo install -m 0755 bin/metrum-genai-smartrouterctl /usr/local/bin/metrum-genai-smartrouterctl
+sudo install -m 0755 bin/metrum-genai-smartrouter-fleetctl /usr/local/bin/metrum-genai-smartrouter-fleetctl
 sudo install -m 0640 -o router -g router config/config.yaml /etc/smart-llmrouter/config.yaml
 sudo install -m 0640 -o router -g router config/env.json /etc/smart-llmrouter/env.json
 sudo install -m 0640 -o router -g router license.json /etc/smart-llmrouter/license.json
 ```
 
-`smartrouterctl` is the customer-local operations CLI. It validates or safely
+`metrum-genai-smartrouterctl` is the customer-local operations CLI. It validates or safely
 compares local configuration, generates a caller token exactly once into a new
 mode-`0600` file, and reports safe local configuration, license, model, and
 aggregate-usage status. It cannot activate configuration, rotate keys, sign
 licenses, or access cloud/Fleet/cross-customer systems.
 
-`metrum-fleetctl` is the binary-package-only #555 Fleet lifecycle authority.
-It owns reference-only `plan`, idempotent `deploy`, exact-job `status`, and
-approved `delete`; each mutating or planning command accepts a signed
+`metrum-genai-smartrouter-fleetctl` is the binary-package-only #555 Fleet lifecycle authority.
+It owns reference-only `plan`, idempotent `deploy`, exact-job `status`,
+approved `delete`, and packaged `customer` convenience verbs for disposable
+SQLite instances; each mutating or planning command accepts a signed
 reference-only deployment intent, and it is not included in the standard Docker
 image. Dedicated RDS plans contain only safe scalar identifiers. The first
 disposable non-production E2E may use a strictly scoped external admission
@@ -119,8 +127,9 @@ file; after its evidence exists, one qualified reviewer records the required
 review before a production-like non-production rehearsal. A single-operator
 team may self-review. Production profiles are rejected until #518.
 
-`metrum-smartrouterctl` is a one-release compatibility command that only
-reports the rename to `metrum-fleetctl`.
+`metrum-fleetctl`, `metrum-smartrouterctl`, `smartrouterctl`, `metrum-fleet-sign`,
+and `router-license` are one-release compatibility commands that only report
+the rename to the corresponding `metrum-genai-smartrouter-*` binary.
 
 ## Runtime Configuration
 

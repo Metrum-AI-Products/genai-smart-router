@@ -9,7 +9,7 @@ import (
 
 func fleetTenants(args []string) {
 	if len(args) == 0 {
-		die("usage: metrum-fleetctl tenants <list|get|sync> [flags]")
+		die("usage: metrum-genai-smartrouter-fleetctl tenants <list|get|sync> [flags]")
 	}
 	switch args[0] {
 	case "list":
@@ -25,7 +25,7 @@ func fleetTenants(args []string) {
 
 func fleetLicenses(args []string) {
 	if len(args) == 0 {
-		die("usage: metrum-fleetctl licenses <list|get|register> [flags]")
+		die("usage: metrum-genai-smartrouter-fleetctl licenses <list|get|register> [flags]")
 	}
 	switch args[0] {
 	case "list":

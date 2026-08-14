@@ -1,34 +1,24 @@
 #!/usr/bin/env python3
-"""Compatibility wrapper for fleet_customer_lifecycle.py create.
+"""fleet_sqlite_customer_deploy.py was moved into the packaged Fleet CLI.
 
-Operator-only. Prefer:
-  rtk python3 scripts/fleet_customer_lifecycle.py create --customer-id <id>
+One-release rename notice only. Use:
+  metrum-genai-smartrouter-fleetctl customer create [--delete-first]
 """
 
 from __future__ import annotations
 
-import subprocess
 import sys
-from pathlib import Path
-
-SCRIPT = Path(__file__).resolve().parent / "fleet_customer_lifecycle.py"
 
 
-def main() -> None:
-    args = sys.argv[1:]
-    if "--delete-first" in args:
-        args = [a for a in args if a != "--delete-first"]
-        customer = None
-        for i, a in enumerate(args):
-            if a == "--customer-id" and i + 1 < len(args):
-                customer = args[i + 1]
-                break
-        if not customer:
-            print("--delete-first requires --customer-id", file=sys.stderr)
-            raise SystemExit(2)
-        subprocess.run([sys.executable, str(SCRIPT), "delete", "--customer-id", customer], check=False)
-    raise SystemExit(subprocess.call([sys.executable, str(SCRIPT), "create", *args]))
+def main() -> int:
+    print(
+        "scripts/fleet_sqlite_customer_deploy.py was replaced by "
+        "metrum-genai-smartrouter-fleetctl customer create; install the "
+        "fleet-admin binary package and invoke metrum-genai-smartrouter-fleetctl instead",
+        file=sys.stderr,
+    )
+    return 2
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

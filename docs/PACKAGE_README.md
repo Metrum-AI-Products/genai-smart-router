@@ -10,11 +10,15 @@ Binary packages include:
 - `bin/router-token-gen`
 - `bin/router-usage-report`
 - `bin/router-migrate`
-- `bin/smartrouterctl`
-- `bin/metrum-fleetctl`
-- `bin/metrum-smartrouterctl` (one-release rename notice)
-- `bin/metrum-fleet-sign`
-- `bin/router-license` (Metrum license issuer only; never for customer self-issue)
+- `bin/metrum-genai-smartrouterctl`
+- `bin/metrum-genai-smartrouter-fleetctl`
+- `bin/metrum-genai-smartrouter-fleet-sign`
+- `bin/metrum-genai-smartrouter-license` (Metrum license issuer only; never for customer self-issue)
+- `bin/smartrouterctl` (one-release rename notice → `metrum-genai-smartrouterctl`)
+- `bin/metrum-fleetctl` (one-release rename notice → `metrum-genai-smartrouter-fleetctl`)
+- `bin/metrum-smartrouterctl` (one-release rename notice → `metrum-genai-smartrouter-fleetctl`)
+- `bin/metrum-fleet-sign` (one-release rename notice → `metrum-genai-smartrouter-fleet-sign`)
+- `bin/router-license` (one-release rename notice → `metrum-genai-smartrouter-license`)
 - `config/config.example.yaml`
 - `config/env.example.json`
 - `config/enterprise-license-skus.json`
@@ -35,16 +39,18 @@ Docker Compose packages include:
 - `images/smart-llmrouter-<version>-linux-<arch>.tar`
 - `docs/`
 
-The saved Docker image includes `/app/bin/router-migrate` and the customer-local
-`/app/bin/smartrouterctl`; Fleet lifecycle binaries are excluded. Version-check
-the runtime with `docker run --rm --entrypoint /app/bin/smartrouterctl
+The saved Docker image includes `/app/bin/router-migrate`, customer-local
+`/app/bin/metrum-genai-smartrouterctl`, and one-release `/app/bin/smartrouterctl`
+rename notice; Fleet lifecycle binaries are excluded. Version-check
+the runtime with `docker run --rm --entrypoint /app/bin/metrum-genai-smartrouterctl
 smart-llmrouter:<version>-linux-<arch> version`.
 
 The standard Docker and Docker Compose images do not include
-`metrum-fleetctl`, `metrum-fleet-sign`, `router-license`, or the compatibility command.
+`metrum-genai-smartrouter-fleetctl`, `metrum-genai-smartrouter-fleet-sign`,
+`metrum-genai-smartrouter-license`, or the one-release Fleet rename notices.
 Docker-based Fleet operators run those tools from a binary package on a separate trusted administration host.
 Fleet CLIs are distributed as prebuilt binaries only; operator hosts must not require a Go toolchain or product source tree.
-Customers never receive license-signing authority; `router-license issue` is Metrum-only.
+Customers never receive license-signing authority; `metrum-genai-smartrouter-license issue` is Metrum-only.
 
 Docker and Compose packages use SQLite state with one Router container and one
 replica by default; they neither provision nor bind RDS. Dedicated RDS is an

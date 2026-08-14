@@ -1,6 +1,6 @@
 # Customer Router Instance Operations Runbook
 
-> **Internal runbook.** `metrum-fleetctl` is a binary-package-only Fleet lifecycle tool; `smartrouterctl` is the customer-local operations CLI and is included in Docker. This document grants no AWS, EKS, RDS, DNS, production, runtime-secret, credential, or Compose-to-EKS mutation authority.
+> **Internal runbook.** `metrum-genai-smartrouter-fleetctl` is a binary-package-only Fleet lifecycle tool; `metrum-genai-smartrouterctl` is the customer-local operations CLI and is included in Docker. This document grants no AWS, EKS, RDS, DNS, production, runtime-secret, credential, or Compose-to-EKS mutation authority.
 
 ## Purpose and ownership
 
@@ -12,7 +12,7 @@ At launch, one customer router instance maps to one isolated runtime identity an
 | --- | --- |
 | Customer administrator | Supplies approved upstream/BYOK information through the protected onboarding path and accepts the activated instance. |
 | Commercial/control-plane owner | Verifies entitlement and creates the authorized provisioning intent. #545 owns this durable customer job. |
-| Platform operator | Uses the binary-package-only `metrum-fleetctl` lifecycle when its non-production gates permit it. It resolves approved AWS/EKS policy, applies only instance-owned Kubernetes resources, and publishes ingress only after activation. |
+| Platform operator | Uses the binary-package-only `metrum-genai-smartrouter-fleetctl` lifecycle when its non-production gates permit it. It resolves approved AWS/EKS policy, applies only instance-owned Kubernetes resources, and publishes ingress only after activation. |
 | Infra/Security approver | Approves account/region, network, KMS, IAM, durability, quota, DNS, and change-control policy before live execution. |
 | Release approver | Owns protected production-like rehearsal, change window, canary/cutover, and recovery authorization under #518. |
 
@@ -40,14 +40,14 @@ revokes access without changing the
 CLI or customer instance. See the credential-free profile and verification
 procedure in [EKS staging migration](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap).
 
-Issue #555 has one strict signed reference-only deployment intent, one normalized GORM+SQLite deployment-job registry with tenant/license inventory tables, and typed AWS/EKS contracts in `metrum-fleetctl`. It provides deterministic plan, idempotent ownership-safe create/resume, classified state, activation-before-hostname, bounded exact-job status, registry-local `tenants`/`licenses` inventory, explicit PVC/RDS retention, and exact-job deletion. Live `plan`, `deploy`, and `delete` load the mode-`0600` signed intent, whose protected `aws-ssm:///` profile reference is authenticated before cloud access; `file://` is limited to the local fake `plan` contract. Deployment `status` accepts an exact job plus protected profile reference. Customer-local `smartrouterctl` has no Fleet, cloud, cross-customer, config-activation, key-rotation, or license-signing authority.
+Issue #555 has one strict signed reference-only deployment intent, one normalized GORM+SQLite deployment-job registry with tenant/license inventory tables, and typed AWS/EKS contracts in `metrum-genai-smartrouter-fleetctl`. It provides deterministic plan, idempotent ownership-safe create/resume, classified state, activation-before-hostname, bounded exact-job status, registry-local `tenants`/`licenses` inventory, explicit PVC/RDS retention, and exact-job deletion. Live `plan`, `deploy`, and `delete` load the mode-`0600` signed intent, whose protected `aws-ssm:///` profile reference is authenticated before cloud access; `file://` is limited to the local fake `plan` contract. Deployment `status` accepts an exact job plus protected profile reference. Customer-local `metrum-genai-smartrouterctl` has no Fleet, cloud, cross-customer, config-activation, key-rotation, or license-signing authority.
 
 The Fleet-only manifest carries `runtime_bundle_ref`, not raw runtime files. It
 is an `aws-ssm:///` or `aws-secretsmanager:///` reference without query data.
 The resolver reads the protected JSON bundle only in memory; it must contain
 exactly `config.yaml` as a YAML mapping and `env.json` as a JSON string map.
 The owned `router-runtime` Secret contains only those keys and is mounted
-read-only at `/app/config`; `router-license` remains separate. No bundle
+read-only at `/app/config`; `metrum-genai-smartrouter-license` remains separate. No bundle
 value or reference belongs in a plan, registry, status, error, ticket, or
 evidence record.
 
@@ -79,7 +79,7 @@ admission document for that one E2E. The maintainer may also be the
 implementer and later self-reviewer. This is not a second review, an approval
 chain, a new CLI verb, or a production authorization.
 
-Run the existing side-effect-free `metrum-fleetctl plan` first. The external
+Run the existing side-effect-free `metrum-genai-smartrouter-fleetctl plan` first. The external
 document must use `api_version:
 metrum.ai/smartrouter-rds-admission/v1`, `action: disposable-e2e`, and bind
 only the plan's `profile_id`, non-production `environment`,
@@ -90,7 +90,7 @@ Ed25519 signature. It contains no credentials, DSN, endpoint, secret
 reference, runtime configuration, license payload, or signing key.
 
 The approved profile supplies only the non-secret
-`lifecycle_approval_public_key` that verifies the document. `metrum-fleetctl`
+`lifecycle_approval_public_key` that verifies the document. `metrum-genai-smartrouter-fleetctl`
 never creates, updates, prints, or persists either an admission or signing
 material. It consumes `--rds-admission-file` only after validating private
 file mode, strict JSON schema, non-secret content, signature, exact plan
@@ -206,53 +206,56 @@ Protected profiles also carry `approved_compute_profiles`. Manifests may set
 optional `compute_profile` (default `t3a.medium`). That name selects Kubernetes
 scheduling/resource policy only; it is not free-form EC2/`instance_type`
 mutation and does not create node groups. Exact-job
-`metrum-fleetctl status` reports customer/instance ownership and compute
+`metrum-genai-smartrouter-fleetctl status` reports customer/instance ownership and compute
 scalars for Fleet-labelled objects only
 (`app.kubernetes.io/managed-by=metrum-fleetctl` and
 `metrum.ai/smartrouter-instance=<instance_id>`). Status is not cluster inventory.
-Cleanup of disposable customers uses signed `metrum-fleetctl delete` (or the
+Cleanup of disposable customers uses signed `metrum-genai-smartrouter-fleetctl delete` (or the
 lifecycle helper) with a fresh job-bound approval—never direct kubectl.
 
 For repeatable non-production SQLite customer instances (`acme3`, `acme4`, …)
-use the operator lifecycle helper (not a customer CLI; not packaged into Docker
-images). Point `METRUM_FLEET_BIN_DIR` at a release package `bin/` directory (or
-put `metrum-fleetctl`, `router-token-gen`, and `metrum-fleet-sign` on `PATH`).
-Do not `go build` / `go run` on operator hosts; packaged CLIs are binaries only.
+use `metrum-genai-smartrouter-fleetctl customer` from a release binary package
+`bin/` directory on `PATH` (or set `METRUM_FLEET_BIN_DIR`). Sibling binaries
+`metrum-genai-smartrouter-fleet-sign` and `router-token-gen` must be available
+beside it. Do not `go build` / `go run` on operator hosts; packaged CLIs are
+binaries only. The former Python helpers
+`scripts/fleet_customer_lifecycle.py` and
+`scripts/fleet_sqlite_customer_deploy.py` are one-release rename notices only.
 Default create uses the production-identical runtime bundle (same
 upstream provider keys as the Metrum reference) and omits `database_profile`
 so Fleet stays on SQLite + `auto-safe` rewrite at secret bind time.
 
 ```bash
 # Create (hostname https://{id}.apps.metrum.ai)
-rtk python3 scripts/fleet_customer_lifecycle.py create --customer-id acme4
+metrum-genai-smartrouter-fleetctl customer create --customer-id acme4
 
 # Status / smoke
-rtk python3 scripts/fleet_customer_lifecycle.py status --customer-id acme4
-rtk python3 scripts/fleet_customer_lifecycle.py smoke --customer-id acme4
+metrum-genai-smartrouter-fleetctl customer status --customer-id acme4
+metrum-genai-smartrouter-fleetctl customer smoke --customer-id acme4
 
 # Grant a caller and activate it (Fleet publishes per-customer SM bundle + redeploy)
-rtk python3 scripts/fleet_customer_lifecycle.py grant-caller --customer-id acme4 \
+metrum-genai-smartrouter-fleetctl customer grant-caller --customer-id acme4 \
   --owner-user acme-admin --project acme --allow high \
   --token-out ~/.local/share/metrum-fleet/acme4/CALLER_TOKEN_ADMIN.txt
 
 # Update live config (YAML patch merged into runtime bundle, then redeploy)
-rtk python3 scripts/fleet_customer_lifecycle.py update-config --customer-id acme4 \
+metrum-genai-smartrouter-fleetctl customer update-config --customer-id acme4 \
   --patch-file /protected/acme4-config-patch.yaml
 
 # Delete (signed Fleet delete; SQLite path; no kubectl)
-rtk python3 scripts/fleet_customer_lifecycle.py delete --customer-id acme4
+metrum-genai-smartrouter-fleetctl customer delete --customer-id acme4
 ```
 
-Compatibility alias (create only):
+Optional recreate helper:
 
 ```bash
-rtk python3 scripts/fleet_sqlite_customer_deploy.py --customer-id acme4
+metrum-genai-smartrouter-fleetctl customer create --customer-id acme4 --delete-first
 ```
 
-`smartrouterctl callers generate` remains the customer-local draft tool and
+`metrum-genai-smartrouterctl callers generate` remains the customer-local draft tool and
 returns `activation: configuration-controller-required`. On Metrum-managed EKS
-SQLite customers, Fleet `grant-caller` / `update-config` is the configuration
-controller: it writes
+SQLite customers, Fleet `customer grant-caller` / `customer update-config` is the
+configuration controller: it writes
 `aws-secretsmanager:///smartrouter/fleet/customers/<id>/runtime-bundle` with the
 operator IAM identity (CreateSecret/PutSecretValue), then deploys with the Fleet
 lifecycle role (read + EKS). Do not use kubectl or one-off migrate Jobs.

@@ -256,7 +256,7 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
 
 ## EKS Delivery Boundaries
 
-- `metrum-fleetctl` is shipped only in binary packages and is the #555 Fleet
+- `metrum-genai-smartrouter-fleetctl` is shipped only in binary packages and is the #555 Fleet
   lifecycle authority. It provides the bounded local safe-contract registry,
   deterministic plan, fake-adapter idempotent deploy, exact-job status,
   registry-local tenant/license inventory, and
@@ -272,10 +272,13 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
   target-policy-bound staging delivery controls. They are not a generic
   customer CLI and must not be presented or packaged as the #555 provisioner.
 - #555 is the sole implementation epic for one-command customer EKS deployment.
-  Extend `metrum-fleetctl`; do not create a second provisioner, registry,
+  Extend `metrum-genai-smartrouter-fleetctl`; do not create a second provisioner, registry,
   lifecycle, activation authority, or smoke framework. The public lifecycle is
-  limited to deterministic `plan`, idempotent `deploy`, bounded `status`, and
-  separately approved `delete`.
+  limited to deterministic `plan`, idempotent `deploy`, bounded `status`,
+  separately approved `delete`, registry inventory, and the packaged
+  `customer` convenience verbs that still compose those authorities.
+  `metrum-fleetctl`, `metrum-smartrouterctl`, `metrum-fleet-sign`,
+  `router-license`, and `smartrouterctl` are one-release rename notices only.
 - A customer `deploy` must consume an approved profile plus a strict reference-only intent, create or resume one isolated licensed Router, and require no manual AWS, Kubernetes, RDS, DNS, certificate, secret, license, or workload steps after invocation. Raw credentials, DSNs, kubeconfigs, license payloads, full Router configs, and shell commands are forbidden inputs and evidence.
 - Configuration and release updates use the same deployment job with a new approved immutable intent: exact config/license revisions and one image digest are pinned across retries. Do not add an out-of-band config mutation path.
 - Keep live customer mutation disabled until the #555 fake-adapter
@@ -284,7 +287,7 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
   beforehand only after #818 preflight passes and an external, mode-`0600`,
   time-bounded RDS admission exactly binds its non-production profile,
   deterministic job/intent, namespace, database profile, and manifest digest.
-  `metrum-fleetctl` may consume but MUST NOT create, update, emit, or persist
+  `metrum-genai-smartrouter-fleetctl` may consume but MUST NOT create, update, emit, or persist
   that admission. Production profiles remain rejected until #518 authorizes
   them. #545 and #586 supply approved customer/config/license intent; #507
   supplies migration compatibility.
@@ -457,18 +460,18 @@ rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspee
 
 ## Fleet And Customer CLI Boundary
 
-- `metrum-fleetctl` is the only #555 Fleet lifecycle authority. It owns
+- `metrum-genai-smartrouter-fleetctl` is the only #555 Fleet lifecycle authority. It owns
   `plan`, `deploy`, `status`, approved `delete`, and registry-local
   `tenants`/`licenses` inventory through the one normalized GORM+SQLite
   lifecycle registry. `metrum-smartrouterctl` is a one-release rename notice
   only; it MUST NOT retain lifecycle behavior.
-- `smartrouterctl` is customer-local. It MAY validate/diff local config,
+- `metrum-genai-smartrouterctl` is customer-local. It MAY validate/diff local config,
   generate a caller token into a new mode-`0600` file exactly once, and read
   safe local config/license/model/aggregate-usage status. It MUST NOT access
   AWS/EKS/RDS/DNS, Fleet state, cross-customer state, config activation, key
   rotation, or license signing.
 - Fleet binaries belong only in binary packages. Customer Docker images MAY
-  contain `smartrouterctl` but MUST NOT contain `metrum-fleetctl` or the
+  contain `metrum-genai-smartrouterctl` but MUST NOT contain `metrum-genai-smartrouter-fleetctl` or the
   compatibility command.
 - Fleet manifests MUST carry runtime configuration only as
   `runtime_bundle_ref`, an `aws-ssm:///` or `aws-secretsmanager:///` reference
@@ -476,7 +479,7 @@ rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspee
   secret-like values are forbidden. The resolved protected JSON bundle MUST
   contain exactly `config.yaml` and `env.json`; validate it only in memory,
   create the owned `router-runtime` Secret with exactly those keys, and mount
-  it read-only at `/app/config`. Keep `router-license` separate. NEVER place
+  it read-only at `/app/config`. Keep `metrum-genai-smartrouter-license` separate. NEVER place
   the reference or values in plans, lifecycle rows, statuses, logs, errors, or
   evidence.
 - SQLite is the default deployment path: exactly one Router container and one

@@ -5,7 +5,7 @@
 
 ## Decision
 
-`metrum-fleetctl` is the only Fleet authority. It owns the one #555 lifecycle
+`metrum-genai-smartrouter-fleetctl` is the only Fleet authority. It owns the one #555 lifecycle
 registry (GORM+SQLite jobs plus tenant/license inventory) and the deterministic
 `plan`, idempotent `deploy`, exact-job `status`, separately approved `delete`,
 and registry-local `tenants`/`licenses` inventory vocabulary. Its reference-only
@@ -20,7 +20,7 @@ intent fields and node-group/ASG/Karpenter mutation are out of scope. The legacy
 `metrum-smartrouterctl` binary exists for one release only; it exits after
 reporting the rename and performs no operation.
 
-`smartrouterctl` is customer-local and ships in both binary and Router Docker
+`metrum-genai-smartrouterctl` is customer-local and ships in both binary and Router Docker
 packages. It can validate or safely compare local config, generate a caller
 token into a new mode-`0600` file exactly once, inspect safe config/license/
 model status, and print aggregate usage. It cannot invoke AWS, EKS, RDS, DNS,
@@ -28,7 +28,7 @@ Fleet registries, cross-customer operations, config activation, key rotation,
 or license signing.
 
 Fleet binaries are included only in binary tarballs. Customer Docker images
-contain `smartrouterctl`, never `metrum-fleetctl` or the compatibility binary.
+contain `metrum-genai-smartrouterctl`, never `metrum-genai-smartrouter-fleetctl` or the compatibility binary.
 
 ## Runtime bundle boundary
 
@@ -43,7 +43,7 @@ safe generic errors.
 
 The adapter writes those two exact keys to the owned `router-runtime` Secret
 and mounts it read-only at `/app/config`, the Router image's startup path.
-`router-license` remains a distinct one-key `license.json` Secret and mount.
+`metrum-genai-smartrouter-license` remains a distinct one-key `license.json` Secret and mount.
 Neither protected bundle values nor references enter plans, lifecycle records,
 statuses, or error output.
 
@@ -64,7 +64,7 @@ It is unattached by the default EKS constructor. The existing `deploy` and
 mode-`0600`, time-bounded non-production disposable-E2E admission, signed by
 the approved profile's `lifecycle_approval_public_key`, and bound to the exact
 profile, deterministic job/intent, namespace, database profile, and manifest
-digest. `metrum-fleetctl` never creates, updates, emits, or persists that
+digest. `metrum-genai-smartrouter-fleetctl` never creates, updates, emits, or persists that
 admission or signing material. Invalid, unsigned, stale, or out-of-scope
 records fail before registry or AWS/EKS clients are opened. Production profiles
 remain rejected until #518.
