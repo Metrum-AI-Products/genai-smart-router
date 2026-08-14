@@ -6,6 +6,10 @@ Parameters:
     Type: String
     Description: Exact federated or SSO operator role authorized to assume the staging delivery role.
     AllowedPattern: ^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$
+  AuthorizedPlatformIacRoleArn:
+    Type: String
+    Description: Exact federated or SSO platform-IaC role authorized to assume the staging platform-IaC enrollment role.
+    AllowedPattern: ^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$
   ClusterName:
     Type: String
     Default: metrum
@@ -17,6 +21,49 @@ Resources:
   # this stack; no individual identity appears in this template.
   # Fixed role names are rendered as ARNs below so target-role trust and
   # lifecycle delegation do not create a CloudFormation dependency cycle.
+  #
+  # Platform-IaC enrollment is a separate role assignment: the organization
+  # attaches humans to AuthorizedPlatformIacRoleArn (SSO/federated). That
+  # principal may assume StagingPlatformIacRole to mutate only the reviewed
+  # lifecycle-operators group membership for path-tagged lifecycle users.
+  StagingPlatformIacRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: genai-smart-router-eks-staging-platform-iac
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AuthorizedFederatedPlatformIacRole
+            Effect: Allow
+            Principal:
+              AWS: !Ref AuthorizedPlatformIacRoleArn
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: GenAISmartRouterEKSStagingPlatformIacEnrollment
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: EnrollLifecycleOperatorsOnly
+                Effect: Allow
+                Action:
+                  - iam:GetUser
+                  - iam:ListUserTags
+                  - iam:GetGroup
+                  - iam:ListGroupsForUser
+                  - iam:AddUserToGroup
+                  - iam:RemoveUserFromGroup
+                Resource:
+                  - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:user/smart-router-lifecycle/*
+                  - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:group/genai-smart-router-eks-staging-lifecycle-operators
+      Tags:
+        - Key: application
+          Value: genai-smart-router
+        - Key: purpose
+          Value: eks-staging-platform-iac
+        - Key: environment
+          Value: non-production
+
   LifecycleOperatorGroup:
     DependsOn: StagingLifecycleOperatorRole
     Type: AWS::IAM::Group

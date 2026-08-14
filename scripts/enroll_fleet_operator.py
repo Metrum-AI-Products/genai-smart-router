@@ -21,8 +21,14 @@ LIFECYCLE_USER_PATH = "/smart-router-lifecycle/"
 LIFECYCLE_TAG_KEY = "GenAISmartRouterLifecycle"
 LIFECYCLE_TAG_VALUE = "true"
 LIFECYCLE_GROUP = "genai-smart-router-eks-staging-lifecycle-operators"
+PLATFORM_IAC_ROLE_NAME = "genai-smart-router-eks-staging-platform-iac"
 APPLY_CONFIRMATION = "ENROLL_FLEET_OPERATOR"
 USER_ARN = re.compile(r"^arn:(aws|aws-us-gov|aws-cn):iam::(?P<account>[0-9]{12}):user(?P<path>/[A-Za-z0-9+=,.@_/-]+)$")
+ASSUMED_PLATFORM_IAC_ARN = re.compile(
+    r"^arn:(aws|aws-us-gov|aws-cn):sts::(?P<account>[0-9]{12}):assumed-role/"
+    + re.escape(PLATFORM_IAC_ROLE_NAME)
+    + r"/[A-Za-z0-9+=,.@_/-]+$"
+)
 
 
 class EnrollmentError(RuntimeError):
@@ -73,6 +79,12 @@ def caller_account(profile: str) -> str:
         raise EnrollmentError("root credentials are forbidden for Fleet operator enrollment")
     if not isinstance(account, str) or not re.fullmatch(r"[0-9]{12}", account):
         raise EnrollmentError("AWS caller identity is invalid")
+    match = ASSUMED_PLATFORM_IAC_ARN.fullmatch(arn)
+    if match is None or match.group("account") != account:
+        raise EnrollmentError(
+            "caller must assume genai-smart-router-eks-staging-platform-iac; "
+            "lifecycle operators and root cannot enroll Fleet operators"
+        )
     return account
 
 
@@ -142,7 +154,11 @@ def enroll(profile: str, principal_arn: str, *, apply: bool, confirmation: str) 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
-    parser.add_argument("--profile", required=True, help="approved non-root platform-IaC AWS CLI profile")
+    parser.add_argument(
+        "--profile",
+        required=True,
+        help="AWS CLI profile that has assumed genai-smart-router-eks-staging-platform-iac",
+    )
     parser.add_argument("--principal-arn", required=True, help="runtime IAM-user ARN under the reviewed lifecycle path")
     parser.add_argument("--apply", action="store_true", help="perform the explicit IAM group membership mutation")
     parser.add_argument("--confirm", default="", help=f"required with --apply: {APPLY_CONFIRMATION}")
