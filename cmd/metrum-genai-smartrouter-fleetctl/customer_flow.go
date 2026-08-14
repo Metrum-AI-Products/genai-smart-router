@@ -25,6 +25,23 @@ type planPayload struct {
 	ErrorClass      string   `json:"error_class"`
 	ObservedState   any      `json:"observed_state"`
 	ConfigRevision  string   `json:"config_revision"`
+	CustomerID      string   `json:"customer_id"`
+	Stage           string   `json:"stage"`
+}
+
+type intentEnvelope struct {
+	IntentID   string `json:"intent_id"`
+	ProfileRef string `json:"profile_ref"`
+	Manifest   struct {
+		CustomerID       string `json:"customer_id"`
+		Stage            string `json:"stage"`
+		RuntimeBundleRef string `json:"runtime_bundle_ref"`
+		ConfigRevision   string `json:"config_revision"`
+		License          struct {
+			RequestRef string `json:"request_ref"`
+		} `json:"license"`
+		DatabaseProfile string `json:"database_profile"`
+	} `json:"manifest"`
 }
 
 func planSelectsDedicatedRDS(plan planPayload) bool {
@@ -80,8 +97,47 @@ func utcStamp() string {
 	return time.Now().UTC().Format("20060102t150405z")
 }
 
-func writeManifest(ws customerWorkspace, runtimeBundle, licenseRef, revisionPrefix string) string {
+// rejectForeignDefaultRefs fails closed when a customer alias is paired with
+// an ACME-rehearsal license path that cannot authorize that alias. Mutation
+// still requires an externally signed intent; these checks only catch obvious
+// mismatched rehearsal references before the signing boundary.
+func rejectForeignDefaultRefs(customerID, _, _, licenseRef string) {
+	if err := foreignDefaultRefError(customerID, licenseRef); err != nil {
+		die("%v", err)
+	}
+}
+
+func foreignDefaultRefError(customerID, licenseRef string) error {
+	customerID = strings.ToLower(strings.TrimSpace(customerID))
+	licenseRef = strings.ToLower(strings.TrimSpace(licenseRef))
+	if strings.Contains(licenseRef, "/acme-rehearsal/") && customerID != "acme-rehearsal" {
+		return fmt.Errorf("license-ref binds acme-rehearsal; refusing for customer alias %q", customerID)
+	}
+	return nil
+}
+
+func writeManifest(ws customerWorkspace, profileRef, runtimeBundle, licenseRef, revisionPrefix string) string {
+	profileRef = strings.TrimSpace(profileRef)
+	runtimeBundle = strings.TrimSpace(runtimeBundle)
+	licenseRef = strings.TrimSpace(licenseRef)
+	if profileRef == "" || runtimeBundle == "" || licenseRef == "" {
+		die("write-manifest requires --profile-ref, --runtime-bundle-ref, and --license-ref")
+	}
+	if !strings.HasPrefix(profileRef, "aws-ssm:///") {
+		die("profile-ref must be a protected aws-ssm:/// reference")
+	}
+	if !strings.HasPrefix(runtimeBundle, "aws-ssm:///") && !strings.HasPrefix(runtimeBundle, "aws-secretsmanager:///") {
+		die("runtime-bundle-ref must be aws-ssm:/// or aws-secretsmanager:///")
+	}
+	if !strings.HasPrefix(licenseRef, "aws-ssm:///") && !strings.HasPrefix(licenseRef, "aws-secretsmanager:///") {
+		die("license-ref must be aws-ssm:/// or aws-secretsmanager:///")
+	}
+	rejectForeignDefaultRefs(ws.CustomerID, profileRef, runtimeBundle, licenseRef)
+
 	stamp := utcStamp()
+	if strings.TrimSpace(revisionPrefix) == "" {
+		revisionPrefix = "sqlite"
+	}
 	manifest := map[string]any{
 		"api_version":        "metrum.ai/smartrouter-deployment/v1",
 		"customer_id":        ws.CustomerID,
@@ -102,7 +158,60 @@ func writeManifest(ws customerWorkspace, runtimeBundle, licenseRef, revisionPref
 	}
 	path := filepath.Join(ws.Home, "manifest.json")
 	writeMode0600(path, append(raw, '\n'))
+	intentID := fmt.Sprintf("intent-%s-%s", ws.CustomerID, stamp)
+	writeMode0600(filepath.Join(ws.Home, "intent-id.txt"), []byte(intentID+"\n"))
+	ws.saveState(map[string]any{
+		"customer_id":        ws.CustomerID,
+		"profile_ref":        profileRef,
+		"runtime_bundle_ref": runtimeBundle,
+		"license_ref":        licenseRef,
+		"intent_id":          intentID,
+		"manifest_path":      path,
+		"awaiting_signature": true,
+	})
+	fmt.Println(mustJSON(map[string]any{
+		"customer_id":        ws.CustomerID,
+		"intent_id":          intentID,
+		"manifest_written":   true,
+		"awaiting_signature": true,
+		"next_step":          "obtain an externally issued signed intent for this manifest, then run customer create --intent <signed-intent>",
+		"signing_boundary":   "fleetctl customer never holds, copies, or accepts lifecycle private keys",
+		"stage":              "nonproduction",
+		"state_profile":      "sqlite-rwo-small",
+	}))
 	return path
+}
+
+func peekIntentEnvelope(intentPath string) intentEnvelope {
+	requireMode0600File(intentPath, "intent")
+	raw, err := os.ReadFile(intentPath)
+	if err != nil {
+		die("read intent: %v", err)
+	}
+	var env intentEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		die("intent JSON is invalid")
+	}
+	if strings.TrimSpace(env.Manifest.CustomerID) == "" {
+		die("intent manifest.customer_id is required")
+	}
+	if strings.TrimSpace(env.ProfileRef) == "" {
+		die("intent profile_ref is required")
+	}
+	if strings.TrimSpace(env.Manifest.RuntimeBundleRef) == "" {
+		die("intent manifest.runtime_bundle_ref is required")
+	}
+	if strings.TrimSpace(env.Manifest.License.RequestRef) == "" {
+		die("intent manifest.license.request_ref is required")
+	}
+	if strings.TrimSpace(env.Manifest.DatabaseProfile) != "" {
+		die("refusing customer convenience path: intent selects dedicated RDS; use core Fleet deploy with a validated admission")
+	}
+	stage := strings.ToLower(strings.TrimSpace(env.Manifest.Stage))
+	if stage != "" && stage != "nonproduction" && stage != "test" && stage != "staging" {
+		die("refusing customer convenience path: intent stage %q is not non-production", env.Manifest.Stage)
+	}
+	return env
 }
 
 func runLogged(cmd *exec.Cmd) (stdout, stderr string, exitCode int) {
@@ -131,32 +240,6 @@ func requireOK(stdout, stderr string, exitCode int, what string) {
 		os.Stderr.WriteString(stderr)
 		die("%s failed (exit %d)", what, exitCode)
 	}
-}
-
-func signIntent(signBin, priv, intentID, profileRef, manifestPath, outPath string) {
-	cmd := exec.Command(signBin, "intent", priv, intentID, profileRef, manifestPath, outPath, "12")
-	stdout, stderr, code := runLogged(cmd)
-	requireOK(stdout, stderr, code, "sign intent")
-	_ = os.Chmod(outPath, 0o600)
-}
-
-func signDeleteApproval(signBin, priv, jobID, outPath string, retainPVC bool) {
-	nonce := fmt.Sprintf("delete-%s-%d", jobID, time.Now().Unix())
-	retainPVCArg := "false"
-	if retainPVC {
-		retainPVCArg = "true"
-	}
-	cmd := exec.Command(signBin, "delete", priv, jobID, nonce, outPath, "false", retainPVCArg)
-	stdout, stderr, code := runLogged(cmd)
-	requireOK(stdout, stderr, code, "sign delete approval")
-	_ = os.Chmod(outPath, 0o600)
-}
-
-func signAdmission(signBin, priv, approvalID, profileID, environment, databaseProfile, jobID, namespace, manifestSHA256, outPath string) {
-	cmd := exec.Command(signBin, "admission", priv, approvalID, profileID, environment, databaseProfile, jobID, namespace, manifestSHA256, outPath)
-	stdout, stderr, code := runLogged(cmd)
-	requireOK(stdout, stderr, code, "sign RDS admission")
-	_ = os.Chmod(outPath, 0o600)
 }
 
 func fleetctlJSON(fleetBin string, args []string, env map[string]string, allowFail bool) (map[string]any, int) {
@@ -219,17 +302,38 @@ func currentBundleRef(ws customerWorkspace, defaultRef string) string {
 	return defaultRef
 }
 
-func planAndDeploy(ws customerWorkspace, fleetBin, signBin, priv, profileRef, runtimeBundle, licenseRef string, fleetEnv map[string]string, revisionPrefix string) (planPayload, map[string]any) {
-	manifestPath := writeManifest(ws, runtimeBundle, licenseRef, revisionPrefix)
-	intentID := fmt.Sprintf("intent-%s-%s", ws.CustomerID, utcStamp())
-	writeMode0600(filepath.Join(ws.Home, "intent-id.txt"), []byte(intentID+"\n"))
-	intentPath := filepath.Join(ws.Home, "intent.json")
-	signIntent(signBin, priv, intentID, profileRef, manifestPath, intentPath)
+func planAndDeployIntent(ws customerWorkspace, fleetBin, intentPath string, fleetEnv map[string]string) (planPayload, map[string]any) {
+	requireMode0600File(intentPath, "intent")
+	// Preserve a workspace copy for later signed delete (same bytes, mode 0600).
+	workspaceIntent := filepath.Join(ws.Home, "intent.json")
+	if absIn, err1 := filepath.Abs(intentPath); err1 == nil {
+		if absOut, err2 := filepath.Abs(workspaceIntent); err2 == nil && absIn != absOut {
+			raw, err := os.ReadFile(intentPath)
+			if err != nil {
+				die("read intent: %v", err)
+			}
+			writeMode0600(workspaceIntent, raw)
+		}
+	} else {
+		raw, err := os.ReadFile(intentPath)
+		if err != nil {
+			die("read intent: %v", err)
+		}
+		writeMode0600(workspaceIntent, raw)
+	}
+	intentPath = workspaceIntent
 
 	planRaw, _ := fleetctlJSON(fleetBin, []string{"plan", "--intent", intentPath, "--output", "json"}, fleetEnv, false)
 	plan := decodePlan(planRaw)
 	if planSelectsDedicatedRDS(plan) {
 		die("refusing deploy: plan selected dedicated RDS; omit database_profile for SQLite")
+	}
+	if strings.TrimSpace(plan.CustomerID) != "" && plan.CustomerID != ws.CustomerID {
+		die("intent customer_id %q does not match workspace %q", plan.CustomerID, ws.CustomerID)
+	}
+	env := strings.ToLower(strings.TrimSpace(plan.Environment))
+	if env != "" && env != "nonproduction" && env != "test" && env != "staging" {
+		die("refusing deploy: plan environment %q is not non-production", plan.Environment)
 	}
 	planBytes, err := json.MarshalIndent(planRaw, "", "  ")
 	if err != nil {
@@ -237,13 +341,14 @@ func planAndDeploy(ws customerWorkspace, fleetBin, signBin, priv, profileRef, ru
 	}
 	writeMode0600(filepath.Join(ws.Home, "plan.json"), append(planBytes, '\n'))
 	fmt.Println(mustJSON(map[string]any{
-		"customer_id":        ws.CustomerID,
-		"hostname":           plan.Hostname,
-		"namespace":          plan.Namespace,
-		"job_id":             plan.JobID,
-		"actions":            plan.Actions,
-		"database":           "sqlite",
-		"runtime_bundle_ref": runtimeBundle,
+		"customer_id": ws.CustomerID,
+		"hostname":    plan.Hostname,
+		"namespace":   plan.Namespace,
+		"job_id":      plan.JobID,
+		"actions":     plan.Actions,
+		"database":    "sqlite",
+		"environment": plan.Environment,
+		"binding":     "signed-intent",
 	}))
 
 	status, _ := fleetctlJSON(fleetBin, []string{
@@ -257,15 +362,17 @@ func planAndDeploy(ws customerWorkspace, fleetBin, signBin, priv, profileRef, ru
 	if strings.TrimSpace(jobID) == "" {
 		jobID = plan.JobID
 	}
+	envEnvelope := peekIntentEnvelope(intentPath)
 	ws.saveState(map[string]any{
 		"customer_id":        ws.CustomerID,
 		"hostname":           plan.Hostname,
 		"namespace":          plan.Namespace,
 		"job_id":             jobID,
-		"runtime_bundle_ref": runtimeBundle,
-		"profile_ref":        profileRef,
-		"license_ref":        licenseRef,
-		"intent_id":          intentID,
+		"runtime_bundle_ref": envEnvelope.Manifest.RuntimeBundleRef,
+		"profile_ref":        envEnvelope.ProfileRef,
+		"license_ref":        envEnvelope.Manifest.License.RequestRef,
+		"intent_id":          envEnvelope.IntentID,
+		"awaiting_signature": false,
 	})
 	return plan, status
 }

@@ -27,6 +27,14 @@ model status, and print aggregate usage. It cannot invoke AWS, EKS, RDS, DNS,
 Fleet registries, cross-customer operations, config activation, key rotation,
 or license signing.
 
+Operator convenience verbs under `metrum-genai-smartrouter-fleetctl customer …`
+orchestrate disposable SQLite prepare/activate flows only. They require
+explicit reference-only inputs or an externally signed mode-`0600` intent /
+delete approval, never ACME/staging/production-identical string defaults, and
+never hold, copy, generate, or accept lifecycle private keys (including donor
+workspace key discovery). Local signing stays outside the customer path in the
+approved signing service or isolated signing workflow.
+
 Fleet binaries are included only in binary tarballs. Customer Docker images
 contain `metrum-genai-smartrouterctl`, never `metrum-genai-smartrouter-fleetctl` or the compatibility binary.
 

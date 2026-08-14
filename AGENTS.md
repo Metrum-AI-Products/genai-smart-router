@@ -463,8 +463,12 @@ rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspee
 - `metrum-genai-smartrouter-fleetctl` is the only #555 Fleet lifecycle authority. It owns
   `plan`, `deploy`, `status`, approved `delete`, and registry-local
   `tenants`/`licenses` inventory through the one normalized GORM+SQLite
-  lifecycle registry. `metrum-smartrouterctl` is a one-release rename notice
-  only; it MUST NOT retain lifecycle behavior.
+  lifecycle registry. Operator convenience verbs under `customer
+  write-manifest|create|status|smoke|grant-caller|update-config|delete` consume
+  externally signed mode-`0600` intents/delete approvals only: no ACME/staging
+  reference defaults, no donor-key copy, and no private-key arguments.
+  `metrum-smartrouterctl` is a one-release rename notice only; it MUST NOT
+  retain lifecycle behavior.
 - `metrum-genai-smartrouterctl` is customer-local. It MAY validate/diff local config,
   generate a caller token into a new mode-`0600` file exactly once, and read
   safe local config/license/model/aggregate-usage status. It MUST NOT access

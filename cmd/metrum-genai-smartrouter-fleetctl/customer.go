@@ -14,12 +14,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	defaultProfileRef    = "aws-ssm:///metrum/smartrouter/profiles/staging"
-	defaultRuntimeBundle = "aws-secretsmanager:///smartrouter/fleet/production-identical/runtime-bundle"
-	defaultLicenseRef    = "aws-ssm:///metrum/smartrouter/fleet/acme-rehearsal/license-request"
-)
-
 type customerCommonFlags struct {
 	CustomerID       string
 	ProfileRef       string
@@ -29,9 +23,11 @@ type customerCommonFlags struct {
 
 func fleetCustomer(args []string) {
 	if len(args) == 0 {
-		die("usage: metrum-genai-smartrouter-fleetctl customer <create|status|smoke|grant-caller|update-config|delete> [flags]")
+		die("usage: metrum-genai-smartrouter-fleetctl customer <write-manifest|create|status|smoke|grant-caller|update-config|delete> [flags]")
 	}
 	switch args[0] {
+	case "write-manifest":
+		customerWriteManifest(args[1:])
 	case "create":
 		customerCreate(args[1:])
 	case "status":
@@ -51,38 +47,67 @@ func fleetCustomer(args []string) {
 
 func addCustomerCommonFlags(fs *flag.FlagSet, c *customerCommonFlags) {
 	fs.StringVar(&c.CustomerID, "customer-id", "", "customer id (required)")
-	fs.StringVar(&c.ProfileRef, "profile-ref", defaultProfileRef, "protected Fleet profile reference")
-	fs.StringVar(&c.RuntimeBundleRef, "runtime-bundle-ref", defaultRuntimeBundle, "upstream or current runtime bundle reference")
-	fs.StringVar(&c.LicenseRef, "license-ref", defaultLicenseRef, "license request reference")
+	fs.StringVar(&c.ProfileRef, "profile-ref", "", "protected Fleet profile reference (required for write-manifest / prepare)")
+	fs.StringVar(&c.RuntimeBundleRef, "runtime-bundle-ref", "", "runtime bundle reference (required for write-manifest / prepare)")
+	fs.StringVar(&c.LicenseRef, "license-ref", "", "license request reference (required for write-manifest / prepare)")
 }
 
-func requireCustomerCommon(c customerCommonFlags) customerWorkspace {
+func requireCustomerID(c customerCommonFlags) customerWorkspace {
 	if strings.TrimSpace(c.CustomerID) == "" {
 		die("--customer-id is required")
 	}
 	return prepareCustomerWorkspace(c.CustomerID)
 }
 
-func customerCreate(args []string) {
-	fs := flag.NewFlagSet("customer create", flag.ExitOnError)
+func requireExplicitRefs(c customerCommonFlags) {
+	if strings.TrimSpace(c.ProfileRef) == "" || strings.TrimSpace(c.RuntimeBundleRef) == "" || strings.TrimSpace(c.LicenseRef) == "" {
+		die("--profile-ref, --runtime-bundle-ref, and --license-ref are required (no ACME/staging defaults)")
+	}
+}
+
+func customerWriteManifest(args []string) {
+	fs := flag.NewFlagSet("customer write-manifest", flag.ExitOnError)
 	var common customerCommonFlags
 	addCustomerCommonFlags(fs, &common)
-	deleteFirst := fs.Bool("delete-first", false, "run signed delete for an existing workspace job before create")
+	revisionPrefix := fs.String("revision-prefix", "sqlite", "config_revision prefix segment")
 	_ = fs.Parse(args)
-	ws := requireCustomerCommon(common)
+	ws := requireCustomerID(common)
+	requireExplicitRefs(common)
+	writeManifest(ws, common.ProfileRef, common.RuntimeBundleRef, common.LicenseRef, *revisionPrefix)
+}
+
+func customerCreate(args []string) {
+	fs := flag.NewFlagSet("customer create", flag.ExitOnError)
+	customerID := fs.String("customer-id", "", "optional; must match signed intent when set")
+	intentPath := fs.String("intent", "", "mode-0600 externally signed Fleet intent (required)")
+	deleteFirst := fs.Bool("delete-first", false, "run signed delete for an existing workspace job before create")
+	confirmFile := fs.String("confirm-file", "", "mode-0600 externally signed delete approval (required with --delete-first)")
+	rdsAdmission := fs.String("rds-admission-file", "", "mode-0600 externally issued RDS admission when deleting a dedicated-RDS job")
+	_ = fs.Parse(args)
+	if strings.TrimSpace(*intentPath) == "" {
+		die("customer create requires --intent (externally signed); use write-manifest then the approved signing workflow")
+	}
+	env := peekIntentEnvelope(*intentPath)
+	id := env.Manifest.CustomerID
+	if strings.TrimSpace(*customerID) != "" {
+		normalized, err := normalizeCustomerID(*customerID)
+		if err != nil {
+			die("%v", err)
+		}
+		if normalized != id {
+			die("--customer-id %q does not match intent customer_id %q", normalized, id)
+		}
+	}
+	ws := prepareCustomerWorkspace(id)
 	if *deleteFirst {
-		// Best-effort, matching scripts/fleet_sqlite_customer_deploy.py: delete
-		// failures must not block create when no prior workspace exists.
-		if err := customerDeleteBestEffort(ws, false); err != nil {
+		if strings.TrimSpace(*confirmFile) == "" {
+			die("--delete-first requires --confirm-file (externally signed delete approval)")
+		}
+		if err := customerDeleteBestEffort(ws, false, filepath.Join(ws.Home, "intent.json"), *confirmFile, *rdsAdmission); err != nil {
 			fmt.Fprintf(os.Stderr, "delete-first: %v\n", err)
 		}
 	}
-	priv, _ := ws.ensureKeys()
 	fleetBin, err := resolveFleetctlBinary()
-	if err != nil {
-		die("%v", err)
-	}
-	signBin, err := resolvePackagedBinary(fleetSignBinaryName)
 	if err != nil {
 		die("%v", err)
 	}
@@ -91,7 +116,7 @@ func customerCreate(args []string) {
 	if err != nil {
 		die("%v", err)
 	}
-	plan, _ := planAndDeploy(ws, fleetBin, signBin, priv, common.ProfileRef, common.RuntimeBundleRef, common.LicenseRef, fleetEnv, "sqlite")
+	plan, _ := planAndDeployIntent(ws, fleetBin, *intentPath, fleetEnv)
 	hostname := plan.Hostname
 	if hostname == "" {
 		hostname = customerHostname(ws.CustomerID)
@@ -104,7 +129,7 @@ func customerStatus(args []string) {
 	var common customerCommonFlags
 	addCustomerCommonFlags(fs, &common)
 	_ = fs.Parse(args)
-	ws := requireCustomerCommon(common)
+	ws := requireCustomerID(common)
 	fleetBin, err := resolveFleetctlBinary()
 	if err != nil {
 		die("%v", err)
@@ -120,11 +145,14 @@ func customerStatus(args []string) {
 	if strings.TrimSpace(jobID) == "" {
 		jobID = plan.JobID
 	}
-	profileRef := common.ProfileRef
-	if profileRef == defaultProfileRef {
+	profileRef := strings.TrimSpace(common.ProfileRef)
+	if profileRef == "" {
 		if fromState, _ := state["profile_ref"].(string); strings.TrimSpace(fromState) != "" {
 			profileRef = fromState
 		}
+	}
+	if strings.TrimSpace(profileRef) == "" {
+		die("--profile-ref is required (or run create first so lifecycle state records it)")
 	}
 	if strings.TrimSpace(jobID) == "" {
 		die("no job_id in lifecycle state or plan.json; run create first")
@@ -137,7 +165,7 @@ func customerStatus(args []string) {
 		"--output", "json",
 	}, fleetEnv, false)
 	safe := map[string]any{}
-	for _, k := range []string{"job_id", "state", "hostname", "namespace", "observed_state", "error_class", "config_revision"} {
+	for _, k := range []string{"job_id", "state", "hostname", "namespace", "observed_state", "error_class", "config_revision", "environment", "customer_id"} {
 		if v, ok := status[k]; ok {
 			safe[k] = v
 		}
@@ -155,7 +183,7 @@ func customerSmoke(args []string) {
 	timeoutSec := fs.Int("timeout-sec", 180, "overall smoke deadline seconds")
 	expectModels := fs.Int("expect-models-count", -1, "optional exact /v1/models count")
 	_ = fs.Parse(args)
-	ws := requireCustomerCommon(common)
+	ws := requireCustomerID(common)
 	if err := runCustomerSmoke(ws, smokeOptions{
 		TokenFile:         *tokenFile,
 		Model:             *model,
@@ -178,7 +206,8 @@ func customerGrantCaller(args []string) {
 	allowRaw := fs.String("allow", "", "comma-separated model groups")
 	tokenOut := fs.String("token-out", "", "mode-0600 token output path; refuse overwrite")
 	_ = fs.Parse(args)
-	ws := requireCustomerCommon(common)
+	ws := requireCustomerID(common)
+	requireExplicitRefs(common)
 	if strings.TrimSpace(*ownerUser) == "" || strings.TrimSpace(*project) == "" || strings.TrimSpace(*allowRaw) == "" || strings.TrimSpace(*tokenOut) == "" {
 		die("grant-caller requires --owner-user, --project, --allow, and --token-out")
 	}
@@ -186,25 +215,19 @@ func customerGrantCaller(args []string) {
 	if len(allow) == 0 {
 		die("--allow requires at least one model group")
 	}
-	priv, _ := ws.ensureKeys()
-	fleetBin, err := resolveFleetctlBinary()
-	if err != nil {
-		die("%v", err)
-	}
-	signBin, err := resolvePackagedBinary(fleetSignBinaryName)
-	if err != nil {
-		die("%v", err)
-	}
 	tokenGen, err := resolvePackagedBinary(tokenGenBinaryName)
 	if err != nil {
 		die("%v", err)
 	}
 	ctx := context.Background()
-	fleetCfg, fleetEnv, err := assumeFleetRole(ctx, ws)
+	fleetCfg, _, err := assumeFleetRole(ctx, ws)
 	if err != nil {
 		die("%v", err)
 	}
 	sourceRef := currentBundleRef(ws, common.RuntimeBundleRef)
+	if strings.TrimSpace(sourceRef) == "" {
+		die("runtime bundle reference missing; pass --runtime-bundle-ref")
+	}
 	bundle, err := fetchRuntimeBundle(ctx, fleetCfg, sourceRef)
 	if err != nil {
 		die("%v", err)
@@ -285,21 +308,13 @@ func customerGrantCaller(args []string) {
 	if err != nil {
 		die("%v", err)
 	}
-	planAndDeploy(ws, fleetBin, signBin, priv, common.ProfileRef, newRef, common.LicenseRef, fleetEnv, "grant")
+	writeManifest(ws, common.ProfileRef, newRef, common.LicenseRef, "grant")
 	fmt.Println(mustJSON(map[string]any{
 		"granted_caller_id": callerRow["id"],
 		"token_file":        outPath,
-		"activation":        "fleet-deployed",
+		"activation":        "signed-intent-required",
+		"next_step":         "sign the workspace manifest externally, then: customer create --intent <signed-intent>",
 	}))
-	if err := runCustomerSmoke(ws, smokeOptions{
-		TokenFile:         outPath,
-		Model:             allow[0],
-		SkipChat:          false,
-		TimeoutSec:        180,
-		ExpectModelsCount: -1,
-	}); err != nil {
-		die("%v", err)
-	}
 }
 
 func customerUpdateConfig(args []string) {
@@ -307,13 +322,9 @@ func customerUpdateConfig(args []string) {
 	var common customerCommonFlags
 	addCustomerCommonFlags(fs, &common)
 	patchFile := fs.String("patch-file", "", "YAML mapping merged into runtime config.yaml")
-	tokenFile := fs.String("token-file", "", "caller token file for post-update smoke")
-	model := fs.String("model", "", "model group for optional chat smoke")
-	skipChat := fs.Bool("skip-chat", false, "skip chat completion smoke")
-	timeoutSec := fs.Int("timeout-sec", 180, "overall smoke deadline seconds")
-	expectModels := fs.Int("expect-models-count", -1, "optional exact /v1/models count")
 	_ = fs.Parse(args)
-	ws := requireCustomerCommon(common)
+	ws := requireCustomerID(common)
+	requireExplicitRefs(common)
 	if strings.TrimSpace(*patchFile) == "" {
 		die("--patch-file is required")
 	}
@@ -326,21 +337,15 @@ func customerUpdateConfig(args []string) {
 	if err := yaml.Unmarshal(raw, &patch); err != nil || patch == nil {
 		die("patch-file must be a YAML mapping")
 	}
-	priv, _ := ws.ensureKeys()
-	fleetBin, err := resolveFleetctlBinary()
-	if err != nil {
-		die("%v", err)
-	}
-	signBin, err := resolvePackagedBinary(fleetSignBinaryName)
-	if err != nil {
-		die("%v", err)
-	}
 	ctx := context.Background()
-	fleetCfg, fleetEnv, err := assumeFleetRole(ctx, ws)
+	fleetCfg, _, err := assumeFleetRole(ctx, ws)
 	if err != nil {
 		die("%v", err)
 	}
 	sourceRef := currentBundleRef(ws, common.RuntimeBundleRef)
+	if strings.TrimSpace(sourceRef) == "" {
+		die("runtime bundle reference missing; pass --runtime-bundle-ref")
+	}
 	bundle, err := fetchRuntimeBundle(ctx, fleetCfg, sourceRef)
 	if err != nil {
 		die("%v", err)
@@ -353,42 +358,50 @@ func customerUpdateConfig(args []string) {
 	if err != nil {
 		die("%v", err)
 	}
-	planAndDeploy(ws, fleetBin, signBin, priv, common.ProfileRef, newRef, common.LicenseRef, fleetEnv, "cfg")
-	if err := runCustomerSmoke(ws, smokeOptions{
-		TokenFile:         *tokenFile,
-		Model:             *model,
-		SkipChat:          *skipChat,
-		TimeoutSec:        *timeoutSec,
-		ExpectModelsCount: *expectModels,
-	}); err != nil {
-		die("%v", err)
-	}
+	writeManifest(ws, common.ProfileRef, newRef, common.LicenseRef, "cfg")
+	fmt.Println(mustJSON(map[string]any{
+		"activation": "signed-intent-required",
+		"next_step":  "sign the workspace manifest externally, then: customer create --intent <signed-intent>",
+	}))
 }
 
 func customerDelete(args []string) {
 	fs := flag.NewFlagSet("customer delete", flag.ExitOnError)
 	var common customerCommonFlags
 	addCustomerCommonFlags(fs, &common)
+	intentPath := fs.String("intent", "", "mode-0600 signed intent from the job to delete")
+	confirmFile := fs.String("confirm-file", "", "mode-0600 externally signed delete approval (required)")
+	rdsAdmission := fs.String("rds-admission-file", "", "mode-0600 externally issued RDS admission when deleting dedicated RDS")
 	retainPVC := fs.Bool("retain-pvc", false, "retain PVC during signed delete")
 	_ = fs.Parse(args)
-	ws := requireCustomerCommon(common)
-	if err := customerDeleteBestEffort(ws, *retainPVC); err != nil {
+	ws := requireCustomerID(common)
+	intent := strings.TrimSpace(*intentPath)
+	if intent == "" {
+		intent = filepath.Join(ws.Home, "intent.json")
+	}
+	if strings.TrimSpace(*confirmFile) == "" {
+		die("customer delete requires --confirm-file (externally signed delete approval); fleetctl never signs locally")
+	}
+	if err := customerDeleteBestEffort(ws, *retainPVC, intent, *confirmFile, *rdsAdmission); err != nil {
 		die("%v", err)
 	}
 }
 
-func customerDeleteBestEffort(ws customerWorkspace, retainPVC bool) error {
-	intentPath := filepath.Join(ws.Home, "intent.json")
+func customerDeleteBestEffort(ws customerWorkspace, retainPVC bool, intentPath, confirmFile, rdsAdmissionFile string) error {
+	intentPath = strings.TrimSpace(intentPath)
+	if intentPath == "" {
+		intentPath = filepath.Join(ws.Home, "intent.json")
+	}
 	planPath := filepath.Join(ws.Home, "plan.json")
 	if !fileExists(intentPath) || !fileExists(planPath) {
-		return fmt.Errorf("delete requires workspace intent.json and plan.json from a prior create/update")
+		return fmt.Errorf("delete requires workspace intent.json and plan.json from a prior create")
 	}
-	priv, _ := ws.ensureKeys()
+	requireMode0600File(intentPath, "intent")
+	requireMode0600File(confirmFile, "confirm-file")
+	if strings.TrimSpace(rdsAdmissionFile) != "" {
+		requireMode0600File(rdsAdmissionFile, "rds-admission-file")
+	}
 	fleetBin, err := resolveFleetctlBinary()
-	if err != nil {
-		return err
-	}
-	signBin, err := resolvePackagedBinary(fleetSignBinaryName)
 	if err != nil {
 		return err
 	}
@@ -402,30 +415,21 @@ func customerDeleteBestEffort(ws customerWorkspace, retainPVC bool) error {
 	if strings.TrimSpace(jobID) == "" {
 		return fmt.Errorf("plan.json missing job_id")
 	}
-	deletePath := filepath.Join(ws.Home, "delete-approval.json")
-	signDeleteApproval(signBin, priv, jobID, deletePath, retainPVC)
+	if retainPVC {
+		fmt.Fprintln(os.Stderr, "note: retain-pvc must already be encoded in the externally signed delete approval")
+	}
 	delArgs := []string{
 		"delete",
 		"--intent", intentPath,
 		"--registry", sharedRegistryPath(),
-		"--confirm-file", deletePath,
+		"--confirm-file", confirmFile,
 		"--output", "json",
 	}
-	if strings.TrimSpace(plan.DatabaseID) != "" {
-		admission := filepath.Join(ws.Home, "rds-admission.json")
-		signAdmission(
-			signBin,
-			priv,
-			fmt.Sprintf("adm-%s-%s", ws.CustomerID, utcStamp()),
-			firstNonEmpty(plan.ProfileID, "staging-fleet-nonprod"),
-			firstNonEmpty(plan.Environment, "nonproduction"),
-			plan.DatabaseProfile,
-			jobID,
-			plan.Namespace,
-			plan.ManifestSHA256,
-			admission,
-		)
-		delArgs = append(delArgs, "--rds-admission-file", admission)
+	if strings.TrimSpace(plan.DatabaseID) != "" || strings.TrimSpace(plan.DatabaseProfile) != "" {
+		if strings.TrimSpace(rdsAdmissionFile) == "" {
+			return fmt.Errorf("dedicated-RDS delete requires --rds-admission-file (externally issued)")
+		}
+		delArgs = append(delArgs, "--rds-admission-file", rdsAdmissionFile)
 	}
 	result, code := fleetctlJSON(fleetBin, delArgs, fleetEnv, true)
 	errBlob := strings.ToLower(fmt.Sprintf("%v %s", result["_error"], mustJSON(result)))
@@ -434,7 +438,6 @@ func customerDeleteBestEffort(ws customerWorkspace, retainPVC bool) error {
 		fleetctlJSON(fleetBin, []string{
 			"deploy", "--intent", intentPath, "--registry", sharedRegistryPath(), "--output", "json",
 		}, fleetEnv, false)
-		signDeleteApproval(signBin, priv, jobID, deletePath, retainPVC)
 		result, code = fleetctlJSON(fleetBin, delArgs, fleetEnv, false)
 	}
 	if code != 0 {

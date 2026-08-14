@@ -7,10 +7,12 @@ deployment jobs plus operator inventory of tenants and license safe-summaries.
 Lifecycle verbs remain deterministic `plan`, idempotent `deploy`, exact-job
 `status`, and separately approved `delete`. Inventory verbs are
 `tenants list|get|sync` and `licenses list|get|register`. Operator convenience
-verbs under `customer create|status|smoke|grant-caller|update-config|delete`
+verbs under
+`customer write-manifest|create|status|smoke|grant-caller|update-config|delete`
 orchestrate disposable SQLite Fleet instances from the same binary package
-without a source tree or Python helper; they still sign intents and call
-`plan`/`deploy`/`delete` and never become a second provisioner.
+without a source tree or Python helper. They consume externally signed intents
+and delete approvals, call `plan`/`deploy`/`delete`, and never become a second
+provisioner or a local signing authority.
 
 `metrum-fleetctl`, `metrum-smartrouterctl`, `metrum-fleet-sign`, and
 `router-license` are one-release compatibility binaries. They report the

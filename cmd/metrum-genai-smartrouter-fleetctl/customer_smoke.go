@@ -28,7 +28,6 @@ func resolveSmokeToken(ws customerWorkspace, tokenFile string) (string, error) {
 	candidates = append(candidates,
 		filepath.Join(ws.Home, "CALLER_TOKEN.txt"),
 		filepath.Join(ws.Home, "CALLER_TOKEN_ADMIN.txt"),
-		filepath.Join(fleetRoot(), "acme-rehearsal", "CALLER_TOKEN_ACME.txt"),
 	)
 	for _, path := range candidates {
 		raw, err := os.ReadFile(path)
