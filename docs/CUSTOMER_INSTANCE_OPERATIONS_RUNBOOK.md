@@ -215,50 +215,78 @@ lifecycle helper) with a fresh job-bound approval—never direct kubectl.
 
 For repeatable non-production SQLite customer instances (`acme3`, `acme4`, …)
 use `metrum-genai-smartrouter-fleetctl customer` from a release binary package
-`bin/` directory on `PATH` (or set `METRUM_FLEET_BIN_DIR`). Sibling binaries
-`metrum-genai-smartrouter-fleet-sign` and `router-token-gen` must be available
-beside it. Do not `go build` / `go run` on operator hosts; packaged CLIs are
-binaries only. The former Python helpers
-`scripts/fleet_customer_lifecycle.py` and
+`bin/` directory on `PATH` (or set `METRUM_FLEET_BIN_DIR`). Sibling binary
+`router-token-gen` must be available beside it for `grant-caller`. Do not
+`go build` / `go run` on operator hosts; packaged CLIs are binaries only. The
+former Python helpers `scripts/fleet_customer_lifecycle.py` and
 `scripts/fleet_sqlite_customer_deploy.py` are one-release rename notices only.
-Default create uses the production-identical runtime bundle (same
-upstream provider keys as the Metrum reference) and omits `database_profile`
-so Fleet stays on SQLite + `auto-safe` rewrite at secret bind time.
+
+Customer convenience verbs never hold, copy, generate, or accept lifecycle
+private keys, and they ship with **no** ACME/staging/production-identical
+reference defaults. Prepare an unsigned customer-bound manifest, obtain an
+externally issued signed intent (or delete approval) through the approved
+signing service / isolated signing workflow, then mutate only with those
+mode-`0600` documents. Do not search donor customer workspaces for keys.
+Omit `database_profile` so Fleet stays on SQLite + `auto-safe` rewrite at
+secret bind time.
 
 ```bash
-# Create (hostname https://{id}.apps.metrum.ai)
-metrum-genai-smartrouter-fleetctl customer create --customer-id acme4
+# 1) Write an unsigned SQLite manifest (explicit refs required; no defaults)
+metrum-genai-smartrouter-fleetctl customer write-manifest --customer-id acme4 \
+  --profile-ref "$FLEET_PROFILE_REF" \
+  --runtime-bundle-ref "$FLEET_RUNTIME_BUNDLE_REF" \
+  --license-ref "$FLEET_LICENSE_REF"
+
+# 2) Externally sign that workspace manifest → mode-0600 intent.json
+# 3) Create / activate from the signed intent only
+metrum-genai-smartrouter-fleetctl customer create --intent /protected/acme4-intent.json
 
 # Status / smoke
-metrum-genai-smartrouter-fleetctl customer status --customer-id acme4
-metrum-genai-smartrouter-fleetctl customer smoke --customer-id acme4
+metrum-genai-smartrouter-fleetctl customer status --customer-id acme4 \
+  --profile-ref "$FLEET_PROFILE_REF"
+metrum-genai-smartrouter-fleetctl customer smoke --customer-id acme4 \
+  --token-file ~/.local/share/metrum-fleet/acme4/CALLER_TOKEN_ADMIN.txt
 
-# Grant a caller and activate it (Fleet publishes per-customer SM bundle + redeploy)
+# Grant a caller (publishes per-customer SM bundle + writes a new unsigned manifest)
 metrum-genai-smartrouter-fleetctl customer grant-caller --customer-id acme4 \
+  --profile-ref "$FLEET_PROFILE_REF" \
+  --runtime-bundle-ref "$FLEET_RUNTIME_BUNDLE_REF" \
+  --license-ref "$FLEET_LICENSE_REF" \
   --owner-user acme-admin --project acme --allow high \
   --token-out ~/.local/share/metrum-fleet/acme4/CALLER_TOKEN_ADMIN.txt
+# Then externally sign the new manifest and activate:
+metrum-genai-smartrouter-fleetctl customer create --intent /protected/acme4-grant-intent.json
 
-# Update live config (YAML patch merged into runtime bundle, then redeploy)
+# Update live config (YAML patch → SM publish → unsigned manifest; then sign + create)
 metrum-genai-smartrouter-fleetctl customer update-config --customer-id acme4 \
+  --profile-ref "$FLEET_PROFILE_REF" \
+  --runtime-bundle-ref "$FLEET_RUNTIME_BUNDLE_REF" \
+  --license-ref "$FLEET_LICENSE_REF" \
   --patch-file /protected/acme4-config-patch.yaml
 
-# Delete (signed Fleet delete; SQLite path; no kubectl)
-metrum-genai-smartrouter-fleetctl customer delete --customer-id acme4
+# Delete (externally signed Fleet delete approval; SQLite path; no kubectl)
+metrum-genai-smartrouter-fleetctl customer delete --customer-id acme4 \
+  --intent ~/.local/share/metrum-fleet/acme4/intent.json \
+  --confirm-file /protected/acme4-delete-approval.json
 ```
 
-Optional recreate helper:
+Optional recreate helper (requires an externally signed delete approval for the prior job):
 
 ```bash
-metrum-genai-smartrouter-fleetctl customer create --customer-id acme4 --delete-first
+metrum-genai-smartrouter-fleetctl customer create \
+  --intent /protected/acme4-intent.json \
+  --delete-first \
+  --confirm-file /protected/acme4-delete-approval.json
 ```
 
 `metrum-genai-smartrouterctl callers generate` remains the customer-local draft tool and
 returns `activation: configuration-controller-required`. On Metrum-managed EKS
 SQLite customers, Fleet `customer grant-caller` / `customer update-config` is the
-configuration controller: it writes
+configuration controller prepare path: it writes
 `aws-secretsmanager:///smartrouter/fleet/customers/<id>/runtime-bundle` with the
-operator IAM identity (CreateSecret/PutSecretValue), then deploys with the Fleet
-lifecycle role (read + EKS). Do not use kubectl or one-off migrate Jobs.
+operator IAM identity (CreateSecret/PutSecretValue) and a new unsigned manifest;
+activation still requires an externally signed intent plus `customer create
+--intent`. Do not use kubectl or one-off migrate Jobs.
 
 Artifacts stay under `~/.local/share/metrum-fleet/<customer_id>/` (mode `0700`).
 

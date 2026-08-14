@@ -97,3 +97,17 @@ func TestPlanSelectsDedicatedRDS(t *testing.T) {
 		t.Fatal("dedicated_rds action should refuse")
 	}
 }
+
+func TestRejectForeignDefaultRefs(t *testing.T) {
+	// Should not panic/die for matching rehearsal customer — exercise via helper that returns error.
+	if err := foreignDefaultRefError("acme-rehearsal", "aws-ssm:///x/acme-rehearsal/license-request"); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if err := foreignDefaultRefError("aditya-test1", "aws-ssm:///x/acme-rehearsal/license-request"); err == nil {
+		t.Fatal("expected mismatch rejection")
+	}
+	if err := foreignDefaultRefError("aditya-test1", "aws-ssm:///tenants/aditya-test1/license-request"); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+}
+

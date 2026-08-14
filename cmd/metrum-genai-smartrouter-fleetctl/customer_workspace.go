@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,15 +10,12 @@ import (
 )
 
 const (
-	fleetBinaryName     = "metrum-genai-smartrouter-fleetctl"
-	fleetSignBinaryName = "metrum-genai-smartrouter-fleet-sign"
-	tokenGenBinaryName  = "router-token-gen"
-	hostnameSuffix      = "apps.metrum.ai"
+	fleetBinaryName    = "metrum-genai-smartrouter-fleetctl"
+	tokenGenBinaryName = "router-token-gen"
+	hostnameSuffix     = "apps.metrum.ai"
 )
 
 var customerIDRE = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
-
-var donorKeyCustomers = []string{"disposable-e2e", "acme-rehearsal", "acme2", "acme3"}
 
 type customerWorkspace struct {
 	CustomerID string
@@ -97,49 +93,6 @@ func (w customerWorkspace) saveState(updates map[string]any) map[string]any {
 	return state
 }
 
-func (w customerWorkspace) privateKeyPath() string {
-	return filepath.Join(w.Home, "lifecycle_approval_private_key.b64")
-}
-
-func (w customerWorkspace) publicKeyPath() string {
-	return filepath.Join(w.Home, "lifecycle_approval_public_key.b64")
-}
-
-func (w customerWorkspace) ensureKeys() (privPath, pubPath string) {
-	priv := w.privateKeyPath()
-	pub := w.publicKeyPath()
-	if fileExists(priv) && fileExists(pub) {
-		return priv, pub
-	}
-	root := fleetRoot()
-	for _, donorName := range donorKeyCustomers {
-		donor := filepath.Join(root, donorName)
-		dpriv := filepath.Join(donor, "lifecycle_approval_private_key.b64")
-		dpub := filepath.Join(donor, "lifecycle_approval_public_key.b64")
-		dseed := filepath.Join(donor, "lifecycle-ed25519.seed")
-		if fileExists(dpriv) && fileExists(dpub) {
-			if err := os.MkdirAll(w.Home, 0o700); err != nil {
-				die("create customer workspace: %v", err)
-			}
-			_ = os.Chmod(w.Home, 0o700)
-			copyFileMode(dpriv, priv, 0o600)
-			copyFileMode(dpub, pub, 0o600)
-			return priv, pub
-		}
-		if fileExists(dseed) && fileExists(dpub) {
-			if err := os.MkdirAll(w.Home, 0o700); err != nil {
-				die("create customer workspace: %v", err)
-			}
-			_ = os.Chmod(w.Home, 0o700)
-			copyFileMode(dseed, priv, 0o600)
-			copyFileMode(dpub, pub, 0o600)
-			return priv, pub
-		}
-	}
-	die("missing lifecycle approval keys under ~/.local/share/metrum-fleet/")
-	return "", ""
-}
-
 func sharedRegistryPath() string {
 	root := filepath.Join(fleetRoot(), "registry")
 	if err := os.MkdirAll(root, 0o700); err != nil {
@@ -161,26 +114,27 @@ func fileExists(path string) bool {
 	return err == nil && !st.IsDir()
 }
 
-func copyFileMode(src, dst string, mode os.FileMode) {
-	in, err := os.Open(src)
-	if err != nil {
-		die("open donor key: %v", err)
-	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
-	if err != nil {
-		die("write key: %v", err)
-	}
-	defer out.Close()
-	if _, err := io.Copy(out, in); err != nil {
-		die("copy key: %v", err)
-	}
-	_ = out.Chmod(mode)
-}
-
 func writeMode0600(path string, data []byte) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		die("write %s: %v", filepath.Base(path), err)
 	}
 	_ = os.Chmod(path, 0o600)
+}
+
+// requireMode0600File refuses world/group-readable protected documents.
+func requireMode0600File(path, label string) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		die("%s is required", label)
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		die("%s not found: %s", label, filepath.Base(path))
+	}
+	if st.IsDir() {
+		die("%s must be a regular file", label)
+	}
+	if st.Mode().Perm()&0o077 != 0 {
+		die("%s must be mode 0600 (got %04o)", label, st.Mode().Perm())
+	}
 }
