@@ -109,6 +109,19 @@ separately and are never packaged. After both families exist under `dist/`:
 make dist-backup
 ```
 
+Local artifacts keep the git version/hash in their filenames
+(`smart-llmrouter-<version>-linux-amd64.tar.gz`, …). The backup stages them
+under stable restic basenames so each snapshot replaces the same four paths:
+
+- `smart-llmrouter-linux-amd64.tar.gz`
+- `smart-llmrouter-linux-arm64.tar.gz`
+- `smart-llmrouter-docker-linux-amd64.tar.gz`
+- `smart-llmrouter-docker-linux-arm64.tar.gz`
+
+Release identity is recorded in restic tags (`version:<id>`). Restore a prior
+build with `restic snapshots --tag version:<id>` then
+`restic restore <snapshot-id>`.
+
 Or build both families and archive in one step:
 
 ```bash
