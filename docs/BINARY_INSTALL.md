@@ -43,11 +43,11 @@ bin/router-token-gen generate \
 ```
 
 Before starting a `deployment-job` router, version-check the non-serving runner and follow the canonical [Data migration framework](DATA_MIGRATIONS.md): `plan`, approved backup, `apply`, every required data job until its safe state is `validated`, `verify`, `status`, then serve. PostgreSQL receives its connection only through `--dsn-env`; `auto-safe` is not a PostgreSQL production procedure. Do not infer completion from checkpoint ordinal `0`.
-For Fleet lifecycle contract validation, run `bin/metrum-fleetctl plan`, then
+For Fleet lifecycle contract validation, run `bin/metrum-genai-smartrouter-fleetctl plan`, then
 `deploy`, exact-job `status`, and approved `delete` with a protected
 reference-only profile. A new intent/config revision reconciles the same
 instance in place. `bin/metrum-smartrouterctl` reports the one-release rename
-notice only. `smartrouterctl` provides local configuration, caller-token,
+notice only. `metrum-genai-smartrouterctl` provides local configuration, caller-token,
 license, model, and usage operations; it cannot activate config or access cloud
 systems. The default deployment is SQLite state with one Router container and
 one replica; it neither provisions nor binds RDS. Dedicated RDS requires an

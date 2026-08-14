@@ -11,9 +11,9 @@ HOST_GOARCH := $(shell go env GOHOSTARCH)
 PYTHON ?= python3
 # Packaged CLIs are ELF binaries only. Release packages never ship Go source,
 # cmd/, internal/, or go.mod. Fleet-only CLIs stay out of customer Docker images.
-PACKAGE_BINARIES := router router-token-gen router-usage-report router-migrate smartrouterctl metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
-FLEET_ONLY_BINARIES := metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
-DOCKER_RUNTIME_BINARIES := router router-token-gen router-usage-report router-migrate smartrouterctl
+PACKAGE_BINARIES := router router-token-gen router-usage-report router-migrate metrum-genai-smartrouterctl metrum-genai-smartrouter-fleetctl metrum-genai-smartrouter-fleet-sign metrum-genai-smartrouter-license smartrouterctl metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
+FLEET_ONLY_BINARIES := metrum-genai-smartrouter-fleetctl metrum-genai-smartrouter-fleet-sign metrum-genai-smartrouter-license metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
+DOCKER_RUNTIME_BINARIES := router router-token-gen router-usage-report router-migrate metrum-genai-smartrouterctl
 
 # Inspect coding evaluations are deliberately opt-in: they call a live endpoint
 # and may start Docker sandboxes.  They are never prerequisites of test/build.
@@ -293,7 +293,7 @@ test-tenant-deploy-activation:
 	go test ./internal/router -run '^TestTenantDeploymentActivation' -count=1
 
 test-tenant-deploy-all: test-tenant-deploy-contract test-tenant-deploy-adapters test-tenant-deploy-security test-tenant-deploy-activation
-	go test ./cmd/metrum-fleetctl -run 'TestTenantDeploymentCLIPlanIsReadOnly|TestLifecycleCommandsRejectUnsupportedVerbs' -count=1
+	go test ./cmd/metrum-genai-smartrouter-fleetctl -run 'TestTenantDeploymentCLIPlanIsReadOnly|TestLifecycleCommandsRejectUnsupportedVerbs' -count=1
 
 test: secret-check capability-smoke-unit
 	go test ./...

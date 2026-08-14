@@ -27,10 +27,11 @@ infer the running version from a date written in documentation.
   validated for those exact surfaces.
 - Usage, diagnostics, cost, latency, attempt, fallback, traffic-shaping, and
   governed admin-report surfaces use safe scalar operational evidence.
-- Operations: `smartrouterctl` is available for customer-local safe config,
+- Operations: `metrum-genai-smartrouterctl` is available for customer-local safe config,
   token-file, license, model, and aggregate-usage operations. Fleet lifecycle
-  authority moved to binary-package-only `metrum-fleetctl`; the old
-  `metrum-smartrouterctl` is a one-release rename notice.
+  authority moved to binary-package-only `metrum-genai-smartrouter-fleetctl`; the old
+  `metrum-fleetctl` / `metrum-smartrouterctl` / `smartrouterctl` names are
+  one-release rename notices.
 
 ### Operator Impact
 
@@ -51,8 +52,8 @@ infer the running version from a date written in documentation.
   secret-manager state; never place provider keys in release evidence.
 - Metrics and reports: retain `/metrics` isolation for metrics-admin subjects
   and verify report authorization after upgrade.
-- CLI packaging: confirm customer Docker images include `smartrouterctl` and
-  exclude `metrum-fleetctl`. Fleet RDS mutation remains fail-closed pending
+- CLI packaging: confirm customer Docker images include `metrum-genai-smartrouterctl` and
+  exclude `metrum-genai-smartrouter-fleetctl`. Fleet RDS mutation remains fail-closed pending
   recorded non-production evidence and a qualified reviewer's approval, which a
   single-maintainer deployment may supply itself; production profiles remain
   rejected until #518.

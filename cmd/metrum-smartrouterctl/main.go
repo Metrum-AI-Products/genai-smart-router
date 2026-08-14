@@ -7,6 +7,6 @@ import (
 )
 
 func main() {
-	fmt.Fprintln(os.Stderr, "metrum-smartrouterctl was renamed to metrum-fleetctl; install and invoke metrum-fleetctl instead")
+	fmt.Fprintln(os.Stderr, "metrum-smartrouterctl was renamed to metrum-genai-smartrouter-fleetctl; install and invoke metrum-genai-smartrouter-fleetctl instead")
 	os.Exit(2)
 }

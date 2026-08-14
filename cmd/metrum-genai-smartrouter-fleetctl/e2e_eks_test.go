@@ -34,7 +34,7 @@ func TestDisposableEKSPackagedCLI(t *testing.T) {
 	if requiresDisposableRDSAdmission(intent.Manifest) && rdsAdmissionFile == "" {
 		t.Skip("set EKS_E2E_RDS_ADMISSION_FILE for a dedicated-RDS disposable EKS E2E")
 	}
-	binary := filepath.Join(t.TempDir(), "metrum-fleetctl")
+	binary := filepath.Join(t.TempDir(), "metrum-genai-smartrouter-fleetctl")
 	if output, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("package CLI: %v: %s", err, output)
 	}

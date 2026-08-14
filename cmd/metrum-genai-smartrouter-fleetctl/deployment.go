@@ -198,14 +198,14 @@ func deploymentAdaptersForPlan(ctx context.Context, profile router.TenantDeploym
 
 func fleetDatabases(args []string) {
 	if len(args) == 0 || args[0] != "status" {
-		die("usage: metrum-fleetctl databases status --profile-ref REF --job ID --registry PATH")
+		die("usage: metrum-genai-smartrouter-fleetctl databases status --profile-ref REF --job ID --registry PATH")
 	}
 	deploymentStatus(args[1:])
 }
 
 func fleetSmoke(args []string) {
 	if len(args) < 2 || args[0] != "run" || args[1] != "activation" {
-		die("usage: metrum-fleetctl smoke run activation --profile-ref REF --job ID --registry PATH")
+		die("usage: metrum-genai-smartrouter-fleetctl smoke run activation --profile-ref REF --job ID --registry PATH")
 	}
 	deploymentStatus(args[2:])
 }

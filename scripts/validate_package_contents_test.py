@@ -49,7 +49,15 @@ def assert_offline_package_documentation_contract() -> None:
     if docker_start == -1:
         raise AssertionError("docs/PACKAGE_README.md: missing Docker Compose package manifest")
     docker_manifest = docker_section[docker_start:]
-    for fleet_binary in ("bin/metrum-fleetctl", "bin/metrum-smartrouterctl", "bin/metrum-fleet-sign", "bin/router-license"):
+    for fleet_binary in (
+        "bin/metrum-genai-smartrouter-fleetctl",
+        "bin/metrum-genai-smartrouter-fleet-sign",
+        "bin/metrum-genai-smartrouter-license",
+        "bin/metrum-fleetctl",
+        "bin/metrum-smartrouterctl",
+        "bin/metrum-fleet-sign",
+        "bin/router-license",
+    ):
         if fleet_binary in docker_manifest:
             raise AssertionError(f"docs/PACKAGE_README.md: Docker package manifest must omit {fleet_binary}")
     for guidance in (
@@ -60,12 +68,27 @@ def assert_offline_package_documentation_contract() -> None:
             raise AssertionError(f"docs/PACKAGE_README.md: missing Docker CLI guidance: {guidance}")
 
     dockerfile = (repository / "Dockerfile").read_text(encoding="utf-8")
-    for runtime_binary in ("router", "router-token-gen", "router-usage-report", "router-migrate", "smartrouterctl"):
+    for runtime_binary in (
+        "router",
+        "router-token-gen",
+        "router-usage-report",
+        "router-migrate",
+        "metrum-genai-smartrouterctl",
+        "smartrouterctl",
+    ):
         expected_copy = f"COPY --from=build /out/{runtime_binary} /app/bin/{runtime_binary}"
         if expected_copy not in dockerfile:
             raise AssertionError(f"Dockerfile: missing runtime binary copy: {runtime_binary}")
-    for fleet_binary in ("metrum-fleetctl", "metrum-smartrouterctl", "metrum-fleet-sign", "router-license"):
-        if fleet_binary in dockerfile:
+    for fleet_binary in (
+        "metrum-genai-smartrouter-fleetctl",
+        "metrum-genai-smartrouter-fleet-sign",
+        "metrum-genai-smartrouter-license",
+        "metrum-fleetctl",
+        "metrum-smartrouterctl",
+        "metrum-fleet-sign",
+        "router-license",
+    ):
+        if f"/out/{fleet_binary}" in dockerfile or f"/app/bin/{fleet_binary}" in dockerfile:
             raise AssertionError(f"Dockerfile: standard image must not include {fleet_binary}")
 
 
@@ -112,6 +135,10 @@ def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> di
         f"{root}/bin/router-token-gen": elf(62),
         f"{root}/bin/router-usage-report": elf(62),
         f"{root}/bin/router-migrate": elf(62),
+        f"{root}/bin/metrum-genai-smartrouterctl": elf(62),
+        f"{root}/bin/metrum-genai-smartrouter-fleetctl": elf(62),
+        f"{root}/bin/metrum-genai-smartrouter-fleet-sign": elf(62),
+        f"{root}/bin/metrum-genai-smartrouter-license": elf(62),
         f"{root}/bin/smartrouterctl": elf(62),
         f"{root}/bin/metrum-fleetctl": elf(62),
         f"{root}/bin/metrum-smartrouterctl": elf(62),
@@ -131,7 +158,14 @@ def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> di
 def docker_image_tar(extra_layer_files: dict[str, str | bytes] | None = None) -> bytes:
     layer_data = io.BytesIO()
     with tarfile.open(fileobj=layer_data, mode="w") as layer:
-        for name in ["app/bin/router", "app/bin/router-token-gen", "app/bin/router-usage-report", "app/bin/router-migrate", "app/bin/smartrouterctl"]:
+        for name in [
+            "app/bin/router",
+            "app/bin/router-token-gen",
+            "app/bin/router-usage-report",
+            "app/bin/router-migrate",
+            "app/bin/metrum-genai-smartrouterctl",
+            "app/bin/smartrouterctl",
+        ]:
             data = elf(62)
             info = tarfile.TarInfo(name)
             info.size = len(data)
@@ -187,9 +221,9 @@ def main() -> int:
 
         missing_cli = root / "missing-cli.tar.gz"
         missing_cli_files = binary_package_files()
-        del missing_cli_files["smart-llmrouter-v1.0.0-linux-amd64/bin/metrum-fleetctl"]
+        del missing_cli_files["smart-llmrouter-v1.0.0-linux-amd64/bin/metrum-genai-smartrouter-fleetctl"]
         write_tar(missing_cli, missing_cli_files)
-        expect_errors(missing_cli, allowlist, ["required package file is missing: bin/metrum-fleetctl"])
+        expect_errors(missing_cli, allowlist, ["required package file is missing: bin/metrum-genai-smartrouter-fleetctl"])
 
         good_docker = root / "smart-llmrouter-v1.0.0-docker-linux-amd64.tar.gz"
         write_tar(good_docker, docker_package_files())

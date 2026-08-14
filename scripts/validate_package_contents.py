@@ -17,8 +17,16 @@ TEXT_SCAN_LIMIT = 10 * 1024 * 1024
 BINARY_PACKAGE_FILES = {
     "bin/router",
     "bin/router-token-gen",
-    "bin/router-usage-report", "bin/router-migrate", "bin/smartrouterctl",
-    "bin/metrum-fleetctl", "bin/metrum-smartrouterctl", "bin/metrum-fleet-sign",
+    "bin/router-usage-report",
+    "bin/router-migrate",
+    "bin/metrum-genai-smartrouterctl",
+    "bin/metrum-genai-smartrouter-fleetctl",
+    "bin/metrum-genai-smartrouter-fleet-sign",
+    "bin/metrum-genai-smartrouter-license",
+    "bin/smartrouterctl",
+    "bin/metrum-fleetctl",
+    "bin/metrum-smartrouterctl",
+    "bin/metrum-fleet-sign",
     "bin/router-license",
     "config/config.example.yaml",
     "config/env.example.json",
@@ -41,6 +49,10 @@ PACKAGE_BINARIES = {
     "bin/router-token-gen",
     "bin/router-usage-report",
     "bin/router-migrate",
+    "bin/metrum-genai-smartrouterctl",
+    "bin/metrum-genai-smartrouter-fleetctl",
+    "bin/metrum-genai-smartrouter-fleet-sign",
+    "bin/metrum-genai-smartrouter-license",
     "bin/smartrouterctl",
     "bin/metrum-fleetctl",
     "bin/metrum-smartrouterctl",
@@ -196,7 +208,7 @@ def validate_elf_arch(blob: bytes, arch: str) -> str | None:
 
 def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes) -> list[str]:
     errors: list[str] = []
-    required = {"/app/bin/router", "/app/bin/router-token-gen", "/app/bin/router-usage-report", "/app/bin/router-migrate", "/app/bin/smartrouterctl"}
+    required = {"/app/bin/router", "/app/bin/router-token-gen", "/app/bin/router-usage-report", "/app/bin/router-migrate", "/app/bin/metrum-genai-smartrouterctl", "/app/bin/smartrouterctl"}
     actual: set[str] = set()
     try:
         with tarfile.open(fileobj=io.BytesIO(blob), mode="r:*") as image:
@@ -236,6 +248,9 @@ def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes) -> lis
                         if FORBIDDEN_IMAGE_PATH_RE.search(normalized_layer_name):
                             errors.append(f"{archive}: {image_rel} layer contains forbidden runtime/source path: {layer_member.name}")
                         if name in {
+                            "/app/bin/metrum-genai-smartrouter-fleetctl",
+                            "/app/bin/metrum-genai-smartrouter-fleet-sign",
+                            "/app/bin/metrum-genai-smartrouter-license",
                             "/app/bin/metrum-fleetctl",
                             "/app/bin/metrum-smartrouterctl",
                             "/app/bin/metrum-fleet-sign",

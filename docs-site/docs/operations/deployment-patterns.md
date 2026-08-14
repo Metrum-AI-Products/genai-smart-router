@@ -71,18 +71,20 @@ Keep test provider keys separate from production BYOK credentials where policy r
 
 ### Multi-environment operator contract
 
-In binary tarballs, `metrum-fleetctl` is the sole #555 Fleet lifecycle
+In binary tarballs, `metrum-genai-smartrouter-fleetctl` is the sole #555 Fleet lifecycle
 authority. It owns deterministic `plan`, idempotent `deploy`, exact-job
-read-only `status`, and approved `delete`. `plan`, `deploy`, and `delete`
+read-only `status`, approved `delete`, and packaged `customer` convenience
+verbs. `plan`, `deploy`, and `delete`
 consume one mode-`0600`, profile-key-signed, reference-only deployment intent;
 it binds the protected profile and immutable manifest without exposing resolved
-configuration. The one-release `metrum-smartrouterctl` compatibility command
-only reports the rename. Customer-local `smartrouterctl` safely validates/diffs
+configuration. One-release rename notices (`metrum-fleetctl`,
+`metrum-smartrouterctl`, and related old names) only report the rename.
+Customer-local `metrum-genai-smartrouterctl` safely validates/diffs
 local config, creates a caller token once in a new mode-`0600` file, and
 reports safe local status; it has no cloud or activation authority. On a
 Fleet-managed SQLite customer instance, activating a new caller or config
 revision is a Fleet deploy of an approved `runtime_bundle_ref` (new
-`config_revision`), not an in-place `smartrouterctl` mutation. See
+`config_revision`), not an in-place `metrum-genai-smartrouterctl` mutation. See
 [User Key Generation](./key-generation#activation-boundary).
 Plan is side-effect-free. The default SQLite path is namespace, network policy,
 protected runtime-secret binding, license binding, state PVC, one-replica

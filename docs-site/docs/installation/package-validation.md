@@ -17,9 +17,15 @@ smart-llmrouter-<version>-linux-<arch>/
   bin/router-token-gen
   bin/router-usage-report
   bin/router-migrate
-  bin/smartrouterctl
-  bin/metrum-fleetctl
-  bin/metrum-smartrouterctl  # one-release rename notice
+  bin/metrum-genai-smartrouterctl
+  bin/metrum-genai-smartrouter-fleetctl
+  bin/metrum-genai-smartrouter-fleet-sign
+  bin/metrum-genai-smartrouter-license
+  bin/smartrouterctl                  # one-release rename notice
+  bin/metrum-fleetctl                 # one-release rename notice
+  bin/metrum-smartrouterctl           # one-release rename notice
+  bin/metrum-fleet-sign               # one-release rename notice
+  bin/router-license                  # one-release rename notice
   config/config.example.yaml
   config/env.example.json
   config/scripts/router.ts
@@ -43,19 +49,20 @@ smart-llmrouter-<version>-docker-linux-<arch>/
   docs/
 ```
 
-`smartrouterctl` and `metrum-fleetctl` are required in the binary package.
-Only customer-local `smartrouterctl` is included in the standard Docker image
-and Docker Compose package image. `metrum-fleetctl` and its one-release
-compatibility command are excluded; run Fleet lifecycle work from an extracted
+`metrum-genai-smartrouterctl` and `metrum-genai-smartrouter-fleetctl` are
+required in the binary package. Only customer-local
+`metrum-genai-smartrouterctl` (plus the one-release `smartrouterctl` rename
+notice) is included in the standard Docker image and Docker Compose package
+image. Fleet lifecycle binaries are excluded; run Fleet work from an extracted
 binary package on a separate trusted administration host.
 
 Confirm the architecture suffix matches the host and, for Docker packages, that `compose/.env` pins `SMART_LLMROUTER_VERSION` to the loaded image tag.
 
 For Docker packages, the saved image includes `/app/bin/router-migrate` and
-`/app/bin/smartrouterctl`. Version-check them before operation:
+`/app/bin/metrum-genai-smartrouterctl`. Version-check them before operation:
 
 ```bash
-docker run --rm --entrypoint /app/bin/smartrouterctl \
+docker run --rm --entrypoint /app/bin/metrum-genai-smartrouterctl \
   smart-llmrouter:<version>-linux-<arch> version
 ```
 

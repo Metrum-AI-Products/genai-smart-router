@@ -1,17 +1,24 @@
 # Fleet deployment lifecycle CLI
 
-`metrum-fleetctl` is the only #555 deployment authority. It uses typed AWS and
+`metrum-genai-smartrouter-fleetctl` is the only #555 deployment authority. It uses typed AWS and
 Kubernetes clients; it never invokes `aws`, `kubectl`, Helm, Terraform, Make,
 or a shell command. It owns one normalized GORM+SQLite lifecycle registry for
 deployment jobs plus operator inventory of tenants and license safe-summaries.
 Lifecycle verbs remain deterministic `plan`, idempotent `deploy`, exact-job
 `status`, and separately approved `delete`. Inventory verbs are
-`tenants list|get|sync` and `licenses list|get|register`.
+`tenants list|get|sync` and `licenses list|get|register`. Operator convenience
+verbs under `customer create|status|smoke|grant-caller|update-config|delete`
+orchestrate disposable SQLite Fleet instances from the same binary package
+without a source tree or Python helper; they still sign intents and call
+`plan`/`deploy`/`delete` and never become a second provisioner.
 
-`metrum-smartrouterctl` is a one-release compatibility binary. It reports the
-rename to `metrum-fleetctl` and exits; it has no lifecycle behavior. Customer
-operators use the separate `smartrouterctl` local operations CLI described in
-the customer runbook.
+`metrum-fleetctl`, `metrum-smartrouterctl`, `metrum-fleet-sign`, and
+`router-license` are one-release compatibility binaries. They report the
+rename to the `metrum-genai-smartrouter-*` names and exit; they have no
+lifecycle behavior. Customer operators use the separate
+`metrum-genai-smartrouterctl` local operations CLI described in the customer
+runbook. `smartrouterctl` is a one-release rename notice for
+`metrum-genai-smartrouterctl`.
 
 Fleet commands are shipped in binary tarballs only. They are intentionally
 absent from standard Router Docker/Compose images. Run them on a separate
@@ -61,7 +68,7 @@ memory. The payload has exactly `config.yaml` (a YAML mapping) and `env.json`
 (a JSON string map); malformed, additional, or empty fields fail without
 echoing protected data. The adapter writes an owned `router-runtime` Secret
 with those two exact keys and mounts it read-only at `/app/config`.
-`router-license` continues to be a separate `license.json` Secret and mount.
+`metrum-genai-smartrouter-license` continues to be a separate `license.json` Secret and mount.
 The control plane writes this file outside the repository and signs the
 canonical fields with the profile approval key:
 
@@ -96,16 +103,16 @@ canonical fields with the profile approval key:
 ## Non-production lifecycle
 
 ```bash
-metrum-fleetctl plan \
+metrum-genai-smartrouter-fleetctl plan \
   --intent /protected/acme2-deploy-intent.json \
   --output json
 
-metrum-fleetctl deploy \
+metrum-genai-smartrouter-fleetctl deploy \
   --intent /protected/acme2-deploy-intent.json \
   --registry /protected/tenant-deployments.sqlite \
   --output json
 
-metrum-fleetctl status \
+metrum-genai-smartrouter-fleetctl status \
   --profile-ref aws-ssm:///approved/nonproduction/profile \
   --job job-<opaque-id> \
   --registry /protected/tenant-deployments.sqlite \
@@ -117,20 +124,20 @@ Use one shared `--registry` SQLite file for the Fleet admin host so
 `fleet_tenants`, `fleet_tenant_instances`, and intended/bound/retired
 `fleet_license_bindings` with safe scalars only (including
 `license_ref_digest` and `license_validity_hours` on the plan). Register full
-license inventory from `router-license safe-summary` output—never from signed
+license inventory from `metrum-genai-smartrouter-license safe-summary` output—never from signed
 envelopes or protected refs:
 
 ```bash
-metrum-fleetctl tenants list --registry /protected/tenant-deployments.sqlite
-metrum-fleetctl tenants get --customer-id acme2 --registry /protected/tenant-deployments.sqlite
-metrum-fleetctl tenants sync --registry /protected/tenant-deployments.sqlite
+metrum-genai-smartrouter-fleetctl tenants list --registry /protected/tenant-deployments.sqlite
+metrum-genai-smartrouter-fleetctl tenants get --customer-id acme2 --registry /protected/tenant-deployments.sqlite
+metrum-genai-smartrouter-fleetctl tenants sync --registry /protected/tenant-deployments.sqlite
 
-router-license safe-summary --license /protected/acme2-license.json > /protected/acme2-license-summary.json
+metrum-genai-smartrouter-license safe-summary --license /protected/acme2-license.json > /protected/acme2-license-summary.json
 chmod 0600 /protected/acme2-license-summary.json
-metrum-fleetctl licenses register \
+metrum-genai-smartrouter-fleetctl licenses register \
   --summary-file /protected/acme2-license-summary.json \
   --registry /protected/tenant-deployments.sqlite
-metrum-fleetctl licenses list --registry /protected/tenant-deployments.sqlite
+metrum-genai-smartrouter-fleetctl licenses list --registry /protected/tenant-deployments.sqlite
 ```
 
 Tenant/license list is operator inventory of this registry, not an AWS/EKS/RDS
@@ -151,7 +158,7 @@ job-bound approval. `retain_pvc` controls PVC retention; `retain_database`
 controls dedicated-RDS retention. Deletion never guesses ownership.
 
 ```bash
-metrum-fleetctl delete \
+metrum-genai-smartrouter-fleetctl delete \
   --intent /protected/acme2-deploy-intent.json \
   --registry /protected/tenant-deployments.sqlite \
   --confirm-file /protected/delete-approval.json \
@@ -179,7 +186,7 @@ owned instances with a final snapshot. It returns scalar evidence only.
 The typed adapter is unreachable from the default EKS constructor. A first
 disposable E2E can attach it only with an externally issued, mode-`0600`,
 strict-JSON admission document signed by the profile's
-`lifecycle_approval_public_key`. `metrum-fleetctl` does not create, update,
+`lifecycle_approval_public_key`. `metrum-genai-smartrouter-fleetctl` does not create, update,
 emit, or persist the document or signing material; it validates non-secret
 content, signature, expiry, and exact binding to the non-production profile,
 deterministic job ID/intent, namespace, database profile, and manifest digest
@@ -192,7 +199,7 @@ are separately scoped even when one qualified maintainer performs both roles;
 see [Admission issuance under a single maintainer](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#admission-issuance-under-a-single-maintainer).
 
 ```bash
-metrum-fleetctl deploy \
+metrum-genai-smartrouter-fleetctl deploy \
   --intent /protected/acme2-deploy-intent.json \
   --rds-admission-file /protected/disposable-e2e-rds-admission.json \
   --registry /protected/tenant-deployments.sqlite \
@@ -209,9 +216,9 @@ for the full safe-field and ordering contract. Production profiles remain
 rejected until #518.
 
 ```bash
-metrum-fleetctl databases status --profile-ref aws-ssm:///approved/nonproduction/profile \
+metrum-genai-smartrouter-fleetctl databases status --profile-ref aws-ssm:///approved/nonproduction/profile \
   --job job-<opaque-id> --registry /protected/tenant-deployments.sqlite
-metrum-fleetctl smoke run activation --profile-ref aws-ssm:///approved/nonproduction/profile \
+metrum-genai-smartrouter-fleetctl smoke run activation --profile-ref aws-ssm:///approved/nonproduction/profile \
   --job job-<opaque-id> --registry /protected/tenant-deployments.sqlite
 ```
 
@@ -226,5 +233,5 @@ Only intents whose manifest selects `database_profile` additionally require
 ## Validation
 
 ```bash
-rtk go test ./internal/router ./cmd/metrum-fleetctl -run TenantDeployment -count=1
+rtk go test ./internal/router ./cmd/metrum-genai-smartrouter-fleetctl -run TenantDeployment -count=1
 ```

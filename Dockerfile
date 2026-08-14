@@ -18,6 +18,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags "$GO_BUILD_TA
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags "$GO_BUILD_TAGS" -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router-token-gen ./cmd/router-token-gen
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags "$GO_BUILD_TAGS" -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router-usage-report ./cmd/router-usage-report
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags "$GO_BUILD_TAGS" -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router-migrate ./cmd/router-migrate
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags "$GO_BUILD_TAGS" -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/metrum-genai-smartrouterctl ./cmd/metrum-genai-smartrouterctl
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags "$GO_BUILD_TAGS" -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/smartrouterctl ./cmd/smartrouterctl
 
 FROM --platform=$BUILDPLATFORM alpine:3.22 AS certs
@@ -30,6 +31,7 @@ COPY --from=build /out/router /app/bin/router
 COPY --from=build /out/router-token-gen /app/bin/router-token-gen
 COPY --from=build /out/router-usage-report /app/bin/router-usage-report
 COPY --from=build /out/router-migrate /app/bin/router-migrate
+COPY --from=build /out/metrum-genai-smartrouterctl /app/bin/metrum-genai-smartrouterctl
 COPY --from=build /out/smartrouterctl /app/bin/smartrouterctl
 
 USER 65532:65532
