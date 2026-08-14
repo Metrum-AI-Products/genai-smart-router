@@ -16,7 +16,7 @@ func main() {
 		return
 	}
 	if len(os.Args) < 2 {
-		die("usage: metrum-fleetctl <plan|deploy|status|delete|databases|smoke> [flags]; plan/deploy/delete require --intent PATH")
+		die("usage: metrum-fleetctl <plan|deploy|status|delete|tenants|licenses|databases|smoke> [flags]; plan/deploy/delete require --intent PATH")
 	}
 	switch os.Args[1] {
 	case "status":
@@ -27,6 +27,10 @@ func main() {
 		deploymentDeploy(os.Args[2:])
 	case "delete":
 		deploymentDelete(os.Args[2:])
+	case "tenants":
+		fleetTenants(os.Args[2:])
+	case "licenses":
+		fleetLicenses(os.Args[2:])
 	case "databases":
 		fleetDatabases(os.Args[2:])
 	case "smoke":

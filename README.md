@@ -209,6 +209,9 @@ FIREWORKS_API_KEY
 `env.example.json` may contain additional empty placeholders for optional or
 deployment-specific providers. An empty placeholder does not activate a
 provider, prove account entitlement, or make a model eligible for routing.
+Metrum-local CTO package archival keys (`BACKUP_USER`, `BACKUP_PASS`,
+`RESTIC_PASSWORD`) belong only in ignored `env.json` for
+`make dist-backup` / `make package-dist-backup`; leave the example values empty.
 
 Provider adapter notes:
 

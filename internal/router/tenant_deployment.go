@@ -249,6 +249,7 @@ func OpenTenantDeploymentStore(path string) (*TenantDeploymentStore, error) {
 		`CREATE INDEX IF NOT EXISTS idx_tenant_deployment_resources_job_id ON tenant_deployment_resources(job_id)`,
 		`CREATE TABLE IF NOT EXISTS tenant_deployment_approvals (approval_sha256 TEXT PRIMARY KEY, job_id TEXT NOT NULL, action TEXT NOT NULL, expires_at DATETIME NOT NULL, consumed_at DATETIME, retain_pvc NUMERIC NOT NULL, created_at DATETIME NOT NULL, FOREIGN KEY(job_id) REFERENCES tenant_deployment_jobs(job_id) ON UPDATE CASCADE ON DELETE RESTRICT)`,
 	}
+	statements = append(statements, fleetInventoryDDL()...)
 	for _, statement := range statements {
 		if err := db.Exec(statement).Error; err != nil {
 			_ = store.Close()
@@ -316,6 +317,9 @@ func (s *TenantDeploymentStore) createOrLoad(ctx context.Context, plan TenantDep
 	}
 	if existing.ManifestSHA256 != plan.ManifestSHA256 || existing.IdempotencyKey != record.IdempotencyKey {
 		return tenantDeploymentJobRecord{}, errors.New("idempotency conflict: intent already exists with different desired state")
+	}
+	if err := s.upsertFleetInventoryFromPlan(ctx, plan, existing.State); err != nil {
+		return tenantDeploymentJobRecord{}, err
 	}
 	return existing, nil
 }
@@ -497,6 +501,9 @@ func (e *TenantDeploymentEngine) Deploy(ctx context.Context, plan TenantDeployme
 		}
 	}
 	if err := e.updateJob(ctx, record.JobID, TenantDeploymentReady, "hostname", "", "", false, false); err != nil {
+		return TenantDeploymentStatus{}, err
+	}
+	if err := e.store.upsertFleetInventoryFromPlan(ctx, plan, TenantDeploymentReady); err != nil {
 		return TenantDeploymentStatus{}, err
 	}
 	return e.store.Status(ctx, record.JobID, record.ProfileID)

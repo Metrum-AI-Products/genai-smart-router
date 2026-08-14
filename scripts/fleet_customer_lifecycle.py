@@ -494,9 +494,11 @@ def fleetctl_json(bin_path: Path, args: list[str], env: dict[str, str], *, allow
     return payload
 
 
-def registry_path(home: Path) -> str:
-    (home / "registry").mkdir(parents=True, exist_ok=True)
-    return str(home / "registry" / "tenant-deployments.sqlite")
+def registry_path(_home: Path | None = None) -> str:
+    """Shared Fleet lifecycle SQLite path so tenants/licenses inventory spans customers."""
+    root = Path.home() / ".local/share/metrum-fleet" / "registry"
+    root.mkdir(parents=True, exist_ok=True)
+    return str(root / "tenant-deployments.sqlite")
 
 
 def current_bundle_ref(home: Path, default_ref: str) -> str:

@@ -258,7 +258,8 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
 
 - `metrum-fleetctl` is shipped only in binary packages and is the #555 Fleet
   lifecycle authority. It provides the bounded local safe-contract registry,
-  deterministic plan, fake-adapter idempotent deploy, exact-job status, and
+  deterministic plan, fake-adapter idempotent deploy, exact-job status,
+  registry-local tenant/license inventory, and
   separately approved delete. Protected profiles include
   `approved_compute_profiles` (default selection `t3a.medium`) for Kubernetes
   scheduling/resource policy only—never free-form EC2 or node-group mutation.
@@ -457,7 +458,8 @@ rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspee
 ## Fleet And Customer CLI Boundary
 
 - `metrum-fleetctl` is the only #555 Fleet lifecycle authority. It owns
-  `plan`, `deploy`, `status`, and approved `delete` through the one normalized
+  `plan`, `deploy`, `status`, approved `delete`, and registry-local
+  `tenants`/`licenses` inventory through the one normalized GORM+SQLite
   lifecycle registry. `metrum-smartrouterctl` is a one-release rename notice
   only; it MUST NOT retain lifecycle behavior.
 - `smartrouterctl` is customer-local. It MAY validate/diff local config,

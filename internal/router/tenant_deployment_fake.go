@@ -295,6 +295,9 @@ func (e *TenantDeploymentEngine) Delete(ctx context.Context, plan TenantDeployme
 	if err := e.updateJob(ctx, plan.JobID, TenantDeploymentDeleted, "delete", "", "", false, false); err != nil {
 		return TenantDeploymentStatus{}, err
 	}
+	if err := e.store.upsertFleetInventoryFromPlan(ctx, plan, TenantDeploymentDeleted); err != nil {
+		return TenantDeploymentStatus{}, err
+	}
 	return e.store.Status(ctx, plan.JobID, plan.ProfileID)
 }
 
