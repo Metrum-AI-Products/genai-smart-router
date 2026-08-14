@@ -565,13 +565,14 @@ package-docker-all: docs-build admin-build capability-smoke-unit
 	GOOS=linux GOARCH=amd64 $(MAKE) package-docker-one-no-docs
 	GOOS=linux GOARCH=arm64 $(MAKE) package-docker-one-no-docs
 
-# Back up release tarballs already present under DIST_DIR to the Metrum CTO
-# restic repository. Requires BACKUP_USER, BACKUP_PASS, and RESTIC_PASSWORD from
+# Back up one complete release set from DIST_DIR to the Metrum CTO restic
+# repository using stable snapshot basenames (version stays in local filenames
+# and restic tags). Requires BACKUP_USER, BACKUP_PASS, and RESTIC_PASSWORD from
 # ignored env.json (or the process environment). Never prints those values.
 # Includes fleet-admin binary packages and the shared customer Docker packages;
 # customer license files stay out of packages and out of this backup.
 dist-backup:
-	$(PYTHON) scripts/backup_dist_restic.py --dist-dir "$${DIST_DIR}" --env-json env.json
+	$(PYTHON) scripts/backup_dist_restic.py --dist-dir "$${DIST_DIR}" --env-json env.json --version "$${VERSION}"
 
 # Build both package families, then restic-backup the release tarballs.
 package-dist-backup: package-all package-docker-all dist-backup
