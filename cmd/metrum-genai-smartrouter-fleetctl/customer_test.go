@@ -1,7 +1,13 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -99,7 +105,6 @@ func TestPlanSelectsDedicatedRDS(t *testing.T) {
 }
 
 func TestRejectForeignDefaultRefs(t *testing.T) {
-	// Should not panic/die for matching rehearsal customer — exercise via helper that returns error.
 	if err := foreignDefaultRefError("acme-rehearsal", "aws-ssm:///x/acme-rehearsal/license-request"); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
@@ -111,3 +116,213 @@ func TestRejectForeignDefaultRefs(t *testing.T) {
 	}
 }
 
+func TestValidateIntentEnvelopeRejectsDedicatedRDS(t *testing.T) {
+	env := intentEnvelope{
+		ProfileRef: "aws-ssm:///approved/nonproduction/profile",
+	}
+	env.Manifest.CustomerID = "aditya-test1"
+	env.Manifest.Stage = "nonproduction"
+	env.Manifest.RuntimeBundleRef = "aws-secretsmanager:///tenants/aditya-test1/runtime"
+	env.Manifest.License.RequestRef = "aws-ssm:///tenants/aditya-test1/license-request"
+	if err := validateIntentEnvelope(env); err != nil {
+		t.Fatalf("sqlite intent: %v", err)
+	}
+	env.Manifest.DatabaseProfile = "postgres-dedicated-small"
+	if err := validateIntentEnvelope(env); err == nil || !strings.Contains(err.Error(), "dedicated RDS") {
+		t.Fatalf("expected dedicated RDS refusal, got %v", err)
+	}
+}
+
+func TestWriteManifestSQLiteOnlyNoDonorCopy(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	donorDir := filepath.Join(home, ".local", "share", "metrum-fleet", "acme-rehearsal")
+	if err := os.MkdirAll(donorDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	donorPriv := filepath.Join(donorDir, "lifecycle_approval_private_key.b64")
+	donorPub := filepath.Join(donorDir, "lifecycle_approval_public_key.b64")
+	if err := os.WriteFile(donorPriv, []byte("donor-private-seed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(donorPub, []byte("donor-public\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ws := prepareCustomerWorkspace("aditya-test1")
+	path := writeManifest(
+		ws,
+		"aws-ssm:///approved/nonproduction/aditya-test1-profile",
+		"aws-secretsmanager:///smartrouter/fleet/customers/aditya-test1/runtime-bundle",
+		"aws-ssm:///tenants/aditya-test1/license-request",
+		"sqlite",
+	)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := manifest["database_profile"]; ok {
+		t.Fatalf("customer write-manifest must omit database_profile: %s", raw)
+	}
+	if manifest["stage"] != "nonproduction" {
+		t.Fatalf("stage=%v", manifest["stage"])
+	}
+	if manifest["state_profile"] != "sqlite-rwo-small" {
+		t.Fatalf("state_profile=%v", manifest["state_profile"])
+	}
+	if manifest["customer_id"] != "aditya-test1" {
+		t.Fatalf("customer_id=%v", manifest["customer_id"])
+	}
+
+	copiedPriv := filepath.Join(ws.Home, "lifecycle_approval_private_key.b64")
+	copiedPub := filepath.Join(ws.Home, "lifecycle_approval_public_key.b64")
+	if fileExists(copiedPriv) || fileExists(copiedPub) {
+		t.Fatal("customer path must not copy donor lifecycle keys")
+	}
+}
+
+var (
+	customerCLIBinOnce sync.Once
+	customerCLIBinPath string
+	customerCLIBinErr  error
+)
+
+func customerCLIBinary(t *testing.T) string {
+	t.Helper()
+	customerCLIBinOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "fleetctl-customer-cli-")
+		if err != nil {
+			customerCLIBinErr = err
+			return
+		}
+		customerCLIBinPath = filepath.Join(dir, "metrum-genai-smartrouter-fleetctl")
+		cmd := exec.Command("go", "build", "-o", customerCLIBinPath, ".")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			customerCLIBinErr = fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+			_ = os.RemoveAll(dir)
+			customerCLIBinPath = ""
+			return
+		}
+	})
+	if customerCLIBinErr != nil {
+		t.Fatalf("build customer CLI once: %v", customerCLIBinErr)
+	}
+	return customerCLIBinPath
+}
+
+func runCustomerCLI(t *testing.T, home string, args ...string) (string, error) {
+	t.Helper()
+	bin := customerCLIBinary(t)
+	cmd := exec.Command(bin, append([]string{"customer"}, args...)...)
+	cmd.Env = append(os.Environ(), "HOME="+home)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func TestCustomerCLICreateRequiresIntent(t *testing.T) {
+	home := t.TempDir()
+	out, err := runCustomerCLI(t, home, "create", "--customer-id", "aditya-test1")
+	if err == nil {
+		t.Fatalf("expected failure, got success: %s", out)
+	}
+	if !strings.Contains(out, "requires --intent") {
+		t.Fatalf("expected signed-intent requirement, got: %s", out)
+	}
+}
+
+func TestCustomerCLIDeleteRequiresConfirmFile(t *testing.T) {
+	home := t.TempDir()
+	out, err := runCustomerCLI(t, home, "delete", "--customer-id", "aditya-test1")
+	if err == nil {
+		t.Fatalf("expected failure, got success: %s", out)
+	}
+	if !strings.Contains(out, "confirm-file") {
+		t.Fatalf("expected confirm-file requirement, got: %s", out)
+	}
+}
+
+func TestCustomerCLIWriteManifestRequiresRefs(t *testing.T) {
+	home := t.TempDir()
+	out, err := runCustomerCLI(t, home, "write-manifest", "--customer-id", "aditya-test1")
+	if err == nil {
+		t.Fatalf("expected failure, got success: %s", out)
+	}
+	if !strings.Contains(out, "no ACME/staging defaults") && !strings.Contains(out, "required") {
+		t.Fatalf("expected missing-refs failure, got: %s", out)
+	}
+}
+
+func TestCustomerCLIWriteManifestRejectsACMERehearsalForOtherAlias(t *testing.T) {
+	home := t.TempDir()
+	out, err := runCustomerCLI(t, home,
+		"write-manifest",
+		"--customer-id", "aditya-test1",
+		"--profile-ref", "aws-ssm:///approved/nonproduction/profile",
+		"--runtime-bundle-ref", "aws-secretsmanager:///tenants/aditya-test1/runtime",
+		"--license-ref", "aws-ssm:///metrum/smartrouter/fleet/acme-rehearsal/license-request",
+	)
+	if err == nil {
+		t.Fatalf("expected failure, got success: %s", out)
+	}
+	if !strings.Contains(out, "acme-rehearsal") {
+		t.Fatalf("expected acme-rehearsal refusal, got: %s", out)
+	}
+}
+
+func TestCustomerCLICreateRefusesDedicatedRDSIntent(t *testing.T) {
+	home := t.TempDir()
+	intentPath := filepath.Join(home, "rds-intent.json")
+	body := `{
+  "intent_id": "intent-rds",
+  "profile_ref": "aws-ssm:///approved/nonproduction/profile",
+  "manifest": {
+    "customer_id": "aditya-test1",
+    "stage": "nonproduction",
+    "runtime_bundle_ref": "aws-secretsmanager:///tenants/aditya-test1/runtime",
+    "license": {"request_ref": "aws-ssm:///tenants/aditya-test1/license-request"},
+    "database_profile": "postgres-dedicated-small"
+  }
+}`
+	if err := os.WriteFile(intentPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCustomerCLI(t, home, "create", "--intent", intentPath)
+	if err == nil {
+		t.Fatalf("expected failure, got success: %s", out)
+	}
+	if !strings.Contains(out, "dedicated RDS") {
+		t.Fatalf("expected dedicated RDS refusal before plan, got: %s", out)
+	}
+}
+
+func TestCustomerCLICreateDoesNotCopyDonorKeys(t *testing.T) {
+	home := t.TempDir()
+	donorDir := filepath.Join(home, ".local", "share", "metrum-fleet", "acme2")
+	if err := os.MkdirAll(donorDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(donorDir, "lifecycle_approval_private_key.b64"), []byte("seed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(donorDir, "lifecycle_approval_public_key.b64"), []byte("pub\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runCustomerCLI(t, home, "create", "--customer-id", "aditya-test1")
+	if err == nil {
+		t.Fatalf("expected failure without intent, got: %s", out)
+	}
+	if !strings.Contains(out, "requires --intent") {
+		t.Fatalf("expected missing-intent failure, got: %s", out)
+	}
+	wsHome := filepath.Join(home, ".local", "share", "metrum-fleet", "aditya-test1")
+	if fileExists(filepath.Join(wsHome, "lifecycle_approval_private_key.b64")) {
+		t.Fatal("create must not copy donor private keys")
+	}
+}

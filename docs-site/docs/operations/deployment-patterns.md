@@ -86,12 +86,16 @@ Fleet-managed SQLite customer instance, activating a new caller or config
 revision is a Fleet deploy of an approved `runtime_bundle_ref` (new
 `config_revision`), not an in-place `metrum-genai-smartrouterctl` mutation. See
 [User Key Generation](./key-generation#activation-boundary).
-Plan is side-effect-free. The default SQLite path is namespace, network policy,
+Packaged `customer` helpers (`write-manifest` then externally signed
+`create --intent`) are SQLite-only: they require explicit references (no ACME
+or staging defaults), never accept lifecycle private keys, and refuse
+dedicated-RDS selection. Plan is side-effect-free. The default SQLite path is namespace, network policy,
 protected runtime-secret binding, license binding, state PVC, one-replica
 single-container Router, activation, and hostname; it never provisions or
 binds RDS. An explicit approved `database_profile` manifest branch inserts
 dedicated private RDS after network policy and before runtime-secret/DSN-reference
-binding. Hostname is not published until activation passes. A classified safe
+binding through **core** Fleet `deploy` with an external admission—not through
+`customer` convenience verbs. Hostname is not published until activation passes. A classified safe
 failure can retry from its exact stage. An unknown outcome for a PVC or
 dedicated-RDS action becomes `operator_required` rather than guessing whether
 creation should repeat.

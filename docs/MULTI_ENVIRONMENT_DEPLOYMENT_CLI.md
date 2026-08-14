@@ -12,7 +12,14 @@ verbs under
 orchestrate disposable SQLite Fleet instances from the same binary package
 without a source tree or Python helper. They consume externally signed intents
 and delete approvals, call `plan`/`deploy`/`delete`, and never become a second
-provisioner or a local signing authority.
+provisioner or a local signing authority. The customer path is SQLite-only:
+it never emits or accepts `database_profile`. Dedicated RDS stays a core Fleet
+`deploy`/`delete` option that requires an external mode-`0600` admission and
+is not a customer-verb input. Offline verification:
+
+```bash
+rtk make test-tenant-deploy-all
+```
 
 `metrum-fleetctl`, `metrum-smartrouterctl`, `metrum-fleet-sign`, and
 `router-license` are one-release compatibility binaries. They report the

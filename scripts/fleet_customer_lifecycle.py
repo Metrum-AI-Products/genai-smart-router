@@ -2,7 +2,7 @@
 """fleet_customer_lifecycle.py was moved into the packaged Fleet CLI.
 
 One-release rename notice only. Use:
-  metrum-genai-smartrouter-fleetctl customer create|status|smoke|grant-caller|update-config|delete
+  metrum-genai-smartrouter-fleetctl customer write-manifest|create|status|smoke|grant-caller|update-config|delete
 """
 
 from __future__ import annotations

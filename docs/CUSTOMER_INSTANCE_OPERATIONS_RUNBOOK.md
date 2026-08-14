@@ -210,8 +210,8 @@ mutation and does not create node groups. Exact-job
 scalars for Fleet-labelled objects only
 (`app.kubernetes.io/managed-by=metrum-fleetctl` and
 `metrum.ai/smartrouter-instance=<instance_id>`). Status is not cluster inventory.
-Cleanup of disposable customers uses signed `metrum-genai-smartrouter-fleetctl delete` (or the
-lifecycle helper) with a fresh job-bound approval—never direct kubectl.
+Cleanup of disposable customers uses signed `metrum-genai-smartrouter-fleetctl delete`
+with a fresh job-bound approval—never direct kubectl.
 
 For repeatable non-production SQLite customer instances (`acme3`, `acme4`, …)
 use `metrum-genai-smartrouter-fleetctl customer` from a release binary package
@@ -229,6 +229,33 @@ signing service / isolated signing workflow, then mutate only with those
 mode-`0600` documents. Do not search donor customer workspaces for keys.
 Omit `database_profile` so Fleet stays on SQLite + `auto-safe` rewrite at
 secret bind time.
+
+### SQLite-only customer path and deferred dedicated RDS
+
+The packaged `customer` convenience path is **SQLite only**:
+
+- `write-manifest` never emits `database_profile`.
+- `create` / intent peek refuse any signed intent that selects dedicated RDS.
+- Dedicated RDS remains an optional **core** Fleet `deploy`/`delete` branch that
+  requires an explicit approved `database_profile` plus an externally issued
+  mode-`0600` admission. Customer verbs cannot attach the RDS adapter.
+- Live dedicated-RDS disposable E2E stays deferred; do not treat it as part of
+  the default operator smoke.
+
+### Offline verification before live mutation
+
+Repeat these credential-free suites on a clean checkout before any live
+customer create (no MFA/SSO required):
+
+```bash
+rtk make test-tenant-deploy-all
+# or just the customer convenience gates:
+rtk make test-fleet-customer-cli
+```
+
+Those targets cover fake-adapter tenant deploy suites plus customer CLI
+fail-closed cases (missing signed intent, missing delete approval, missing
+refs, ACME-rehearsal mismatch, donor-key non-copy, dedicated-RDS refuse).
 
 ```bash
 # 1) Write an unsigned SQLite manifest (explicit refs required; no defaults)

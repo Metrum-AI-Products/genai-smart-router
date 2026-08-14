@@ -276,7 +276,7 @@ capability-smoke-unit:
 capability-smoke-live:
 	@$(PYTHON) scripts/provider_capability_smoke.py live
 
-.PHONY: test-tenant-deploy-contract test-tenant-deploy-adapters test-tenant-deploy-security test-tenant-deploy-activation test-tenant-deploy-all
+.PHONY: test-tenant-deploy-contract test-tenant-deploy-adapters test-tenant-deploy-security test-tenant-deploy-activation test-fleet-customer-cli test-tenant-deploy-all
 
 # Offline, credential-free #555 fake-first suites. These do not claim or
 # authorize disposable EKS or production deployment evidence.
@@ -292,8 +292,12 @@ test-tenant-deploy-security:
 test-tenant-deploy-activation:
 	go test ./internal/router -run '^TestTenantDeploymentActivation' -count=1
 
-test-tenant-deploy-all: test-tenant-deploy-contract test-tenant-deploy-adapters test-tenant-deploy-security test-tenant-deploy-activation
-	go test ./cmd/metrum-genai-smartrouter-fleetctl -run 'TestTenantDeploymentCLIPlanIsReadOnly|TestLifecycleCommandsRejectUnsupportedVerbs' -count=1
+# Offline customer convenience CLI gates: signed-intent requirement, no ACME
+# defaults, no donor-key copy, SQLite-only manifests, dedicated-RDS refuse.
+test-fleet-customer-cli:
+	go test ./cmd/metrum-genai-smartrouter-fleetctl -run 'TestCustomer|TestWriteManifest|TestValidateIntentEnvelope|TestRejectForeignDefaultRefs|TestPlanSelectsDedicatedRDS|TestFleetE2ERequiresRDSAdmissionOnlyForDedicatedRDSManifest|TestTenantDeploymentCLIPlanIsReadOnly|TestLifecycleCommandsRejectUnsupportedVerbs' -count=1
+
+test-tenant-deploy-all: test-tenant-deploy-contract test-tenant-deploy-adapters test-tenant-deploy-security test-tenant-deploy-activation test-fleet-customer-cli
 
 test: secret-check capability-smoke-unit
 	go test ./...
