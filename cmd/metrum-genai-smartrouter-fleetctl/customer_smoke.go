@@ -91,6 +91,19 @@ func httpJSON(method, url, token string, body any, timeout time.Duration) (int, 
 	return resp.StatusCode, parsed, nil
 }
 
+func chatSmokeSucceeded(code int, content string) bool {
+	return code == http.StatusOK && strings.TrimSpace(content) == "OK"
+}
+
+func hasModelID(ids []string, want string) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
+}
+
 func runCustomerSmoke(ws customerWorkspace, opts smokeOptions) error {
 	state := ws.loadState()
 	hostname, _ := state["hostname"].(string)
@@ -102,8 +115,12 @@ func runCustomerSmoke(ws customerWorkspace, opts smokeOptions) error {
 	if timeoutSec <= 0 {
 		timeoutSec = 180
 	}
-	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+	group := strings.TrimSpace(opts.Model)
+	if group == "" && !opts.SkipChat {
+		return fmt.Errorf("--model is required unless --skip-chat is set; use an allowed deployment-defined group from /v1/models")
+	}
 	lastErr := "smoke not attempted"
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
 	for time.Now().Before(deadline) {
 		code, ready, _ := httpJSON(http.MethodGet, base+"/readyz", "", nil, 20*time.Second)
 		ok, _ := ready["ok"].(bool)
@@ -141,9 +158,8 @@ func runCustomerSmoke(ws customerWorkspace, opts smokeOptions) error {
 		if opts.SkipChat {
 			return nil
 		}
-		group := strings.TrimSpace(opts.Model)
-		if group == "" {
-			group = firstPreferredModel(ids)
+		if !hasModelID(ids, group) {
+			return fmt.Errorf("requested model group %q is not visible to the caller", group)
 		}
 		code, chat, _ := httpJSON(http.MethodPost, base+"/v1/chat/completions", token, map[string]any{
 			"model": group,
@@ -163,10 +179,10 @@ func runCustomerSmoke(ws customerWorkspace, opts smokeOptions) error {
 				"has_OK":      strings.Contains(content, "OK"),
 			},
 		}))
-		if code == 200 {
+		if chatSmokeSucceeded(code, content) {
 			return nil
 		}
-		lastErr = fmt.Sprintf("chat http=%d", code)
+		lastErr = fmt.Sprintf("chat http=%d expected_exact_OK=%t", code, chatSmokeSucceeded(code, content))
 		time.Sleep(5 * time.Second)
 	}
 	return fmt.Errorf("smoke failed after retries: %s", lastErr)
@@ -186,22 +202,6 @@ func modelIDs(models map[string]any) []string {
 		}
 	}
 	return ids
-}
-
-func firstPreferredModel(ids []string) string {
-	set := map[string]struct{}{}
-	for _, id := range ids {
-		set[id] = struct{}{}
-	}
-	for _, prefer := range []string{"high", "default", "fast"} {
-		if _, ok := set[prefer]; ok {
-			return prefer
-		}
-	}
-	if len(ids) > 0 {
-		return ids[0]
-	}
-	return ""
 }
 
 func chatMessageContent(chat map[string]any) string {

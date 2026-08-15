@@ -234,10 +234,17 @@ metrum-genai-smartrouter-fleetctl smoke run activation --profile-ref aws-ssm:///
 Both commands are bounded status readbacks; they do not create resources or
 activate configuration.
 
-The packaged disposable EKS E2E requires `EKS_E2E_INTENT` and
-`EKS_E2E_DELETE_APPROVAL_FILE`. SQLite intents require no RDS admission.
-Only intents whose manifest selects `database_profile` additionally require
-`EKS_E2E_RDS_ADMISSION_FILE`.
+The release-package core-lifecycle E2E requires `EKS_E2E_INTENT`,
+`EKS_E2E_DELETE_APPROVAL_FILE`, `EKS_E2E_PACKAGE_DIR` (the extracted release
+package root), and `EKS_E2E_REGISTRY` (the protected shared lifecycle
+registry). It never builds from the checkout or uses a temporary registry.
+SQLite intents require no RDS admission and must leave
+`EKS_E2E_RDS_ADMISSION_FILE` unset. Only intents whose manifest selects
+`database_profile` additionally require `EKS_E2E_RDS_ADMISSION_FILE`.
+
+This core-lifecycle test does not replace the customer acceptance sequence:
+the externally signed `customer` create/grant/re-create path and a real Codex
+Responses smoke remain separate required operator evidence.
 
 ## Validation
 
