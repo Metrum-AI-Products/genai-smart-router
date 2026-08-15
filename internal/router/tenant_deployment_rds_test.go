@@ -59,8 +59,10 @@ func dedicatedRDSInstance(input *rds.CreateDBInstanceInput) *rdstypes.DBInstance
 		DBInstanceIdentifier:  input.DBInstanceIdentifier,
 		DBSubnetGroup:         &rdstypes.DBSubnetGroup{DBSubnetGroupName: input.DBSubnetGroupName},
 		DeletionProtection:    input.DeletionProtection,
+		Endpoint:              &rdstypes.Endpoint{Address: aws.String("router-db.internal")},
 		MasterUsername:        input.MasterUsername,
 		PubliclyAccessible:    input.PubliclyAccessible,
+		DBInstanceStatus:      aws.String("available"),
 		StorageEncrypted:      input.StorageEncrypted,
 		VpcSecurityGroups:     []rdstypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: aws.String(input.VpcSecurityGroupIds[0])}},
 	}

@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,46 +15,63 @@ func requiresDisposableRDSAdmission(manifest router.TenantDeploymentManifest) bo
 	return manifest.DatabaseProfile != ""
 }
 
-// TestDisposableEKSPackagedCLI is intentionally environment-gated. CI can run
-// it only with an approved disposable EKS profile embedded in a signed,
-// reference-only intent, external scoped RDS admission, and separately
-// authorized deletion approval. It exercises the packaged binary and always
-// attempts job-bound cleanup after deploy begins, including when deployment
-// itself fails.
-func TestDisposableEKSPackagedCLI(t *testing.T) {
-	intentPath := os.Getenv("EKS_E2E_INTENT")
-	rdsAdmissionFile := os.Getenv("EKS_E2E_RDS_ADMISSION_FILE")
-	deleteApprovalFile := os.Getenv("EKS_E2E_DELETE_APPROVAL_FILE")
-	if intentPath == "" || deleteApprovalFile == "" {
-		t.Skip("set EKS_E2E_INTENT and EKS_E2E_DELETE_APPROVAL_FILE for disposable EKS E2E")
+// TestDisposableEKSReleasePackageCoreLifecycle is intentionally
+// environment-gated. It proves the core plan/deploy/delete lifecycle from an
+// extracted release package, not the customer/Codex workflow. The latter
+// requires two external signing stages and a real Codex client, so it remains
+// an operator-run black-box acceptance sequence.
+func TestDisposableEKSReleasePackageCoreLifecycle(t *testing.T) {
+	intentPath := strings.TrimSpace(os.Getenv("EKS_E2E_INTENT"))
+	deleteApprovalFile := strings.TrimSpace(os.Getenv("EKS_E2E_DELETE_APPROVAL_FILE"))
+	packageDir := strings.TrimSpace(os.Getenv("EKS_E2E_PACKAGE_DIR"))
+	registry := strings.TrimSpace(os.Getenv("EKS_E2E_REGISTRY"))
+	rdsAdmissionFile := strings.TrimSpace(os.Getenv("EKS_E2E_RDS_ADMISSION_FILE"))
+	if intentPath == "" || deleteApprovalFile == "" || packageDir == "" || registry == "" {
+		t.Skip("set EKS_E2E_INTENT, EKS_E2E_DELETE_APPROVAL_FILE, EKS_E2E_PACKAGE_DIR, and EKS_E2E_REGISTRY for disposable EKS release-package E2E")
 	}
+
 	intent, _, err := router.LoadTenantDeploymentIntent(intentPath, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("load disposable EKS intent: %v", err)
 	}
-	if requiresDisposableRDSAdmission(intent.Manifest) && rdsAdmissionFile == "" {
+	requiresRDSAdmission := requiresDisposableRDSAdmission(intent.Manifest)
+	if requiresRDSAdmission && rdsAdmissionFile == "" {
 		t.Skip("set EKS_E2E_RDS_ADMISSION_FILE for a dedicated-RDS disposable EKS E2E")
 	}
-	binary := filepath.Join(t.TempDir(), "metrum-genai-smartrouter-fleetctl")
-	if output, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
-		t.Fatalf("package CLI: %v: %s", err, output)
+	if !requiresRDSAdmission && rdsAdmissionFile != "" {
+		t.Fatal("SQLite disposable EKS E2E must not set EKS_E2E_RDS_ADMISSION_FILE")
 	}
-	registry := filepath.Join(t.TempDir(), "lifecycle.sqlite")
-	run := func(command string, extra ...string) ([]byte, error) {
+
+	binary := filepath.Join(packageDir, "bin", "metrum-genai-smartrouter-fleetctl")
+	info, err := os.Stat(binary)
+	if err != nil {
+		t.Fatalf("release package Fleet binary unavailable: %v", err)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Fatal("release package Fleet binary is not executable")
+	}
+	run := func(command string, extra ...string) error {
 		args := []string{command, "--intent", intentPath, "--registry", registry, "--output", "json"}
 		args = append(args, extra...)
-		return exec.Command(binary, args...).CombinedOutput()
+		return exec.Command(binary, args...).Run()
 	}
-	if output, err := run("plan"); err != nil {
-		t.Fatalf("packaged CLI plan: %v: %s", err, output)
+	if err := run("plan"); err != nil {
+		t.Fatalf("release package plan failed: %v", err)
 	}
 	t.Cleanup(func() {
-		output, err := run("delete", "--confirm-file", deleteApprovalFile, "--rds-admission-file", rdsAdmissionFile)
-		if err != nil {
-			t.Errorf("packaged CLI cleanup: %v: %s", err, output)
+		args := []string{"--confirm-file", deleteApprovalFile}
+		if requiresRDSAdmission {
+			args = append(args, "--rds-admission-file", rdsAdmissionFile)
+		}
+		if err := run("delete", args...); err != nil {
+			t.Errorf("release package cleanup failed: %v", err)
 		}
 	})
-	if output, err := run("deploy", "--rds-admission-file", rdsAdmissionFile); err != nil {
-		t.Fatalf("packaged CLI deploy: %v: %s", err, output)
+	args := []string{}
+	if requiresRDSAdmission {
+		args = append(args, "--rds-admission-file", rdsAdmissionFile)
+	}
+	if err := run("deploy", args...); err != nil {
+		t.Fatalf("release package deploy failed: %v", err)
 	}
 }

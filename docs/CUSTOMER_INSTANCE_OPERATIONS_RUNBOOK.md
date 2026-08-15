@@ -272,7 +272,8 @@ metrum-genai-smartrouter-fleetctl customer create --intent /protected/acme4-inte
 metrum-genai-smartrouter-fleetctl customer status --customer-id acme4 \
   --profile-ref "$FLEET_PROFILE_REF"
 metrum-genai-smartrouter-fleetctl customer smoke --customer-id acme4 \
-  --token-file ~/.local/share/metrum-fleet/acme4/CALLER_TOKEN_ADMIN.txt
+  --token-file ~/.local/share/metrum-fleet/acme4/CALLER_TOKEN_ADMIN.txt \
+  --model "$ROUTER_MODEL"
 
 # Grant a caller (publishes per-customer SM bundle + writes a new unsigned manifest)
 metrum-genai-smartrouter-fleetctl customer grant-caller --customer-id acme4 \
@@ -296,6 +297,14 @@ metrum-genai-smartrouter-fleetctl customer delete --customer-id acme4 \
   --intent ~/.local/share/metrum-fleet/acme4/intent.json \
   --confirm-file /protected/acme4-delete-approval.json
 ```
+
+`ROUTER_MODEL` is required: select an exact group exposed to this caller by
+`/v1/models`; Fleet does not infer hosted-reference group names. The customer
+smoke requires an exact `OK` completion, not merely an HTTP `200`. It verifies
+the OpenAI Chat surface only. A release E2E that supports Codex must separately
+fetch the caller-filtered `/v1/codex/models.json` catalog and run the real
+Codex CLI with `wire_api="responses"` as described in
+[the coding-agent E2E matrix](CODING_AGENT_E2E_MATRIX.md).
 
 Optional recreate helper (requires an externally signed delete approval for the prior job):
 
