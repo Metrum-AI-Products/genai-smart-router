@@ -178,7 +178,7 @@ func customerSmoke(args []string) {
 	var common customerCommonFlags
 	addCustomerCommonFlags(fs, &common)
 	tokenFile := fs.String("token-file", "", "caller token file for authenticated smoke")
-	model := fs.String("model", "", "model group for optional chat smoke")
+	model := fs.String("model", "", "deployment-defined model group from /v1/models (required unless --skip-chat)")
 	skipChat := fs.Bool("skip-chat", false, "skip chat completion smoke")
 	timeoutSec := fs.Int("timeout-sec", 180, "overall smoke deadline seconds")
 	expectModels := fs.Int("expect-models-count", -1, "optional exact /v1/models count")

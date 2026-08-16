@@ -89,7 +89,10 @@ revision is a Fleet deploy of an approved `runtime_bundle_ref` (new
 Packaged `customer` helpers (`write-manifest` then externally signed
 `create --intent`) are SQLite-only: they require explicit references (no ACME
 or staging defaults), never accept lifecycle private keys, and refuse
-dedicated-RDS selection. Plan is side-effect-free. The default SQLite path is namespace, network policy,
+dedicated-RDS selection. After activation, `customer smoke` requires
+`--model` from the caller's authenticated `/v1/models` list and succeeds
+only on HTTP `200` with exact assistant content `OK`; see
+[Binary Installation](../installation/binary). Plan is side-effect-free. The default SQLite path is namespace, network policy,
 protected runtime-secret binding, license binding, state PVC, one-replica
 single-container Router, activation, and hostname; it never provisions or
 binds RDS. An explicit approved `database_profile` manifest branch inserts
