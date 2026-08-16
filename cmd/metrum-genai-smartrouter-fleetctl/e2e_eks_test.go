@@ -50,28 +50,28 @@ func TestDisposableEKSReleasePackageCoreLifecycle(t *testing.T) {
 	if info.Mode()&0o111 == 0 {
 		t.Fatal("release package Fleet binary is not executable")
 	}
-	run := func(command string, extra ...string) error {
+	run := func(command string, extra ...string) (output []byte, err error) {
 		args := []string{command, "--intent", intentPath, "--registry", registry, "--output", "json"}
 		args = append(args, extra...)
-		return exec.Command(binary, args...).Run()
+		return exec.Command(binary, args...).CombinedOutput()
 	}
-	if err := run("plan"); err != nil {
-		t.Fatalf("release package plan failed: %v", err)
+	if out, err := run("plan"); err != nil {
+		t.Fatal(formatPackageE2ECommandFailure("plan", err, out))
 	}
 	t.Cleanup(func() {
 		args := []string{"--confirm-file", deleteApprovalFile}
 		if requiresRDSAdmission {
 			args = append(args, "--rds-admission-file", rdsAdmissionFile)
 		}
-		if err := run("delete", args...); err != nil {
-			t.Errorf("release package cleanup failed: %v", err)
+		if out, err := run("delete", args...); err != nil {
+			t.Error(formatPackageE2ECommandFailure("cleanup", err, out))
 		}
 	})
 	args := []string{}
 	if requiresRDSAdmission {
 		args = append(args, "--rds-admission-file", rdsAdmissionFile)
 	}
-	if err := run("deploy", args...); err != nil {
-		t.Fatalf("release package deploy failed: %v", err)
+	if out, err := run("deploy", args...); err != nil {
+		t.Fatal(formatPackageE2ECommandFailure("deploy", err, out))
 	}
 }
