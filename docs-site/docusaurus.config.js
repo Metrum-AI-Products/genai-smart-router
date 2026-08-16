@@ -47,7 +47,14 @@ const config = {
     routerVersion,
     routerBuildDate,
     routerLatestVersion,
+    elevenLabsSupportAgentId: "agent_1001m04bhav8fck80kbbqwh69stq",
   },
+  scripts: [
+    {
+      src: "https://elevenlabs.io/convai-widget/index.js",
+      async: true,
+    },
+  ],
   onBrokenLinks: "throw",
   markdown: {
     mermaid: true,
