@@ -4,6 +4,7 @@ import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 /**
  * Site-wide ElevenLabs ConvAI support widget.
  * Renders only after mount so the custom element does not hydrate on the server.
+ * Starts expanded with text input and transcript so voice-only orb config cannot hide chat.
  */
 export default function SupportChatWidget() {
   const { siteConfig } = useDocusaurusContext();
@@ -20,5 +21,10 @@ export default function SupportChatWidget() {
 
   return React.createElement("elevenlabs-convai", {
     "agent-id": agentId,
+    variant: "full",
+    "default-expanded": "true",
+    "always-expanded": "true",
+    "text-input": "true",
+    transcript: "true",
   });
 }
