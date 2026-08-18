@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -589,31 +590,29 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def remote_dump(remote: str, identity: Path | None, install_root: Path, dump_path: Path) -> None:
+def remote_pg_dump_command(install_root: Path) -> str:
     compose = install_root / "compose"
-    dump_cmd = [
-        *upgrade.ssh_args(identity),
-        remote,
-        "sudo",
-        "docker",
-        "compose",
-        "--project-directory",
-        str(compose),
-        "-f",
-        str(compose / "docker-compose.yml"),
-        "-f",
-        str(compose / upgrade.POSTGRES_OVERRIDE),
-        "exec",
-        "-T",
-        "postgres",
-        "sh",
-        "-c",
-        'pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"',
-    ]
-    reject_unsafe_command(dump_cmd)
+    inner = 'pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+    return (
+        "sudo docker compose "
+        f"--project-directory {shlex.quote(str(compose))} "
+        f"-f {shlex.quote(str(compose / 'docker-compose.yml'))} "
+        f"-f {shlex.quote(str(compose / upgrade.POSTGRES_OVERRIDE))} "
+        f"exec -T postgres sh -c {shlex.quote(inner)}"
+    )
+
+
+def remote_dump(remote: str, identity: Path | None, install_root: Path, dump_path: Path) -> None:
+    remote_cmd = remote_pg_dump_command(install_root)
+    reject_unsafe_command(shlex.split(remote_cmd))
     dump_path.parent.mkdir(parents=True, exist_ok=True)
     with dump_path.open("wb") as handle:
-        completed = subprocess.run(dump_cmd, stdout=handle, stderr=subprocess.PIPE, check=False)
+        completed = subprocess.run(
+            [*upgrade.ssh_args(identity), remote, remote_cmd],
+            stdout=handle,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
     if completed.returncode != 0:
         dump_path.unlink(missing_ok=True)
         err = completed.stderr.decode("utf-8", errors="replace").strip()
