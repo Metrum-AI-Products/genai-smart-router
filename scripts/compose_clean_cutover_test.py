@@ -376,6 +376,17 @@ def test_remote_pg_dump_keeps_container_user() -> None:
     require(argv[-1] == cmd, "remote dump command must be a single SSH argument")
 
 
+def test_remote_apply_forwards_package() -> None:
+    cmd = cutover.remote_apply_command(
+        "compose_clean_cutover.py",
+        ["apply", "--install-root", "/opt/smart-llmrouter", "--skip-archive", "--confirm-reset-usage", "reset-postgres-data"],
+        "smart-llmrouter-d73ac83-docker-linux-amd64.tar.gz",
+    )
+    require("--package" in cmd, f"missing --package: {cmd}")
+    require("/tmp/smart-llmrouter-d73ac83-docker-linux-amd64.tar.gz" in cmd, f"package path missing: {cmd}")
+    require(cmd[cmd.index("--package") + 1].startswith("/tmp/"), "package must be the uploaded /tmp path")
+
+
 def test_source_has_no_star_move_or_dsn_flag() -> None:
     source = Path(cutover.__file__).read_text(encoding="utf-8")
     require("shell=True" not in source, "shell=True would allow glob expansion")
@@ -399,6 +410,7 @@ def main() -> int:
     test_refuses_caddy_volume_name()
     test_unsafe_commands()
     test_remote_pg_dump_keeps_container_user()
+    test_remote_apply_forwards_package()
     test_source_has_no_star_move_or_dsn_flag()
     print("compose clean cutover self-test passed")
     return 0
