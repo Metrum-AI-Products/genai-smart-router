@@ -367,6 +367,15 @@ def test_unsafe_commands() -> None:
         raise AssertionError("caddy volume rm accepted")
 
 
+def test_remote_pg_dump_keeps_container_user() -> None:
+    cmd = cutover.remote_pg_dump_command(Path("/opt/smart-llmrouter"))
+    require("sh -c " in cmd, f"missing container sh -c: {cmd}")
+    require('"$POSTGRES_USER"' in cmd, f"POSTGRES_USER would expand on the SSH host: {cmd}")
+    require(cmd.startswith("sudo docker compose "), f"unexpected prefix: {cmd}")
+    argv = ["ssh", "ubuntu@example", cmd]
+    require(argv[-1] == cmd, "remote dump command must be a single SSH argument")
+
+
 def test_source_has_no_star_move_or_dsn_flag() -> None:
     source = Path(cutover.__file__).read_text(encoding="utf-8")
     require("shell=True" not in source, "shell=True would allow glob expansion")
@@ -389,6 +398,7 @@ def main() -> int:
     test_resume_loop_stops_at_validated_then_serves()
     test_refuses_caddy_volume_name()
     test_unsafe_commands()
+    test_remote_pg_dump_keeps_container_user()
     test_source_has_no_star_move_or_dsn_flag()
     print("compose clean cutover self-test passed")
     return 0
