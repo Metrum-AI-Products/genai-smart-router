@@ -405,6 +405,7 @@ secret-check:
 	python3 scripts/check_env_example_secrets_test.py
 	python3 scripts/validate_package_contents_test.py
 	python3 scripts/validate_release_clean_test.py
+	python3 scripts/compose_package_upgrade_test.py
 	python3 scripts/backup_dist_restic.py --self-test
 
 	python3 scripts/validate_docker_context.py

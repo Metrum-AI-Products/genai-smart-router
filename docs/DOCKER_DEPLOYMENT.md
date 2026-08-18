@@ -94,6 +94,49 @@ cd /opt/smart-llmrouter
 
 Use the `docker-linux-amd64` package on x86_64 hosts and the `docker-linux-arm64` package on ARM64 hosts.
 
+## Compose package upgrade
+
+First-time bootstrap may unpack with `tar --strip-components=1` as shown above. Upgrading an existing Compose install must use `scripts/compose_package_upgrade.py`. Do not hand-write a remote unpacker, do not glob-move from `/`, do not stop or reboot the host, and do not use Fleet or EKS tooling for this path.
+
+```bash
+python3 scripts/compose_package_upgrade.py plan \
+  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/smart-llmrouter
+
+python3 scripts/compose_package_upgrade.py apply \
+  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/smart-llmrouter \
+  --backup-suffix <purpose> \
+  --remote ubuntu@<compose-host> \
+  --ssh-identity <ssh-key>
+```
+
+The script:
+
+- unpacks with `tar --strip-components=1` into a staging directory, then replaces the install root;
+- copies live `compose/config`, `compose/state`, `compose/logs`, `compose/.env`, and `compose/ROUTER_TOKEN*.txt` from the timestamped backup;
+- restores container UID/GID `65532` on copied runtime directories;
+- pins `SMART_LLMROUTER_VERSION` from the package filename;
+- includes `docker-compose.postgres-localhost.yml` when `ROUTER_USAGE_DB_DSN` is set in `.env`;
+- loads the packaged image and runs `docker compose config` plus `docker compose up -d`;
+- prints only safe scalars (backup path, image tar name, compose service name/image/status).
+
+Do not use this upgrade path to jump a Postgres usage database onto a package that requires `docs/DATA_MIGRATIONS.md` work unless that gate has already been completed while the router is stopped.
+
+Rollback:
+
+```bash
+python3 scripts/compose_package_upgrade.py rollback \
+  --backup /opt/smart-llmrouter.backup-<purpose>-<UTC timestamp> \
+  --install-root /opt/smart-llmrouter \
+  --remote ubuntu@<compose-host> \
+  --ssh-identity <ssh-key>
+```
+
+This runbook is source-only. Do not add it to `scripts/package_docs_allowlist.txt`.
+
+## First install image and runtime
+
 Load the packaged image:
 
 ```bash
