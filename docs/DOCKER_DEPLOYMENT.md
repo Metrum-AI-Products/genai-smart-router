@@ -123,7 +123,38 @@ The script:
 
 Do not use this upgrade path to jump a Postgres usage database onto a package that requires `docs/DATA_MIGRATIONS.md` work unless that gate has already been completed while the router is stopped.
 
-Rollback:
+## Compose usage-store reset
+
+When an existing Compose Postgres usage schema cannot be adopted and historical usage may be discarded, use `scripts/compose_clean_cutover.py`. Do not hand-write volume deletion, do not `docker compose down` with volumes, do not replace live `config.yaml` / `env.json` / `ROUTER_TOKEN*.txt`, and do not stop or reboot the host.
+
+```bash
+python3 scripts/compose_clean_cutover.py plan \
+  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/smart-llmrouter
+
+python3 scripts/compose_clean_cutover.py apply \
+  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/smart-llmrouter \
+  --backup-suffix <purpose> \
+  --confirm-reset-usage reset-postgres-data \
+  --remote ubuntu@<compose-host> \
+  --ssh-identity <ssh-key>
+```
+
+The script:
+
+- fail-closes unless live `compose/config/config.yaml`, `env.json`, `.env` with `ROUTER_USAGE_DB_DSN`, the Postgres override file, and `ROUTER_TOKEN*.txt` are present;
+- `pg_dump`s the live usage database (custom format) and restic-archives it under stable paths/tags (`purpose:compose-usage-archive`, `version:<id>`). Credentials come from ignored `env.json` (`BACKUP_USER`, `BACKUP_PASS`, `RESTIC_PASSWORD`). The snapshot is the dump plus a safe scalar manifest; it does not include `env.json` or `config.yaml`;
+- stops the router only, applies `scripts/compose_package_upgrade.py` with compose start skipped, and loads the packaged image;
+- discovers the Compose `postgres_data` volume from `docker compose config`, removes only that volume, and recreates Postgres with the preserved `.env`;
+- runs the PostgreSQL `docs/DATA_MIGRATIONS.md` gate (`plan` → `apply` → `resume` `historical-usage-validation-v1` until job state `validated` → `verify-serving` → `status`) with `--dsn-env=ROUTER_USAGE_DB_DSN` and never a DSN on the CLI;
+- then `docker compose up -d` and prints only safe scalars.
+
+Callers, model groups, provider keys, license/quota state, and Caddy volumes stay. Usage rows, reports, and the migration ledger do not. Package from a clean merged `origin/main` worktree only.
+
+Serving rollback after a usage-store reset still needs `scripts/compose_package_upgrade.py rollback` plus a new empty Postgres volume and a re-run of the empty-DB migration gate. Restic restore of the usage dump is forensics, not an in-place schema downgrade.
+
+Rollback of a package upgrade that did not reset the usage store:
 
 ```bash
 python3 scripts/compose_package_upgrade.py rollback \
