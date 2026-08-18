@@ -622,6 +622,18 @@ def remote_dump(remote: str, identity: Path | None, install_root: Path, dump_pat
         raise CutoverError("remote pg_dump produced an empty archive")
 
 
+def remote_apply_command(script_name: str, argv: Sequence[str], package_name: str) -> list[str]:
+    return [
+        "sudo",
+        "python3",
+        f"/tmp/{script_name}",
+        *list(argv),
+        "--package",
+        f"/tmp/{package_name}",
+        "--cleanup-remote-files",
+    ]
+
+
 def run_remote_apply(
     remote: str,
     identity: Path | None,
@@ -635,13 +647,7 @@ def run_remote_apply(
         )
         if completed.returncode != 0:
             raise CutoverError(f"scp {path.name} to {remote} failed")
-    remote_cmd = [
-        "sudo",
-        "python3",
-        f"/tmp/{Path(argv[0]).name}",
-        *argv[1:],
-        "--cleanup-remote-files",
-    ]
+    remote_cmd = remote_apply_command(Path(argv[0]).name, argv[1:], files[0].name)
     completed = subprocess.run([*upgrade.ssh_args(identity), remote, *remote_cmd], check=False)
     return completed.returncode
 
