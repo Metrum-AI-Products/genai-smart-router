@@ -1,6 +1,33 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-08-04
+Last deployed: 2026-08-18
+
+## 2026-08-18 Hosted Docs Customer Support Widget
+
+Deployed package/image `smart-llmrouter:bc1ea6b-linux-amd64`. This is `4175bdf` plus cherry-pick `a910827` (ElevenLabs ConvAI widget on hosted `/docs/`). It was applied with `scripts/compose_package_upgrade.py`, not a handwritten remote unpacker.
+
+Do not deploy current `origin/main` (`a910827` and later Go/Fleet work) onto this Compose Postgres host until the `docs/DATA_MIGRATIONS.md` deployment-job gate is completed while the router is stopped. A first attempt to apply the full `a910827` main package failed closed on usage migration `2026071901`; the failed ledger row was deleted and the install was rolled back before this docs-only package.
+
+Production SSH/DNS currently use public IPv4 `54.84.22.33` after an earlier recovery reboot dropped `100.30.225.66`. Do not stop/start the instance as part of package upgrades.
+
+Production backup:
+
+- Prior production package (4175bdf runtime):
+  `/opt/smart-llmrouter.backup-elevenlabs-docs-20260818T152746Z`
+
+Validation:
+
+- `scripts/compose_package_upgrade_test.py`: passed.
+- Upgrade script `plan`/`apply --remote` unpacked with `tar --strip-components=1`, copied live config/state/logs/.env/tokens, restored UID 65532, included the Postgres Compose override, and did not reboot the instance.
+- Production `/readyz` and `/version`: 200, version/commit `bc1ea6b`.
+- Hosted `/docs/overview` includes `https://elevenlabs.io/convai-widget/index.js`, custom element `elevenlabs-convai`, and agent id `agent_1001m04bhav8fck80kbbqwh69stq`.
+- Authenticated `/v1/models` returned 200 (22 models). Tiny `high` Chat smoke returned 200 `chat.completion`.
+- Temporary recovery instance `i-014c5596e16baee53` was terminated. Uploaded package tarballs under `/tmp` were removed. The 4175bdf backup above was retained.
+
+Rollback: restore
+`/opt/smart-llmrouter.backup-elevenlabs-docs-20260818T152746Z` with
+`scripts/compose_package_upgrade.py rollback`, keep current runtime
+config/state/database, `docker compose -f docker-compose.yml -f docker-compose.postgres-localhost.yml up -d`, then repeat `/readyz`, `/version`, and hosted docs checks. Expected version after rollback is `4175bdf`.
 
 ## 2026-08-04 Documentation Accuracy And API-Skin Image Guidance Refresh
 

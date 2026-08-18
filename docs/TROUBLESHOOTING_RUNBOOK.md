@@ -66,8 +66,10 @@ When fixing incidents, check whether the downstream body tells the caller the ri
 ```bash
 rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
 rtk curl -fsS https://llm-api-engg.metrum.ai/version
-rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66 'cd /opt/smart-llmrouter/compose && sudo docker compose ps'
+rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@54.84.22.33 'cd /opt/smart-llmrouter/compose && sudo docker compose ps'
 ```
+
+Production Compose package refreshes use `scripts/compose_package_upgrade.py` (`plan`, then `apply --remote`). Do not invent a host unpacker. See `docs/DOCKER_DEPLOYMENT.md`.
 
 ## Request ID Investigation
 
@@ -427,7 +429,7 @@ ORDER BY events DESC;
 Recent router logs:
 
 ```bash
-rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66 'cd /opt/smart-llmrouter/compose && sudo docker compose logs --tail=200 router'
+rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@54.84.22.33 'cd /opt/smart-llmrouter/compose && sudo docker compose logs --tail=200 router'
 ```
 
 Prefer DB traces for request-level details because logs should remain sanitized and compact.

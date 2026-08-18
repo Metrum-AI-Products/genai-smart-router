@@ -239,7 +239,7 @@ These instructions apply to the whole repository.
 ## Production Host
 
 - This is the current Metrum-managed engineering deployment, not a product-default endpoint. GenAI Smart Router can also be licensed for on-prem or enterprise-cloud deployments with different hostnames, model group names, provider sets, and caller policies.
-- Host: `ubuntu@100.30.225.66`
+- Host: `ubuntu@54.84.22.33` (current public IPv4 of `llm-api-jun2026`; do not stop/start the instance as part of a package upgrade — that changes the address unless an Elastic IP is attached)
 - SSH key: `~/.ssh/chetan-jun-2026.pem`
 - Public URL: `https://llm-api-engg.metrum.ai`
 - Compose directory: `/opt/smart-llmrouter/compose`
@@ -250,7 +250,7 @@ These instructions apply to the whole repository.
 Useful commands:
 
 ```bash
-rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66 'cd /opt/smart-llmrouter/compose && sudo docker compose ps'
+rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@54.84.22.33 'cd /opt/smart-llmrouter/compose && sudo docker compose ps'
 rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
 ```
 
@@ -358,15 +358,32 @@ For code changes that affect runtime behavior or embedded hosted docs:
 4. Build both Docker package architectures:
    - `rtk make package-docker`
    Package targets copy Markdown only from `scripts/package_docs_allowlist.txt` and run package-content validation. Do not add private production runbooks, private host/IP markers, SSH usernames/key paths, live production compose config/env/token paths, raw router tokens, token hashes, or provider keys to release artifacts.
-5. Copy the package matching the production host CPU architecture, currently `dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz`, to the host with `scp`.
-6. On the host:
-   - back up `/opt/smart-llmrouter` to `/opt/smart-llmrouter.backup.<purpose>-<UTC timestamp>`
-   - unpack the package into a fresh `/opt/smart-llmrouter`
-   - copy forward live `compose/config`, `compose/state`, `compose/logs`, `.env`, and `ROUTER_TOKEN*.txt` from the backup
-   - set `SMART_LLMROUTER_VERSION=<version>-linux-amd64` in `compose/.env`
-   - `sudo docker load -i images/smart-llmrouter-<version>-linux-amd64.tar`
-   - `sudo docker compose config >/dev/null`
-   - `sudo docker compose up -d`
+5. Upgrade the live Compose install with the deterministic script. Do not hand-write a remote unpacker, do not `mv ${INNER}/*` or any glob move from `/`, do not stop or reboot the Compose EC2 instance, and do not use Fleet or EKS scripts for this host.
+
+```bash
+rtk python3 scripts/compose_package_upgrade.py plan \
+  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/smart-llmrouter
+
+rtk python3 scripts/compose_package_upgrade.py apply \
+  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/smart-llmrouter \
+  --backup-suffix <purpose> \
+  --remote ubuntu@54.84.22.33 \
+  --ssh-identity ~/.ssh/chetan-jun-2026.pem
+```
+
+   The script unpacks with `tar --strip-components=1`, copies live `compose/config`, `compose/state`, `compose/logs`, `compose/.env`, and `compose/ROUTER_TOKEN*.txt` from the timestamped backup, restores UID/GID `65532` on those runtime dirs, pins `SMART_LLMROUTER_VERSION`, loads the image, and runs `docker compose up -d`. If `compose/.env` has `ROUTER_USAGE_DB_DSN`, it includes `docker-compose.postgres-localhost.yml`. Do not deploy a package that requires a usage-schema deployment-job onto this Postgres host unless `docs/DATA_MIGRATIONS.md` has been completed while the router is stopped. Docs-only hosted-docs refreshes must be packaged from the currently serving production commit plus the docs change, not from a later `main` that includes unrelated schema work.
+6. If the upgrade must be reversed, use the same script:
+
+```bash
+rtk python3 scripts/compose_package_upgrade.py rollback \
+  --backup /opt/smart-llmrouter.backup-<purpose>-<UTC timestamp> \
+  --install-root /opt/smart-llmrouter \
+  --remote ubuntu@54.84.22.33 \
+  --ssh-identity ~/.ssh/chetan-jun-2026.pem
+```
+
 7. Verify health, route behavior, and hosted docs when relevant:
    - `curl -fsS https://llm-api-engg.metrum.ai/readyz`
    - `curl -fsS https://llm-api-engg.metrum.ai/docs/...`
@@ -380,7 +397,7 @@ For code changes that affect runtime behavior or embedded hosted docs:
 Authenticated production chat smoke:
 
 ```bash
-rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66 'cd /opt/smart-llmrouter/compose && TOKEN=$(sudo cat ROUTER_TOKEN.txt) && curl -fsS https://llm-api-engg.metrum.ai/v1/chat/completions -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d "{\"model\":\"high\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply OK only.\"}],\"max_tokens\":16,\"stream\":false}"'
+rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@54.84.22.33 'cd /opt/smart-llmrouter/compose && TOKEN=$(sudo cat ROUTER_TOKEN.txt) && curl -fsS https://llm-api-engg.metrum.ai/v1/chat/completions -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d "{\"model\":\"high\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply OK only.\"}],\"max_tokens\":16,\"stream\":false}"'
 ```
 
 Use the current deployment's deterministic failover-first check group, for example `high` on the current Metrum-managed engineering deployment, and use repeated calls for weighted deployment-defined groups. When validating weighted groups that include reasoning-heavy OpenRouter targets, include a realistic `max_tokens` budget; a `max_tokens:16` smoke can produce false failures for GLM-style models that spend the completion budget on reasoning before emitting final content.
