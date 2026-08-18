@@ -299,6 +299,11 @@ def test_volume_reset_and_migrate_before_serve() -> None:
         )
         require(result["postgres_volume"] == "compose_postgres_data", f"unexpected volume {result['postgres_volume']}")
         require(runner.volume_rms == ["compose_postgres_data"], f"unexpected volume rms {runner.volume_rms}")
+        rm_postgres = [cmd for cmd in runner.calls if cmd[-3:] == ["rm", "-f", "postgres"] or ( "rm" in cmd and "-f" in cmd and "postgres" in cmd)]
+        require(rm_postgres, "postgres container was not removed before volume rm")
+        volume_rm_index = next(i for i, cmd in enumerate(runner.calls) if cmd[:3] == ["docker", "volume", "rm"])
+        container_rm_index = next(i for i, cmd in enumerate(runner.calls) if "rm" in cmd and "postgres" in cmd and "-f" in cmd and "volume" not in cmd)
+        require(container_rm_index < volume_rm_index, "volume rm ran before postgres container rm")
         require((install / "compose" / "config" / "config.yaml").read_text(encoding="utf-8") == "live: true\n", "live config was not copied")
         require((install / "compose" / "ROUTER_TOKEN.txt").exists(), "token was not copied")
         require("SMART_LLMROUTER_VERSION=a910827-linux-amd64" in (install / "compose" / ".env").read_text(encoding="utf-8"), "version not pinned")
