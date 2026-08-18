@@ -2,11 +2,36 @@
 
 Last deployed: 2026-08-18
 
+## 2026-08-18 Compose usage-store reset onto current main
+
+Deployed package/image `smart-llmrouter:d73ac83-linux-amd64` from merged `origin/main` (`d73ac83`, PRs #899–#903). The live Postgres usage catalog could not be adopted by `2026071901`, so this host took a deliberate empty usage store: restic-archive the old dump, keep live config/tokens/state/Caddy, recreate only `compose_postgres_data`, then run the empty-DB `docs/DATA_MIGRATIONS.md` gate before serving.
+
+Do not stop/start the instance as part of package upgrades. Production SSH/DNS remain public IPv4 `54.84.22.33`.
+
+Operator CLI:
+
+- `scripts/compose_clean_cutover.py plan` / `apply --confirm-reset-usage reset-postgres-data --remote`
+- Usage dump restic snapshot id `423ee44b` (tags `purpose:compose-usage-archive`, `version:d73ac83`). Forensics only; not an in-place schema downgrade.
+- Install backup from the package swap:
+  `/opt/smart-llmrouter.backup-compose-clean-cutover-20260818T173157Z`
+
+Validation:
+
+- `scripts/compose_clean_cutover_test.py` and `scripts/compose_package_upgrade_test.py`: passed.
+- Cutover removed only `compose_postgres_data` after `docker compose rm -f postgres`; Caddy volume was left in place; the instance was not rebooted; Fleet/EKS were not used.
+- Production `/readyz` and `/version`: 200, version/commit `d73ac83`.
+- Hosted `/docs/` includes `https://elevenlabs.io/convai-widget/index.js`.
+- Authenticated `/v1/models` returned 200 (22 models). Tiny `high` Chat smoke returned HTTP 200.
+- `job_state: validated` from the empty-DB gate. Serving compose: caddy, postgres (healthy), router `smart-llmrouter:d73ac83-linux-amd64`.
+
+Rollback: restic restore of the usage dump is forensics. Serving rollback is `scripts/compose_package_upgrade.py rollback` of
+`/opt/smart-llmrouter.backup-compose-clean-cutover-20260818T173157Z` plus a new empty Postgres volume and a re-run of the empty-DB gate. Historical usage rows from before this cutover are not in the live database.
+
 ## 2026-08-18 Hosted Docs Customer Support Widget
 
 Deployed package/image `smart-llmrouter:bc1ea6b-linux-amd64`. This is `4175bdf` plus cherry-pick `a910827` (ElevenLabs ConvAI widget on hosted `/docs/`). It was applied with `scripts/compose_package_upgrade.py`, not a handwritten remote unpacker.
 
-Do not deploy current `origin/main` (`a910827` and later Go/Fleet work) onto this Compose Postgres host until the `docs/DATA_MIGRATIONS.md` deployment-job gate is completed while the router is stopped. A first attempt to apply the full `a910827` main package failed closed on usage migration `2026071901`; the failed ledger row was deleted and the install was rolled back before this docs-only package.
+Historical: this docs-only package was superseded the same day by the `d73ac83` usage-store reset above. Do not treat `bc1ea6b` as the current serving image.
 
 Production SSH/DNS currently use public IPv4 `54.84.22.33` after an earlier recovery reboot dropped `100.30.225.66`. Do not stop/start the instance as part of package upgrades.
 
