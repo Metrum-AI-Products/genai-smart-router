@@ -18,6 +18,7 @@ import compose_package_upgrade as upgrade
 COMPOSE_JSON = json.dumps(
     {
         "name": "compose",
+        "networks": {"default": {"name": "compose_default"}},
         "volumes": {
             "postgres_data": {"name": "compose_postgres_data"},
             "caddy_data": {"name": "compose_caddy_data"},
@@ -105,22 +106,21 @@ class FakeRunner:
             for part in argv:
                 if part.startswith("--action="):
                     action = part.split("=", 1)[1]
+            text = "scope=usage schema_version=2 data_version=1 compatible=true state=current pending=0 entries=3\n"
             if action == "resume":
                 state = self.resume_states[min(self.resume_calls, len(self.resume_states) - 1)]
                 self.resume_calls += 1
-                return subprocess.CompletedProcess(argv, 0, stdout=job_json(state), stderr="")
+                return subprocess.CompletedProcess(argv, 0, stdout=text, stderr="")
             if action == "verify-serving":
                 self.verify_index = len(self.calls) - 1
-                return subprocess.CompletedProcess(argv, 0, stdout=job_json("validated"), stderr="")
+                if self.resume_calls == 0:
+                    return subprocess.CompletedProcess(argv, 1, stdout="", stderr="verify-serving pending")
+                state = self.resume_states[min(self.resume_calls - 1, len(self.resume_states) - 1)]
+                if state == "validated":
+                    return subprocess.CompletedProcess(argv, 0, stdout=text, stderr="")
+                return subprocess.CompletedProcess(argv, 1, stdout="", stderr="verify-serving running")
             if action in {"plan", "apply", "status"}:
-                state = "pending" if action in {"plan", "apply"} and self.resume_calls == 0 else "validated"
-                if action == "status" and self.resume_calls:
-                    state = self.resume_states[min(self.resume_calls - 1, len(self.resume_states) - 1)]
-                    if state == "running" and self.resume_calls < len(self.resume_states):
-                        state = "running"
-                    elif self.resume_calls:
-                        state = self.resume_states[min(self.resume_calls - 1, len(self.resume_states) - 1)]
-                return subprocess.CompletedProcess(argv, 0, stdout=job_json(state if action != "plan" else "pending"), stderr="")
+                return subprocess.CompletedProcess(argv, 0, stdout=text, stderr="")
             raise AssertionError(f"unexpected migrate action {action}: {argv}")
         if argv[-2:] == ["up", "-d"]:
             self.full_up_index = len(self.calls) - 1
@@ -312,6 +312,8 @@ def test_volume_reset_and_migrate_before_serve() -> None:
         require(runner.full_up_index is None, "compose up -d ran before skip_serve returned")
         migrate_cmds = [cmd for cmd in runner.calls if "/app/bin/router-migrate" in cmd]
         require(any("--dsn-env=ROUTER_USAGE_DB_DSN" in cmd for cmd in migrate_cmds), "missing dsn-env")
+        require(all(cmd[:2] == ["docker", "run"] for cmd in migrate_cmds), "migrate used compose run")
+        require(all("--env-file" in cmd for cmd in migrate_cmds), "migrate missing env-file")
         require(not any(any(part.startswith("--dsn=") or part == "--dsn" for part in cmd) for cmd in migrate_cmds), "DSN passed on CLI")
         require(not any("down" in cmd for cmd in runner.calls), "compose down invoked")
         load_cmds = [cmd for cmd in runner.calls if cmd[:2] == ["docker", "load"]]

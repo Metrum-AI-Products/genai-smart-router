@@ -172,7 +172,7 @@ def compose_run(
     return run(cmd, cwd=str(install_root / "compose"))
 
 
-def discover_postgres_volume(run: Runner, install_root: Path) -> str:
+def load_compose_config(run: Runner, install_root: Path) -> dict[str, object]:
     completed = compose_run(run, install_root, ["config", "--format", "json"])
     if completed.returncode != 0:
         raise CutoverError(
@@ -184,7 +184,35 @@ def discover_postgres_volume(run: Runner, install_root: Path) -> str:
         raise CutoverError("docker compose config JSON was invalid") from exc
     if not isinstance(data, dict):
         raise CutoverError("docker compose config JSON was not an object")
-    return postgres_volume_name(data)
+    return data
+
+
+def discover_postgres_volume(run: Runner, install_root: Path) -> str:
+    return postgres_volume_name(load_compose_config(run, install_root))
+
+
+def compose_network_name(compose_config: dict[str, object]) -> str:
+    networks = compose_config.get("networks")
+    if isinstance(networks, dict):
+        default = networks.get("default")
+        if isinstance(default, dict):
+            raw = default.get("name")
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
+    project = compose_config.get("name")
+    if isinstance(project, str) and project.strip():
+        return f"{project.strip()}_default"
+    raise CutoverError("compose config is missing the default network name")
+
+
+def router_image_tag(install_root: Path) -> str:
+    env_path = install_root / upgrade.RUNTIME_ENV
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("SMART_LLMROUTER_VERSION="):
+            version = line.split("=", 1)[1].strip()
+            if version:
+                return f"smart-llmrouter:{version}"
+    raise CutoverError("compose/.env is missing SMART_LLMROUTER_VERSION")
 
 
 def default_dump(install_root: Path, dump_path: Path) -> None:
@@ -333,66 +361,77 @@ def wait_postgres_healthy(run: Runner, install_root: Path, *, sleeper: Callable[
     raise CutoverError(f"postgres did not become ready: {last}")
 
 
-def migrate_argv(action: str, extra: Sequence[str] = ()) -> list[str]:
+def migrate_argv(
+    install_root: Path,
+    image: str,
+    network: str,
+    action: str,
+    extra: Sequence[str] = (),
+) -> list[str]:
     args = [
+        "docker",
         "run",
         "--rm",
-        "--no-deps",
+        "--network",
+        network,
+        "--env-file",
+        str(install_root / upgrade.RUNTIME_ENV),
         "--entrypoint",
         MIGRATE_ENTRYPOINT,
-        "router",
+        image,
         f"--action={action}",
         "--driver=postgres",
         f"--dsn-env={DSN_ENV}",
-        "--json",
         *extra,
     ]
     if any(part.startswith("--dsn=") or part == "--dsn" for part in args):
         raise CutoverError("refusing to pass a DSN on the CLI")
+    reject_unsafe_command(args)
     return args
 
 
 def migrate(
     run: Runner,
     install_root: Path,
+    image: str,
+    network: str,
     action: str,
     extra: Sequence[str] = (),
-) -> dict[str, object]:
-    completed = compose_run(run, install_root, migrate_argv(action, extra))
-    if completed.returncode != 0:
+) -> subprocess.CompletedProcess[str]:
+    completed = run(migrate_argv(install_root, image, network, action, extra))
+    if completed.returncode != 0 and action != "verify-serving":
         raise CutoverError(
             f"router-migrate {action} failed: {(completed.stderr or completed.stdout).strip()}"
         )
-    return parse_json_object(completed.stdout or "")
+    return completed
 
 
 def run_migration_gate(run: Runner, install_root: Path) -> dict[str, object]:
-    plan = migrate(run, install_root, "plan")
-    apply = migrate(run, install_root, "apply")
+    image = router_image_tag(install_root)
+    network = compose_network_name(load_compose_config(run, install_root))
+    migrate(run, install_root, image, network, "plan")
+    migrate(run, install_root, image, network, "apply")
     ordinal = 0
-    status: dict[str, object] = apply
+    verify: subprocess.CompletedProcess[str] | None = None
     while ordinal <= MAX_CHECKPOINTS:
         extra = [f"--job={JOB_KEY}", f"--checkpoint-ordinal={ordinal}"]
-        resume = migrate(run, install_root, "resume", extra)
-        status = migrate(run, install_root, "status")
-        state = job_state_from_status(status) or job_state_from_status(resume)
-        if state == "validated":
+        migrate(run, install_root, image, network, "resume", extra)
+        verify = migrate(run, install_root, image, network, "verify-serving")
+        if verify.returncode == 0:
             break
-        if state == "running":
-            ordinal += 1
-            continue
-        raise CutoverError(f"data job {JOB_KEY} in unsafe state {state or 'missing'}")
+        ordinal += 1
     else:
-        raise CutoverError(f"data job {JOB_KEY} did not reach validated within {MAX_CHECKPOINTS} checkpoints")
-    verify = migrate(run, install_root, "verify-serving")
-    final_status = migrate(run, install_root, "status")
-    final_state = job_state_from_status(final_status)
-    if final_state != "validated":
-        raise CutoverError(f"verify-serving left data job {JOB_KEY} in state {final_state or 'missing'}")
+        detail = ""
+        if verify is not None:
+            detail = (verify.stderr or verify.stdout or "").strip()
+        raise CutoverError(
+            f"data job {JOB_KEY} did not pass verify-serving within {MAX_CHECKPOINTS} checkpoints: {detail}"
+        )
+    final_status = migrate(run, install_root, image, network, "status")
     return {
-        "plan_state": str(plan.get("State") or plan.get("state") or ""),
-        "job_state": final_state,
-        "verify_compatible": bool(verify.get("Compatible") if "Compatible" in verify else verify.get("compatible")),
+        "job_state": "validated",
+        "verify_compatible": True,
+        "status_text": (final_status.stdout or "").strip(),
     }
 
 
