@@ -1,30 +1,39 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 
 /**
  * Site-wide ElevenLabs ConvAI support widget.
- * Renders only after mount so the custom element does not hydrate on the server.
- * Starts expanded with text input and transcript so voice-only orb config cannot hide chat.
+ * Mounts a native custom element after hydration so attributes are set on the
+ * real DOM node. Starts expanded with transcript plus text input.
  */
 export default function SupportChatWidget() {
   const { siteConfig } = useDocusaurusContext();
   const agentId = siteConfig.customFields?.elevenLabsSupportAgentId;
-  const [mounted, setMounted] = useState(false);
+  const hostRef = useRef(null);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    const host = hostRef.current;
+    if (!host || !agentId) {
+      return undefined;
+    }
 
-  if (!mounted || !agentId) {
+    const el = document.createElement("elevenlabs-convai");
+    el.setAttribute("agent-id", agentId);
+    el.setAttribute("variant", "full");
+    el.setAttribute("default-expanded", "true");
+    el.setAttribute("always-expanded", "true");
+    el.setAttribute("text-input", "true");
+    el.setAttribute("transcript", "true");
+    host.replaceChildren(el);
+
+    return () => {
+      host.replaceChildren();
+    };
+  }, [agentId]);
+
+  if (!agentId) {
     return null;
   }
 
-  return React.createElement("elevenlabs-convai", {
-    "agent-id": agentId,
-    variant: "full",
-    "default-expanded": "true",
-    "always-expanded": "true",
-    "text-input": "true",
-    transcript: "true",
-  });
+  return React.createElement("div", { ref: hostRef });
 }

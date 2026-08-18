@@ -51,7 +51,9 @@ const config = {
   },
   scripts: [
     {
-      src: "https://elevenlabs.io/convai-widget/index.js",
+      // Current official embed. elevenlabs.io/convai-widget/index.js is a
+      // legacy voice-only bundle that ignores text-input and expansion attrs.
+      src: "https://unpkg.com/@elevenlabs/convai-widget-embed@0.16.3/dist/index.js",
       async: true,
     },
   ],
