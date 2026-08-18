@@ -10,6 +10,8 @@ Metrics-admin callers can scrape aggregate migration schema/data version, compat
 
 Before a fresh serving startup or package upgrade using `migration_policy: deployment-job`, run **plan → approved backup → apply → all data jobs → verify-serving → status → serve** while the router is stopped or drained. A deployment job owns the database change; the serving process only validates the compatible ledger. `auto-safe` is not a production deployment procedure.
 
+When a Compose PostgreSQL usage schema cannot be adopted and the operator chooses to discard historical usage rather than repair the live catalog, do not hand-delete volumes. Use `scripts/compose_clean_cutover.py` (`plan`, then `apply --confirm-reset-usage reset-postgres-data`) as documented in `docs/DOCKER_DEPLOYMENT.md`. That CLI restic-archives a `pg_dump`, preserves caller config/tokens/Caddy, recreates only the Compose `postgres_data` volume, and runs this document's PostgreSQL deployment-job gate on the empty database before serving.
+
 New generic Compose/Kubernetes installations use SQLite at `/app/state/usage.sqlite` and run:
 
 ```sh

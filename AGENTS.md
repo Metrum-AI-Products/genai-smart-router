@@ -373,7 +373,7 @@ rtk python3 scripts/compose_package_upgrade.py apply \
   --ssh-identity ~/.ssh/chetan-jun-2026.pem
 ```
 
-   The script unpacks with `tar --strip-components=1`, copies live `compose/config`, `compose/state`, `compose/logs`, `compose/.env`, and `compose/ROUTER_TOKEN*.txt` from the timestamped backup, restores UID/GID `65532` on those runtime dirs, pins `SMART_LLMROUTER_VERSION`, loads the image, and runs `docker compose up -d`. If `compose/.env` has `ROUTER_USAGE_DB_DSN`, it includes `docker-compose.postgres-localhost.yml`. Do not deploy a package that requires a usage-schema deployment-job onto this Postgres host unless `docs/DATA_MIGRATIONS.md` has been completed while the router is stopped. Docs-only hosted-docs refreshes must be packaged from the currently serving production commit plus the docs change, not from a later `main` that includes unrelated schema work.
+   The script unpacks with `tar --strip-components=1`, copies live `compose/config`, `compose/state`, `compose/logs`, `compose/.env`, and `compose/ROUTER_TOKEN*.txt` from the timestamped backup, restores UID/GID `65532` on those runtime dirs, pins `SMART_LLMROUTER_VERSION`, loads the image, and runs `docker compose up -d`. If `compose/.env` has `ROUTER_USAGE_DB_DSN`, it includes `docker-compose.postgres-localhost.yml`. Do not deploy a package that requires a usage-schema deployment-job onto this Postgres host unless `docs/DATA_MIGRATIONS.md` has been completed while the router is stopped. When the live Postgres usage schema cannot be adopted and historical usage may be discarded, do not hand-edit volumes over SSH; use `scripts/compose_clean_cutover.py` below. Docs-only hosted-docs refreshes must be packaged from the currently serving production commit plus the docs change, not from a later `main` that includes unrelated schema work.
 6. If the upgrade must be reversed, use the same script:
 
 ```bash
@@ -384,6 +384,23 @@ rtk python3 scripts/compose_package_upgrade.py rollback \
   --ssh-identity ~/.ssh/chetan-jun-2026.pem
 ```
 
+6b. For a deliberate empty Compose usage store (keep callers, model groups, provider keys, license/quota state, and Caddy; discard usage/reports/ledger after restic), package only from a clean `origin/main` worktree, then:
+
+```bash
+rtk python3 scripts/compose_clean_cutover.py plan \
+  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/smart-llmrouter
+
+rtk python3 scripts/compose_clean_cutover.py apply \
+  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/smart-llmrouter \
+  --backup-suffix <purpose> \
+  --confirm-reset-usage reset-postgres-data \
+  --remote ubuntu@54.84.22.33 \
+  --ssh-identity ~/.ssh/chetan-jun-2026.pem
+```
+
+   The script `pg_dump`s the live usage DB and restic-archives it with stable tags, stops the router, applies the package with `--skip-compose`, removes only the Compose `postgres_data` volume, waits for a healthy empty Postgres, runs `docs/DATA_MIGRATIONS.md` (`plan` → `apply` → `resume` `historical-usage-validation-v1` until `validated` → `verify-serving` → `status`) with `--driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN`, then `docker compose up -d`. It never `docker compose down` with volumes, never removes Caddy volumes, never stops or reboots the EC2 instance, and never invokes Fleet or EKS. Restic restore of the dump is forensics; serving rollback is `compose_package_upgrade.py rollback` plus a new empty Postgres volume and a re-run of the empty-DB gate.
 7. Verify health, route behavior, and hosted docs when relevant:
    - `curl -fsS https://llm-api-engg.metrum.ai/readyz`
    - `curl -fsS https://llm-api-engg.metrum.ai/docs/...`

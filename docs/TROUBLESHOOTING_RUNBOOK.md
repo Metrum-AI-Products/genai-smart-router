@@ -69,7 +69,7 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/version
 rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@54.84.22.33 'cd /opt/smart-llmrouter/compose && sudo docker compose ps'
 ```
 
-Production Compose package refreshes use `scripts/compose_package_upgrade.py` (`plan`, then `apply --remote`). Do not invent a host unpacker. See `docs/DOCKER_DEPLOYMENT.md`.
+Production Compose package refreshes use `scripts/compose_package_upgrade.py` (`plan`, then `apply --remote`). A deliberate empty Compose Postgres usage store uses `scripts/compose_clean_cutover.py` (`plan`, then `apply --confirm-reset-usage reset-postgres-data --remote`). Do not invent a host unpacker or `docker compose down` with volumes. See `docs/DOCKER_DEPLOYMENT.md` and `docs/DATA_MIGRATIONS.md`.
 
 ## Request ID Investigation
 

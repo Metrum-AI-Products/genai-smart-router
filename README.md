@@ -147,7 +147,7 @@ bin/router --config config/config.yaml
 
 See `docs/DEPLOYMENT.md` for binary deployment guidance with Caddy TLS termination.
 
-For Docker Compose deployments on AWS/EC2-style hosts, use `make package-docker` and follow `docs/DOCKER_DEPLOYMENT.md`. Docker packages include prebuilt image tarballs for linux/amd64 and linux/arm64, `docker-compose.yml`, an optional localhost-only Postgres override, Caddy config, router config templates, and docs; the target host does not need this source tree or a registry pull. Upgrades of an existing Compose install use `scripts/compose_package_upgrade.py` as documented in that runbook; do not unpack with a handwritten remote glob-move.
+For Docker Compose deployments on AWS/EC2-style hosts, use `make package-docker` and follow `docs/DOCKER_DEPLOYMENT.md`. Docker packages include prebuilt image tarballs for linux/amd64 and linux/arm64, `docker-compose.yml`, an optional localhost-only Postgres override, Caddy config, router config templates, and docs; the target host does not need this source tree or a registry pull. Upgrades of an existing Compose install use `scripts/compose_package_upgrade.py` as documented in that runbook; do not unpack with a handwritten remote glob-move. A deliberate empty Compose Postgres usage store (keep config and caller keys; discard usage after restic) uses `scripts/compose_clean_cutover.py`.
 
 ## Run From Source
 
