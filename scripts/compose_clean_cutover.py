@@ -401,6 +401,11 @@ def reset_postgres_volume(run: Runner, install_root: Path, *, sleeper: Callable[
     stop = compose_run(run, install_root, ["stop", "postgres"])
     if stop.returncode != 0:
         raise CutoverError(f"stop postgres failed: {(stop.stderr or stop.stdout).strip()}")
+    removed_container = compose_run(run, install_root, ["rm", "-f", "postgres"])
+    if removed_container.returncode != 0:
+        raise CutoverError(
+            f"remove postgres container failed: {(removed_container.stderr or removed_container.stdout).strip()}"
+        )
     rm_cmd = ["docker", "volume", "rm", volume]
     reject_unsafe_command(rm_cmd)
     removed = run(rm_cmd)
