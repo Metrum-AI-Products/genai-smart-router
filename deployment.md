@@ -2,7 +2,33 @@
 
 Last deployed: 2026-08-18
 
+## 2026-08-18 Hosted docs support widget starts expanded
+
+Deployed package/image `smart-llmrouter:a4806ba-linux-amd64` from merged `origin/main` (`a4806ba`, PR #905). Hosted `/docs/` now mounts the ElevenLabs ConvAI widget expanded (`variant="full"`, `default-expanded`, `always-expanded`, text input, and transcript) so dashboard `expandable: never` cannot leave callers with a voice-only orb. Runtime config, tokens, Caddy, and the post-cutover Postgres usage volume were preserved. Applied with `scripts/compose_package_upgrade.py`, not a usage reset and not a handwritten remote unpacker.
+
+Do not stop/start the instance as part of package upgrades. Production SSH/DNS remain public IPv4 `54.84.22.33`.
+
+Production backup:
+
+- Prior production package (`d73ac83` runtime):
+  `/opt/smart-llmrouter.backup-convai-expanded-20260818T190857Z`
+
+Validation:
+
+- `scripts/compose_package_upgrade.py plan` then `apply --remote --backup-suffix convai-expanded`.
+- Production `/readyz` and `/version`: 200, version/commit `a4806ba`.
+- Hosted `/docs/` includes `https://elevenlabs.io/convai-widget/index.js`. The custom element is client-rendered; the served `main.*.js` bundle contains `elevenlabs-convai`, agent id `agent_1001m04bhav8fck80kbbqwh69stq`, `default-expanded`, `always-expanded`, and `text-input`.
+- Authenticated `/v1/models` returned 200 (22 models). Tiny `high` Chat smoke returned 200 `chat.completion`.
+- Serving compose: caddy, postgres (healthy), router `smart-llmrouter:a4806ba-linux-amd64`. Uploaded package leftovers under `/tmp` were removed.
+
+Rollback: restore
+`/opt/smart-llmrouter.backup-convai-expanded-20260818T190857Z` with
+`scripts/compose_package_upgrade.py rollback`, keep current runtime
+config/state/database, then repeat `/readyz`, `/version`, and hosted docs checks. Expected version after rollback is `d73ac83`.
+
 ## 2026-08-18 Compose usage-store reset onto current main
+
+Historical: the serving image from this cutover was `smart-llmrouter:d73ac83-linux-amd64` and was superseded the same day by `a4806ba` above. The empty usage-store cutover itself remains in effect; do not re-run `scripts/compose_clean_cutover.py` for a docs-only refresh.
 
 Deployed package/image `smart-llmrouter:d73ac83-linux-amd64` from merged `origin/main` (`d73ac83`, PRs #899–#903). The live Postgres usage catalog could not be adopted by `2026071901`, so this host took a deliberate empty usage store: restic-archive the old dump, keep live config/tokens/state/Caddy, recreate only `compose_postgres_data`, then run the empty-DB `docs/DATA_MIGRATIONS.md` gate before serving.
 
