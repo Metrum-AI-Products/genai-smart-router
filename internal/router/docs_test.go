@@ -23,7 +23,7 @@ func TestDocsHandlerServesEmbedded404ForMissingDocsPage(t *testing.T) {
 		}
 	}
 	csp := rr.Header().Get("Content-Security-Policy")
-	for _, required := range []string{"script-src 'self' 'unsafe-inline'", "https://api.us.elevenlabs.io", "wss://api.us.elevenlabs.io"} {
+	for _, required := range []string{"script-src 'self' 'unsafe-inline'", "img-src 'self' data: https://storage.googleapis.com/eleven-public-cdn/", "https://api.us.elevenlabs.io", "wss://api.us.elevenlabs.io"} {
 		if !strings.Contains(csp, required) {
 			t.Fatalf("docs CSP missing %q: %q", required, csp)
 		}
