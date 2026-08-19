@@ -78,7 +78,7 @@ func customerBootstrap(args []string) {
 	if *allowFromConfig {
 		grantArgs = append(grantArgs, "--allow-from-config")
 	}
-	customerGrantCaller(grantArgs)
+	customerGrantCaller(grantArgs[1:])
 
 	intentPath = signWorkspaceManifest(ws, *signWithKey)
 	plan, _ = planAndDeployIntent(ws, fleetBin, intentPath, fleetEnv)
