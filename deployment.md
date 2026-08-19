@@ -1039,7 +1039,8 @@ Validation:
 - Local Harbor smoke `local-big-coder-claude-retry-20260629T164238Z`: `claude-code` + `big-coder`, exit 0, reward 1, errors 0. One earlier local run completed with no router exceptions but reward 0, so it was retried before deployment.
 - Production `/readyz`: 200, version `6fc3131`, build date `2026-06-29T16:51:16Z`.
 - Production `/version`: version `6fc3131`, commit `6fc3131`, Go `1.26.4`, linux/amd64, license compile mode `required`.
-- Hosted docs `/docs/`: 200 with `X-Smart-LLMRouter-Version: 6fc3131`.
+- Historical 2026-06-29 evidence: hosted docs `/docs/` returned 200 with a
+  version header; current source strips public docs build-identity headers.
 - Admin reports `/admin/reports/`: 200 with HTTP Basic admin credentials and expected security headers.
 - Authenticated `/v1/models`: 200 with `big-coder` available to the reusable Harbor caller.
 - Production Harbor smoke `prod-big-coder-claude-20260629T165621Z`: `claude-code` + `big-coder`, exit 0, reward 1, errors 0.
@@ -2112,7 +2113,10 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Backup path: `/opt/smart-llmrouter.backup-version-metadata-20260617T061118Z`.
 - Build metadata now includes a full UTC build timestamp, not only a date: `2026-06-17T06:07:57Z`.
 - Verified production `/readyz` and `/version` return version `bac7711`, commit `bac7711`, and build date `2026-06-17T06:07:57Z`.
-- Verified hosted docs responses include `X-Smart-LLMRouter-Version`, `X-Smart-LLMRouter-Commit`, and `X-Smart-LLMRouter-Build-Date`; the rendered docs badge appears on `/docs/overview` with the same full timestamp.
+- Historical 2026-06-17 evidence: hosted docs responses then included
+  `X-Smart-LLMRouter-Version`, `X-Smart-LLMRouter-Commit`, and
+  `X-Smart-LLMRouter-Build-Date`. Current source strips public docs build
+  identity headers while retaining the in-page version banner.
 - Verified all packaged CLI binaries report `--version` with the same metadata: `router`, `router-token-gen`, and `router-usage-report`.
 - Verified authenticated `/metrics` exposes `smart_llmrouter_build_info` with version, commit, build timestamp, Go version, OS, and architecture labels.
 - Verified authenticated `/v1/models` keeps OpenAI-compatible response shape and does not include router version fields.
@@ -3205,7 +3209,10 @@ Documentation/runtime changes:
 - Replaced public wording such as `source commit and package version` with `binary release version`.
 - Updated product docs to describe running binary version and build timestamp rather than source-control details.
 - Removed the docs-browser commit badge field from the Docusaurus config and rendered badge.
-- Removed `X-Smart-LLMRouter-Commit` from docs responses while keeping `X-Smart-LLMRouter-Version` and `X-Smart-LLMRouter-Build-Date`.
+- Historical behavior for this deployment: it removed
+  `X-Smart-LLMRouter-Commit` while retaining version/build-date headers.
+  Current source strips all public docs `X-Smart-LLMRouter-*` build identity
+  headers.
 - Added regression coverage that embedded docs responses do not expose the docs commit header.
 
 Production backup:

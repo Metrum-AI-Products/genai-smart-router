@@ -49,14 +49,6 @@ const config = {
     routerLatestVersion,
     elevenLabsSupportAgentId: "agent_1001m04bhav8fck80kbbqwh69stq",
   },
-  scripts: [
-    {
-      // Current official embed. elevenlabs.io/convai-widget/index.js is a
-      // legacy voice-only bundle that ignores text-input and expansion attrs.
-      src: "https://unpkg.com/@elevenlabs/convai-widget-embed@0.16.3/dist/index.js",
-      async: true,
-    },
-  ],
   onBrokenLinks: "throw",
   markdown: {
     mermaid: true,
@@ -113,6 +105,7 @@ const config = {
           { to: "/evaluation/evaluate-smart-router", label: "Evaluate", position: "left" },
           { to: "/solution-brief", label: "Solution Brief", position: "left" },
           { to: "/evaluation/harbor-case-study", label: "Case Study", position: "left" },
+          { to: "/privacy", label: "Privacy", position: "right" },
           { href: "mailto:contact@metrum.ai", label: "Deploy with Metrum", position: "right" },
         ],
       },
@@ -138,6 +131,8 @@ const config = {
               { label: "Evaluation Guide", to: "/evaluation/overview" },
               { label: "Routing Decision Tree", to: "/routing/strategy-decision-tree" },
               { label: "Security And Trust", to: "/evaluation/security-and-trust" },
+              { label: "Privacy", to: "/privacy" },
+              { label: "Data Processing", to: "/dpa" },
               { label: "Solution Brief", to: "/solution-brief" },
               { label: "Harbor Case Study", to: "/evaluation/harbor-case-study" },
               { label: "Contact Metrum", href: "mailto:contact@metrum.ai" },

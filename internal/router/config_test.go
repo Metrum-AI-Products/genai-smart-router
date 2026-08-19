@@ -433,6 +433,7 @@ func TestModelGroupContractValidation(t *testing.T) {
 
 func TestContentCaptureConfigValidation(t *testing.T) {
 	falseValue := false
+	encryption := ContentCaptureEncryptionConfig{Enabled: true, KMSKeyID: "kms-test"}
 	for _, tt := range []struct {
 		name string
 		edit func(*Config)
@@ -448,37 +449,44 @@ func TestContentCaptureConfigValidation(t *testing.T) {
 		{
 			name: "redaction disabled",
 			edit: func(cfg *Config) {
-				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, RedactBeforeStorage: &falseValue}
+				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, RedactBeforeStorage: &falseValue, Encryption: encryption}
 			},
 			want: "redact_before_storage must remain true",
 		},
 		{
 			name: "forbidden header",
 			edit: func(cfg *Config) {
-				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, CaptureHeadersAllowlist: []string{"Authorization"}}
+				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, CaptureHeadersAllowlist: []string{"Authorization"}, Encryption: encryption}
 			},
 			want: "forbidden header",
 		},
 		{
 			name: "invalid custom regex",
 			edit: func(cfg *Config) {
-				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, RedactionPatterns: []ContentCaptureRedactionRule{{Name: "bad", Expression: "["}}}
+				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, RedactionPatterns: []ContentCaptureRedactionRule{{Name: "bad", Expression: "["}}, Encryption: encryption}
 			},
 			want: "redaction pattern bad is invalid",
 		},
 		{
-			name: "unsupported encryption",
+			name: "capture without encryption",
 			edit: func(cfg *Config) {
-				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, Encryption: ContentCaptureEncryptionConfig{Enabled: true, KMSKeyID: "kms-test"}}
+				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true}
 			},
-			want: "encryption.enabled is not supported yet",
+			want: "encryption.enabled must be true",
+		},
+		{
+			name: "encryption without kms key id",
+			edit: func(cfg *Config) {
+				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, Encryption: ContentCaptureEncryptionConfig{Enabled: true}}
+			},
+			want: "encryption.kms_key_id is required",
 		},
 		{
 			name: "caller capture requires usage db",
 			edit: func(cfg *Config) {
 				enabled := false
 				cfg.Server.UsageDB.Enable = &enabled
-				cfg.Callers[0].ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true}
+				cfg.Callers[0].ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, Encryption: encryption}
 			},
 			want: "content_capture requires usage_db enabled",
 		},
@@ -488,7 +496,7 @@ func TestContentCaptureConfigValidation(t *testing.T) {
 				enabled := false
 				cfg.Server.UsageDB.Enable = &enabled
 				group := cfg.Models["default"]
-				group.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true}
+				group.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, Encryption: encryption}
 				cfg.Models["default"] = group
 			},
 			want: "content_capture requires usage_db enabled",
@@ -510,6 +518,19 @@ func TestContentCaptureConfigValidation(t *testing.T) {
 				t.Fatalf("Validate() error=%v, want %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestContentCaptureEncryptionConfigValidates(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.setDefaults()
+	cfg.Server.ContentCapture = ContentCaptureConfig{
+		Enabled:        true,
+		CaptureRequest: true,
+		Encryption:     ContentCaptureEncryptionConfig{Enabled: true, KMSKeyID: "test-key"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error=%v", err)
 	}
 }
 

@@ -482,7 +482,7 @@ func safeStatus(table, column string) string {
 	switch {
 	case strings.HasPrefix(table, "request_content_"):
 		if column == "content_text" || column == "value" {
-			return "restricted; redacted governed content, not ordinary diagnostics"
+			return "restricted; redacted and AES-256-GCM-encrypted governed content, not ordinary diagnostics"
 		}
 		return "safe metadata under content-capture authorization"
 	case column == "caller_ip" || column == "ip_address":

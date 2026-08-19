@@ -39,7 +39,8 @@ router-usage-report --retention-run --config /app/config/config.yaml
 
 - With `dry_run: true`, it writes status counts only.
 - With `dry_run: false`, it deletes at most `batch_size` eligible rows per supported table.
-- Supported delete classes are `usage_diagnostics` and `usage_detail`.
+- Supported delete classes are `usage_diagnostics`, `content_capture`, and `usage_detail`.
+- Content-capture deletion removes the selected capture row and its allowed-header child rows in the same retention transaction.
 - Unsupported classes are recorded as `blocked_not_implemented` with zero deleted rows.
 - `usage_detail` deletes are blocked as `blocked_rollup_required` unless finalized daily rollups continuously cover the candidate window.
 
@@ -62,4 +63,7 @@ Set `server.retention.dry_run: true` or `server.retention.enabled: false` and de
 
 ## Deferred
 
-Archive/export before delete, scheduler support, full legal-hold admin APIs, browser write workflows, and generic purge execution for decision telemetry, security access events, and content capture remain future work. Governed content capture still has its existing dedicated maintenance endpoints.
+Archive/export before delete, scheduler support, full legal-hold admin APIs,
+browser write workflows, and generic purge execution for decision telemetry
+and security access events remain future work. Governed content capture also
+retains its dedicated maintenance endpoints.

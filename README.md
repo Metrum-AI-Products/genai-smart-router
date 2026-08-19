@@ -705,7 +705,7 @@ Version checks:
 curl http://127.0.0.1:8080/version
 ```
 
-`/healthz`, `/readyz`, and `/version` include the router version, commit, and full UTC build timestamp. Metrics-admin `/metrics` exports `smart_llmrouter_build_info`. Browser docs show the running docs package version and build timestamp on every page, and docs responses include `X-Smart-LLMRouter-Version`, `X-Smart-LLMRouter-Commit`, and `X-Smart-LLMRouter-Build-Date` headers. OpenAI-compatible `/v1/*` response bodies do not include router-specific version fields.
+`/healthz`, `/readyz`, and `/version` include the router version, commit, and full UTC build timestamp. Metrics-admin `/metrics` exports `smart_llmrouter_build_info`. Browser docs show the running docs package version and build timestamp in the in-page banner, while public docs HTTP responses deliberately omit `X-Smart-LLMRouter-*` build-identity headers. OpenAI-compatible `/v1/*` response bodies do not include router-specific version fields.
 
 ## Usage Reports
 

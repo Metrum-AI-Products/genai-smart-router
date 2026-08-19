@@ -43,7 +43,15 @@ Caller tokens carry allow lists and quota policy, while identity is validated th
 
 Content-capture maintenance is separate from metrics access. Delete-by-request and retention purge endpoints require Casbin authorization for `content:capture` `delete` or `purge`; delete-by-request is evaluated against the captured row's caller project/environment domain. Existing `content_admin: true` callers receive compatible startup grants for their own domain. Metrics-admin tokens do not imply content-admin privileges.
 
-Commercial retention is a separate governed maintenance path under `server.retention`. It records policy versions, rules, jobs, per-table status counts, legal holds, and legal-hold audit rows as scalar relational data. Legal holds are matched by data class, optional request ID, and timestamp range during dry-run counts and batch deletion. The first delete slice is limited to usage diagnostics and rollup-gated usage detail; it does not archive data, run a scheduler, delete unsupported classes through the generic runner, or expose full legal-hold admin APIs.
+Public docs responses set CSP, HSTS, nosniff, no-referrer, frame/object
+restrictions, and a minimum Permissions Policy in both the router docs handler
+and Caddy. `microphone=(self)` is the only enabled sensitive capability because
+the optional ElevenLabs voice control may request microphone access after
+affirmative consent; camera, location, payment, USB, and browsing topics are
+disabled. Public docs omit router build-identity response headers and expose
+security contact information at `/.well-known/security.txt`.
+
+Commercial retention is a separate governed maintenance path under `server.retention`. It records policy versions, rules, jobs, per-table status counts, legal holds, and legal-hold audit rows as scalar relational data. Legal holds are matched by data class, optional request ID, and timestamp range during dry-run counts and batch deletion. The current delete slice covers usage diagnostics, governed content capture, and rollup-gated usage detail; it does not archive data, run a scheduler, delete the remaining unsupported classes through the generic runner, or expose full legal-hold admin APIs.
 
 ## Diagnostics And Redaction
 
@@ -53,7 +61,13 @@ Diagnostics must not contain raw prompts, raw images, raw router tokens, token h
 
 Model-group `pii_filter` may redact configured request text before routing policy, cache keys, and upstream calls. TypeScript request contexts are built from the redacted request, including raw payload mirrors. External policy services receive safe derived request context by default; raw/redacted `request` and `text` mirrors are sent only when `external_policy.include_request: true` is explicitly configured for a trusted service. Requests that exceed `max_replacements_per_request` fail closed with `pii-filter-blocked` before upstream routing. PII-filter usage metadata must stay scalar and safe: applied flag, mode, replacement count, and matched-rule count only. Raw matched values and placeholder mappings must remain in memory for the request lifecycle unless a separate governed content-capture feature explicitly enables durable storage.
 
-Governed content capture is opt-in and disabled by default. When enabled, captured request, response, and upstream-error content is stored in separate relational tables keyed by `request_id`, with retention timestamps and audit rows for delete and purge operations. Captured content is redacted before storage with built-in secret patterns and configured regex rules, and `redact_and_restore` response capture stores the pre-restore placeholder response rather than restored caller PII. Delete-by-request authorization is scoped to the captured row's caller project/environment domain. Header capture is allowlist-only and must not include authorization, API-key, token, secret, cookie, or key-like headers. The current foundation does not implement KMS/encryption-at-rest or content export/read APIs; enabling `content_capture.encryption.enabled` is rejected until that support exists.
+Governed content capture is opt-in and disabled by default. When enabled, captured request, response, and upstream-error content is stored in separate relational tables keyed by `request_id`, with retention timestamps and audit rows for delete and purge operations. Capture enablement fails closed unless `encryption.enabled` is true and `kms_key_id` is configured. Content and allowed header values are redacted and then encrypted with AES-256-GCM; nonce, key identifier, and encrypted status are separate scalar columns. Production supplies the KMS-backed 32-byte key material out of band through `CONTENT_CAPTURE_KMS_KEY` in the deployment secret boundary. `redact_and_restore` response capture stores the pre-restore placeholder response rather than restored caller PII. Delete-by-request authorization is scoped to the captured row's caller project/environment domain. Header capture is allowlist-only and must not include authorization, API-key, token, secret, cookie, or key-like headers. Content export/read APIs remain out of scope.
+
+`security_access_events` remain admin-authenticated reports only, and public
+examples remain anonymized. The 2026-08-19 employment-privacy review of this
+public surface found no employee identifiers published; access reporting stays
+inside authenticated admin reports with retention class
+`security_access_events`.
 
 ## Docs And Examples
 

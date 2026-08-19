@@ -1,9 +1,17 @@
 package router
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -24,29 +32,32 @@ type contentCaptureDecision struct {
 }
 
 type contentCaptureRecord struct {
-	ID                uint   `gorm:"column:id;primaryKey;autoIncrement"`
-	RequestID         string `gorm:"column:request_id;type:text;not null;index:idx_request_content_request"`
-	TS                string `gorm:"column:ts;type:text;not null;index:idx_request_content_ts"`
-	Scope             string `gorm:"column:scope;type:text;not null;index:idx_request_content_scope"`
-	Sequence          int    `gorm:"column:sequence;not null"`
-	CallerID          string `gorm:"column:caller_id;type:text;not null"`
-	TokenID           string `gorm:"column:token_id;type:text;not null"`
-	ResolvedGroup     string `gorm:"column:resolved_group;type:text;not null;index:idx_request_content_group"`
-	TargetProvider    string `gorm:"column:target_provider;type:text;not null"`
-	TargetModel       string `gorm:"column:target_model;type:text;not null"`
-	InboundDialect    string `gorm:"column:inbound_dialect;type:text;not null"`
-	TargetDialect     string `gorm:"column:target_dialect;type:text;not null"`
-	ContentType       string `gorm:"column:content_type;type:text;not null"`
-	ContentText       string `gorm:"column:content_text;type:text;not null"`
-	ContentBytes      int    `gorm:"column:content_bytes;not null"`
-	Truncated         bool   `gorm:"column:truncated;not null"`
-	Redacted          bool   `gorm:"column:redacted;not null"`
-	RedactionCount    int    `gorm:"column:redaction_count;not null"`
-	ImagesCaptured    bool   `gorm:"column:images_captured;not null"`
-	ImageCount        int    `gorm:"column:image_count;not null"`
-	SourceStatus      int    `gorm:"column:source_status;not null"`
-	RetentionUntil    string `gorm:"column:retention_until;type:text;not null;index:idx_request_content_retention"`
-	DeletionRequested bool   `gorm:"column:deletion_requested;not null;default:false"`
+	ID                 uint   `gorm:"column:id;primaryKey;autoIncrement"`
+	RequestID          string `gorm:"column:request_id;type:text;not null;index:idx_request_content_request"`
+	TS                 string `gorm:"column:ts;type:text;not null;index:idx_request_content_ts"`
+	Scope              string `gorm:"column:scope;type:text;not null;index:idx_request_content_scope"`
+	Sequence           int    `gorm:"column:sequence;not null"`
+	CallerID           string `gorm:"column:caller_id;type:text;not null"`
+	TokenID            string `gorm:"column:token_id;type:text;not null"`
+	ResolvedGroup      string `gorm:"column:resolved_group;type:text;not null;index:idx_request_content_group"`
+	TargetProvider     string `gorm:"column:target_provider;type:text;not null"`
+	TargetModel        string `gorm:"column:target_model;type:text;not null"`
+	InboundDialect     string `gorm:"column:inbound_dialect;type:text;not null"`
+	TargetDialect      string `gorm:"column:target_dialect;type:text;not null"`
+	ContentType        string `gorm:"column:content_type;type:text;not null"`
+	ContentText        string `gorm:"column:content_text;type:text;not null"`
+	EncryptionNonce    string `gorm:"column:encryption_nonce;type:text;not null;default:''"`
+	EncryptionKMSKeyID string `gorm:"column:encryption_kms_key_id;type:text;not null;default:''"`
+	Encrypted          bool   `gorm:"column:encrypted;not null;default:false"`
+	ContentBytes       int    `gorm:"column:content_bytes;not null"`
+	Truncated          bool   `gorm:"column:truncated;not null"`
+	Redacted           bool   `gorm:"column:redacted;not null"`
+	RedactionCount     int    `gorm:"column:redaction_count;not null"`
+	ImagesCaptured     bool   `gorm:"column:images_captured;not null"`
+	ImageCount         int    `gorm:"column:image_count;not null"`
+	SourceStatus       int    `gorm:"column:source_status;not null"`
+	RetentionUntil     string `gorm:"column:retention_until;type:text;not null;index:idx_request_content_retention"`
+	DeletionRequested  bool   `gorm:"column:deletion_requested;not null;default:false"`
 }
 
 func (contentCaptureRecord) TableName() string {
@@ -54,17 +65,112 @@ func (contentCaptureRecord) TableName() string {
 }
 
 type contentCaptureHeaderRecord struct {
-	ID        uint   `gorm:"column:id;primaryKey;autoIncrement"`
-	CaptureID uint   `gorm:"column:capture_id;not null;index:idx_request_content_header_capture"`
-	RequestID string `gorm:"column:request_id;type:text;not null;index:idx_request_content_header_request"`
-	Scope     string `gorm:"column:scope;type:text;not null"`
-	Name      string `gorm:"column:name;type:text;not null"`
-	Value     string `gorm:"column:value;type:text;not null"`
-	Redacted  bool   `gorm:"column:redacted;not null"`
+	ID                 uint   `gorm:"column:id;primaryKey;autoIncrement"`
+	CaptureID          uint   `gorm:"column:capture_id;not null;index:idx_request_content_header_capture"`
+	RequestID          string `gorm:"column:request_id;type:text;not null;index:idx_request_content_header_request"`
+	Scope              string `gorm:"column:scope;type:text;not null"`
+	Name               string `gorm:"column:name;type:text;not null"`
+	Value              string `gorm:"column:value;type:text;not null"`
+	EncryptionNonce    string `gorm:"column:encryption_nonce;type:text;not null;default:''"`
+	EncryptionKMSKeyID string `gorm:"column:encryption_kms_key_id;type:text;not null;default:''"`
+	Encrypted          bool   `gorm:"column:encrypted;not null;default:false"`
+	Redacted           bool   `gorm:"column:redacted;not null"`
 }
 
 func (contentCaptureHeaderRecord) TableName() string {
 	return "request_content_headers"
+}
+
+type contentCaptureKeyResolver interface {
+	ResolveContentCaptureKey(kmsKeyID string) ([]byte, error)
+}
+
+type envContentCaptureKeyResolver struct{}
+
+func (envContentCaptureKeyResolver) ResolveContentCaptureKey(kmsKeyID string) ([]byte, error) {
+	if strings.TrimSpace(kmsKeyID) == "" {
+		return nil, errors.New("content capture kms key id is required")
+	}
+	raw := strings.TrimSpace(os.Getenv("CONTENT_CAPTURE_KMS_KEY"))
+	if raw == "" {
+		return nil, errors.New("CONTENT_CAPTURE_KMS_KEY is required when content capture is enabled")
+	}
+	key, err := hex.DecodeString(raw)
+	if err != nil || len(key) != 32 {
+		key, err = base64.StdEncoding.DecodeString(raw)
+	}
+	if err != nil || len(key) != 32 {
+		return nil, errors.New("CONTENT_CAPTURE_KMS_KEY must be 32-byte hex or base64")
+	}
+	return key, nil
+}
+
+func configuredContentCaptureKMSKeyID(cfg *Config) string {
+	if cfg == nil {
+		return ""
+	}
+	if cfg.Server.ContentCapture.Enabled {
+		return cfg.Server.ContentCapture.Encryption.KMSKeyID
+	}
+	for _, caller := range cfg.Callers {
+		if caller.ContentCapture.Enabled {
+			return caller.ContentCapture.Encryption.KMSKeyID
+		}
+	}
+	for _, group := range cfg.Models {
+		if group.ContentCapture.Enabled {
+			return group.ContentCapture.Encryption.KMSKeyID
+		}
+	}
+	return ""
+}
+
+func encryptContentCaptureValue(resolver contentCaptureKeyResolver, kmsKeyID, plaintext string) (string, string, error) {
+	if resolver == nil {
+		return "", "", errors.New("content capture key resolver is required")
+	}
+	key, err := resolver.ResolveContentCaptureKey(kmsKeyID)
+	if err != nil {
+		return "", "", err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", "", err
+	}
+	ciphertext := gcm.Seal(nil, nonce, []byte(plaintext), []byte(kmsKeyID))
+	return base64.StdEncoding.EncodeToString(ciphertext), base64.StdEncoding.EncodeToString(nonce), nil
+}
+
+func decryptContentCaptureValue(key []byte, kmsKeyID, ciphertext, nonceText string) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce, err := base64.StdEncoding.DecodeString(nonceText)
+	if err != nil {
+		return "", err
+	}
+	ciphertextBytes, err := base64.StdEncoding.DecodeString(ciphertext)
+	if err != nil {
+		return "", err
+	}
+	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, []byte(kmsKeyID))
+	if err != nil {
+		return "", err
+	}
+	return string(plaintext), nil
 }
 
 type contentCaptureAuditRecord struct {
@@ -182,30 +288,38 @@ func (s *Service) captureContent(rc *requestContext, decision contentCaptureDeci
 	}
 	text, redactions := redactContentCaptureText(string(raw), decision.cfg)
 	text, truncated := truncateContentCaptureText(text, decision.cfg.MaxCaptureBytes)
+	plainBytes := len(text)
+	ciphertext, nonce, err := encryptContentCaptureValue(s.contentCaptureKeys, decision.cfg.Encryption.KMSKeyID, text)
+	if err != nil {
+		return
+	}
 	now := time.Now().UTC()
 	retentionUntil := now.Add(time.Duration(decision.cfg.RetentionDays) * 24 * time.Hour)
 	rec := &contentCaptureRecord{
-		RequestID:      rc.id,
-		TS:             formatUsageTime(now),
-		Scope:          scope,
-		Sequence:       seq,
-		CallerID:       rc.rec.CallerID,
-		TokenID:        publicTokenID(rc.rec.TokenID),
-		ResolvedGroup:  defaultString(rc.rec.ResolvedGroup, decision.group),
-		TargetProvider: rc.rec.TargetProvider,
-		TargetModel:    rc.rec.TargetModel,
-		InboundDialect: rc.rec.InboundDialect,
-		TargetDialect:  rc.rec.TargetDialect,
-		ContentType:    contentType,
-		ContentText:    text,
-		ContentBytes:   len(text),
-		Truncated:      truncated,
-		Redacted:       redactions > 0,
-		RedactionCount: redactions,
-		ImagesCaptured: decision.cfg.CaptureImages,
-		ImageCount:     imageCount,
-		SourceStatus:   sourceStatus,
-		RetentionUntil: formatUsageTime(retentionUntil),
+		RequestID:          rc.id,
+		TS:                 formatUsageTime(now),
+		Scope:              scope,
+		Sequence:           seq,
+		CallerID:           rc.rec.CallerID,
+		TokenID:            publicTokenID(rc.rec.TokenID),
+		ResolvedGroup:      defaultString(rc.rec.ResolvedGroup, decision.group),
+		TargetProvider:     rc.rec.TargetProvider,
+		TargetModel:        rc.rec.TargetModel,
+		InboundDialect:     rc.rec.InboundDialect,
+		TargetDialect:      rc.rec.TargetDialect,
+		ContentType:        contentType,
+		ContentText:        ciphertext,
+		EncryptionNonce:    nonce,
+		EncryptionKMSKeyID: decision.cfg.Encryption.KMSKeyID,
+		Encrypted:          true,
+		ContentBytes:       plainBytes,
+		Truncated:          truncated,
+		Redacted:           redactions > 0,
+		RedactionCount:     redactions,
+		ImagesCaptured:     decision.cfg.CaptureImages,
+		ImageCount:         imageCount,
+		SourceStatus:       sourceStatus,
+		RetentionUntil:     formatUsageTime(retentionUntil),
 	}
 	if err := s.usage.db.Create(rec).Error; err != nil {
 		return
@@ -223,13 +337,20 @@ func (s *Service) captureAllowedHeaders(captureID uint, requestID, scope string,
 		canonical := http.CanonicalHeaderKey(name)
 		for _, value := range header.Values(canonical) {
 			redacted, count := redactContentCaptureText(value, cfg)
+			ciphertext, nonce, err := encryptContentCaptureValue(s.contentCaptureKeys, cfg.Encryption.KMSKeyID, redacted)
+			if err != nil {
+				continue
+			}
 			_ = s.usage.db.Create(&contentCaptureHeaderRecord{
-				CaptureID: captureID,
-				RequestID: requestID,
-				Scope:     scope,
-				Name:      canonical,
-				Value:     redacted,
-				Redacted:  count > 0,
+				CaptureID:          captureID,
+				RequestID:          requestID,
+				Scope:              scope,
+				Name:               canonical,
+				Value:              ciphertext,
+				EncryptionNonce:    nonce,
+				EncryptionKMSKeyID: cfg.Encryption.KMSKeyID,
+				Encrypted:          true,
+				Redacted:           count > 0,
 			}).Error
 		}
 	}

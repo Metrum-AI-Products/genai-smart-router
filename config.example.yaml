@@ -192,7 +192,10 @@ server:
   # request/response/upstream-error content in separate relational tables keyed
   # by request_id. It is not diagnostics, metrics, or usage reporting. Delete
   # maintenance requires content:capture delete authorization for the captured
-  # row's project/environment domain, not only the actor's own domain.
+  # row's project/environment domain, not only the actor's own domain. Capture
+  # cannot be enabled unless encryption.enabled is true, kms_key_id identifies
+  # the managed key, and CONTENT_CAPTURE_KMS_KEY supplies the associated
+  # 32-byte hex/base64 key through the deployment secret boundary.
   content_capture:
     enabled: false
     retention_days: 30
@@ -210,8 +213,8 @@ server:
       kms_key_id: ""
   # Commercial retention foundation. Defaults are conservative and dry-run.
   # When dry_run is false, the CLI deletes at most one configured batch for
-  # usage_diagnostics and usage_detail only; usage_detail remains blocked until
-  # finalized daily rollups cover the candidate window.
+  # usage_diagnostics, content_capture, and usage_detail; usage_detail remains
+  # blocked until finalized daily rollups cover the candidate window.
   retention:
     enabled: false
     dry_run: true

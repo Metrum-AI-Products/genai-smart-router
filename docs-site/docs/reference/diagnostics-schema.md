@@ -502,7 +502,10 @@ This section is generated from the router usage and content-capture schema used 
 | `inbound_dialect` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `openai-chat`, `openai-responses`, `anthropic-messages` |
 | `target_dialect` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `openai-chat`, `openai-responses`, `anthropic-messages` |
 | `content_type` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
-| `content_text` | string | no | only when governed content capture is explicitly enabled | restricted; redacted governed content, not ordinary diagnostics | deployment-defined scalar value |
+| `content_text` | string | no | only when governed content capture is explicitly enabled | restricted; redacted and AES-256-GCM-encrypted governed content, not ordinary diagnostics | deployment-defined scalar value |
+| `encryption_nonce` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
+| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
+| `encrypted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 | `content_bytes` | integer | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `0` or positive integer |
 | `truncated` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 | `redacted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
@@ -527,7 +530,10 @@ This section is generated from the router usage and content-capture schema used 
 | `request_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `req_0123456789abcdef0123456789abcdef` |
 | `scope` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
 | `name` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
-| `value` | string | no | only when governed content capture is explicitly enabled | restricted; redacted governed content, not ordinary diagnostics | deployment-defined scalar value |
+| `value` | string | no | only when governed content capture is explicitly enabled | restricted; redacted and AES-256-GCM-encrypted governed content, not ordinary diagnostics | deployment-defined scalar value |
+| `encryption_nonce` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
+| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
+| `encrypted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 | `redacted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 
 ### `request_decision_shape_features`

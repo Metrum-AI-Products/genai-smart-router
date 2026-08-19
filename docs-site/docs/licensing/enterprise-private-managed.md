@@ -35,6 +35,11 @@ The plan should define:
 
 Procurement can use direct order, quote/invoice, or marketplace private offer when available. Share non-secret deployment details through approved private support and operations channels. Exchange credentials such as router tokens, provider keys, or license files only through the governed secret-manager or credential-handoff process defined for the deployment.
 
+For privacy roles, processing categories, subprocessors, and international
+transfers, use the canonical [DPA Overview](/docs/dpa), which links the
+current subprocessor and transfer schedules. Request engagement-specific
+executed copies from [contact@metrum.ai](mailto:contact@metrum.ai).
+
 ## Acceptance
 
 Before production use, validate the same client surfaces that will be used after rollout: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, Codex CLI, Claude Code, tool calls, image/VLM requests, streaming, and structured outputs as applicable.

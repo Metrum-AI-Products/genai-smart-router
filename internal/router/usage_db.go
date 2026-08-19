@@ -2498,8 +2498,28 @@ var usageReasoningTelemetryColumns = map[string]map[string]struct{}{
 	"request_attempts": {"reasoning_tokens": {}},
 }
 
+var usageContentCaptureEncryptionColumns = map[string]map[string]struct{}{
+	"request_content_captures": {
+		"encryption_nonce":      {},
+		"encryption_kms_key_id": {},
+		"encrypted":             {},
+	},
+	"request_content_headers": {
+		"encryption_nonce":      {},
+		"encryption_kms_key_id": {},
+		"encrypted":             {},
+	},
+}
+
 func verifyUsageLegacyBaseline(db *gorm.DB) error {
-	return ensureUsageRelationalSchemaExcept(db, usageReasoningTelemetryColumns)
+	excluded := map[string]map[string]struct{}{}
+	for table, columns := range usageReasoningTelemetryColumns {
+		excluded[table] = columns
+	}
+	for table, columns := range usageContentCaptureEncryptionColumns {
+		excluded[table] = columns
+	}
+	return ensureUsageRelationalSchemaExcept(db, excluded)
 }
 
 func applyUsageReasoningTelemetryMigration(db *gorm.DB) error {
@@ -2523,9 +2543,31 @@ func applyUsageReasoningTelemetryMigration(db *gorm.DB) error {
 }
 
 func verifyUsageReasoningTelemetryMigration(db *gorm.DB) error {
-	// This is intentionally the complete current contract, rather than merely
-	// a column-exists probe, so v2 verifies nullable/type/default semantics as
-	// well as every shared relational invariant.
+	return ensureUsageRelationalSchemaExcept(db, usageContentCaptureEncryptionColumns)
+}
+
+func applyUsageContentCaptureEncryptionMigration(db *gorm.DB) error {
+	for _, column := range []struct {
+		model any
+		field string
+	}{
+		{&contentCaptureRecord{}, "EncryptionNonce"},
+		{&contentCaptureRecord{}, "EncryptionKMSKeyID"},
+		{&contentCaptureRecord{}, "Encrypted"},
+		{&contentCaptureHeaderRecord{}, "EncryptionNonce"},
+		{&contentCaptureHeaderRecord{}, "EncryptionKMSKeyID"},
+		{&contentCaptureHeaderRecord{}, "Encrypted"},
+	} {
+		if !db.Migrator().HasColumn(column.model, column.field) {
+			if err := db.Migrator().AddColumn(column.model, column.field); err != nil {
+				return fmt.Errorf("add content capture encryption column %s: %w", column.field, err)
+			}
+		}
+	}
+	return verifyUsageContentCaptureEncryptionMigration(db)
+}
+
+func verifyUsageContentCaptureEncryptionMigration(db *gorm.DB) error {
 	return ensureUsageRelationalSchema(db)
 }
 
@@ -3939,7 +3981,7 @@ func runRetentionTable(tx *gorm.DB, class RetentionClassConfig, table retentionT
 
 func retentionPurgeSupported(dataClass string) bool {
 	switch normalizeRetentionDataClass(dataClass) {
-	case retentionDataClassUsageDiagnostics, retentionDataClassUsageDetail:
+	case retentionDataClassUsageDiagnostics, retentionDataClassContentCapture, retentionDataClassUsageDetail:
 		return true
 	default:
 		return false
@@ -4011,6 +4053,7 @@ func countHeldRowsBefore(tx *gorm.DB, table retentionTableSpec, cutoff string) (
 }
 
 type retentionDeleteKey struct {
+	ID           uint
 	RequestID    string
 	Seq          int
 	AttemptIndex int
@@ -4043,6 +4086,11 @@ func deleteRetentionBatch(tx *gorm.DB, table retentionTableSpec, cutoff string, 
 			res = tx.Where("request_id = ?", key.RequestID).Delete(&requestErrorRecord{})
 		case "request_upstream_error_details":
 			res = tx.Where("request_id = ? AND attempt_index = ? AND seq = ?", key.RequestID, key.AttemptIndex, key.Seq).Delete(&requestUpstreamErrorDetailRecord{})
+		case "request_content_captures":
+			if err := tx.Where("capture_id = ?", key.ID).Delete(&contentCaptureHeaderRecord{}).Error; err != nil {
+				return deleted, err
+			}
+			res = tx.Where("id = ?", key.ID).Delete(&contentCaptureRecord{})
 		case "request_usage":
 			res = tx.Where("request_id = ?", key.RequestID).Delete(&usageRecord{})
 		default:
@@ -4133,6 +4181,12 @@ func selectRetentionDeleteKeys(tx *gorm.DB, table retentionTableSpec, cutoff str
 			FROM request_upstream_error_details r
 			WHERE r.ts < ? ` + baseHoldClause + `
 			ORDER BY r.ts ASC, r.request_id ASC, r.attempt_index ASC, r.seq ASC
+			LIMIT ?`
+	case "request_content_captures":
+		query = `SELECT r.id AS id, r.request_id AS request_id
+			FROM request_content_captures r
+			WHERE r.ts < ? ` + baseHoldClause + `
+			ORDER BY r.ts ASC, r.request_id ASC, r.id ASC
 			LIMIT ?`
 	case "request_usage":
 		query = `SELECT r.request_id AS request_id

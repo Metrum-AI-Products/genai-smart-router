@@ -2046,11 +2046,14 @@ func validateContentCapture(label string, cfg ContentCaptureConfig) error {
 	if cfg.RedactBeforeStorage != nil && !*cfg.RedactBeforeStorage {
 		return fmt.Errorf("%s redact_before_storage must remain true", label)
 	}
-	if cfg.Encryption.Enabled {
-		return fmt.Errorf("%s encryption.enabled is not supported yet", label)
-	}
 	if cfg.Enabled && !cfg.CaptureRequest && !cfg.CaptureResponse && !cfg.CaptureUpstreamErrors {
 		return fmt.Errorf("%s enables content capture but no capture scope is enabled", label)
+	}
+	if cfg.Enabled && !cfg.Encryption.Enabled {
+		return fmt.Errorf("%s encryption.enabled must be true when content capture is enabled", label)
+	}
+	if cfg.Enabled && strings.TrimSpace(cfg.Encryption.KMSKeyID) == "" {
+		return fmt.Errorf("%s encryption.kms_key_id is required when content capture is enabled", label)
 	}
 	for _, header := range cfg.CaptureHeadersAllowlist {
 		if !contentCaptureHeaderAllowed(header) {

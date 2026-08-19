@@ -1668,9 +1668,12 @@ func TestUsageReasoningTelemetryMigrationAddsColumnsToAdoptedSchema(t *testing.T
 	if err := verifyUsageReasoningTelemetryMigration(runner.db); err != nil {
 		t.Fatalf("reasoning migration postcondition: %v", err)
 	}
+	if err := verifyUsageContentCaptureEncryptionMigration(runner.db); err != nil {
+		t.Fatalf("content-capture encryption migration postcondition: %v", err)
+	}
 	status, err := runner.Verify()
-	if err != nil || !status.Compatible || status.SchemaVersion != 2 || status.DataVersion != 0 || status.State != "pending" || len(status.Jobs) != 1 || status.Jobs[0].Key != "historical-usage-validation-v1" || status.Jobs[0].State != migrationDataJobPending {
-		t.Fatalf("reasoning migration must preserve schema v2 while the later non-serving data job remains pending: status=%+v err=%v", status, err)
+	if err != nil || !status.Compatible || status.SchemaVersion != 3 || status.DataVersion != 0 || status.State != "pending" || len(status.Jobs) != 1 || status.Jobs[0].Key != "historical-usage-validation-v1" || status.Jobs[0].State != migrationDataJobPending {
+		t.Fatalf("schema migrations must reach v3 while the later non-serving data job remains pending: status=%+v err=%v", status, err)
 	}
 	previousBinary, err := NewMigrationRunner(runner.db, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, usageMigrationDefinitions[:1])
 	if err != nil {
@@ -1722,7 +1725,7 @@ func TestUsageHistoricalValidationMigrationRequiresRestoreForPriorBinary(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	mergedStage3Definitions := append([]MigrationDefinition(nil), usageMigrationDefinitions...)
+	mergedStage3Definitions := append([]MigrationDefinition(nil), usageMigrationDefinitions[:3]...)
 	mergedStage3Definitions[2].RollbackClass = "package-only"
 	mergedStage3Definitions[2].LegacyManifestDigests = nil
 	mergedStage3Definitions[2] = FinalizeMigrationDefinition(mergedStage3Definitions[2])

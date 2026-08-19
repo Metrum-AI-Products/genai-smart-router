@@ -146,7 +146,7 @@ router-usage-report \
   --config /app/config/config.yaml
 ```
 
-With `dry_run: false`, the first implementation deletes at most one configured batch per table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_traffic_shape_events`, `request_upstream_shape_events`, `request_shapes`, `request_translation_shapes`, `request_translation_field_events`, `request_upstream_error_details`, `request_errors`) and `usage_detail` (`request_usage`). Other data classes are counted and recorded as blocked. `usage_detail` candidate rows remain blocked unless finalized daily rollups continuously cover the candidate window. Archive/export, scheduler support, browser write workflows, and generic purge execution for decision telemetry, security events, and content capture are future slices.
+With `dry_run: false`, the current implementation deletes at most one configured batch per table for `usage_diagnostics`, governed `content_capture` (including selected header children), and `usage_detail`. Other data classes are counted and recorded as blocked. `usage_detail` candidate rows remain blocked unless finalized daily rollups continuously cover the candidate window. Archive/export, scheduler support, browser write workflows, and generic purge execution for decision telemetry and security events are future slices.
 
 Use retention language carefully in commercial reviews:
 
@@ -154,7 +154,7 @@ Use retention language carefully in commercial reviews:
 - immutable billing/usage rollups are finalized daily aggregate rows generated from stored request-time facts;
 - archived exports are customer-controlled artifacts and are not created by the current dry-run foundation;
 - legal holds are scalar rows that block dry-run candidate counts by data class and timestamp range;
-- purge jobs are future execution workflows, not part of the current shipped foundation;
+- purge jobs execute only the explicitly supported bounded classes after dry-run review;
 - report and cost-allocation calculations should use stored request-time usage and cost fields, not current provider config repricing.
 
 The usage and reporting schema remains purely relational: scalar columns plus normalized child tables. Do not add JSON/JSONB, array columns, serialized blobs, or packed multi-value text fields for structured reporting data.

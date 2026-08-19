@@ -46,7 +46,7 @@ Expected diagnostic fields include request IDs, selected upstream/provider model
 
 Diagnostic rows exclude raw prompts, raw image payloads, raw router tokens, token hashes, provider API keys, raw tool outputs, full upstream headers, and unsanitized upstream response bodies.
 
-Governed content capture is a separate opt-in deployment mode. When enabled, captured content is redacted before storage, stored in dedicated relational tables keyed by `request_id`, and maintained through authorized `content:capture` delete/purge operations with audit rows. Delete-by-request is scoped to the captured row's caller project/environment domain. It is disabled by default and is not part of ordinary diagnostics or usage reports.
+Governed content capture is a separate opt-in deployment mode. When enabled, captured content is redacted and encrypted with AES-256-GCM before storage, stored in dedicated relational tables keyed by `request_id`, and maintained through authorized `content:capture` delete/purge operations with audit rows. Enablement requires `encryption.enabled: true`, a `kms_key_id`, and KMS-backed key material supplied out of band through a deployment secret. Delete-by-request is scoped to the captured row's caller project/environment domain. It is disabled by default and is not part of ordinary diagnostics or usage reports. Usage-database expiry is configured under `server.retention`.
 
 ## PII Filtering
 
@@ -67,6 +67,11 @@ Content-capture maintenance uses separate `content:capture` `delete`/`purge` aut
 When enabled, security access reports persist safe scalar events for authorized API calls, unauthorized or invalid caller-token attempts, model access denials, forbidden metrics/report/content operations, Basic admin authentication checks, and admin report reads or exports. Events can include caller identity, owner user, project, endpoint, method, status, timestamp, source IP or trusted-proxy-derived IP metadata when configured, user agent or client, public token ID, and coarse location enrichment when the deployment adds it.
 
 Security reports do not store raw prompts, raw images, raw bearer tokens, token hashes, provider keys, raw tool outputs, unsanitized upstream response bodies, raw cookies, OIDC tokens, or full config. Security report APIs require `admin:security_reports` authorization separately from ordinary usage report authorization.
+
+Security access events remain inside authenticated admin reports; public
+examples are anonymized and publish no employee identifiers. See the
+[Privacy Notice](../privacy) for hosted-docs processing and the linked
+managed-instance contracting materials.
 
 ## Private Upstreams
 

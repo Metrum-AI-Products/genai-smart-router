@@ -62,7 +62,7 @@ Commercial retention tables also follow the scalar relational rule:
 - `legal_holds`: active or released holds keyed by hold ID, data class, optional request ID, timestamp range, reason, subject, creator/releaser, and timestamps.
 - `legal_hold_audit_events`: scalar audit rows for hold create/release/update workflows.
 
-The current retention foundation initializes policy rows from `server.retention`, records dry-run counts for all known classes, and can delete one configured batch for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_traffic_shape_events`, `request_upstream_shape_events`, `request_shapes`, `request_translation_shapes`, `request_translation_field_events`, `request_upstream_error_details`, `request_errors`) and rollup-gated `usage_detail` (`request_usage`) when `dry_run: false`. Legal holds are checked by `data_class`, optional `request_id`, and timestamp range when counting skipped rows and selecting delete batches; request-scoped legal holds on child data classes also block `usage_detail` parent deletion so cascade rules cannot remove held child telemetry. Decision telemetry child rows are counted through their parent `request_usage.ts`. It does not archive content, schedule jobs, delete unsupported classes through the generic runner, or provide a full admin UI/API for hold lifecycle.
+The current retention foundation initializes policy rows from `server.retention`, records dry-run counts for all known classes, and can delete one configured batch for `usage_diagnostics`, governed `content_capture` (including selected header children), and rollup-gated `usage_detail` when `dry_run: false`. Legal holds are checked by `data_class`, optional `request_id`, and timestamp range when counting skipped rows and selecting delete batches; request-scoped legal holds on child data classes also block `usage_detail` parent deletion so cascade rules cannot remove held child telemetry. Decision telemetry child rows are counted through their parent `request_usage.ts`. It does not archive content, schedule jobs, delete unsupported classes through the generic runner, or provide a full admin UI/API for hold lifecycle.
 
 Normalized decision telemetry is an optional first-slice diagnostic feature under `server.decision_telemetry`. It is disabled by default and writes only safe scalar child rows:
 
@@ -86,8 +86,8 @@ Evidence completeness is a reporting assertion, not a routing decision. For non-
 
 Governed content-capture tables are separate from diagnostics and also follow the relational-only rule:
 
-- `request_content_captures`: redacted request, response, and upstream-error content rows with scalar request/route metadata, retention timestamp, redaction counts, and truncation flags.
-- `request_content_headers`: allowlisted captured header values keyed to a capture row; authorization, API-key, token, secret, cookie, and key-like headers must be rejected before storage.
+- `request_content_captures`: redacted and AES-256-GCM-encrypted request, response, and upstream-error content rows with scalar request/route metadata, retention timestamp, redaction counts, truncation flags, nonce, key identifier, and encrypted status.
+- `request_content_headers`: allowlisted encrypted header values keyed to a capture row, with separate nonce, key identifier, and encrypted-status columns; authorization, API-key, token, secret, cookie, and key-like headers must be rejected before storage.
 - `request_content_audit_events`: read/delete/purge audit events with actor caller metadata, action, request ID, affected row count, and reason.
 
 Content-capture rows are keyed by `request_id` so administrators can join them to `request_usage`. This is an explicit opt-in enterprise feature; default usage and diagnostics behavior remains metadata-only.

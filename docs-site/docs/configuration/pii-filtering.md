@@ -79,6 +79,15 @@ The router preserves image parts, tool-call IDs, tool schemas, usage fields, req
 
 TypeScript routing scripts receive the same redacted request object used for target selection and upstream calls, including `ctx.request.raw`. External routing policy services receive only safe derived context by default. If `external_policy.include_request: true` is explicitly enabled for a trusted policy service, the external payload includes redacted `request` and `text` fields. Placeholder mappings remain request-local and are not sent to policy code.
 
+## Governed content capture
+
+PII filtering does not enable durable capture. Governed content capture is a
+separate disabled-by-default feature. If explicitly enabled, it requires
+redaction plus AES-256-GCM application encryption, a configured `kms_key_id`,
+KMS-backed key material supplied through the deployment secret boundary, and
+authorized retention/deletion operations. Its usage-database expiry class is
+configured under `server.retention`.
+
 ## API Examples
 
 OpenAI Chat:

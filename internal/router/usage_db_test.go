@@ -1756,6 +1756,21 @@ func TestRetentionDryRunWritesJobRecordsAndHonorsLegalHold(t *testing.T) {
 	if rules != 1 {
 		t.Fatalf("policy rules=%d, want 1", rules)
 	}
+	cfg.DryRun = boolPtr(false)
+	purged, err := store.runRetentionJob(RetentionStatusOptions{Config: cfg, Now: now, RequestedBy: "unit-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := purged.TableResults[0]; got.DeletedRows != 1 || got.HeldRows != 1 || got.Status != "purged" {
+		t.Fatalf("unexpected held content-capture purge result: %#v", got)
+	}
+	var remaining []contentCaptureRecord
+	if err := store.db.Order("request_id").Find(&remaining).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 2 || remaining[0].RequestID != "req_retention_fresh" || remaining[1].RequestID != "req_retention_held" {
+		t.Fatalf("retention removed held/fresh rows: %#v", remaining)
+	}
 }
 
 func TestRetentionUsageDetailRequiresFinalizedRollupBeforeFutureDelete(t *testing.T) {
@@ -1989,7 +2004,7 @@ func TestRetentionDryRunAndPurgeDiagnosticsBatchHonorsRequestLegalHold(t *testin
 	}
 }
 
-func TestRetentionRunRecordsSafeErrorForUnsupportedDeleteClass(t *testing.T) {
+func TestRetentionRunPurgesContentCaptureAndHeaders(t *testing.T) {
 	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -1997,7 +2012,7 @@ func TestRetentionRunRecordsSafeErrorForUnsupportedDeleteClass(t *testing.T) {
 	defer store.Close()
 	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
 	old := now.Add(-10 * 24 * time.Hour)
-	if err := store.db.Create(&contentCaptureRecord{
+	capture := &contentCaptureRecord{
 		RequestID:      "req_retention_content",
 		TS:             formatUsageTime(old),
 		Scope:          contentCaptureScopeRequest,
@@ -2009,7 +2024,11 @@ func TestRetentionRunRecordsSafeErrorForUnsupportedDeleteClass(t *testing.T) {
 		ContentText:    "content",
 		ContentBytes:   len("content"),
 		RetentionUntil: formatUsageTime(old.Add(24 * time.Hour)),
-	}).Error; err != nil {
+	}
+	if err := store.db.Create(capture).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Create(&contentCaptureHeaderRecord{CaptureID: capture.ID, RequestID: capture.RequestID, Scope: capture.Scope, Name: "X-Test", Value: "ciphertext"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	cfg := retentionTestConfig(retentionDataClassContentCapture, 7)
@@ -2018,10 +2037,11 @@ func TestRetentionRunRecordsSafeErrorForUnsupportedDeleteClass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := result.TableResults[0]; got.Status != "blocked_not_implemented" || got.BlockedRows != 1 || got.DeletedRows != 0 {
-		t.Fatalf("unexpected unsupported delete result: %#v", got)
+	if got := result.TableResults[0]; got.Status != "purged" || got.BlockedRows != 0 || got.DeletedRows != 1 {
+		t.Fatalf("unexpected content-capture delete result: %#v", got)
 	}
-	assertTableCount(t, store, &contentCaptureRecord{}, 1)
+	assertTableCount(t, store, &contentCaptureRecord{}, 0)
+	assertTableCount(t, store, &contentCaptureHeaderRecord{}, 0)
 	var job retentionJobRecord
 	if err := store.db.First(&job, result.JobID).Error; err != nil {
 		t.Fatal(err)

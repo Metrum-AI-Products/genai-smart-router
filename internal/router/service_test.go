@@ -4135,12 +4135,28 @@ func TestEmbeddedDocsAreServedUnderDocs(t *testing.T) {
 		t.Fatalf("content-type=%q", ct)
 	}
 	for _, header := range []string{"X-Smart-LLMRouter-Version", "X-Smart-LLMRouter-Build-Date"} {
-		if rr.Header().Get(header) == "" {
-			t.Fatalf("missing docs version header %s", header)
+		if got := rr.Header().Get(header); got != "" {
+			t.Fatalf("public docs exposed build identity header %s=%q", header, got)
 		}
 	}
 	if got := rr.Header().Get("X-Smart-LLMRouter-Commit"); got != "" {
 		t.Fatalf("docs response exposed source-control commit header: %q", got)
+	}
+}
+
+func TestServiceServesSecurityTextBeforeDocsFallback(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/security.txt", nil)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "Contact: mailto:contact@metrum.ai") {
+		t.Fatalf("unexpected security.txt body=%q", rr.Body.String())
 	}
 }
 
@@ -9084,6 +9100,7 @@ func TestContentCaptureResponseStoresPreRestorePIIPlaceholders(t *testing.T) {
 		RetentionDays:       7,
 		CaptureResponse:     true,
 		RedactBeforeStorage: boolPtr(true),
+		Encryption:          testContentCaptureEncryption(t),
 	}
 	cfg.Models["default"] = ModelGroup{
 		Strategy:  "static",
@@ -9110,11 +9127,12 @@ func TestContentCaptureResponseStoresPreRestorePIIPlaceholders(t *testing.T) {
 	if err := svc.usage.db.Where("request_id = ? AND scope = ?", rr.Header().Get("X-Request-Id"), contentCaptureScopeResponse).First(&row).Error; err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(row.ContentText, "jane.doe@example.com") {
+	plaintext := testContentCapturePlaintext(t, row.ContentText, row.EncryptionNonce, row.EncryptionKMSKeyID)
+	if strings.Contains(row.ContentText, "jane.doe@example.com") || strings.Contains(plaintext, "jane.doe@example.com") {
 		t.Fatalf("response capture stored restored PII: %s", row.ContentText)
 	}
-	if !strings.Contains(row.ContentText, "[EMAIL_1]") {
-		t.Fatalf("response capture missing placeholder: %s", row.ContentText)
+	if !strings.Contains(plaintext, "[EMAIL_1]") {
+		t.Fatalf("response capture missing placeholder after decrypt: %s", plaintext)
 	}
 
 	cacheReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"Email jane.alt@example.com"}]}`))
@@ -9134,11 +9152,12 @@ func TestContentCaptureResponseStoresPreRestorePIIPlaceholders(t *testing.T) {
 	if err := svc.usage.db.Where("request_id = ? AND scope = ?", cacheRR.Header().Get("X-Request-Id"), contentCaptureScopeResponse).First(&cachedRow).Error; err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(cachedRow.ContentText, "jane.alt@example.com") {
+	cachedPlaintext := testContentCapturePlaintext(t, cachedRow.ContentText, cachedRow.EncryptionNonce, cachedRow.EncryptionKMSKeyID)
+	if strings.Contains(cachedRow.ContentText, "jane.alt@example.com") || strings.Contains(cachedPlaintext, "jane.alt@example.com") {
 		t.Fatalf("cached response capture stored restored PII: %s", cachedRow.ContentText)
 	}
-	if !strings.Contains(cachedRow.ContentText, "[EMAIL_1]") {
-		t.Fatalf("cached response capture missing placeholder: %s", cachedRow.ContentText)
+	if !strings.Contains(cachedPlaintext, "[EMAIL_1]") {
+		t.Fatalf("cached response capture missing placeholder: %s", cachedPlaintext)
 	}
 }
 
@@ -13049,6 +13068,43 @@ func TestOmittedModelWithoutConfiguredDefaultReturnsMissingModel(t *testing.T) {
 	}
 }
 
+func testContentCaptureEncryption(t *testing.T) ContentCaptureEncryptionConfig {
+	t.Helper()
+	t.Setenv("CONTENT_CAPTURE_KMS_KEY", strings.Repeat("11", 32))
+	return ContentCaptureEncryptionConfig{Enabled: true, KMSKeyID: "test-content-capture-key"}
+}
+
+func testContentCapturePlaintext(t *testing.T, ciphertext, nonce, kmsKeyID string) string {
+	t.Helper()
+	key, err := hex.DecodeString(strings.Repeat("11", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plaintext, err := decryptContentCaptureValue(key, kmsKeyID, ciphertext, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plaintext
+}
+
+func TestContentCaptureEnabledRequiresKeyMaterialAtStartup(t *testing.T) {
+	t.Setenv("CONTENT_CAPTURE_KMS_KEY", "")
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
+	cfg.Server.ContentCapture = ContentCaptureConfig{
+		Enabled:        true,
+		CaptureRequest: true,
+		Encryption:     ContentCaptureEncryptionConfig{Enabled: true, KMSKeyID: "missing-test-key"},
+	}
+	if svc, err := New(cfg); err == nil {
+		svc.Close()
+		t.Fatal("New() accepted enabled content capture without key material")
+	} else if !strings.Contains(err.Error(), "CONTENT_CAPTURE_KMS_KEY is required") {
+		t.Fatalf("New() error=%v", err)
+	}
+}
+
 func TestContentCaptureDisabledByDefault(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -13138,6 +13194,7 @@ func TestContentCaptureStoresRedactedRequestResponseAndAllowedHeaders(t *testing
 		CaptureResponse:         true,
 		CaptureHeadersAllowlist: []string{"User-Agent", "X-Trace-Id"},
 		RedactionPatterns:       []ContentCaptureRedactionRule{{Name: "email", Expression: `[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`}},
+		Encryption:              testContentCaptureEncryption(t),
 	}
 	svc, err := New(cfg)
 	if err != nil {
@@ -13163,10 +13220,15 @@ func TestContentCaptureStoresRedactedRequestResponseAndAllowedHeaders(t *testing
 	if len(rows) != 2 {
 		t.Fatalf("capture rows=%d, want 2: %#v", len(rows), rows)
 	}
-	joined := rows[0].ContentText + "\n" + rows[1].ContentText
+	if !rows[0].Encrypted || !rows[1].Encrypted {
+		t.Fatalf("capture rows were not marked encrypted: %#v", rows)
+	}
+	joinedCiphertext := rows[0].ContentText + "\n" + rows[1].ContentText
+	joined := testContentCapturePlaintext(t, rows[0].ContentText, rows[0].EncryptionNonce, rows[0].EncryptionKMSKeyID) +
+		"\n" + testContentCapturePlaintext(t, rows[1].ContentText, rows[1].EncryptionNonce, rows[1].EncryptionKMSKeyID)
 	for _, forbidden := range []string{testToken, cfg.Callers[0].TokenSHA256, "alice@example.com", "bob@example.com", "sk-test-secret", "rtr_should_not_store_secret", "do-not-store"} {
-		if strings.Contains(joined, forbidden) {
-			t.Fatalf("captured content leaked %q in %s", forbidden, joined)
+		if strings.Contains(joinedCiphertext, forbidden) || strings.Contains(joined, forbidden) {
+			t.Fatalf("captured content leaked %q", forbidden)
 		}
 	}
 	for _, want := range []string{"[REDACTED_EMAIL]", "[REDACTED_SECRET]"} {
@@ -13191,7 +13253,10 @@ func TestContentCaptureStoresRedactedRequestResponseAndAllowedHeaders(t *testing
 	}
 	headerText := ""
 	for _, h := range headers {
-		headerText += h.Name + "=" + h.Value + "\n"
+		if !h.Encrypted {
+			t.Fatalf("header was not encrypted: %#v", h)
+		}
+		headerText += h.Name + "=" + testContentCapturePlaintext(t, h.Value, h.EncryptionNonce, h.EncryptionKMSKeyID) + "\n"
 	}
 	if !strings.Contains(headerText, "User-Agent=capture-test") || !strings.Contains(headerText, "X-Trace-Id=trace-123") {
 		t.Fatalf("allowed headers not captured: %s", headerText)
@@ -13214,6 +13279,7 @@ func TestContentCaptureStoresSanitizedUpstreamError(t *testing.T) {
 		Enabled:               true,
 		RetentionDays:         7,
 		CaptureUpstreamErrors: true,
+		Encryption:            testContentCaptureEncryption(t),
 	}
 	svc, err := New(cfg)
 	if err != nil {
@@ -13235,13 +13301,14 @@ func TestContentCaptureStoresSanitizedUpstreamError(t *testing.T) {
 	if row.SourceStatus != http.StatusBadGateway {
 		t.Fatalf("source status=%d", row.SourceStatus)
 	}
+	plaintext := testContentCapturePlaintext(t, row.ContentText, row.EncryptionNonce, row.EncryptionKMSKeyID)
 	for _, forbidden := range []string{"sk-leaky-secret", "secret body"} {
-		if strings.Contains(row.ContentText, forbidden) {
+		if strings.Contains(row.ContentText, forbidden) || strings.Contains(plaintext, forbidden) {
 			t.Fatalf("upstream error capture leaked %q in %s", forbidden, row.ContentText)
 		}
 	}
-	if !strings.Contains(row.ContentText, "upstream error body redacted") {
-		t.Fatalf("upstream error capture missing sanitized marker: %s", row.ContentText)
+	if !strings.Contains(plaintext, "upstream error body redacted") {
+		t.Fatalf("upstream error capture missing sanitized marker: %s", plaintext)
 	}
 }
 
@@ -13261,7 +13328,7 @@ func TestContentCaptureAdminDeleteRequiresContentAdminAndAudits(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
-	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
+	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true, Encryption: testContentCaptureEncryption(t)}
 	cfg.Callers = append(cfg.Callers, CallerConfig{
 		ID:           "content-admin",
 		User:         "content-admin",
@@ -13339,7 +13406,7 @@ func TestContentCaptureAdminDeleteRequiresTargetDomainAuthorization(t *testing.T
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
-	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
+	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true, Encryption: testContentCaptureEncryption(t)}
 	cfg.Callers = append(cfg.Callers,
 		CallerConfig{
 			ID:           "content-admin",
@@ -13417,7 +13484,7 @@ func TestContentCaptureAdminDeleteAllowsTargetDomainOnlyGrant(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
-	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
+	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true, Encryption: testContentCaptureEncryption(t)}
 	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
 		Enabled: true,
 		Policy: []string{
@@ -13495,7 +13562,7 @@ func TestContentCaptureAdminDeleteUsesCaptureTimeDomain(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
-	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
+	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true, Encryption: testContentCaptureEncryption(t)}
 	cfg.Callers = append(cfg.Callers,
 		CallerConfig{
 			ID:           "old-domain-admin",

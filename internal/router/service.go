@@ -30,27 +30,28 @@ import (
 )
 
 type Service struct {
-	cfg               *Config
-	mux               *http.ServeMux
-	httpClient        *http.Client
-	callersBySum      map[string]*callerRuntime
-	adminBasic        map[string]adminBasicRuntime
-	adminOIDC         *adminOIDCRuntime
-	adminSession      *adminSessionStore
-	authorizer        *authorizer
-	quota             *quotaStore
-	cache             *responseCache
-	logger            *requestLogger
-	usage             *usageStore
-	migrationStatusFn func() (MigrationStatus, error)
-	metrics           *metricsStore
-	trafficShape      *trafficShapeManager
-	license           *licenseManager
-	bridgeSessions    *bridgeSessionBackends
-	scripts           map[string]*scriptStrategy
-	observations      *dynamicObservationStore
-	shaping           *upstreamShapeManager
-	reportCursor      [32]byte
+	cfg                *Config
+	mux                *http.ServeMux
+	httpClient         *http.Client
+	callersBySum       map[string]*callerRuntime
+	adminBasic         map[string]adminBasicRuntime
+	adminOIDC          *adminOIDCRuntime
+	adminSession       *adminSessionStore
+	authorizer         *authorizer
+	quota              *quotaStore
+	cache              *responseCache
+	logger             *requestLogger
+	usage              *usageStore
+	migrationStatusFn  func() (MigrationStatus, error)
+	metrics            *metricsStore
+	trafficShape       *trafficShapeManager
+	license            *licenseManager
+	bridgeSessions     *bridgeSessionBackends
+	scripts            map[string]*scriptStrategy
+	observations       *dynamicObservationStore
+	shaping            *upstreamShapeManager
+	contentCaptureKeys contentCaptureKeyResolver
+	reportCursor       [32]byte
 }
 
 type adminBasicRuntime struct {
@@ -135,6 +136,12 @@ func New(cfg *Config) (*Service, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	contentCaptureKeys := contentCaptureKeyResolver(envContentCaptureKeyResolver{})
+	if cfg.contentCaptureEnabled() {
+		if _, err := contentCaptureKeys.ResolveContentCaptureKey(configuredContentCaptureKMSKeyID(cfg)); err != nil {
+			return nil, fmt.Errorf("initialize content capture encryption: %w", err)
+		}
+	}
 	quota, err := newQuotaStore(cfg.StatePath, cfg)
 	if err != nil {
 		return nil, err
@@ -157,22 +164,23 @@ func New(cfg *Config) (*Service, error) {
 		return nil, err
 	}
 	s := &Service{
-		cfg:            cfg,
-		mux:            http.NewServeMux(),
-		httpClient:     newUpstreamHTTPClient(cfg.Server.Upstream),
-		callersBySum:   map[string]*callerRuntime{},
-		adminBasic:     map[string]adminBasicRuntime{},
-		adminSession:   newAdminSessionStore(cfg.Server.AdminAuth.Sessions),
-		quota:          quota,
-		cache:          newCache(cfg.Server.Cache),
-		logger:         logger,
-		usage:          usage,
-		metrics:        newMetricsStore(),
-		trafficShape:   newTrafficShapeManager(),
-		bridgeSessions: bridgeSessions,
-		scripts:        map[string]*scriptStrategy{},
-		observations:   newDynamicObservationStore(),
-		shaping:        newUpstreamShapeManager(),
+		cfg:                cfg,
+		mux:                http.NewServeMux(),
+		httpClient:         newUpstreamHTTPClient(cfg.Server.Upstream),
+		callersBySum:       map[string]*callerRuntime{},
+		adminBasic:         map[string]adminBasicRuntime{},
+		adminSession:       newAdminSessionStore(cfg.Server.AdminAuth.Sessions),
+		quota:              quota,
+		cache:              newCache(cfg.Server.Cache),
+		logger:             logger,
+		usage:              usage,
+		metrics:            newMetricsStore(),
+		trafficShape:       newTrafficShapeManager(),
+		bridgeSessions:     bridgeSessions,
+		scripts:            map[string]*scriptStrategy{},
+		observations:       newDynamicObservationStore(),
+		shaping:            newUpstreamShapeManager(),
+		contentCaptureKeys: contentCaptureKeys,
 	}
 	if _, err := rand.Read(s.reportCursor[:]); err != nil {
 		_ = quota.Close()
@@ -304,6 +312,7 @@ func (s *Service) routes() {
 	s.mux.HandleFunc("POST /v1/messages", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "anthropic") })
 	s.mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "openai-chat") })
 	s.mux.HandleFunc("POST /v1/responses", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "openai-responses") })
+	s.mux.HandleFunc("GET /.well-known/security.txt", securityTextHandler)
 	s.mux.Handle("GET /", docsHandler())
 }
 

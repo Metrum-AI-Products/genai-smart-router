@@ -24,6 +24,26 @@ GenAI Smart Router centralizes caller access, provider credentials, admin access
 
 Examples use placeholder tokens, placeholder hosts, and sample model group names. Operational diagnostics and reports expose request IDs, caller labels, selected provider/model, status, timing, token, cost, and sanitized error fields so administrators can investigate without sharing credentials or customer content.
 
+Usage-database expiry is configured under `server.retention`. Governed content
+capture remains disabled unless explicitly enabled; enabled capture requires
+AES-256-GCM application encryption, a configured `kms_key_id`, and KMS-backed
+key material supplied through the deployment secret boundary.
+
+`security_access_events` remain available only through authenticated,
+authorized admin reports. Public documentation and examples are anonymized.
+The 2026-08-19 employment-privacy review of this public surface found no
+employee identifiers published; access reporting stays inside authenticated
+admin reports with retention class `security_access_events`.
+
+Managed-instance privacy and contracting information has one canonical home in
+the [Privacy Notice](../privacy) and linked DPA, subprocessor, and transfer
+materials.
+
+Hosted docs use a same-origin script policy and load the self-hosted ElevenLabs
+widget only after affirmative consent. The Permissions Policy allows
+`microphone=(self)` solely so a consented voice chat can request microphone
+access; camera, geolocation, payment, USB, and browsing topics are disabled.
+
 ## Related Pages
 
 - [Admin Authentication](../configuration/admin-authentication)

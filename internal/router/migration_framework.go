@@ -26,8 +26,9 @@ const usageMigrationScope = "usage"
 const usageLegacyBaselineMigrationID = 2026071901
 const usageReasoningTelemetryMigrationID = 2026072301
 const usageHistoricalValidationMigrationID = 2026080501
+const usageContentCaptureEncryptionMigrationID = 2026081901
 
-var usageMigrationCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 1}
+var usageMigrationCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 3, MinData: 0, MaxData: 1}
 
 // usageMigrationDefinitions is the sole owner of usage application schema.
 // The first migration creates fresh-install tables/indexes through its reviewed
@@ -101,6 +102,25 @@ var usageMigrationDefinitions = []MigrationDefinition{{
 	DataJobKey:            "historical-usage-validation-v1",
 	Apply:                 applyUsageHistoricalValidationMigration,
 	Verify:                verifyUsageReasoningTelemetryMigration,
+}, {
+	ID:               usageContentCaptureEncryptionMigrationID,
+	Scope:            usageMigrationScope,
+	Name:             "add content-capture encryption metadata",
+	Release:          "2026.8",
+	Checksum:         "66c60d75135cc458cbae0ab4866f8758a06b830880f5ea3b3d1f9c9fe0c9984a",
+	SchemaVersion:    3,
+	DataVersion:      0,
+	Transactional:    true,
+	MaintenanceMode:  "online",
+	RollbackClass:    "restore-required",
+	HandlerKey:       "usage.content-capture-encryption.apply.v1@applyUsageContentCaptureEncryptionMigration",
+	PostconditionKey: "usage.content-capture-encryption.schema.v1@verifyUsageContentCaptureEncryptionMigration",
+	Dependencies:     []int{usageHistoricalValidationMigrationID},
+	ExecutionMode:    "transactional",
+	LockClass:        "online",
+	TimeoutClass:     "bounded",
+	Apply:            applyUsageContentCaptureEncryptionMigration,
+	Verify:           verifyUsageContentCaptureEncryptionMigration,
 }}
 
 func init() {

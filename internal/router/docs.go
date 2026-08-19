@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"path"
 	"strings"
-
-	"smart-llmrouter/internal/buildinfo"
 )
 
 //go:embed all:docsdist
@@ -22,6 +20,7 @@ func docsHandler() http.Handler {
 		return http.NotFoundHandler()
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		setPublicDocsSecurityHeaders(w)
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.NotFound(w, r)
 			return
@@ -71,7 +70,8 @@ func docsHandler() http.Handler {
 
 func docsFallbackRouteAllowed(name string) bool {
 	switch strings.Trim(strings.TrimSuffix(name, "/"), "/") {
-	case "solution-brief":
+	case "solution-brief", "privacy", "dpa", "subprocessors", "transfer-schedule",
+		"legal/dpa", "legal/subprocessors", "legal/transfer-schedule":
 		return true
 	default:
 		return false
@@ -105,7 +105,6 @@ func serveEmbeddedDocStatus(w http.ResponseWriter, r *http.Request, root fs.FS, 
 			if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
 				w.Header().Set("Content-Type", ct)
 			}
-			setDocsVersionHeaders(w)
 			if status == http.StatusOK {
 				http.ServeContent(w, r, name, stat.ModTime(), bytes.NewReader(data))
 			} else {
@@ -130,7 +129,6 @@ func writeFallbackDocs(w http.ResponseWriter) {
 
 func writeFallbackDocsStatus(w http.ResponseWriter, status int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	setDocsVersionHeaders(w)
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte(`<!doctype html>
 <html lang="en">
@@ -149,8 +147,20 @@ func writeFallbackDocsStatus(w http.ResponseWriter, status int) {
 </html>`))
 }
 
-func setDocsVersionHeaders(w http.ResponseWriter) {
-	info := buildinfo.Current()
-	w.Header().Set("X-Smart-LLMRouter-Version", info.Version)
-	w.Header().Set("X-Smart-LLMRouter-Build-Date", info.BuildDate)
+func setPublicDocsSecurityHeaders(w http.ResponseWriter) {
+	w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' https://api.elevenlabs.io wss://api.elevenlabs.io wss://livekit.rtc.elevenlabs.io; media-src 'self' blob:; worker-src 'self' blob:")
+	// The consented ConvAI voice control needs same-origin microphone access.
+	w.Header().Set("Permissions-Policy", "camera=(), geolocation=(), payment=(), usb=(), browsing-topics=(), microphone=(self)")
+	w.Header().Del("Server")
+	w.Header().Del("X-Smart-LLMRouter-Version")
+	w.Header().Del("X-Smart-LLMRouter-Build-Date")
+}
+
+func securityTextHandler(w http.ResponseWriter, r *http.Request) {
+	setPublicDocsSecurityHeaders(w)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = io.WriteString(w, "Contact: mailto:contact@metrum.ai\nExpires: 2027-08-19T00:00:00.000Z\nPreferred-Languages: en\nPolicy: mailto:contact@metrum.ai\n")
 }
