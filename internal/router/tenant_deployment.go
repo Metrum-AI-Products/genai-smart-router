@@ -672,3 +672,60 @@ func actionIndex(action string) int {
 	}
 	return len(tenantDeploymentActionOrder)
 }
+
+const tenantDeploymentRepairStuckErrorClass = "stuck_attempt_repaired"
+
+// RepairStuckDeployment marks long-running attempts failed and resets retryable
+// operator-required or in-flight jobs so Deploy can resume without manual edits.
+func (e *TenantDeploymentEngine) RepairStuckDeployment(ctx context.Context, jobID string, stuckAfter time.Duration) (TenantDeploymentStatus, bool, error) {
+	tenantDeploymentProcessLock.Lock()
+	defer tenantDeploymentProcessLock.Unlock()
+
+	var job tenantDeploymentJobRecord
+	if err := e.store.db.WithContext(ctx).Where("job_id = ?", jobID).First(&job).Error; err != nil {
+		return TenantDeploymentStatus{}, false, err
+	}
+	if job.State == TenantDeploymentReady || job.State == TenantDeploymentDeleted {
+		return statusFromDeploymentRecord(job), false, nil
+	}
+
+	cutoff := time.Now().UTC().Add(-stuckAfter)
+	var stuck []tenantDeploymentAttemptRecord
+	if err := e.store.db.WithContext(ctx).
+		Where("job_id = ? AND state = ? AND started_at < ?", jobID, "running", cutoff).
+		Find(&stuck).Error; err != nil {
+		return TenantDeploymentStatus{}, false, err
+	}
+	repaired := false
+	for _, attempt := range stuck {
+		if err := e.finishAttempt(ctx, attempt.ID, "failed", tenantDeploymentRepairStuckErrorClass); err != nil {
+			return TenantDeploymentStatus{}, repaired, err
+		}
+		repaired = true
+	}
+
+	needsJobRepair := job.State == TenantDeploymentOperatorRequired ||
+		(repaired && (job.State == TenantDeploymentProvisioning || job.State == TenantDeploymentValidating))
+	if needsJobRepair {
+		durable, err := e.hasDurableState(ctx, job.InstanceID)
+		if err != nil {
+			return TenantDeploymentStatus{}, repaired, err
+		}
+		if job.State == TenantDeploymentOperatorRequired && durable {
+			return statusFromDeploymentRecord(job), repaired, nil
+		}
+		nextAction := job.NextAction
+		if nextAction == "" || nextAction == "operator_review" {
+			nextAction = job.CompletedAction
+			if nextAction == "" && len(tenantDeploymentActionOrder) > 0 {
+				nextAction = tenantDeploymentActionOrder[0]
+			}
+		}
+		if err := e.updateJob(ctx, jobID, TenantDeploymentFailed, job.CompletedAction, nextAction, tenantDeploymentRepairStuckErrorClass, true, job.ActivationPassed); err != nil {
+			return TenantDeploymentStatus{}, repaired, err
+		}
+		repaired = true
+	}
+	status, err := e.store.Status(ctx, jobID, job.ProfileID)
+	return status, repaired, err
+}

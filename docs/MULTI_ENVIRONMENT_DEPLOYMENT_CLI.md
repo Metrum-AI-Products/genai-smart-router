@@ -8,7 +8,7 @@ Lifecycle verbs remain deterministic `plan`, idempotent `deploy`, exact-job
 `status`, and separately approved `delete`. Inventory verbs are
 `tenants list|get|sync` and `licenses list|get|register`. Operator convenience
 verbs under
-`customer write-manifest|create|status|smoke|grant-caller|update-config|delete`
+`customer publish-runtime-bundle|prepare-runtime-bundle|bootstrap|write-manifest|create|status|smoke|grant-caller|update-config|repair|delete`
 orchestrate disposable SQLite Fleet instances from the same binary package
 without a source tree or Python helper. They consume externally signed intents
 and delete approvals, call `plan`/`deploy`/`delete`, and never become a second

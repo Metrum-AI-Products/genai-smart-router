@@ -23,7 +23,7 @@ type customerCommonFlags struct {
 
 func fleetCustomer(args []string) {
 	if len(args) == 0 {
-		die("usage: metrum-genai-smartrouter-fleetctl customer <write-manifest|create|status|smoke|grant-caller|update-config|delete> [flags]")
+		die("usage: metrum-genai-smartrouter-fleetctl customer <write-manifest|create|status|smoke|grant-caller|update-config|publish-runtime-bundle|prepare-runtime-bundle|bootstrap|repair|delete> [flags]")
 	}
 	switch args[0] {
 	case "write-manifest":
@@ -38,6 +38,14 @@ func fleetCustomer(args []string) {
 		customerGrantCaller(args[1:])
 	case "update-config":
 		customerUpdateConfig(args[1:])
+	case "publish-runtime-bundle":
+		customerPublishRuntimeBundle(args[1:])
+	case "prepare-runtime-bundle":
+		customerPrepareRuntimeBundle(args[1:])
+	case "bootstrap":
+		customerBootstrap(args[1:])
+	case "repair":
+		customerRepair(args[1:])
 	case "delete":
 		customerDelete(args[1:])
 	default:
@@ -79,16 +87,32 @@ func customerWriteManifest(args []string) {
 func customerCreate(args []string) {
 	fs := flag.NewFlagSet("customer create", flag.ExitOnError)
 	customerID := fs.String("customer-id", "", "optional; must match signed intent when set")
-	intentPath := fs.String("intent", "", "mode-0600 externally signed Fleet intent (required)")
+	intentPath := fs.String("intent", "", "mode-0600 externally signed Fleet intent (required unless --sign-with-key signs workspace manifest)")
+	signWithKey := fs.String("sign-with-key", "", "optional mode-0600 lifecycle approval private key; signs workspace manifest before deploy")
+	autoSmoke := fs.Bool("auto-smoke", false, "run customer smoke after successful deploy")
+	smokeToken := fs.String("token-file", "", "caller token file for --auto-smoke")
+	smokeModel := fs.String("model", "", "model group for --auto-smoke")
 	deleteFirst := fs.Bool("delete-first", false, "run signed delete for an existing workspace job before create")
 	confirmFile := fs.String("confirm-file", "", "mode-0600 externally signed delete approval (required with --delete-first)")
 	rdsAdmission := fs.String("rds-admission-file", "", "mode-0600 externally issued RDS admission when deleting a dedicated-RDS job")
+	resume := fs.Bool("resume", true, "repair retryable stuck jobs before deploy")
 	_ = fs.Parse(args)
-	if strings.TrimSpace(*intentPath) == "" {
-		die("customer create requires --intent (externally signed); use write-manifest then the approved signing workflow")
+	if strings.TrimSpace(*intentPath) == "" && strings.TrimSpace(*signWithKey) == "" {
+		die("customer create requires --intent (externally signed) or --sign-with-key to sign workspace manifest.json")
 	}
-	env := peekIntentEnvelope(*intentPath)
-	id := env.Manifest.CustomerID
+	var id string
+	if strings.TrimSpace(*intentPath) != "" {
+		env := peekIntentEnvelope(*intentPath)
+		id = env.Manifest.CustomerID
+	} else if strings.TrimSpace(*customerID) != "" {
+		var err error
+		id, err = normalizeCustomerID(*customerID)
+		if err != nil {
+			die("%v", err)
+		}
+	} else {
+		die("customer create with --sign-with-key requires --customer-id or a prior write-manifest in the workspace")
+	}
 	if strings.TrimSpace(*customerID) != "" {
 		normalized, err := normalizeCustomerID(*customerID)
 		if err != nil {
@@ -99,6 +123,9 @@ func customerCreate(args []string) {
 		}
 	}
 	ws := prepareCustomerWorkspace(id)
+	if strings.TrimSpace(*intentPath) == "" {
+		*intentPath = signWorkspaceManifest(ws, *signWithKey)
+	}
 	if *deleteFirst {
 		if strings.TrimSpace(*confirmFile) == "" {
 			die("--delete-first requires --confirm-file (externally signed delete approval)")
@@ -116,12 +143,26 @@ func customerCreate(args []string) {
 	if err != nil {
 		die("%v", err)
 	}
+	if *resume {
+		repairCustomerJobIfNeeded(ws, fleetBin, *intentPath, fleetEnv, 15)
+	}
 	plan, _ := planAndDeployIntent(ws, fleetBin, *intentPath, fleetEnv)
 	hostname := plan.Hostname
 	if hostname == "" {
 		hostname = customerHostname(ws.CustomerID)
 	}
 	fmt.Printf("SQLite create ready: https://%s/readyz\n", hostname)
+	if *autoSmoke {
+		if strings.TrimSpace(*smokeModel) == "" {
+			die("--auto-smoke requires --model")
+		}
+		if err := runCustomerSmoke(ws, smokeOptions{
+			TokenFile: *smokeToken,
+			Model:     *smokeModel,
+		}); err != nil {
+			die("auto-smoke: %v", err)
+		}
+	}
 }
 
 func customerStatus(args []string) {
@@ -204,21 +245,18 @@ func customerGrantCaller(args []string) {
 	envName := fs.String("env", "nonproduction", "caller environment")
 	key := fs.String("key", "", "optional key slug")
 	allowRaw := fs.String("allow", "", "comma-separated model groups")
+	allowFromConfig := fs.Bool("allow-from-config", false, "grant access to every model group in the current runtime bundle")
 	tokenOut := fs.String("token-out", "", "mode-0600 token output path; refuse overwrite")
 	_ = fs.Parse(args)
 	ws := requireCustomerID(common)
 	requireExplicitRefs(common)
-	if strings.TrimSpace(*ownerUser) == "" || strings.TrimSpace(*project) == "" || strings.TrimSpace(*allowRaw) == "" || strings.TrimSpace(*tokenOut) == "" {
-		die("grant-caller requires --owner-user, --project, --allow, and --token-out")
+	if strings.TrimSpace(*ownerUser) == "" || strings.TrimSpace(*project) == "" || strings.TrimSpace(*tokenOut) == "" {
+		die("grant-caller requires --owner-user, --project, and --token-out")
+	}
+	if !*allowFromConfig && strings.TrimSpace(*allowRaw) == "" {
+		die("grant-caller requires --allow or --allow-from-config")
 	}
 	allow := splitCSV(*allowRaw)
-	if len(allow) == 0 {
-		die("--allow requires at least one model group")
-	}
-	tokenGen, err := resolvePackagedBinary(tokenGenBinaryName)
-	if err != nil {
-		die("%v", err)
-	}
 	ctx := context.Background()
 	fleetCfg, _, err := assumeFleetRole(ctx, ws)
 	if err != nil {
@@ -229,6 +267,20 @@ func customerGrantCaller(args []string) {
 		die("runtime bundle reference missing; pass --runtime-bundle-ref")
 	}
 	bundle, err := fetchRuntimeBundle(ctx, fleetCfg, sourceRef)
+	if err != nil {
+		die("%v", err)
+	}
+	if *allowFromConfig {
+		groups, err := modelGroupsFromConfig(bundle.ConfigYAML)
+		if err != nil {
+			die("allow-from-config: %v", err)
+		}
+		allow = groups
+	}
+	if len(allow) == 0 {
+		die("--allow requires at least one model group")
+	}
+	tokenGen, err := resolvePackagedBinary(tokenGenBinaryName)
 	if err != nil {
 		die("%v", err)
 	}
@@ -258,39 +310,12 @@ func customerGrantCaller(args []string) {
 	if strings.TrimSpace(generated.Token) == "" {
 		die("router-token-gen returned empty token")
 	}
-	callerID, _ := generated.Caller["id"].(string)
-	owner, _ := generated.Caller["owner_user"].(string)
-	if owner == "" {
-		owner, _ = generated.Caller["user"].(string)
+	callerRow := generated.Caller
+	if callerRow == nil {
+		callerRow = map[string]any{}
 	}
-	projectVal, _ := generated.Caller["project"].(string)
-	environment, _ := generated.Caller["environment"].(string)
-	tokenID, _ := generated.Caller["token_id"].(string)
-	if tokenID == "" {
-		tokenID = generated.TokenID
-	}
-	tokenSHA, _ := generated.Caller["token_sha256"].(string)
-	if tokenSHA == "" {
-		tokenSHA = generated.TokenSHA256
-	}
-	callerAllow := allow
-	if rawAllow, ok := generated.Caller["allow"].([]any); ok && len(rawAllow) > 0 {
-		callerAllow = nil
-		for _, item := range rawAllow {
-			if s, ok := item.(string); ok && s != "" {
-				callerAllow = append(callerAllow, s)
-			}
-		}
-	}
-	callerRow := map[string]any{
-		"id":            callerID,
-		"user":          owner,
-		"project":       projectVal,
-		"environment":   environment,
-		"token_id":      tokenID,
-		"token_sha256":  tokenSHA,
-		"allow":         callerAllow,
-		"metrics_admin": false,
+	if _, ok := callerRow["metrics_admin"]; !ok {
+		callerRow["metrics_admin"] = false
 	}
 	outPath := expandHome(*tokenOut)
 	if fileExists(outPath) {
@@ -304,7 +329,7 @@ func customerGrantCaller(args []string) {
 	if err != nil {
 		die("%v", err)
 	}
-	newRef, err := publishRuntimeBundle(ctx, ws.CustomerID, runtimeBundle{ConfigYAML: patched, EnvJSON: bundle.EnvJSON})
+	newRef, err := publishRuntimeBundleOperator(ctx, ws.CustomerID, runtimeBundle{ConfigYAML: patched, EnvJSON: bundle.EnvJSON})
 	if err != nil {
 		die("%v", err)
 	}
@@ -354,7 +379,7 @@ func customerUpdateConfig(args []string) {
 	if err != nil {
 		die("%v", err)
 	}
-	newRef, err := publishRuntimeBundle(ctx, ws.CustomerID, runtimeBundle{ConfigYAML: patched, EnvJSON: bundle.EnvJSON})
+	newRef, err := publishRuntimeBundleOperator(ctx, ws.CustomerID, runtimeBundle{ConfigYAML: patched, EnvJSON: bundle.EnvJSON})
 	if err != nil {
 		die("%v", err)
 	}

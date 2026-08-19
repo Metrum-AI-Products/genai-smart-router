@@ -404,6 +404,39 @@ func TestTenantDeploymentAdaptersFailureClassificationAndResume(t *testing.T) {
 		t.Fatalf("failed action was not retried: attempts=%d err=%v", routerAttempts, err)
 	}
 }
+
+func TestTenantDeploymentRepairStuckDeploymentResumesRetryableJob(t *testing.T) {
+	_, _, plan := tenantDeploymentFixture(t)
+	store, fake, engine, _ := openTenantDeploymentTestEngine(t)
+	fake.FailAction = "router"
+	fake.FailClass = "synthetic_router_failure"
+	status, err := engine.Deploy(context.Background(), plan, "intent-a")
+	if err == nil || status.State != TenantDeploymentFailed || !status.Retryable {
+		t.Fatalf("failed deploy = %+v err=%v", status, err)
+	}
+	now := time.Now().UTC()
+	if err := store.db.Model(&tenantDeploymentAttemptRecord{}).
+		Where("job_id = ? AND action = ? AND attempt = ?", plan.JobID, "router", 1).
+		Updates(map[string]any{"state": "running", "started_at": now.Add(-20 * time.Minute)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Model(&tenantDeploymentJobRecord{}).Where("job_id = ?", plan.JobID).
+		Updates(map[string]any{"state": TenantDeploymentProvisioning, "retryable": false, "error_class": ""}).Error; err != nil {
+		t.Fatal(err)
+	}
+	repairedStatus, repaired, err := engine.RepairStuckDeployment(context.Background(), plan.JobID, 5*time.Minute)
+	if err != nil || !repaired {
+		t.Fatalf("repair = %+v repaired=%t err=%v", repairedStatus, repaired, err)
+	}
+	if repairedStatus.State != TenantDeploymentFailed || !repairedStatus.Retryable {
+		t.Fatalf("repaired status = %+v", repairedStatus)
+	}
+	fake.FailAction = ""
+	resumed, err := engine.Deploy(context.Background(), plan, "intent-a")
+	if err != nil || resumed.State != TenantDeploymentReady {
+		t.Fatalf("resume after repair = %+v err=%v", resumed, err)
+	}
+}
 func TestTenantDeploymentAdaptersUnknownDurableOutcomeNeedsOperator(t *testing.T) {
 	_, _, plan := tenantDeploymentFixture(t)
 	_, fake, engine, _ := openTenantDeploymentTestEngine(t)

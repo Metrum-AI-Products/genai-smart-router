@@ -257,15 +257,80 @@ Those targets cover fake-adapter tenant deploy suites plus customer CLI
 fail-closed cases (missing signed intent, missing delete approval, missing
 refs, ACME-rehearsal mismatch, donor-key non-copy, dedicated-RDS refuse).
 
+Gated live acceptance (packaged `dist/` binaries only; skipped without env):
+
 ```bash
-# 1) Write an unsigned SQLite manifest (explicit refs required; no defaults)
+rtk make test-fleet-sqlite-customer-live
+```
+
+Set `FLEET_SQLITE_E2E_PROFILE_REF`, `FLEET_SQLITE_E2E_LICENSE_REF`,
+`FLEET_SQLITE_E2E_CONFIG_FILE`, `FLEET_SQLITE_E2E_ENV_FILE`, and
+`FLEET_SQLITE_E2E_SIGN_KEY` before running the live target. See
+`scripts/fleet_sqlite_customer_e2e.sh`.
+
+### Greenfield bootstrap (preferred)
+
+Publish a local Compose-sized config once, then run the packaged orchestrator.
+Secrets Manager rejects runtime bundles above **65536** bytes; use
+`prepare-runtime-bundle --trim-catalog-only` when the source config is larger.
+
+```bash
+# Optional offline trim when the source config exceeds SM 64 KiB
+metrum-genai-smartrouter-fleetctl customer prepare-runtime-bundle \
+  --config-file /protected/config.yaml \
+  --env-file /protected/env.json \
+  --rewrite-paths fleet-eks \
+  --config-out /protected/config.fleet.yaml \
+  --env-out /protected/env.fleet.json
+
+metrum-genai-smartrouter-fleetctl customer publish-runtime-bundle \
+  --customer-id acme4 \
+  --config-file /protected/config.fleet.yaml \
+  --env-file /protected/env.fleet.json \
+  --strip-callers \
+  --rewrite-paths fleet-eks
+
+# One-shot: publish → write-manifest → sign → create → grant-caller → sign → create → smoke
+metrum-genai-smartrouter-fleetctl customer bootstrap \
+  --customer-id acme4 \
+  --profile-ref "$FLEET_PROFILE_REF" \
+  --license-ref "$FLEET_LICENSE_REF" \
+  --config-file /protected/config.yaml \
+  --env-file /protected/env.json \
+  --rewrite-paths fleet-eks \
+  --sign-with-key /protected/lifecycle_approval_private_key.b64 \
+  --owner-user acme-admin --project acme \
+  --allow-from-config \
+  --token-out ~/.local/share/metrum-fleet/acme4/CALLER_TOKEN_ADMIN.txt \
+  --model high
+```
+
+`--rewrite-paths fleet-eks` rewrites `/app/state` and `/app/logs` to
+`/var/lib/smart-llmrouter` before publish. `customer create` accepts optional
+`--sign-with-key`, `--resume` (default true), and `--auto-smoke`. Use
+`customer repair` when a prior deploy left retryable `failed` or
+`operator_required` registry state.
+
+### Step-by-step customer path
+
+```bash
+# 1) Publish runtime bundle (operator IAM; not the fleet lifecycle role)
+metrum-genai-smartrouter-fleetctl customer publish-runtime-bundle \
+  --customer-id acme4 \
+  --config-file /protected/config.yaml \
+  --env-file /protected/env.json \
+  --strip-callers \
+  --rewrite-paths fleet-eks
+
+# 2) Write an unsigned SQLite manifest (explicit refs required; no defaults)
 metrum-genai-smartrouter-fleetctl customer write-manifest --customer-id acme4 \
   --profile-ref "$FLEET_PROFILE_REF" \
   --runtime-bundle-ref "$FLEET_RUNTIME_BUNDLE_REF" \
   --license-ref "$FLEET_LICENSE_REF"
 
-# 2) Externally sign that workspace manifest → mode-0600 intent.json
-# 3) Create / activate from the signed intent only
+# 3) Externally sign that workspace manifest → mode-0600 intent.json
+#    (or: customer create --sign-with-key /protected/lifecycle_approval_private_key.b64)
+# 4) Create / activate from the signed intent only
 metrum-genai-smartrouter-fleetctl customer create --intent /protected/acme4-intent.json
 
 # Status / smoke
@@ -322,7 +387,10 @@ configuration controller prepare path: it writes
 `aws-secretsmanager:///smartrouter/fleet/customers/<id>/runtime-bundle` with the
 operator IAM identity (CreateSecret/PutSecretValue) and a new unsigned manifest;
 activation still requires an externally signed intent plus `customer create
---intent`. Do not use kubectl or one-off migrate Jobs.
+--intent` (or `customer create --sign-with-key`). Do not use kubectl, manual
+`aws secretsmanager put-secret-value`, or one-off migrate Jobs. Router
+deployments on Fleet EKS use **Recreate** strategy so SQLite PVC updates do
+not require manual pod deletion.
 
 Artifacts stay under `~/.local/share/metrum-fleet/<customer_id>/` (mode `0700`).
 

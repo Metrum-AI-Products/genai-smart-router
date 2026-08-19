@@ -51,6 +51,9 @@ func operatorAWSConfig(ctx context.Context) (aws.Config, error) {
 }
 
 func assumeFleetRole(ctx context.Context, ws customerWorkspace) (aws.Config, map[string]string, error) {
+	if cfg, env, ok := existingFleetRoleSession(ctx); ok {
+		return cfg, env, nil
+	}
 	opCfg, err := operatorAWSConfig(ctx)
 	if err != nil {
 		return aws.Config{}, nil, fmt.Errorf("load operator AWS config: %w", err)
@@ -100,6 +103,43 @@ func assumeFleetRole(ctx context.Context, ws customerWorkspace) (aws.Config, map
 		return aws.Config{}, nil, fmt.Errorf("load assumed-role AWS config: %w", err)
 	}
 	return cfg, env, nil
+}
+
+func existingFleetRoleSession(ctx context.Context) (aws.Config, map[string]string, bool) {
+	roleARN := fleetLifecycleRoleARN()
+	if strings.TrimSpace(os.Getenv("AWS_SESSION_TOKEN")) == "" {
+		return aws.Config{}, nil, false
+	}
+	region := awsRegion()
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	if err != nil {
+		return aws.Config{}, nil, false
+	}
+	stsClient := sts.NewFromConfig(cfg)
+	out, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil || out.Arn == nil {
+		return aws.Config{}, nil, false
+	}
+	if !strings.Contains(*out.Arn, roleARN) && !strings.Contains(*out.Arn, "genai-smart-router-eks-fleet-lifecycle") {
+		return aws.Config{}, nil, false
+	}
+	env := cloneEnvMap(os.Environ())
+	return cfg, env, true
+}
+
+func publishRuntimeBundleOperator(ctx context.Context, customerID string, bundle runtimeBundle) (string, error) {
+	// Secrets Manager writes require operator IAM; never publish while holding only the fleet lifecycle role.
+	if _, env, ok := existingFleetRoleSession(ctx); ok {
+		for _, key := range []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"} {
+			_ = os.Unsetenv(key)
+		}
+		for k := range env {
+			if k == "AWS_ACCESS_KEY_ID" || k == "AWS_SECRET_ACCESS_KEY" || k == "AWS_SESSION_TOKEN" {
+				delete(env, k)
+			}
+		}
+	}
+	return publishRuntimeBundle(ctx, customerID, bundle)
 }
 
 func cloneEnvMap(environ []string) map[string]string {

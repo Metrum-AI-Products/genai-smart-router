@@ -459,22 +459,27 @@ func (a *EKSTenantDeploymentAdapters) ensureRuntimeBundleSecret(ctx context.Cont
 }
 
 func (a *EKSTenantDeploymentAdapters) ensureReferenceSecret(ctx context.Context, p TenantDeploymentPlan, name, key, ref string) (string, error) {
+	value, err := a.resolveProtectedReference(ctx, ref)
+	if err != nil {
+		return "", err
+	}
+	data := map[string][]byte{key: value}
 	c := a.kube.CoreV1().Secrets(p.Namespace)
 	existing, err := c.Get(ctx, name, metav1.GetOptions{})
 	if err == nil {
 		if !owned(existing.Labels, p) {
 			return "", ownershipError()
 		}
+		existing.Data = data
+		if _, err := c.Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
+			return "", errors.New("write protected reference secret")
+		}
 		return tenantDeploymentResourceRef(p.Namespace, "secret", name), nil
 	}
 	if !apierrors.IsNotFound(err) {
 		return "", err
 	}
-	value, err := a.resolveProtectedReference(ctx, ref)
-	if err != nil {
-		return "", err
-	}
-	_, err = c.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: p.Namespace, Labels: a.labels(p)}, Type: corev1.SecretTypeOpaque, Data: map[string][]byte{key: value}}, metav1.CreateOptions{})
+	_, err = c.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: p.Namespace, Labels: a.labels(p)}, Type: corev1.SecretTypeOpaque, Data: data}, metav1.CreateOptions{})
 	return tenantDeploymentResourceRef(p.Namespace, "secret", name), err
 }
 func (a *EKSTenantDeploymentAdapters) deleteSecret(ctx context.Context, p TenantDeploymentPlan, name string) error {
@@ -598,10 +603,15 @@ func (a *EKSTenantDeploymentAdapters) EnsureRouter(ctx context.Context, p Tenant
 	}
 	one := int32(1)
 	labels := a.labels(p)
+	recreate := appsv1.RecreateDeploymentStrategyType
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: p.Namespace, Labels: labels},
-		Spec: appsv1.DeploymentSpec{Replicas: &one, Selector: &metav1.LabelSelector{MatchLabels: map[string]string{tenantDeploymentOwnerLabel: p.InstanceID}},
-			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: corev1.PodSpec{}}},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &one,
+			Strategy: appsv1.DeploymentStrategy{Type: recreate},
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{tenantDeploymentOwnerLabel: p.InstanceID}},
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: corev1.PodSpec{}},
+		},
 	}
 	if err := a.applyRouterPodTemplate(deployment, p, bundleHash); err != nil {
 		return "", err
@@ -626,6 +636,8 @@ func (a *EKSTenantDeploymentAdapters) runtimeBundleSHA256(ctx context.Context, p
 }
 
 func (a *EKSTenantDeploymentAdapters) applyRouterPodTemplate(deployment *appsv1.Deployment, p TenantDeploymentPlan, bundleHash string) error {
+	recreate := appsv1.RecreateDeploymentStrategyType
+	deployment.Spec.Strategy.Type = recreate
 	nonRoot := int64(65532)
 	labels := a.labels(p)
 	if deployment.Spec.Template.ObjectMeta.Labels == nil {

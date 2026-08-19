@@ -40,37 +40,63 @@ until a separately approved `#518` cutover.
 
 ## Operator sequence (SQLite customer path)
 
+> **Historical (2026-08-19):** The first `llm-api` parallel deploy used manual
+> Secrets Manager uploads, Python YAML assembly, and kubectl scale workarounds.
+> The canonical operator path is packaged CLI `publish-runtime-bundle` /
+> `customer bootstrap` with `--rewrite-paths fleet-eks`.
+
 Use packaged Fleet binaries only. Protected refs and signed intents stay in
 mode-`0600` paths outside Git.
 
 ```bash
 export METRUM_FLEET_BIN_DIR=/path/to/release/bin
 export FLEET_PROFILE_REF='aws-ssm:///metrum/smartrouter/profiles/staging'
-export FLEET_RUNTIME_BUNDLE_REF='aws-secretsmanager:///smartrouter/fleet/customers/llm-api/runtime-bundle'
 export FLEET_LICENSE_REF='aws-ssm:///metrum/smartrouter/fleet/llm-api/license-request'
 
 rtk make test-tenant-deploy-all
 
+metrum-genai-smartrouter-fleetctl customer bootstrap \
+  --customer-id llm-api \
+  --profile-ref "$FLEET_PROFILE_REF" \
+  --license-ref "$FLEET_LICENSE_REF" \
+  --config-file /protected/runtime-config.production-identical.yaml \
+  --env-file /protected/env.json \
+  --rewrite-paths fleet-eks \
+  --sign-with-key /protected/lifecycle_approval_private_key.b64 \
+  --owner-user llm-api-admin --project llm-api-eks \
+  --allow-from-config \
+  --token-out ~/.local/share/metrum-fleet/llm-api/CALLER_TOKEN_ADMIN.txt \
+  --model high
+```
+
+Step-by-step equivalent:
+
+```bash
+metrum-genai-smartrouter-fleetctl customer publish-runtime-bundle \
+  --customer-id llm-api \
+  --config-file /protected/runtime-config.production-identical.yaml \
+  --env-file /protected/env.json \
+  --strip-callers --rewrite-paths fleet-eks
+
 metrum-genai-smartrouter-fleetctl customer write-manifest --customer-id llm-api \
   --profile-ref "$FLEET_PROFILE_REF" \
-  --runtime-bundle-ref "$FLEET_RUNTIME_BUNDLE_REF" \
+  --runtime-bundle-ref 'aws-secretsmanager:///smartrouter/fleet/customers/llm-api/runtime-bundle' \
   --license-ref "$FLEET_LICENSE_REF"
 
-# Externally sign ~/.local/share/metrum-fleet/llm-api/manifest.json → intent-signed.json
-
-metrum-genai-smartrouter-fleetctl customer create --intent ~/.local/share/metrum-fleet/llm-api/intent-signed.json
+metrum-genai-smartrouter-fleetctl customer create \
+  --sign-with-key /protected/lifecycle_approval_private_key.b64
 
 metrum-genai-smartrouter-fleetctl customer grant-caller --customer-id llm-api \
   --profile-ref "$FLEET_PROFILE_REF" \
-  --runtime-bundle-ref "$FLEET_RUNTIME_BUNDLE_REF" \
+  --runtime-bundle-ref 'aws-secretsmanager:///smartrouter/fleet/customers/llm-api/runtime-bundle' \
   --license-ref "$FLEET_LICENSE_REF" \
-  --owner-user llm-api-admin --project llm-api-eks --allow '<all model groups>' \
+  --owner-user llm-api-admin --project llm-api-eks --allow-from-config \
   --token-out ~/.local/share/metrum-fleet/llm-api/CALLER_TOKEN_ADMIN.txt
 
-# Re-sign manifest after grant-caller, then customer create again with the new signed intent.
+metrum-genai-smartrouter-fleetctl customer create \
+  --sign-with-key /protected/lifecycle_approval_private_key.b64
 
 metrum-genai-smartrouter-fleetctl customer smoke --customer-id llm-api \
-  --profile-ref "$FLEET_PROFILE_REF" \
   --token-file ~/.local/share/metrum-fleet/llm-api/CALLER_TOKEN_ADMIN.txt \
   --model high
 ```
