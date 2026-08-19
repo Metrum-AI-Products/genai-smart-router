@@ -2,6 +2,51 @@
 
 Last deployed: 2026-08-19
 
+## 2026-08-19 Hosted support chat CSP correction
+
+Deployed package/image `smart-llmrouter:8d91f5c-linux-amd64` from merged
+`origin/main` (`8d91f5c`, PRs #912 and #913) to the legacy Docker Compose
+production environment. The correction restores the hosted docs runtime and
+support-chat privacy control, allows the exact regional widget API and image
+CDN path required after consent, and keeps generic support-chat copy
+provider-neutral. Processor identification remains confined to the canonical
+privacy and contracting disclosures.
+
+Production backups:
+
+- Pre-correction `d6ceb3c` runtime:
+  `/opt/smart-llmrouter.backup-support-chat-csp-20260819T192604Z`.
+- Intermediate `8172478` runtime:
+  `/opt/smart-llmrouter.backup-support-chat-images-20260819T194706Z`.
+
+Validation:
+
+- `/readyz` and `/healthz`: 200 with version/commit `8d91f5c`; Caddy,
+  PostgreSQL, and router services are up.
+- A fresh browser profile rendered the provider-neutral support control.
+  Before consent it made no widget/CDN request and wrote no consent value,
+  cookies, session storage, IndexedDB, or Cache Storage.
+- Granting consent loaded the self-hosted bundle, attached the chat element,
+  returned 200 from the regional widget-config endpoint, and returned 200 for
+  the three required CDN images. Browser validation reported no CSP violation,
+  config-fetch failure, or page error.
+- Withdrawal stored the denied preference, removed the widget, and made no new
+  widget request after reload.
+- Privacy, DPA, subprocessor, transfer-schedule, and security.txt paths: 200.
+- Authenticated `/v1/models`: 200 with 22 groups. Chat returned exact `OK`.
+  Codex Responses returned `router codex ok`; Claude Code Messages returned
+  `router claude ok` with model usage.
+- Uploaded package/scripts and upgrade staging were removed. Docker prune
+  completed after final health verification.
+
+Rollback: this correction has no schema change. Use
+`scripts/compose_package_upgrade.py rollback` with
+`/opt/smart-llmrouter.backup-support-chat-images-20260819T194706Z` to return to
+the intermediate `8172478` package, or use the earlier
+`/opt/smart-llmrouter.backup-support-chat-csp-20260819T192604Z` backup to return
+to `d6ceb3c`. Preserve the current PostgreSQL usage database and repeat health,
+hosted-docs browser, authenticated API, and Codex/Claude Code checks.
+
 ## 2026-08-19 Public privacy and capture-security remediation
 
 Deployed package/image `smart-llmrouter:d6ceb3c-linux-amd64` from merged
