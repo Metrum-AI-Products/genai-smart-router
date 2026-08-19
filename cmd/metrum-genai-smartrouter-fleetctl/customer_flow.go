@@ -440,6 +440,46 @@ func signWorkspaceManifest(ws customerWorkspace, keyPath string) string {
 	return signedPath
 }
 
+func generateDeleteNonce() string {
+	ts := time.Now().UTC().Format("20060102t150405z")
+	return "del-" + ts
+}
+
+func signWorkspaceDeleteApproval(ws customerWorkspace, keyPath string, retainDatabase, retainPVC bool) string {
+	keyPath = expandHome(strings.TrimSpace(keyPath))
+	if keyPath == "" {
+		die("--sign-with-key requires a lifecycle approval private key path")
+	}
+	requireMode0600File(keyPath, "sign-with-key")
+	plan := loadWorkspacePlan(ws)
+	jobID := strings.TrimSpace(plan.JobID)
+	if jobID == "" {
+		die("plan.json missing job_id; run create first")
+	}
+	nonce := generateDeleteNonce()
+	if !deleteNonceRE.MatchString(nonce) {
+		die("generated delete nonce invalid: %q", nonce)
+	}
+	confirmPath := filepath.Join(ws.Home, "delete-approval.json")
+	signBin, err := resolvePackagedBinary(fleetSignBinaryName)
+	if err != nil {
+		die("%v", err)
+	}
+	retainDB := "false"
+	if retainDatabase {
+		retainDB = "true"
+	}
+	retainPVCStr := "false"
+	if retainPVC {
+		retainPVCStr = "true"
+	}
+	cmd := exec.Command(signBin, "delete", keyPath, jobID, nonce, confirmPath, retainDB, retainPVCStr)
+	stdout, stderr, code := runLogged(cmd)
+	requireOK(stdout, stderr, code, "fleet-sign delete")
+	requireMode0600File(confirmPath, "delete approval")
+	return confirmPath
+}
+
 func mustReadFile(path string) []byte {
 	raw, err := os.ReadFile(path)
 	if err != nil {

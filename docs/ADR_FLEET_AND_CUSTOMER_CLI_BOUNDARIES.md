@@ -33,9 +33,9 @@ explicit reference-only inputs or an externally signed mode-`0600` intent /
 delete approval, never ACME/staging/production-identical string defaults, and
 never hold, copy, generate, or accept lifecycle private keys (including donor
 workspace key discovery) except optional `--sign-with-key` on `create`,
-`bootstrap`, and `repair` when a mode-`0600` approval key file is supplied.
-Local signing otherwise stays outside the customer path in the approved signing
-service or isolated signing workflow.
+`bootstrap`, `repair`, and `delete` when a mode-`0600` approval key file is
+supplied. Local signing otherwise stays outside the customer path in the
+approved signing service or isolated signing workflow.
 
 | Verb | Authority | Notes |
 | --- | --- | --- |
@@ -44,6 +44,8 @@ service or isolated signing workflow.
 | `customer bootstrap` | Orchestrator only | Chains publish → manifest → sign → create → grant → sign → create → smoke |
 | `customer create --sign-with-key` | Optional local sign + Fleet deploy | Default `--resume true` repairs retryable stuck jobs |
 | `customer repair` | Registry reconcile + redeploy | Marks stale attempts failed; no PVC delete |
+| `customer list` | Registry + workspace inventory | Uses shared registry path; safe JSON only |
+| `customer delete --sign-with-key` | Optional local delete approval + Fleet delete | Reads `job_id` from workspace `plan.json` |
 | Core `plan`/`deploy`/`delete` | Fleet lifecycle role | Reference-only signed intent required |
 
 Fleet binaries are included only in binary tarballs. Customer Docker images

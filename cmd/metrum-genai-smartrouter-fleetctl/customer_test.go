@@ -243,8 +243,93 @@ func TestCustomerCLIDeleteRequiresConfirmFile(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected failure, got success: %s", out)
 	}
-	if !strings.Contains(out, "confirm-file") {
-		t.Fatalf("expected confirm-file requirement, got: %s", out)
+	if !strings.Contains(out, "confirm-file") && !strings.Contains(out, "sign-with-key") {
+		t.Fatalf("expected confirm-file or sign-with-key requirement, got: %s", out)
+	}
+}
+
+func TestCustomerCLIDeleteRejectsBothConfirmAndSign(t *testing.T) {
+	home := t.TempDir()
+	out, err := runCustomerCLI(t, home, "delete",
+		"--customer-id", "aditya-test1",
+		"--confirm-file", "/tmp/confirm.json",
+		"--sign-with-key", "/tmp/key.b64",
+	)
+	if err == nil {
+		t.Fatalf("expected failure, got success: %s", out)
+	}
+	if !strings.Contains(out, "not both") {
+		t.Fatalf("expected mutual exclusion error, got: %s", out)
+	}
+}
+
+func TestGenerateDeleteNonceIsDNSSafe(t *testing.T) {
+	nonce := generateDeleteNonce()
+	if !deleteNonceRE.MatchString(nonce) {
+		t.Fatalf("nonce=%q does not match delete nonce pattern", nonce)
+	}
+	if !strings.HasPrefix(nonce, "del-") {
+		t.Fatalf("nonce=%q missing del- prefix", nonce)
+	}
+	if strings.Contains(nonce, "T") {
+		t.Fatalf("nonce=%q must not contain uppercase T", nonce)
+	}
+}
+
+func TestCustomerListFromWorkspacePlan(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	wsHome := filepath.Join(home, ".local", "share", "metrum-fleet", "gamma3")
+	if err := os.MkdirAll(wsHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	plan := planPayload{JobID: "job-workspace-gamma3", Hostname: "gamma3.apps.metrum.ai", State: "ready"}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wsHome, "plan.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runCustomerCLI(t, home, "list")
+	if err != nil {
+		t.Fatalf("customer list failed: %v\n%s", err, out)
+	}
+	var payload struct {
+		Customers []map[string]any `json:"customers"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &payload); err != nil {
+		t.Fatalf("parse list output: %v\n%s", err, out)
+	}
+	if len(payload.Customers) != 1 {
+		t.Fatalf("customers=%v", payload.Customers)
+	}
+	row := payload.Customers[0]
+	if row["customer_id"] != "gamma3" || row["job_id"] != "job-workspace-gamma3" {
+		t.Fatalf("row=%v", row)
+	}
+	if row["hostname"] != "gamma3.apps.metrum.ai" {
+		t.Fatalf("hostname=%v", row["hostname"])
+	}
+}
+
+func TestDefaultRegistryPathPrefersSharedRegistry(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	shared := sharedRegistryPath()
+	if err := os.WriteFile(shared, []byte("sqlite"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := defaultRegistryPath(); got != shared {
+		t.Fatalf("defaultRegistryPath()=%q want %q", got, shared)
+	}
+	if err := os.Remove(shared); err != nil {
+		t.Fatal(err)
+	}
+	if got := defaultRegistryPath(); got != "./tenant-deployments.sqlite" {
+		t.Fatalf("fallback=%q", got)
 	}
 }
 
