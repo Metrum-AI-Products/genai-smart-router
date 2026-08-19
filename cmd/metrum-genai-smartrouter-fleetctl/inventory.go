@@ -41,7 +41,7 @@ func fleetLicenses(args []string) {
 
 func fleetTenantsList(args []string) {
 	fs := flag.NewFlagSet("tenants list", flag.ExitOnError)
-	registry := fs.String("registry", "tenant-deployments.sqlite", "private local Fleet lifecycle SQLite path")
+	registry := fs.String("registry", defaultRegistryPath(), "private local Fleet lifecycle SQLite path")
 	output := fs.String("output", "json", "safe output format (json)")
 	fs.Parse(args)
 	requireJSONOutput(*output)
@@ -63,7 +63,7 @@ func fleetTenantsList(args []string) {
 func fleetTenantsGet(args []string) {
 	fs := flag.NewFlagSet("tenants get", flag.ExitOnError)
 	customerID := fs.String("customer-id", "", "exact customer_id")
-	registry := fs.String("registry", "tenant-deployments.sqlite", "private local Fleet lifecycle SQLite path")
+	registry := fs.String("registry", defaultRegistryPath(), "private local Fleet lifecycle SQLite path")
 	output := fs.String("output", "json", "safe output format (json)")
 	fs.Parse(args)
 	requireJSONOutput(*output)
@@ -84,7 +84,7 @@ func fleetTenantsGet(args []string) {
 
 func fleetTenantsSync(args []string) {
 	fs := flag.NewFlagSet("tenants sync", flag.ExitOnError)
-	registry := fs.String("registry", "tenant-deployments.sqlite", "private local Fleet lifecycle SQLite path")
+	registry := fs.String("registry", defaultRegistryPath(), "private local Fleet lifecycle SQLite path")
 	output := fs.String("output", "json", "safe output format (json)")
 	fs.Parse(args)
 	requireJSONOutput(*output)
@@ -111,7 +111,7 @@ func fleetTenantsSync(args []string) {
 func fleetLicensesList(args []string) {
 	fs := flag.NewFlagSet("licenses list", flag.ExitOnError)
 	customerID := fs.String("customer-id", "", "optional customer_id filter")
-	registry := fs.String("registry", "tenant-deployments.sqlite", "private local Fleet lifecycle SQLite path")
+	registry := fs.String("registry", defaultRegistryPath(), "private local Fleet lifecycle SQLite path")
 	output := fs.String("output", "json", "safe output format (json)")
 	fs.Parse(args)
 	requireJSONOutput(*output)
@@ -133,7 +133,7 @@ func fleetLicensesList(args []string) {
 func fleetLicensesGet(args []string) {
 	fs := flag.NewFlagSet("licenses get", flag.ExitOnError)
 	licenseID := fs.String("license-id", "", "exact license_id")
-	registry := fs.String("registry", "tenant-deployments.sqlite", "private local Fleet lifecycle SQLite path")
+	registry := fs.String("registry", defaultRegistryPath(), "private local Fleet lifecycle SQLite path")
 	output := fs.String("output", "json", "safe output format (json)")
 	fs.Parse(args)
 	requireJSONOutput(*output)
@@ -157,7 +157,7 @@ func fleetLicensesRegister(args []string) {
 	summaryFile := fs.String("summary-file", "", "mode-0600 router-license safe-summary JSON")
 	payloadSHA := fs.String("payload-sha256", "", "optional 64-hex digest of the signed license payload")
 	actorRole := fs.String("actor-role", "fleet-lifecycle-admin", "safe actor role for the inventory event")
-	registry := fs.String("registry", "tenant-deployments.sqlite", "private local Fleet lifecycle SQLite path")
+	registry := fs.String("registry", defaultRegistryPath(), "private local Fleet lifecycle SQLite path")
 	output := fs.String("output", "json", "safe output format (json)")
 	fs.Parse(args)
 	requireJSONOutput(*output)

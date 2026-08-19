@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const smokeExpectModelsUnset = -1
+
 type smokeOptions struct {
 	TokenFile         string
 	Model             string

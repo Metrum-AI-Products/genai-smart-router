@@ -17,6 +17,7 @@ const (
 )
 
 var customerIDRE = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
+var deleteNonceRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
 type customerWorkspace struct {
 	CustomerID string
@@ -100,6 +101,14 @@ func sharedRegistryPath() string {
 		die("create fleet registry directory: %v", err)
 	}
 	return filepath.Join(root, "tenant-deployments.sqlite")
+}
+
+func defaultRegistryPath() string {
+	path := sharedRegistryPath()
+	if fileExists(path) {
+		return path
+	}
+	return "./tenant-deployments.sqlite"
 }
 
 func customerHostname(customerID string) string {

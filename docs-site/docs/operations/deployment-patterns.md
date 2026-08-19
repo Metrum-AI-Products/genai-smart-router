@@ -82,20 +82,16 @@ configuration. One-release rename notices (`metrum-fleetctl`,
 Customer-local `metrum-genai-smartrouterctl` safely validates/diffs
 local config, creates a caller token once in a new mode-`0600` file, and
 reports safe local status; it has no cloud or activation authority. On a
-Fleet-managed SQLite customer instance, activating a new caller or config
+Fleet-managed SQLite customer instances, activating a new caller or config
 revision is a Fleet deploy of an approved `runtime_bundle_ref` (new
 `config_revision`), not an in-place `metrum-genai-smartrouterctl` mutation. See
-[User Key Generation](./key-generation#activation-boundary).
-Packaged `customer` helpers (`publish-runtime-bundle`, optional
-`prepare-runtime-bundle`, `bootstrap`, or `write-manifest` then externally signed
-`create --intent` / `create --sign-with-key`) are SQLite-only: they require
-explicit references (no ACME or staging defaults), never accept lifecycle
-private keys in the default path except optional `--sign-with-key` on
-`create`/`bootstrap`/`repair`, and refuse dedicated-RDS selection. After
-activation, `customer smoke` requires
-`--model` from the caller's authenticated `/v1/models` list and succeeds
-only on HTTP `200` with exact assistant content `OK`; see
-[Binary Installation](../installation/binary). Plan is side-effect-free. The default SQLite path is namespace, network policy,
+[User Key Generation](./key-generation#activation-boundary) and the
+[Customer Administrator Guide](./customer-administration) for customer-admin
+workflows. Packaged `customer` helpers are SQLite-only, require explicit
+references (no ACME or staging defaults), and refuse dedicated-RDS selection.
+After activation, `customer smoke` requires `--model` from the caller's
+authenticated `/v1/models` list and succeeds only on HTTP `200` with exact
+assistant content `OK`.
 protected runtime-secret binding, license binding, state PVC, one-replica
 single-container Router, activation, and hostname; it never provisions or
 binds RDS. An explicit approved `database_profile` manifest branch inserts

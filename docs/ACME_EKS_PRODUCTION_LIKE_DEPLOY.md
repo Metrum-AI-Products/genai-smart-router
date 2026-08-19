@@ -1,5 +1,10 @@
 # ACME production-like EKS deployment result (no Compose cutover)
 
+> **HISTORICAL — internal execution record only (2026-08-10).** Do not repeat
+> CLI sequences from this page; use the canonical
+> [Customer Instance Operations Runbook](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#metrum-operator-quick-reference-sqlite-fleet-customers)
+> for current SQLite Fleet customers.
+
 > **Internal execution record for issue [#869](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/869).**
 > This execution record grants no authority to repeat EKS/RDS, DNS, runtime-secret, production, or Compose-to-EKS mutation.
 

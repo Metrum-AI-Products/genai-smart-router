@@ -23,7 +23,7 @@ type customerCommonFlags struct {
 
 func fleetCustomer(args []string) {
 	if len(args) == 0 {
-		die("usage: metrum-genai-smartrouter-fleetctl customer <write-manifest|create|status|smoke|grant-caller|update-config|publish-runtime-bundle|prepare-runtime-bundle|bootstrap|repair|delete> [flags]")
+		die("usage: metrum-genai-smartrouter-fleetctl customer <write-manifest|create|status|smoke|grant-caller|update-config|publish-runtime-bundle|prepare-runtime-bundle|bootstrap|repair|list|delete> [flags]")
 	}
 	switch args[0] {
 	case "write-manifest":
@@ -46,6 +46,8 @@ func fleetCustomer(args []string) {
 		customerBootstrap(args[1:])
 	case "repair":
 		customerRepair(args[1:])
+	case "list":
+		customerList(args[1:])
 	case "delete":
 		customerDelete(args[1:])
 	default:
@@ -157,8 +159,9 @@ func customerCreate(args []string) {
 			die("--auto-smoke requires --model")
 		}
 		if err := runCustomerSmoke(ws, smokeOptions{
-			TokenFile: *smokeToken,
-			Model:     *smokeModel,
+			TokenFile:         *smokeToken,
+			Model:             *smokeModel,
+			ExpectModelsCount: smokeExpectModelsUnset,
 		}); err != nil {
 			die("auto-smoke: %v", err)
 		}
@@ -395,19 +398,28 @@ func customerDelete(args []string) {
 	var common customerCommonFlags
 	addCustomerCommonFlags(fs, &common)
 	intentPath := fs.String("intent", "", "mode-0600 signed intent from the job to delete")
-	confirmFile := fs.String("confirm-file", "", "mode-0600 externally signed delete approval (required)")
+	confirmFile := fs.String("confirm-file", "", "mode-0600 externally signed delete approval")
+	signWithKey := fs.String("sign-with-key", "", "optional mode-0600 lifecycle approval private key; signs delete approval in workspace")
 	rdsAdmission := fs.String("rds-admission-file", "", "mode-0600 externally issued RDS admission when deleting dedicated RDS")
+	retainDatabase := fs.Bool("retain-database", false, "retain dedicated RDS during signed delete")
 	retainPVC := fs.Bool("retain-pvc", false, "retain PVC during signed delete")
 	_ = fs.Parse(args)
 	ws := requireCustomerID(common)
+	if strings.TrimSpace(*signWithKey) != "" && strings.TrimSpace(*confirmFile) != "" {
+		die("customer delete accepts either --confirm-file or --sign-with-key, not both")
+	}
 	intent := strings.TrimSpace(*intentPath)
 	if intent == "" {
 		intent = filepath.Join(ws.Home, "intent.json")
 	}
-	if strings.TrimSpace(*confirmFile) == "" {
-		die("customer delete requires --confirm-file (externally signed delete approval); fleetctl never signs locally")
+	confirm := strings.TrimSpace(*confirmFile)
+	if confirm == "" {
+		if strings.TrimSpace(*signWithKey) == "" {
+			die("customer delete requires --confirm-file (externally signed delete approval) or --sign-with-key")
+		}
+		confirm = signWorkspaceDeleteApproval(ws, *signWithKey, *retainDatabase, *retainPVC)
 	}
-	if err := customerDeleteBestEffort(ws, *retainPVC, intent, *confirmFile, *rdsAdmission); err != nil {
+	if err := customerDeleteBestEffort(ws, *retainPVC, intent, confirm, *rdsAdmission); err != nil {
 		die("%v", err)
 	}
 }

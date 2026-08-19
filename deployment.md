@@ -24,7 +24,9 @@ Sanitized validation (2026-08-19 UTC):
 - Compose `/readyz`: 200 (unchanged).
 
 Rollback for the parallel instance: signed Fleet `customer delete` with
-job-bound delete approval. Does not roll back Compose production.
+`--sign-with-key` or externally signed `--confirm-file` per
+[`docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md`](docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#metrum-operator-quick-reference-sqlite-fleet-customers).
+Does not roll back Compose production.
 
 See [`docs/LLM_API_EKS_SQLITE_PARALLEL.md`](docs/LLM_API_EKS_SQLITE_PARALLEL.md).
 

@@ -26,6 +26,7 @@ const sidebars = {
         "installation/package-validation",
         "reference/add-provider-model",
         "operations/key-generation",
+        "operations/customer-administration",
         "configuration/pii-filtering",
         "configuration/dynamic-score-routing",
         "configuration/routing-typescript",

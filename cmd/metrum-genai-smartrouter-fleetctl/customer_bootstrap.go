@@ -84,8 +84,9 @@ func customerBootstrap(args []string) {
 	plan, _ = planAndDeployIntent(ws, fleetBin, intentPath, fleetEnv)
 
 	if err := runCustomerSmoke(ws, smokeOptions{
-		TokenFile: *tokenOut,
-		Model:     *smokeModel,
+		TokenFile:         *tokenOut,
+		Model:             *smokeModel,
+		ExpectModelsCount: smokeExpectModelsUnset,
 	}); err != nil {
 		die("bootstrap smoke: %v", err)
 	}

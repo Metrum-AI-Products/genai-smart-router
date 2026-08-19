@@ -42,64 +42,23 @@ until a separately approved `#518` cutover.
 
 > **Historical (2026-08-19):** The first `llm-api` parallel deploy used manual
 > Secrets Manager uploads, Python YAML assembly, and kubectl scale workarounds.
-> The canonical operator path is packaged CLI `publish-runtime-bundle` /
-> `customer bootstrap` with `--rewrite-paths fleet-eks`.
+> Do not repeat that path.
 
-Use packaged Fleet binaries only. Protected refs and signed intents stay in
-mode-`0600` paths outside Git.
+**Canonical operator commands:** use the copy-paste block in
+[`docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md`](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#metrum-operator-quick-reference-sqlite-fleet-customers)
+with `--customer-id llm-api` and the protected refs below. Run
+`rtk make test-tenant-deploy-all` before live mutation.
 
 ```bash
-export METRUM_FLEET_BIN_DIR=/path/to/release/bin
 export FLEET_PROFILE_REF='aws-ssm:///metrum/smartrouter/profiles/staging'
 export FLEET_LICENSE_REF='aws-ssm:///metrum/smartrouter/fleet/llm-api/license-request'
-
-rtk make test-tenant-deploy-all
-
-metrum-genai-smartrouter-fleetctl customer bootstrap \
-  --customer-id llm-api \
-  --profile-ref "$FLEET_PROFILE_REF" \
-  --license-ref "$FLEET_LICENSE_REF" \
-  --config-file /protected/runtime-config.production-identical.yaml \
-  --env-file /protected/env.json \
-  --rewrite-paths fleet-eks \
-  --sign-with-key /protected/lifecycle_approval_private_key.b64 \
-  --owner-user llm-api-admin --project llm-api-eks \
-  --allow-from-config \
-  --token-out ~/.local/share/metrum-fleet/llm-api/CALLER_TOKEN_ADMIN.txt \
-  --model high
+export FLEET_RUNTIME_BUNDLE_REF='aws-secretsmanager:///smartrouter/fleet/customers/llm-api/runtime-bundle'
 ```
 
-Step-by-step equivalent:
-
-```bash
-metrum-genai-smartrouter-fleetctl customer publish-runtime-bundle \
-  --customer-id llm-api \
-  --config-file /protected/runtime-config.production-identical.yaml \
-  --env-file /protected/env.json \
-  --strip-callers --rewrite-paths fleet-eks
-
-metrum-genai-smartrouter-fleetctl customer write-manifest --customer-id llm-api \
-  --profile-ref "$FLEET_PROFILE_REF" \
-  --runtime-bundle-ref 'aws-secretsmanager:///smartrouter/fleet/customers/llm-api/runtime-bundle' \
-  --license-ref "$FLEET_LICENSE_REF"
-
-metrum-genai-smartrouter-fleetctl customer create \
-  --sign-with-key /protected/lifecycle_approval_private_key.b64
-
-metrum-genai-smartrouter-fleetctl customer grant-caller --customer-id llm-api \
-  --profile-ref "$FLEET_PROFILE_REF" \
-  --runtime-bundle-ref 'aws-secretsmanager:///smartrouter/fleet/customers/llm-api/runtime-bundle' \
-  --license-ref "$FLEET_LICENSE_REF" \
-  --owner-user llm-api-admin --project llm-api-eks --allow-from-config \
-  --token-out ~/.local/share/metrum-fleet/llm-api/CALLER_TOKEN_ADMIN.txt
-
-metrum-genai-smartrouter-fleetctl customer create \
-  --sign-with-key /protected/lifecycle_approval_private_key.b64
-
-metrum-genai-smartrouter-fleetctl customer smoke --customer-id llm-api \
-  --token-file ~/.local/share/metrum-fleet/llm-api/CALLER_TOKEN_ADMIN.txt \
-  --model high
-```
+Greenfield: `customer bootstrap` with
+`/protected/runtime-config.production-identical.yaml` and `/protected/env.json`.
+Status/smoke/delete: same runbook quick reference (`customer list`, `customer
+status`, `customer smoke`, `customer delete --sign-with-key`).
 
 Validate:
 
@@ -149,10 +108,11 @@ secret bind time.
 
 ## Rollback
 
-Application rollback for this parallel instance is a signed Fleet
-`customer delete` with a job-bound delete approval. It does **not** roll back
-Compose production. Retain or delete the tenant PVC per the approved retention
-decision.
+Application rollback for this parallel instance is
+`customer delete --sign-with-key` (or externally signed `--confirm-file`) per the
+[operations runbook](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#metrum-operator-quick-reference-sqlite-fleet-customers).
+It does **not** roll back Compose production. Retain or delete the tenant PVC
+per the approved retention decision.
 
 ## Related
 

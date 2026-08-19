@@ -47,34 +47,12 @@ protected profile, runtime bundle, and license.
 Its default lifecycle uses SQLite state with one Router container and one
 replica; it neither provisions nor binds RDS.
 
-Packaged `customer` convenience verbs (`write-manifest`, `create`, `status`,
-`smoke`, `grant-caller`, `update-config`, `delete`) are SQLite-only operator
-helpers: they require explicit reference-only inputs (no built-in ACME or
-staging defaults), never hold or copy lifecycle private keys, and mutate only
-with externally issued mode-`0600` signed intents or delete approvals. Typical
-flow: `customer write-manifest` prepares an unsigned SQLite manifesto, an
-approved signing workflow issues the intent, then `customer create --intent`
-activates it. Those helpers refuse dedicated-RDS selection.
-
-After activation, `customer smoke` requires an explicit deployment-defined
-`--model` unless `--skip-chat` is set. Choose a group ID returned by the
-caller's authenticated [`/v1/models`](../getting-started/available-models)
-response; do not assume hosted reference names. Chat smoke succeeds only when
-the router returns HTTP `200` with exact assistant content `OK` (whitespace
-trimmed). Example:
-
-```bash
-metrum-genai-smartrouter-fleetctl customer smoke \
-  --customer-id <customer-id> \
-  --token-file /path/to/CALLER_TOKEN.txt \
-  --model <allowed-model-group>
-```
-
-A dedicated-RDS branch remains an optional **core** Fleet `deploy`/`delete`
-path: it requires an explicit approved `database_profile` and an external,
-expiring, mode-`0600` admission file that Fleet validates and consumes but
-never creates. It is not a `customer` verb input. Production profiles remain
-rejected.
+For Fleet SQLite customer onboarding, config updates, caller grants, and smoke
+checks, see the [Customer Administrator Guide](../operations/customer-administration).
+Packaged `customer` helpers require explicit reference-only inputs (no built-in
+ACME or staging defaults) and mutate only with signed intents or delete
+approvals. Dedicated RDS remains an optional **core** Fleet path with external
+admission—not a `customer` verb input.
 
 Create a dedicated service account, then create deployment-owned directories:
 
