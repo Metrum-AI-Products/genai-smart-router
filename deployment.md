@@ -1,6 +1,60 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-08-18
+Last deployed: 2026-08-19
+
+## 2026-08-19 Public privacy and capture-security remediation
+
+Deployed package/image `smart-llmrouter:d6ceb3c-linux-amd64` from merged
+`origin/main` (`d6ceb3c`, PR #910) to the legacy Docker Compose production
+environment. The upgrade consent-gates and self-hosts the hosted-docs
+ElevenLabs widget, publishes the privacy and managed-instance processing
+materials, applies public CSP and Permissions-Policy headers, serves
+`/.well-known/security.txt`, removes public docs build-identity headers, and
+adds fail-closed encrypted governed content capture. Runtime config, caller
+tokens, license/quota state, Caddy state, and PostgreSQL usage history were
+preserved.
+
+Production backup and migration:
+
+- Pre-migration usage `pg_dump` archived in restic snapshot `b6b2aa2d` with
+  tags `purpose:compose-usage-archive`, `cto`, `smart-llmrouter`, and
+  `version:d6ceb3c`.
+- Prior package/runtime backup:
+  `/opt/smart-llmrouter.backup-public-privacy-909-20260819T181458Z`.
+- The router was stopped while the packaged `router-migrate` runner executed
+  `plan`, `apply`, `verify-serving`, and `status` against PostgreSQL.
+  Migration `2026081901` advanced the usage schema from version 2 to version 3;
+  data version remained 1 and the existing historical-validation job remained
+  validated.
+
+Validation:
+
+- `/readyz` and `/healthz`: 200 with version/commit `d6ceb3c`.
+- Serving Compose services are healthy; router image is
+  `smart-llmrouter:d6ceb3c-linux-amd64`.
+- `/docs/privacy`, `/docs/dpa`, `/docs/subprocessors`,
+  `/docs/transfer-schedule`, the self-hosted ConvAI bundle, and
+  `/.well-known/security.txt`: 200.
+- Representative docs and 404 responses include CSP, HSTS, no-referrer,
+  nosniff, and the explicit minimum Permissions-Policy; public docs responses
+  omit `X-Smart-LLMRouter-*` build headers.
+- A fresh headless browser profile made no widget request and wrote no cookie,
+  local storage, session storage, IndexedDB, or Cache Storage entry before
+  consent. Grant loaded the same-origin widget bundle; withdrawal removed the
+  widget, stored the denied preference, and made no further widget request.
+- Authenticated `/v1/models`: 200 with 22 allowed groups. Authenticated
+  OpenAI Chat: 200. Codex Responses CLI returned
+  `router prod codex ok`; Claude Code Messages CLI returned
+  `router prod claude ok` with model usage.
+- Uploaded package/scripts and local dump staging were removed. Docker prune
+  completed after health verification.
+
+Rollback: migration `2026081901` is restore-required. Restore the approved
+pre-migration PostgreSQL archive represented by restic snapshot `b6b2aa2d`,
+then use `scripts/compose_package_upgrade.py rollback` with
+`/opt/smart-llmrouter.backup-public-privacy-909-20260819T181458Z`. Repeat the
+packaged migration `verify-serving`/`status` gate before serving, then re-run
+health, hosted-docs security, authenticated API, and Codex/Claude Code checks.
 
 ## 2026-08-18 Hosted docs ConvAI current embed (text chat)
 
