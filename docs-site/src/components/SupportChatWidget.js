@@ -113,10 +113,10 @@ export default function SupportChatWidget() {
       >
         <div>
           {consent === null
-            ? "Optional support chat uses ElevenLabs only after you allow it. "
+            ? "Optional support chat stays off until you allow it. "
             : consent === "granted"
-              ? "ElevenLabs support chat is allowed. "
-              : "ElevenLabs support chat is off. "}
+              ? "Support chat is allowed. "
+              : "Support chat is off. "}
           <a href="/docs/privacy">Privacy notice</a>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>

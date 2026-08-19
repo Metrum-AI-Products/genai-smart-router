@@ -22,7 +22,13 @@ func TestDocsHandlerServesEmbedded404ForMissingDocsPage(t *testing.T) {
 			t.Fatalf("public docs exposed %s=%q", header, got)
 		}
 	}
-	if csp := rr.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") || strings.Contains(csp, "unpkg") {
+	csp := rr.Header().Get("Content-Security-Policy")
+	for _, required := range []string{"script-src 'self' 'unsafe-inline'", "https://api.us.elevenlabs.io", "wss://api.us.elevenlabs.io"} {
+		if !strings.Contains(csp, required) {
+			t.Fatalf("docs CSP missing %q: %q", required, csp)
+		}
+	}
+	if strings.Contains(csp, "unpkg") {
 		t.Fatalf("unexpected docs CSP %q", csp)
 	}
 	if policy := rr.Header().Get("Permissions-Policy"); !strings.Contains(policy, "microphone=(self)") {

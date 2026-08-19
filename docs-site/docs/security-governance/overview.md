@@ -39,10 +39,12 @@ Managed-instance privacy and contracting information has one canonical home in
 the [Privacy Notice](../privacy) and linked DPA, subprocessor, and transfer
 materials.
 
-Hosted docs use a same-origin script policy and load the self-hosted ElevenLabs
-widget only after affirmative consent. The Permissions Policy allows
-`microphone=(self)` solely so a consented voice chat can request microphone
-access; camera, geolocation, payment, USB, and browsing topics are disabled.
+Hosted docs load external scripts only from the same origin and permit the
+inline bootstrap required by the static documentation runtime. The self-hosted
+support chat widget loads only after affirmative consent. The Permissions
+Policy allows `microphone=(self)` solely so a consented voice chat can request
+microphone access; camera, geolocation, payment, USB, and browsing topics are
+disabled.
 
 ## Related Pages
 

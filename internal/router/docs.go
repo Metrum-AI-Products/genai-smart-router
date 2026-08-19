@@ -151,7 +151,7 @@ func setPublicDocsSecurityHeaders(w http.ResponseWriter) {
 	w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' https://api.elevenlabs.io wss://api.elevenlabs.io wss://livekit.rtc.elevenlabs.io; media-src 'self' blob:; worker-src 'self' blob:")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' https://api.elevenlabs.io https://api.us.elevenlabs.io wss://api.elevenlabs.io wss://api.us.elevenlabs.io wss://livekit.rtc.elevenlabs.io; media-src 'self' blob:; worker-src 'self' blob:")
 	// The consented ConvAI voice control needs same-origin microphone access.
 	w.Header().Set("Permissions-Policy", "camera=(), geolocation=(), payment=(), usb=(), browsing-topics=(), microphone=(self)")
 	w.Header().Del("Server")
