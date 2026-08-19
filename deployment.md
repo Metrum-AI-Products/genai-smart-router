@@ -2,6 +2,32 @@
 
 Last deployed: 2026-08-19
 
+## 2026-08-19 Parallel EKS SQLite instance (llm-api.apps.metrum.ai)
+
+Fleet customer `llm-api` is serving at `https://llm-api.apps.metrum.ai` on the
+shared Metrum EKS cluster with SQLite on the tenant PVC. This is a **parallel**
+validation instance; legacy Docker Compose production at
+`https://llm-api-engg.metrum.ai` remains the Postgres authority. No usage
+migration, RDS, or Compose DNS cutover was performed.
+
+Runtime bundle: Compose production provider keys (`env.json` snapshot) plus
+production-identical model-group routing with EKS `/var/lib/smart-llmrouter`
+paths. Instance-specific probe caller via Fleet `grant-caller`; Compose router
+tokens were not copied.
+
+Sanitized validation (2026-08-19 UTC):
+
+- Fleet job `job-1777abc87d3bf4b6a6bd`, observed state `ready`, hostname
+  `llm-api.apps.metrum.ai`.
+- EKS `/readyz`: 200; authenticated `/v1/models`: 200 with 25 groups; group
+  `high` chat smoke: 200 with exact `OK`; ordinary-caller `/metrics`: 403.
+- Compose `/readyz`: 200 (unchanged).
+
+Rollback for the parallel instance: signed Fleet `customer delete` with
+job-bound delete approval. Does not roll back Compose production.
+
+See [`docs/LLM_API_EKS_SQLITE_PARALLEL.md`](docs/LLM_API_EKS_SQLITE_PARALLEL.md).
+
 ## 2026-08-19 Hosted support chat CSP correction
 
 Deployed package/image `smart-llmrouter:8d91f5c-linux-amd64` from merged
@@ -335,6 +361,11 @@ The Docker Compose router at `https://llm-api-engg.metrum.ai` remains the
 production authority; no usage data or ordinary caller traffic has moved to
 EKS. A future production cutover still requires separately approved database
 reconciliation and DNS transition. See `docs/EKS_STAGING_MIGRATION.md`.
+
+The first cutover step is a parallel Fleet SQLite customer instance at
+`https://llm-api.apps.metrum.ai` (no dedicated RDS, no Postgres usage copy).
+See `docs/LLM_API_EKS_SQLITE_PARALLEL.md`. Compose Postgres and production DNS
+are unchanged until `#518` authorizes cutover.
 
 ## Live Environment
 

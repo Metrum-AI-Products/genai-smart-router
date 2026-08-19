@@ -426,6 +426,14 @@ Treat application/config rollback and database/data recovery as separate operati
 
 Customer retirement or incident cleanup requires a separately confirmed plan covering customer notification, traffic disablement, retention, license/caller access, and RDS/snapshot disposition. Do not treat a normal failed provisioning attempt as authorization to delete durable resources.
 
+## Parallel production-equivalent rehearsal (SQLite)
+
+The Metrum engineering parallel instance at `llm-api.apps.metrum.ai` is a
+Fleet SQLite customer deployment, not a `#518` production profile or Compose
+cutover. Compose production remains on Postgres; the EKS instance uses PVC
+SQLite only. See
+[`docs/LLM_API_EKS_SQLITE_PARALLEL.md`](LLM_API_EKS_SQLITE_PARALLEL.md).
+
 ## Related records
 
 - [#555 customer EKS lifecycle](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/555)

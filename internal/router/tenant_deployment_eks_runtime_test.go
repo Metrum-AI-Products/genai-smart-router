@@ -25,7 +25,7 @@ func TestEKSRuntimeBindingCreatesExactConfigAndEnvironmentSecret(t *testing.T) {
 			return protectedRuntimeBundle(t, configYAML, envJSON), nil
 		},
 	}
-	if ref, err := adapter.EnsureSecretBinding(context.Background(), plan); err != nil || ref != "secret/router-runtime" {
+	if ref, err := adapter.EnsureSecretBinding(context.Background(), plan); err != nil || ref != tenantDeploymentResourceRef(plan.Namespace, "secret", "router-runtime") {
 		t.Fatalf("runtime binding ref=%q err=%v", ref, err)
 	}
 	secret, err := adapter.kube.CoreV1().Secrets(plan.Namespace).Get(context.Background(), "router-runtime", metav1.GetOptions{})

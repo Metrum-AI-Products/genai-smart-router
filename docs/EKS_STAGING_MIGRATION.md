@@ -749,3 +749,9 @@ section covering an EC2 write freeze, logical Postgres export/import, row and
 report reconciliation, final state handling, DNS transition, client acceptance,
 and an explicit rollback window. Do not make either public production hostname
 point at EKS before that process passes.
+
+The first cutover step is a **parallel** Fleet SQLite customer instance at
+`llm-api.apps.metrum.ai` (see
+[`docs/LLM_API_EKS_SQLITE_PARALLEL.md`](LLM_API_EKS_SQLITE_PARALLEL.md)). That
+hostname does not replace Compose production, does not use dedicated RDS, and
+does not migrate Postgres usage history.

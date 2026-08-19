@@ -304,6 +304,15 @@ func owned(labels map[string]string, plan TenantDeploymentPlan) bool {
 		labels[tenantDeploymentOwnerLabel] == plan.InstanceID &&
 		labels["app.kubernetes.io/managed-by"] == "metrum-fleetctl"
 }
+
+func tenantDeploymentNetworkPolicyRef(namespace, name string) string {
+	return tenantDeploymentResourceRef(namespace, "networkpolicy", name)
+}
+
+func tenantDeploymentResourceRef(namespace, kind, name string) string {
+	return kind + "/" + namespace + "/" + name
+}
+
 func ownershipError() error {
 	return &TenantDeploymentAdapterError{Class: "ownership_conflict", UnknownOutcome: true, Err: errors.New("Kubernetes object is not owned by this deployment")}
 }
@@ -344,14 +353,14 @@ func (a *EKSTenantDeploymentAdapters) EnsureNetworkPolicy(ctx context.Context, p
 		if !owned(current.Labels, p) {
 			return "", ownershipError()
 		}
-		return "networkpolicy/" + name, nil
+		return tenantDeploymentNetworkPolicyRef(p.Namespace, name), nil
 	}
 	if !apierrors.IsNotFound(err) {
 		return "", err
 	}
 	policy := &networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: p.Namespace, Labels: a.labels(p)}, Spec: networkingv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{tenantDeploymentOwnerLabel: p.InstanceID}}, PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}, Ingress: []networkingv1.NetworkPolicyIngressRule{{From: []networkingv1.NetworkPolicyPeer{{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": a.profile.IngressNamespace}}}}}}}}
 	_, err = client.Create(ctx, policy, metav1.CreateOptions{})
-	return "networkpolicy/" + name, err
+	return tenantDeploymentNetworkPolicyRef(p.Namespace, name), err
 }
 func (a *EKSTenantDeploymentAdapters) DeleteNetworkPolicy(ctx context.Context, p TenantDeploymentPlan, _ string) error {
 	return a.deleteNetworkPolicy(ctx, p, "router-ingress")
@@ -438,7 +447,7 @@ func (a *EKSTenantDeploymentAdapters) ensureRuntimeBundleSecret(ctx context.Cont
 		if _, err := c.Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
 			return "", errors.New("write protected runtime bundle")
 		}
-		return "secret/router-runtime", nil
+		return tenantDeploymentResourceRef(p.Namespace, "secret", "router-runtime"), nil
 	}
 	if !apierrors.IsNotFound(err) {
 		return "", errors.New("read protected runtime secret")
@@ -446,7 +455,7 @@ func (a *EKSTenantDeploymentAdapters) ensureRuntimeBundleSecret(ctx context.Cont
 	if _, err := c.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "router-runtime", Namespace: p.Namespace, Labels: a.labels(p)}, Type: corev1.SecretTypeOpaque, Data: data}, metav1.CreateOptions{}); err != nil {
 		return "", errors.New("write protected runtime bundle")
 	}
-	return "secret/router-runtime", nil
+	return tenantDeploymentResourceRef(p.Namespace, "secret", "router-runtime"), nil
 }
 
 func (a *EKSTenantDeploymentAdapters) ensureReferenceSecret(ctx context.Context, p TenantDeploymentPlan, name, key, ref string) (string, error) {
@@ -456,7 +465,7 @@ func (a *EKSTenantDeploymentAdapters) ensureReferenceSecret(ctx context.Context,
 		if !owned(existing.Labels, p) {
 			return "", ownershipError()
 		}
-		return "secret/" + name, nil
+		return tenantDeploymentResourceRef(p.Namespace, "secret", name), nil
 	}
 	if !apierrors.IsNotFound(err) {
 		return "", err
@@ -466,7 +475,7 @@ func (a *EKSTenantDeploymentAdapters) ensureReferenceSecret(ctx context.Context,
 		return "", err
 	}
 	_, err = c.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: p.Namespace, Labels: a.labels(p)}, Type: corev1.SecretTypeOpaque, Data: map[string][]byte{key: value}}, metav1.CreateOptions{})
-	return "secret/" + name, err
+	return tenantDeploymentResourceRef(p.Namespace, "secret", name), err
 }
 func (a *EKSTenantDeploymentAdapters) deleteSecret(ctx context.Context, p TenantDeploymentPlan, name string) error {
 	c := a.kube.CoreV1().Secrets(p.Namespace)
@@ -520,7 +529,7 @@ func (a *EKSTenantDeploymentAdapters) EnsureStatePVC(ctx context.Context, p Tena
 		if !owned(o.Labels, p) || len(o.Spec.AccessModes) != 1 || o.Spec.AccessModes[0] != corev1.ReadWriteOnce {
 			return "", ownershipError()
 		}
-		return "pvc/" + name, nil
+		return tenantDeploymentResourceRef(p.Namespace, "pvc", name), nil
 	}
 	if !apierrors.IsNotFound(e) {
 		return "", e
@@ -528,7 +537,7 @@ func (a *EKSTenantDeploymentAdapters) EnsureStatePVC(ctx context.Context, p Tena
 	q := resource.MustParse(fmt.Sprintf("%dGi", a.profile.StateStorageGiB))
 	sc := a.profile.StorageClass
 	_, e = c.Create(ctx, &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: p.Namespace, Labels: a.labels(p)}, Spec: corev1.PersistentVolumeClaimSpec{AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}, StorageClassName: &sc, Resources: corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: q}}}}, metav1.CreateOptions{})
-	return "pvc/" + name, e
+	return tenantDeploymentResourceRef(p.Namespace, "pvc", name), e
 }
 func (a *EKSTenantDeploymentAdapters) DeleteStatePVC(ctx context.Context, p TenantDeploymentPlan, _ string) error {
 	c := a.kube.CoreV1().PersistentVolumeClaims(p.Namespace)
@@ -582,7 +591,7 @@ func (a *EKSTenantDeploymentAdapters) EnsureRouter(ctx context.Context, p Tenant
 		if _, err := client.Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
 			return "", errors.New("update router deployment")
 		}
-		return "deployment/" + name, nil
+		return tenantDeploymentResourceRef(p.Namespace, "deployment", name), nil
 	}
 	if !apierrors.IsNotFound(err) {
 		return "", err
@@ -598,7 +607,7 @@ func (a *EKSTenantDeploymentAdapters) EnsureRouter(ctx context.Context, p Tenant
 		return "", err
 	}
 	_, err = client.Create(ctx, deployment, metav1.CreateOptions{})
-	return "deployment/" + name, err
+	return tenantDeploymentResourceRef(p.Namespace, "deployment", name), err
 }
 
 func (a *EKSTenantDeploymentAdapters) runtimeBundleSHA256(ctx context.Context, p TenantDeploymentPlan) (string, error) {
@@ -768,7 +777,7 @@ func (a *EKSTenantDeploymentAdapters) ValidateActivation(ctx context.Context, p 
 			} else if d.Status.UpdatedReplicas != 1 || d.Status.ReadyReplicas != 1 || d.Status.ObservedGeneration < d.Generation {
 				last = &TenantDeploymentAdapterError{Class: "router_not_ready", Err: errors.New("router deployment rollout is not complete")}
 			} else {
-				return "activation/router-ready", nil
+				return tenantDeploymentResourceRef(p.Namespace, "activation", "router-ready"), nil
 			}
 		}
 		if !deadline.After(time.Now().UTC()) {
@@ -821,13 +830,13 @@ func (a *EKSTenantDeploymentAdapters) EnableHostname(ctx context.Context, p Tena
 		if !owned(existing.Labels, p) {
 			return "", ownershipError()
 		}
-		return "ingress/" + name, nil
+		return tenantDeploymentResourceRef(p.Namespace, "ingress", name), nil
 	}
 	if !apierrors.IsNotFound(err) {
 		return "", err
 	}
 	_, err = ingresses.Create(ctx, ingress, metav1.CreateOptions{})
-	return "ingress/" + name, err
+	return tenantDeploymentResourceRef(p.Namespace, "ingress", name), err
 }
 func (a *EKSTenantDeploymentAdapters) DisableHostname(ctx context.Context, p TenantDeploymentPlan, _ string) error {
 	c := a.kube.NetworkingV1().Ingresses(p.Namespace)
