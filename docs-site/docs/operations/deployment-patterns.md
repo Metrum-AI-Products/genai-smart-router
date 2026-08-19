@@ -86,10 +86,13 @@ Fleet-managed SQLite customer instance, activating a new caller or config
 revision is a Fleet deploy of an approved `runtime_bundle_ref` (new
 `config_revision`), not an in-place `metrum-genai-smartrouterctl` mutation. See
 [User Key Generation](./key-generation#activation-boundary).
-Packaged `customer` helpers (`write-manifest` then externally signed
-`create --intent`) are SQLite-only: they require explicit references (no ACME
-or staging defaults), never accept lifecycle private keys, and refuse
-dedicated-RDS selection. After activation, `customer smoke` requires
+Packaged `customer` helpers (`publish-runtime-bundle`, optional
+`prepare-runtime-bundle`, `bootstrap`, or `write-manifest` then externally signed
+`create --intent` / `create --sign-with-key`) are SQLite-only: they require
+explicit references (no ACME or staging defaults), never accept lifecycle
+private keys in the default path except optional `--sign-with-key` on
+`create`/`bootstrap`/`repair`, and refuse dedicated-RDS selection. After
+activation, `customer smoke` requires
 `--model` from the caller's authenticated `/v1/models` list and succeeds
 only on HTTP `200` with exact assistant content `OK`; see
 [Binary Installation](../installation/binary). Plan is side-effect-free. The default SQLite path is namespace, network policy,

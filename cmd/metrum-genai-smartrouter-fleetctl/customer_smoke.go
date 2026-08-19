@@ -42,16 +42,6 @@ func resolveSmokeToken(ws customerWorkspace, tokenFile string) (string, error) {
 	return "", fmt.Errorf("no caller token file found; pass --token-file or grant-caller first")
 }
 
-func expandHome(path string) string {
-	if strings.HasPrefix(path, "~/") {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			return filepath.Join(home, path[2:])
-		}
-	}
-	return path
-}
-
 func httpJSON(method, url, token string, body any, timeout time.Duration) (int, map[string]any, error) {
 	var reader io.Reader
 	if body != nil {

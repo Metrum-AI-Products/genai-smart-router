@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	fleetBinaryName    = "metrum-genai-smartrouter-fleetctl"
-	tokenGenBinaryName = "router-token-gen"
-	hostnameSuffix     = "apps.metrum.ai"
+	fleetBinaryName     = "metrum-genai-smartrouter-fleetctl"
+	fleetSignBinaryName = "metrum-genai-smartrouter-fleet-sign"
+	tokenGenBinaryName  = "router-token-gen"
+	hostnameSuffix      = "apps.metrum.ai"
 )
 
 var customerIDRE = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)

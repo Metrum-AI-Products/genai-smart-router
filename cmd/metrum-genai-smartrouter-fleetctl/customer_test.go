@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -324,5 +325,92 @@ func TestCustomerCLICreateDoesNotCopyDonorKeys(t *testing.T) {
 	wsHome := filepath.Join(home, ".local", "share", "metrum-fleet", "aditya-test1")
 	if fileExists(filepath.Join(wsHome, "lifecycle_approval_private_key.b64")) {
 		t.Fatal("create must not copy donor private keys")
+	}
+}
+
+func TestTransformRuntimeBundleFleetEKSPaths(t *testing.T) {
+	configYAML := "server:\n  usage_db:\n    path: /app/state/usage.sqlite\n  log_dir: /app/logs\nmodels:\n  high:\n    targets:\n    - provider: openai\n      model_ref: gpt-test\n"
+	envJSON := `{"ROUTER_USAGE_DB_DSN":"postgres:///app/state/db"}`
+	bundle, stats, err := transformRuntimeBundle(configYAML, envJSON, bundleTransformOptions{
+		StripCallers: true,
+		RewritePaths: "fleet-eks",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(bundle.ConfigYAML, "/var/lib/smart-llmrouter") {
+		t.Fatalf("config paths not rewritten: %s", bundle.ConfigYAML)
+	}
+	if strings.Contains(bundle.ConfigYAML, "/app/state") || strings.Contains(bundle.ConfigYAML, "/app/logs") {
+		t.Fatalf("compose paths remain: %s", bundle.ConfigYAML)
+	}
+	if !strings.Contains(bundle.EnvJSON, "/var/lib/smart-llmrouter") {
+		t.Fatalf("env paths not rewritten: %s", bundle.EnvJSON)
+	}
+	if stats.ModelGroupCount != 1 {
+		t.Fatalf("model_group_count=%d", stats.ModelGroupCount)
+	}
+}
+
+func TestTransformRuntimeBundleStripCallers(t *testing.T) {
+	configYAML := "callers:\n- id: old\nusers:\n  u1: {}\nprojects:\n  p1: {}\nproject_memberships: []\nmodels:\n  high: {}\n"
+	bundle, _, err := transformRuntimeBundle(configYAML, "{}", bundleTransformOptions{StripCallers: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(bundle.ConfigYAML, "old") || strings.Contains(bundle.ConfigYAML, "users:") {
+		t.Fatalf("callers/users not stripped: %s", bundle.ConfigYAML)
+	}
+}
+
+func TestEnforceSecretsManagerSizeLimitRejectsOversize(t *testing.T) {
+	huge := strings.Repeat("x", secretsManagerMaxPayloadBytes)
+	err := enforceSecretsManagerSizeLimit(runtimeBundle{
+		ConfigYAML: "models:\n  big:\n    note: " + huge,
+		EnvJSON:    "{}",
+	})
+	if err == nil || !strings.Contains(err.Error(), "exceeds Secrets Manager limit") {
+		t.Fatalf("expected size rejection, got %v", err)
+	}
+}
+
+func TestTrimCatalogOnlyModelsKeepsReferencedTargets(t *testing.T) {
+	configYAML := `providers:
+  openai:
+    models:
+      used:
+        model: gpt-used
+      unused:
+        model: gpt-unused
+models:
+  high:
+    targets:
+    - provider: openai
+      model_ref: used
+`
+	bundle, _, err := transformRuntimeBundle(configYAML, "{}", bundleTransformOptions{TrimCatalog: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(bundle.ConfigYAML, "used:") {
+		t.Fatalf("referenced model removed: %s", bundle.ConfigYAML)
+	}
+	if strings.Contains(bundle.ConfigYAML, "unused:") {
+		t.Fatalf("catalog-only model kept: %s", bundle.ConfigYAML)
+	}
+}
+
+func TestPublishRuntimeBundleOperatorClearsFleetSession(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAFLEET")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
+	t.Setenv("AWS_SESSION_TOKEN", "session")
+	roleARN := fleetLifecycleRoleARN()
+	t.Setenv("METRUM_FLEET_LIFECYCLE_ROLE_ARN", roleARN)
+	if _, _, ok := existingFleetRoleSession(context.Background()); ok {
+		t.Fatal("expected no fleet session without matching caller identity")
+	}
+	clearFleetSessionCredentials()
+	if os.Getenv("AWS_SESSION_TOKEN") != "" {
+		t.Fatal("session token not cleared")
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 )
@@ -117,5 +118,82 @@ func TestEKSRouterDeploymentMountsRuntimeBundleAtImageConfigPath(t *testing.T) {
 	}
 	if !runtimeVolume || !licenseVolume {
 		t.Fatalf("router deployment secret volumes runtime=%t license=%t", runtimeVolume, licenseVolume)
+	}
+	if deployment.Spec.Strategy.Type != appsv1.RecreateDeploymentStrategyType {
+		t.Fatalf("router deployment strategy=%q want Recreate", deployment.Spec.Strategy.Type)
+	}
+}
+
+func TestEKSRouterDeploymentRecreateStrategyOnUpdate(t *testing.T) {
+	plan := TenantDeploymentPlan{InstanceID: "instance-a", Namespace: "tenant-a", ReleaseDigest: "example/router@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+	adapter := &EKSTenantDeploymentAdapters{kube: k8sfake.NewSimpleClientset()}
+	if _, err := adapter.EnsureRouter(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	client := adapter.kube.AppsV1().Deployments(plan.Namespace)
+	deployment, err := client.Get(context.Background(), "router", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rolling := appsv1.RollingUpdateDeploymentStrategyType
+	deployment.Spec.Strategy.Type = rolling
+	if _, err := client.Update(context.Background(), deployment, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	plan.ReleaseDigest = "example/router@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	if _, err := adapter.EnsureRouter(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := client.Get(context.Background(), "router", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Spec.Strategy.Type != appsv1.RecreateDeploymentStrategyType {
+		t.Fatalf("updated strategy=%q want Recreate", updated.Spec.Strategy.Type)
+	}
+}
+
+func TestEKSReferenceSecretUpdatesExistingData(t *testing.T) {
+	const licenseRef = "aws-ssm:///safe/license-request"
+	const first = `{"license_id":"first"}`
+	const second = `{"license_id":"second"}`
+	plan := TenantDeploymentPlan{InstanceID: "instance-a", Namespace: "tenant-a"}
+	adapter := &EKSTenantDeploymentAdapters{
+		kube: k8sfake.NewSimpleClientset(),
+		resolveReference: func(_ context.Context, ref string) ([]byte, error) {
+			if ref != licenseRef {
+				t.Fatalf("license resolver ref = %q", ref)
+			}
+			if strings.Contains(ref, "second") {
+				return []byte(second), nil
+			}
+			return []byte(first), nil
+		},
+	}
+	if _, err := adapter.EnsureLicenseBinding(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	secret, err := adapter.kube.CoreV1().Secrets(plan.Namespace).Get(context.Background(), "router-license", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(secret.Data["license.json"]) != first {
+		t.Fatalf("initial license=%q", secret.Data["license.json"])
+	}
+	adapter.resolveReference = func(_ context.Context, ref string) ([]byte, error) {
+		if ref != licenseRef {
+			t.Fatalf("license resolver ref = %q", ref)
+		}
+		return []byte(second), nil
+	}
+	if _, err := adapter.EnsureLicenseBinding(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	secret, err = adapter.kube.CoreV1().Secrets(plan.Namespace).Get(context.Background(), "router-license", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(secret.Data["license.json"]) != second {
+		t.Fatalf("updated license=%q want %q", secret.Data["license.json"], second)
 	}
 }

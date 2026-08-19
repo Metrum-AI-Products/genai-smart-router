@@ -406,3 +406,44 @@ func firstNonEmpty(values ...string) string {
 	}
 	return ""
 }
+
+func signWorkspaceManifest(ws customerWorkspace, keyPath string) string {
+	keyPath = expandHome(strings.TrimSpace(keyPath))
+	if keyPath == "" {
+		die("--sign-with-key requires a lifecycle approval private key path")
+	}
+	requireMode0600File(keyPath, "sign-with-key")
+	manifestPath := filepath.Join(ws.Home, "manifest.json")
+	if !fileExists(manifestPath) {
+		die("workspace manifest.json missing; run write-manifest or publish-runtime-bundle first")
+	}
+	intentIDPath := filepath.Join(ws.Home, "intent-id.txt")
+	intentIDBytes, err := os.ReadFile(intentIDPath)
+	if err != nil {
+		die("read intent-id.txt: %v", err)
+	}
+	intentID := strings.TrimSpace(string(intentIDBytes))
+	state := ws.loadState()
+	profileRef, _ := state["profile_ref"].(string)
+	if strings.TrimSpace(profileRef) == "" {
+		die("profile_ref missing from workspace state; run write-manifest first")
+	}
+	signBin, err := resolvePackagedBinary(fleetSignBinaryName)
+	if err != nil {
+		die("%v", err)
+	}
+	signedPath := filepath.Join(ws.Home, "intent-signed.json")
+	cmd := exec.Command(signBin, "intent", keyPath, intentID, profileRef, manifestPath, signedPath, "24")
+	stdout, stderr, code := runLogged(cmd)
+	requireOK(stdout, stderr, code, "fleet-sign")
+	writeMode0600(filepath.Join(ws.Home, "intent.json"), mustReadFile(signedPath))
+	return signedPath
+}
+
+func mustReadFile(path string) []byte {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		die("read %s: %v", path, err)
+	}
+	return raw
+}

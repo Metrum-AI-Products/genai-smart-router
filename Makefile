@@ -295,7 +295,11 @@ test-tenant-deploy-activation:
 # Offline customer convenience CLI gates: signed-intent requirement, no ACME
 # defaults, no donor-key copy, SQLite-only manifests, dedicated-RDS refuse.
 test-fleet-customer-cli:
-	go test ./cmd/metrum-genai-smartrouter-fleetctl -run 'TestCustomer|TestWriteManifest|TestValidateIntentEnvelope|TestRejectForeignDefaultRefs|TestPlanSelectsDedicatedRDS|TestFleetE2ERequiresRDSAdmissionOnlyForDedicatedRDSManifest|TestTenantDeploymentCLIPlanIsReadOnly|TestLifecycleCommandsRejectUnsupportedVerbs' -count=1
+	go test ./cmd/metrum-genai-smartrouter-fleetctl -run 'TestCustomer|TestWriteManifest|TestValidateIntentEnvelope|TestRejectForeignDefaultRefs|TestPlanSelectsDedicatedRDS|TestTransformRuntimeBundle|TestEnforceSecretsManager|TestTrimCatalog|TestPublishRuntimeBundle|TestFleetE2ERequiresRDSAdmissionOnlyForDedicatedRDSManifest|TestTenantDeploymentCLIPlanIsReadOnly|TestLifecycleCommandsRejectUnsupportedVerbs' -count=1
+
+# Gated live SQLite customer bootstrap using packaged dist/ binaries only.
+test-fleet-sqlite-customer-live:
+	@bash scripts/fleet_sqlite_customer_e2e.sh
 
 test-tenant-deploy-all: test-tenant-deploy-contract test-tenant-deploy-adapters test-tenant-deploy-security test-tenant-deploy-activation test-fleet-customer-cli
 
