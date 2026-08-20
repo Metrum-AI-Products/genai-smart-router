@@ -21,14 +21,13 @@ Router instance env is the same shape as any customer deployment: provider keys 
 
 Customer bootstrap template: `examples/commerce-customer-runtime/` (instance-only `env.example.json` + minimal `config.example.yaml`).
 
-Migrate a mixed local `env.json` (including nested `STRIPE_KEYS.SANDBOX_KEYS`) without printing secrets:
+Create ignored runtime files from the tracked examples (then fill real values locally; do not commit them):
 
 ```bash
-rtk python3 scripts/migrate_env_split.py --input env.json --dry-run
-rtk python3 scripts/migrate_env_split.py --input env.json --force
+cp commerce.env.example.json commerce.env.json
+cp ops.env.example.json ops.env.json
+# Instance providers: copy or edit env.json from env.example.json as usual.
 ```
-
-`--force` is required to overwrite existing outputs. Unit coverage: `rtk python3 scripts/migrate_env_split_test.py`.
 
 Commerce CLIs load `./commerce.env.json` from the working directory; **shell environment wins** over file values. They do not read router `env.json`.
 
