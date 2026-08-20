@@ -116,10 +116,11 @@ func (c *LiveStripeClient) ArchivePrice(ctx context.Context, priceID string) err
 }
 
 func (c *LiveStripeClient) FindPriceByLookupKey(ctx context.Context, lookupKey string) (*PriceSnapshot, error) {
-	params := &stripe.PriceListParams{}
-	params.Filters.AddFilter("lookup_keys", "", lookupKey)
-	params.Filters.AddFilter("active", "", "true")
-	params.Filters.AddFilter("limit", "", "1")
+	params := &stripe.PriceListParams{
+		LookupKeys: stripe.StringSlice([]string{lookupKey}),
+		Active:     stripe.Bool(true),
+		ListParams: stripe.ListParams{Limit: stripe.Int64(1)},
+	}
 	iter := price.List(params)
 	if iter.Next() {
 		snap := snapshotPrice(iter.Price())
