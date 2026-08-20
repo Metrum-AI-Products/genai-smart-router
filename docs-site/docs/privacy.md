@@ -13,8 +13,8 @@ questions and data-subject requests can be sent to
 
 ## Optional support chat
 
-The sitewide support chat uses ElevenLabs as a processor for its ConvAI widget.
-The widget bundle, custom element, and widget network connections load only
+The sitewide support chat uses a third-party processor. Its widget bundle,
+custom element, and widget network connections load only
 after you select **Allow support chat**. Before that choice, the site may read
 the single first-party `metrum_docs_convai_consent` preference to restore a
 prior choice, but it does not create that preference.
@@ -23,7 +23,7 @@ You can select **Withdraw support chat** in the same sitewide privacy control
 used to grant consent. Withdrawal immediately removes the widget and prevents
 the page from loading it again unless you grant consent later.
 
-Widget and session data is processed by ElevenLabs under its processor terms.
+Widget and session data are processed by that provider under its processor terms.
 This processing may involve the United States. Contact Metrum for the current
 executed DPA and Standard Contractual Clauses status. Executed DPA/SCC copies
 are available through [contact@metrum.ai](mailto:contact@metrum.ai) before a

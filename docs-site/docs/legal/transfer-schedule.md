@@ -9,8 +9,8 @@ slug: /transfer-schedule
 Effective 2026-08-19. This informational schedule is not legal advice and does
 not represent an unsigned agreement as executed.
 
-Hosted documentation's optional ElevenLabs ConvAI support widget may process
-widget and session data in the United States after affirmative consent.
+Hosted documentation's optional support-chat widget may process widget and
+session data in the United States after affirmative consent.
 Managed router infrastructure and support processing locations depend on the
 customer-approved deployment and executed contracting materials.
 
