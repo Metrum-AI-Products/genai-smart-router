@@ -3,17 +3,18 @@ kind: Kustomization
 namespace: smartrouter-commerce
 resources:
   - namespace.yaml
-  - secret.example.yaml
   - purchase-deployment.yaml
   - fulfillment-deployment.yaml
   - service.yaml
-  - ingress.example.yaml
+  # ingress.example.yaml is documentation-only until DNS/TLS are approved.
 configMapGenerator:
   - name: commerce-sku-catalog
     files:
-      - enterprise-license-skus.json=../../../../docs/enterprise-license-skus.json
+      - enterprise-license-skus.json
     options:
       disableNameSuffixHash: true
-commonLabels:
-  app.kubernetes.io/part-of: smartrouter-commerce
-  app.kubernetes.io/component: commerce
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: smartrouter-commerce
+      app.kubernetes.io/component: commerce
+    includeSelectors: false

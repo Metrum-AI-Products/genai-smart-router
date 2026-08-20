@@ -67,6 +67,16 @@ Fleet bootstrap is optional and off by default. Set `COMMERCE_FLEET_ENABLED=1` p
 
 `deploy/kubernetes/overlays/commerce-sandbox/` deploys purchase (+ optional fulfillment) into namespace `smartrouter-commerce`. It does not patch the metrum-staging router Deployment. Secret manifests are examples only; never commit live Stripe keys.
 
+The overlay ConfigMap copies `enterprise-license-skus.json` from this directory (kept in sync with `docs/enterprise-license-skus.json`). After catalog edits, refresh the overlay copy before render:
+
+```bash
+cp docs/enterprise-license-skus.json deploy/kubernetes/overlays/commerce-sandbox/enterprise-license-skus.json
+kubectl kustomize deploy/kubernetes/overlays/commerce-sandbox >/tmp/commerce-sandbox.yaml
+```
+
+Staging apply requires: (1) MFA/SSO session for EKS, (2) a published commerce image digest replacing `registry.example.com/metrum-genai-commerce:sandbox`, (3) out-of-band Secret `commerce-stripe` with test keys, (4) namespace bootstrap RBAC for `smartrouter-commerce` (delivery role is router-overlay scoped and does not create this namespace by default).
+
+
 ## Refund / dispute
 
 Refund or dispute should mark entitlement `revoked_pending`. Do not auto-delete the Fleet instance; cleanup remains signed Fleet `customer delete`.
