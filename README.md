@@ -166,6 +166,8 @@ Save the printed `token` value as the caller's bearer token, add the owner to `u
 
 Provider keys are read from `env.json` in this project before `${VAR}` references in `config.yaml` are expanded. Real `env.json` is gitignored; use `env.example.json` as the placeholder-only template. Do not paste production or personal provider keys into tracked examples; store real values in ignored `env.json`, the shell environment, or your deployment secret manager. Run `make secret-check` before publishing changes that touch tracked env examples.
 
+Stripe, commerce admin, and Fleet bootstrap secrets belong in ignored `commerce.env.json` (see `commerce.env.example.json` and `docs/COMMERCE_STRIPE.md`). Restic/backup and the work-dashboard port belong in ignored `ops.env.json` (see `ops.env.example.json`). Do not mix those into instance `env.json`; Metrum’s own router instance uses the same provider-only shape as any customer. Migrate a mixed local file with `scripts/migrate_env_split.py`.
+
 ```bash
 go run ./cmd/router --config config.yaml
 ```
@@ -219,8 +221,9 @@ FIREWORKS_API_KEY
 deployment-specific providers. An empty placeholder does not activate a
 provider, prove account entitlement, or make a model eligible for routing.
 Metrum-local CTO package archival keys (`BACKUP_USER`, `BACKUP_PASS`,
-`RESTIC_PASSWORD`) belong only in ignored `env.json` for
+`RESTIC_PASSWORD`) belong only in ignored `ops.env.json` for
 `make dist-backup` / `make package-dist-backup`; leave the example values empty.
+Stripe and commerce Fleet keys belong only in ignored `commerce.env.json`.
 
 Provider adapter notes:
 

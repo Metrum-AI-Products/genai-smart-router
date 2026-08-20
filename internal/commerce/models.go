@@ -2,11 +2,22 @@ package commerce
 
 import "time"
 
+// Customer is a commerce-side buyer record (safe scalars only).
+type Customer struct {
+	ID        uint      `gorm:"primaryKey"`
+	CreatedAt time.Time `gorm:"not null"`
+	UpdatedAt time.Time `gorm:"not null"`
+	Alias     string    `gorm:"size:128;index"`
+	Email     string    `gorm:"size:320;index"`
+	Status    string    `gorm:"size:32;not null;index"`
+}
+
 // Order records a Checkout Session purchase intent / completion.
 type Order struct {
 	ID                    uint      `gorm:"primaryKey"`
 	CreatedAt             time.Time `gorm:"not null"`
 	UpdatedAt             time.Time `gorm:"not null"`
+	CustomerID            uint      `gorm:"index"`
 	SKU                   string    `gorm:"size:128;not null;index"`
 	LicenseTemplate       string    `gorm:"size:128;not null"`
 	StripeMode            string    `gorm:"size:32;not null"`
@@ -39,6 +50,7 @@ type Entitlement struct {
 	ID                uint      `gorm:"primaryKey"`
 	CreatedAt         time.Time `gorm:"not null"`
 	UpdatedAt         time.Time `gorm:"not null"`
+	CustomerID        uint      `gorm:"index"`
 	SKU               string    `gorm:"size:128;not null;index"`
 	LicenseTemplate   string    `gorm:"size:128;not null"`
 	Status            string    `gorm:"size:32;not null;index"`
@@ -74,6 +86,7 @@ type FulfillmentJob struct {
 // RelationalModels returns GORM models for AutoMigrate (scalar columns only).
 func RelationalModels() []any {
 	return []any{
+		&Customer{},
 		&Order{},
 		&StripeEvent{},
 		&Entitlement{},
@@ -86,6 +99,9 @@ const (
 	OrderStatusPaid     = "paid"
 	OrderStatusFailed   = "failed"
 	OrderStatusCanceled = "canceled"
+
+	CustomerStatusActive         = "active"
+	CustomerStatusRevokedPending = "revoked_pending"
 
 	EntitlementStatusActive          = "active"
 	EntitlementStatusRevokedPending  = "revoked_pending"

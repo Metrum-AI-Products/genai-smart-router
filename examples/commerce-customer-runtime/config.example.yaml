@@ -1,0 +1,73 @@
+# Minimal instance-only router config template for commerce Fleet bootstrap.
+# Provider keys belong in env.json beside this file (see env.example.json).
+# Do not place Stripe, restic, backup, or commerce admin secrets in this bundle.
+server:
+  listen: :8080
+  default_model_group: default
+  cache:
+    enabled: true
+    max_bytes: 134217728
+    default_ttl: 15m
+  logging:
+    path: /var/lib/smart-llmrouter/requests.jsonl
+    rotate_mb: 256
+    keep: 14
+  usage_db:
+    enabled: true
+    driver: sqlite
+    path: /var/lib/smart-llmrouter/usage.sqlite
+    migration_policy: deployment-job
+  license:
+    enabled: true
+    path: /app/config/license.json
+    state_path: /var/lib/smart-llmrouter/license-state.json
+    instance_fingerprint: ""
+    recheck_interval: 1h
+    grace_period_on_validation_error: 24h
+    revocation:
+      mode: off
+      path: /app/config/revocations.json
+    fail_open_for_dev: false
+
+providers:
+  openai:
+    dialect: openai-chat
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    models:
+      gpt-4o-mini:
+        model: gpt-4o-mini
+        input_price_per_million_usd: 0.15
+        output_price_per_million_usd: 0.60
+        pricing_source: placeholder
+        pricing_updated_at: "2026-08-20"
+        input_modalities: [text]
+        output_modalities: [text]
+        tool_support:
+          openai_chat: [tools, tool_choice]
+
+models:
+  default:
+    strategy: weighted
+    targets:
+      - provider: openai
+        model: gpt-4o-mini
+        weight: 100
+
+users:
+  - id: bootstrap-owner
+    display_name: Bootstrap Owner
+    status: active
+
+projects:
+  - id: bootstrap
+    display_name: Bootstrap
+    status: active
+
+project_memberships:
+  - user: bootstrap-owner
+    project: bootstrap
+    status: active
+    role: owner
+
+callers: []

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -20,10 +21,14 @@ import (
 func main() {
 	addr := flag.String("addr", ":8091", "listen address")
 	catalogPath := flag.String("catalog", "docs/enterprise-license-skus.json", "SKU catalog path")
-	dbPath := flag.String("db", "commerce.sqlite", "SQLite path for commerce tables")
+	dbPath := flag.String("db", "tmp/metrum-commerce.sqlite", "SQLite path for commerce tables")
 	successURL := flag.String("success-url", "", "default Checkout success URL")
 	cancelURL := flag.String("cancel-url", "", "default Checkout cancel URL")
 	flag.Parse()
+
+	if err := commerce.LoadCommerceEnvFromCwd(); err != nil {
+		die("load commerce.env.json: %v", err)
+	}
 
 	secret := strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
 	webhookSecret := strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET"))
@@ -46,6 +51,11 @@ func main() {
 		die("%v", err)
 	}
 
+	if dir := filepath.Dir(*dbPath); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			die("mkdir db parent: %v", err)
+		}
+	}
 	gdb, err := gorm.Open(sqlite.Open(*dbPath), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
@@ -57,20 +67,7 @@ func main() {
 		die("%v", err)
 	}
 
-	var fleet commerce.FleetRunner
-	if strings.EqualFold(os.Getenv("COMMERCE_FLEET_ENABLED"), "1") {
-		fleet = &commerce.ShellFleetRunner{
-			Binary:           firstNonEmpty(os.Getenv("COMMERCE_FLEET_BINARY"), "metrum-genai-smartrouter-fleetctl"),
-			ProfileRef:       os.Getenv("COMMERCE_FLEET_PROFILE_REF"),
-			LicenseRef:       os.Getenv("COMMERCE_FLEET_LICENSE_REF"),
-			ConfigFile:       os.Getenv("COMMERCE_FLEET_CONFIG_FILE"),
-			EnvFile:          os.Getenv("COMMERCE_FLEET_ENV_FILE"),
-			SignWithKey:      os.Getenv("COMMERCE_FLEET_SIGN_KEY"),
-			OwnerUser:        firstNonEmpty(os.Getenv("COMMERCE_FLEET_OWNER_USER"), "commerce"),
-			Project:          firstNonEmpty(os.Getenv("COMMERCE_FLEET_PROJECT"), "sandbox"),
-			TokenOutTemplate: firstNonEmpty(os.Getenv("COMMERCE_FLEET_TOKEN_OUT"), "/tmp/commerce-token-%s.txt"),
-		}
-	}
+	fleet := commerce.FleetRunnerFromEnv()
 
 	srv := &commerce.Server{
 		Catalog:       cat,
@@ -78,24 +75,16 @@ func main() {
 		Store:         store,
 		Fleet:         fleet,
 		WebhookSecret: webhookSecret,
+		AdminToken:    strings.TrimSpace(os.Getenv("COMMERCE_ADMIN_TOKEN")),
 		SuccessURL:    *successURL,
 		CancelURL:     *cancelURL,
 		Tolerance:     5 * time.Minute,
 	}
 
-	log.Printf("metrum-genai-commerce listening on %s (catalog=%s)", *addr, *catalogPath)
+	log.Printf("metrum-genai-commerce listening on %s (catalog=%s db=%s)", *addr, *catalogPath, *dbPath)
 	if err := http.ListenAndServe(*addr, srv.Handler()); err != nil {
 		die("serve: %v", err)
 	}
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }
 
 func die(format string, args ...any) {

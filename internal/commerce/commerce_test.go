@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -185,6 +186,19 @@ func TestWebhookSignatureAndReplayIdempotency(t *testing.T) {
 	if fleet.CallCount() != 1 {
 		t.Fatalf("expected one fleet call, got %d", fleet.CallCount())
 	}
+	status, err := store.GetEntitlementStatus(0, "cs_test_1", "")
+	if err != nil {
+		t.Fatalf("entitlement status: %v", err)
+	}
+	if status.Status != commerce.EntitlementStatusProvisioned {
+		t.Fatalf("expected provisioned entitlement, got %s", status.Status)
+	}
+	if status.FulfillmentStatus != commerce.FulfillmentStatusSucceeded {
+		t.Fatalf("expected fulfillment succeeded, got %s", status.FulfillmentStatus)
+	}
+	if status.FleetCustomerID != "buyer-a" {
+		t.Fatalf("expected sanitized fleet customer buyer-a, got %q", status.FleetCustomerID)
+	}
 
 	req2 := httptest.NewRequest(http.MethodPost, "/webhooks/stripe", bytes.NewReader(payload))
 	req2.Header.Set("Stripe-Signature", commerce.SignWebhookPayload(payload, secret, time.Now()))
@@ -257,4 +271,114 @@ func TestFakeFleetRunner(t *testing.T) {
 	if res.CustomerID != "cust-1" || res.JobID == "" {
 		t.Fatalf("unexpected result %+v", res)
 	}
+}
+
+func TestSanitizeFleetCustomerID(t *testing.T) {
+	if got := commerce.SanitizeFleetCustomerID("Buyer_A!", 9); got != "buyer-a" {
+		t.Fatalf("got %q", got)
+	}
+	if got := commerce.SanitizeFleetCustomerID("", 42); got != "c42" {
+		t.Fatalf("empty alias got %q", got)
+	}
+	if got := commerce.SanitizeFleetCustomerID("anon", 7); got != "c7" {
+		t.Fatalf("anon got %q", got)
+	}
+}
+
+func TestShellFleetRunnerRequiresRefs(t *testing.T) {
+	runner := &commerce.ShellFleetRunner{}
+	_, err := runner.Bootstrap(context.Background(), commerce.FleetBootstrapRequest{CustomerID: "c1"})
+	if err == nil {
+		t.Fatal("expected missing refs error")
+	}
+}
+
+func TestAdminAuthListAndResume(t *testing.T) {
+	cat := testCatalog(t)
+	client := commerce.NewFakeStripeClient()
+	ctx := context.Background()
+	if _, err := commerce.ApplyCatalog(ctx, client, cat, false); err != nil {
+		t.Fatal(err)
+	}
+	price := client.ActivePriceBySKU("eval-72h")
+	if price == nil {
+		t.Fatal("missing eval price")
+	}
+	fleet := commerce.NewFakeFleetRunner()
+	store := openTestStore(t)
+	adminToken := "test-admin-token"
+	srv := &commerce.Server{
+		Catalog:       cat,
+		Stripe:        client,
+		Store:         store,
+		Fleet:         fleet,
+		WebhookSecret: "whsec_admin_test",
+		AdminToken:    adminToken,
+		Tolerance:     5 * time.Minute,
+	}
+	h := srv.Handler()
+
+	deny := httptest.NewRequest(http.MethodGet, "/v1/admin/orders", nil)
+	drr := httptest.NewRecorder()
+	h.ServeHTTP(drr, deny)
+	if drr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without token, got %d", drr.Code)
+	}
+
+	payload := []byte(`{"id":"evt_admin_1","type":"checkout.session.completed","data":{"object":{"id":"cs_admin_1","payment_status":"paid","metadata":{"sku":"eval-72h","price_id":"` + price.ID + `","customer_alias":"admin-buyer"},"amount_total":0,"currency":"usd","client_reference_id":"admin-buyer","customer_email":"buyer@example.test"}}}`)
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/stripe", bytes.NewReader(payload))
+	req.Header.Set("Stripe-Signature", commerce.SignWebhookPayload(payload, "whsec_admin_test", time.Now()))
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("webhook %d %s", rr.Code, rr.Body.String())
+	}
+
+	auth := func(method, path string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, nil)
+		r.Header.Set("Authorization", "Bearer "+adminToken)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	for _, path := range []string{
+		"/v1/admin/orders",
+		"/v1/admin/entitlements",
+		"/v1/admin/customers",
+		"/v1/admin/fulfillment-jobs",
+	} {
+		w := auth(http.MethodGet, path)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s status %d body %s", path, w.Code, w.Body.String())
+		}
+	}
+
+	jobs, err := store.ListFulfillmentJobs(10)
+	if err != nil || len(jobs) == 0 {
+		t.Fatalf("expected fulfillment job, err=%v len=%d", err, len(jobs))
+	}
+	// Force failed so resume has work to do.
+	_ = store.DB.Model(&jobs[0]).Updates(map[string]any{
+		"status": commerce.FulfillmentStatusFailed, "last_error_class": "forced",
+	}).Error
+	_ = store.DB.Model(&commerce.Entitlement{}).Where("id = ?", jobs[0].EntitlementID).Update("status", commerce.EntitlementStatusProvisionFailed).Error
+
+	resume := auth(http.MethodPost, "/v1/admin/fulfillment/"+itoa(jobs[0].ID)+"/resume")
+	if resume.Code != http.StatusOK {
+		t.Fatalf("resume status %d body %s", resume.Code, resume.Body.String())
+	}
+	if fleet.CallCount() < 2 {
+		t.Fatalf("expected resume to call fleet again, calls=%d", fleet.CallCount())
+	}
+	status, err := store.GetEntitlementStatus(jobs[0].EntitlementID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != commerce.EntitlementStatusProvisioned || status.FulfillmentStatus != commerce.FulfillmentStatusSucceeded {
+		t.Fatalf("after resume got entitlement=%s fulfillment=%s", status.Status, status.FulfillmentStatus)
+	}
+}
+
+func itoa(n uint) string {
+	return strconv.FormatUint(uint64(n), 10)
 }

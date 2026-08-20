@@ -23,6 +23,10 @@ func main() {
 	prune := fs.Bool("prune-unmanaged", false, "archive active prices for products with metadata.sku not in catalog")
 	_ = fs.Parse(os.Args[2:])
 
+	if err := commerce.LoadCommerceEnvFromCwd(); err != nil {
+		die("load commerce.env.json: %v", err)
+	}
+
 	if *mode != "test" && *mode != "live" {
 		die("--mode must be test or live")
 	}

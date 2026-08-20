@@ -19,6 +19,7 @@ type Server struct {
 	Store         *Store
 	Fleet         FleetRunner
 	WebhookSecret string
+	AdminToken    string
 	SuccessURL    string
 	CancelURL     string
 	Tolerance     time.Duration
@@ -32,7 +33,99 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/checkout/sessions", s.handleCreateCheckout)
 	mux.HandleFunc("POST /webhooks/stripe", s.handleWebhook)
 	mux.HandleFunc("GET /v1/entitlements/status", s.handleEntitlementStatus)
+	mux.HandleFunc("GET /v1/admin/orders", s.withAdminAuth(s.handleAdminListOrders))
+	mux.HandleFunc("GET /v1/admin/entitlements", s.withAdminAuth(s.handleAdminListEntitlements))
+	mux.HandleFunc("GET /v1/admin/customers", s.withAdminAuth(s.handleAdminListCustomers))
+	mux.HandleFunc("GET /v1/admin/fulfillment-jobs", s.withAdminAuth(s.handleAdminListFulfillmentJobs))
+	mux.HandleFunc("POST /v1/admin/fulfillment/{id}/resume", s.withAdminAuth(s.handleAdminResumeFulfillment))
 	return mux
+}
+
+func (s *Server) withAdminAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if strings.TrimSpace(s.AdminToken) == "" {
+			writeErr(w, http.StatusUnauthorized, "admin-disabled", "commerce admin token is not configured")
+			return
+		}
+		auth := strings.TrimSpace(r.Header.Get("Authorization"))
+		const prefix = "Bearer "
+		if !strings.HasPrefix(auth, prefix) || strings.TrimSpace(strings.TrimPrefix(auth, prefix)) != s.AdminToken {
+			writeErr(w, http.StatusUnauthorized, "admin-unauthorized", "valid commerce admin bearer token required")
+			return
+		}
+		next(w, r)
+	}
+}
+
+func (s *Server) handleAdminListOrders(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.Store.ListOrders(adminLimit(r))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list-failed", "could not list orders")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"orders": rows})
+}
+
+func (s *Server) handleAdminListEntitlements(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.Store.ListEntitlements(adminLimit(r))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list-failed", "could not list entitlements")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entitlements": rows})
+}
+
+func (s *Server) handleAdminListCustomers(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.Store.ListCustomers(adminLimit(r))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list-failed", "could not list customers")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"customers": rows})
+}
+
+func (s *Server) handleAdminListFulfillmentJobs(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.Store.ListFulfillmentJobs(adminLimit(r))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list-failed", "could not list fulfillment jobs")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"fulfillment_jobs": rows})
+}
+
+func (s *Server) handleAdminResumeFulfillment(w http.ResponseWriter, r *http.Request) {
+	raw := r.PathValue("id")
+	n, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil || n == 0 {
+		writeErr(w, http.StatusBadRequest, "invalid-id", "fulfillment id must be a positive integer")
+		return
+	}
+	job, err := s.Store.ResumeFulfillment(r.Context(), s.Fleet, uint(n))
+	if err != nil {
+		if job != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{
+				"error":           "resume-failed",
+				"message":         "fulfillment resume failed",
+				"fulfillment_job": job,
+			})
+			return
+		}
+		writeErr(w, http.StatusBadRequest, "resume-failed", "could not resume fulfillment job")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"fulfillment_job": job})
+}
+
+func adminLimit(r *http.Request) int {
+	raw := strings.TrimSpace(r.URL.Query().Get("limit"))
+	if raw == "" {
+		return 100
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 100
+	}
+	return n
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

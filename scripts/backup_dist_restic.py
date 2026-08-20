@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Backup release package tarballs from DIST_DIR to the Metrum CTO restic repo.
 
-Credentials come from ignored env.json (or the process environment):
+Credentials come from ignored ops.env.json (preferred), env.json (legacy mixed),
+or the process environment:
   BACKUP_USER, BACKUP_PASS, RESTIC_PASSWORD
 
 Optional overrides:
@@ -38,6 +39,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OPS_ENV_JSON = ROOT / "ops.env.json"
 DEFAULT_ENV_JSON = ROOT / "env.json"
 DEFAULT_HOST = "backups.metrum.ai"
 DEFAULT_PATH = "metrum-cto"
@@ -271,9 +273,22 @@ def require_credential(creds: dict[str, str], key: str) -> str:
     value = creds.get(key, "").strip()
     if not value:
         raise SystemExit(
-            f"{key} is required in ignored env.json or the process environment"
+            f"{key} is required in ignored ops.env.json (or legacy env.json) "
+            "or the process environment"
         )
     return value
+
+
+def load_ops_credentials(env_json: Path) -> dict[str, str]:
+    """Prefer ops.env.json; fall back to --env-json / legacy env.json."""
+    merged: dict[str, str] = {}
+    if DEFAULT_OPS_ENV_JSON.is_file():
+        merged.update(load_env_json(DEFAULT_OPS_ENV_JSON))
+    if env_json.is_file():
+        # Legacy mixed env.json fills only keys still missing.
+        for key, value in load_env_json(env_json).items():
+            merged.setdefault(key, value)
+    return merged
 
 
 def build_repository_url(creds: dict[str, str]) -> str:
@@ -457,7 +472,7 @@ def main() -> int:
     if not dist_dir.is_absolute():
         dist_dir = ROOT / dist_dir
 
-    creds = merge_credentials(load_env_json(args.env_json))
+    creds = merge_credentials(load_ops_credentials(args.env_json))
     packages = list_release_packages(dist_dir)
     version, selected = select_release_set(packages, requested_version=args.version)
     backup_packages(selected, version, creds, dry_run=args.dry_run)

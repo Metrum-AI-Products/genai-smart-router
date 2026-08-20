@@ -23,11 +23,58 @@ func OpenStore(db *gorm.DB) (*Store, error) {
 	return &Store{DB: db}, nil
 }
 
+// UpsertCustomer finds or creates a customer by alias/email.
+func (s *Store) UpsertCustomer(alias, email string) (*Customer, error) {
+	now := time.Now().UTC()
+	alias = strings.TrimSpace(alias)
+	email = strings.TrimSpace(email)
+	var cust Customer
+	q := s.DB.Model(&Customer{})
+	switch {
+	case alias != "" && alias != "anon":
+		if err := q.Where("alias = ?", alias).Order("id asc").First(&cust).Error; err == nil {
+			updates := map[string]any{"updated_at": now}
+			if email != "" && cust.Email == "" {
+				updates["email"] = email
+			}
+			_ = s.DB.Model(&cust).Updates(updates).Error
+			return &cust, nil
+		}
+	case email != "":
+		if err := q.Where("email = ?", email).Order("id asc").First(&cust).Error; err == nil {
+			updates := map[string]any{"updated_at": now}
+			if alias != "" && alias != "anon" && cust.Alias == "" {
+				updates["alias"] = alias
+			}
+			_ = s.DB.Model(&cust).Updates(updates).Error
+			return &cust, nil
+		}
+	}
+	cust = Customer{
+		CreatedAt: now,
+		UpdatedAt: now,
+		Alias:     alias,
+		Email:     email,
+		Status:    CustomerStatusActive,
+	}
+	if err := s.DB.Create(&cust).Error; err != nil {
+		return nil, err
+	}
+	return &cust, nil
+}
+
 // CreateOrder inserts a checkout order row.
 func (s *Store) CreateOrder(order *Order) error {
 	now := time.Now().UTC()
 	order.CreatedAt = now
 	order.UpdatedAt = now
+	if order.CustomerID == 0 {
+		cust, err := s.UpsertCustomer(order.CustomerAlias, order.CustomerEmail)
+		if err != nil {
+			return err
+		}
+		order.CustomerID = cust.ID
+	}
 	return s.DB.Create(order).Error
 }
 
@@ -141,26 +188,50 @@ func (s *Store) processPaid(ctx context.Context, cat *Catalog, fleet FleetRunner
 	}
 
 	now := time.Now().UTC()
+	alias := session.ClientReferenceID
+	if a := session.Metadata["customer_alias"]; a != "" {
+		alias = a
+	}
+	email := session.CustomerEmail
+	if email == "" {
+		email = session.Metadata["customer_email"]
+	}
+	cust, err := s.UpsertCustomer(alias, email)
+	if err != nil {
+		return nil, false, err
+	}
+
+	var orderID uint
+	if session.ID != "" {
+		var order Order
+		if err := s.DB.Where("checkout_session_id = ?", session.ID).First(&order).Error; err == nil {
+			orderID = order.ID
+			_ = s.DB.Model(&order).Updates(map[string]any{
+				"customer_id": cust.ID, "updated_at": now,
+			}).Error
+		}
+	}
+
 	ent := &Entitlement{
 		CreatedAt:         now,
 		UpdatedAt:         now,
+		CustomerID:        cust.ID,
 		SKU:               sku.SKU,
 		LicenseTemplate:   sku.LicenseTemplate,
 		Status:            EntitlementStatusActive,
+		OrderID:           orderID,
 		StripeEventID:     eventID,
 		CheckoutSessionID: session.ID,
 		StripeCustomerID:  session.Customer,
-		CustomerAlias:     session.ClientReferenceID,
-		CustomerEmail:     session.CustomerEmail,
-	}
-	if alias := session.Metadata["customer_alias"]; alias != "" {
-		ent.CustomerAlias = alias
+		CustomerAlias:     alias,
+		CustomerEmail:     email,
 	}
 
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
 		evt := &StripeEvent{
 			CreatedAt: now, EventID: eventID, EventType: eventType,
 			ProcessedAt: now, Outcome: StripeEventOutcomeProcessed, SKU: sku.SKU,
+			OrderID: orderID,
 		}
 		if err := tx.Create(evt).Error; err != nil {
 			return err
@@ -171,6 +242,7 @@ func (s *Store) processPaid(ctx context.Context, cat *Catalog, fleet FleetRunner
 				"stripe_customer_id":       session.Customer,
 				"stripe_payment_intent_id": session.PaymentIntent,
 				"stripe_subscription_id":   session.Subscription,
+				"customer_id":              cust.ID,
 				"updated_at":               now,
 			}).Error
 		}
@@ -191,10 +263,7 @@ func (s *Store) processPaid(ctx context.Context, cat *Catalog, fleet FleetRunner
 		return ent, false, nil
 	}
 
-	customerID := ent.CustomerAlias
-	if customerID == "" {
-		customerID = fmt.Sprintf("buyer-%d", ent.ID)
-	}
+	customerID := SanitizeFleetCustomerID(ent.CustomerAlias, ent.ID)
 	job := &FulfillmentJob{
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -221,7 +290,7 @@ func (s *Store) processPaid(ctx context.Context, cat *Catalog, fleet FleetRunner
 func (s *Store) runFulfillment(ctx context.Context, fleet FleetRunner, ent *Entitlement, job *FulfillmentJob) error {
 	started := time.Now().UTC()
 	_ = s.DB.Model(job).Updates(map[string]any{
-		"status": FulfillmentStatusRunning, "started_at": started, "attempt_count": job.AttemptCount + 1, "updated_at": started,
+		"status": FulfillmentStatusRunning, "started_at": started, "attempt_count": gorm.Expr("attempt_count + 1"), "updated_at": started,
 	}).Error
 	res, err := fleet.Bootstrap(ctx, FleetBootstrapRequest{
 		CustomerID:        job.FleetCustomerID,
@@ -244,12 +313,90 @@ func (s *Store) runFulfillment(ctx context.Context, fleet FleetRunner, ent *Enti
 	_ = s.DB.Model(job).Updates(map[string]any{
 		"status": FulfillmentStatusSucceeded, "fleet_job_id": res.JobID,
 		"fleet_hostname": res.Hostname, "completed_at": finished, "updated_at": finished,
+		"last_error_class": "",
 	}).Error
 	_ = s.DB.Model(ent).Updates(map[string]any{
 		"status": EntitlementStatusProvisioned, "fleet_job_id": res.JobID,
 		"fleet_customer_id": res.CustomerID, "updated_at": finished,
 	}).Error
 	return nil
+}
+
+// ResumeFulfillment re-runs a queued or failed fulfillment job.
+func (s *Store) ResumeFulfillment(ctx context.Context, fleet FleetRunner, jobID uint) (*FulfillmentJob, error) {
+	if fleet == nil {
+		return nil, fmt.Errorf("fleet runner is not configured")
+	}
+	var job FulfillmentJob
+	if err := s.DB.First(&job, jobID).Error; err != nil {
+		return nil, err
+	}
+	switch job.Status {
+	case FulfillmentStatusQueued, FulfillmentStatusFailed:
+		// resume allowed
+	case FulfillmentStatusSucceeded:
+		return &job, nil
+	case FulfillmentStatusRunning:
+		return nil, fmt.Errorf("fulfillment job is already running")
+	default:
+		return nil, fmt.Errorf("fulfillment job status %q cannot be resumed", job.Status)
+	}
+	var ent Entitlement
+	if err := s.DB.First(&ent, job.EntitlementID).Error; err != nil {
+		return nil, err
+	}
+	if job.FleetCustomerID == "" {
+		job.FleetCustomerID = SanitizeFleetCustomerID(ent.CustomerAlias, ent.ID)
+		_ = s.DB.Model(&job).Update("fleet_customer_id", job.FleetCustomerID).Error
+	}
+	if err := s.runFulfillment(ctx, fleet, &ent, &job); err != nil {
+		_ = s.DB.First(&job, jobID).Error
+		return &job, err
+	}
+	if err := s.DB.First(&job, jobID).Error; err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
+// ListOrders returns recent orders (newest first).
+func (s *Store) ListOrders(limit int) ([]Order, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var rows []Order
+	err := s.DB.Order("id desc").Limit(limit).Find(&rows).Error
+	return rows, err
+}
+
+// ListEntitlements returns recent entitlements.
+func (s *Store) ListEntitlements(limit int) ([]Entitlement, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var rows []Entitlement
+	err := s.DB.Order("id desc").Limit(limit).Find(&rows).Error
+	return rows, err
+}
+
+// ListCustomers returns recent customers.
+func (s *Store) ListCustomers(limit int) ([]Customer, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var rows []Customer
+	err := s.DB.Order("id desc").Limit(limit).Find(&rows).Error
+	return rows, err
+}
+
+// ListFulfillmentJobs returns recent fulfillment jobs.
+func (s *Store) ListFulfillmentJobs(limit int) ([]FulfillmentJob, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var rows []FulfillmentJob
+	err := s.DB.Order("id desc").Limit(limit).Find(&rows).Error
+	return rows, err
 }
 
 // ProcessPaidInvoice handles invoice.paid for subscriptions (first paid may provision).
@@ -301,6 +448,12 @@ func (s *Store) ProcessPaidInvoice(ctx context.Context, cat *Catalog, fleet Flee
 // MarkEntitlementRevokedPending records refund/dispute without auto-delete.
 func (s *Store) MarkEntitlementRevokedPending(checkoutSessionID, reason string) error {
 	now := time.Now().UTC()
+	var ent Entitlement
+	if err := s.DB.Where("checkout_session_id = ?", checkoutSessionID).First(&ent).Error; err == nil && ent.CustomerID > 0 {
+		_ = s.DB.Model(&Customer{}).Where("id = ?", ent.CustomerID).Updates(map[string]any{
+			"status": CustomerStatusRevokedPending, "updated_at": now,
+		}).Error
+	}
 	return s.DB.Model(&Entitlement{}).Where("checkout_session_id = ?", checkoutSessionID).Updates(map[string]any{
 		"status": EntitlementStatusRevokedPending, "revoked_at": now, "revoke_reason": reason, "updated_at": now,
 	}).Error
