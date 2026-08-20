@@ -202,6 +202,7 @@ server:
 Common endpoints:
 
 - `/admin/reports/` renders the browser shell.
+- `/admin/reports/api/quota-status` returns live per-caller remaining day/month/lifetime counters and configured limits for reports-admin callers. Filter with `caller_id`, `owner_user`, or `token_id`. It does not use the usage DB; it reads signed in-process quota state. Ordinary caller tokens receive `403`. See [Customer Administrator Guide](./customer-administration).
 - `/admin/reports/api/summary?since=24h` and `/admin/reports/api/overview?since=24h` return SQL-backed full-window totals, hourly series, top-N grouped tables, a bounded recent request sample, and a reusable `charts` contract with chart IDs, titles, axis labels/types/units, series names, semantic color keys, scalar points, generation timestamp, range, and active safe filters.
 - `/admin/reports/api/savings?since=24h&baseline=gpt-5.5` returns actual cost, selected baseline cost, savings USD, savings percent, time buckets, model-group breakdowns, source-dated baseline metadata, and chart descriptors.
 - `/admin/reports/api/savings-by-user`, `/savings-by-key`, `/savings-by-group`, `/savings-by-project`, and `/savings-by-provider-model` return category chart descriptors for requests, actual vs baseline cost, savings USD, and savings rate when a baseline is selected.

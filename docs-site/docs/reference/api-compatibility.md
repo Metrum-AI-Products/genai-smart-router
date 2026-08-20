@@ -19,7 +19,8 @@ OpenAI-compatible clients use the `/v1` base URL:
 | `/v1/responses` | OpenAI Responses-style requests | Codex CLI, Responses-compatible agent frameworks |
 | `/v1/models` | OpenAI-style model discovery | Client setup and allow-list discovery |
 | `/v1/codex/models.json` | Codex-native local model catalog | Codex CLI fetch-then-run setup |
-| `/v1/usage` | Router usage lookup | Caller quota and usage checks |
+| `/v1/usage` | Router usage lookup | Authenticated caller quota and usage |
+| `/admin/reports/api/quota-status` | Admin live quota remaining | Reports-admin remaining/limits for one or many callers |
 
 Anthropic-compatible clients use the `/anthropic` base URL:
 
@@ -393,6 +394,7 @@ Router-only endpoints are not part of OpenAI or Anthropic compatibility:
 - `/readyz` and `/healthz` report service health and runtime build metadata for operational checks.
 - `/version` returns the running router version, build timestamp, Go runtime version, OS, and architecture for administrators.
 - `/v1/usage` returns usage/quota information for the authenticated caller.
+- `/admin/reports/api/quota-status` returns live remaining and configured limits for authorized reports administrators; it never accepts ordinary caller tokens.
 - `/metrics` returns Prometheus telemetry only for metrics-admin tokens.
 
 Use SDKs for the compatible provider-style APIs they support. Router-only endpoints such as `/readyz`, `/version`, and `/v1/usage` are best called with ordinary HTTP clients.

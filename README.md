@@ -94,7 +94,7 @@ images).
 `plan`, `deploy`, and `delete` consume one mode-`0600`,
 profile-key-signed, reference-only deployment intent; it contains the protected
 profile, runtime bundle, and license references without their resolved values.
-`customer create|status|smoke|grant-caller|update-config|delete` orchestrates
+`customer create|status|smoke|grant-caller|get-config|list-callers|revoke-caller|update-quota|quota-status|update-config|delete` orchestrates
 disposable SQLite Fleet instances from the packaged binary alone (no Python/repo).
 `metrum-genai-smartrouterctl` provides customer-local safe config, caller-token-file,
 license, model, and aggregate-usage operations and is included in Docker images;

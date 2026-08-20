@@ -44,6 +44,11 @@ approved signing service or isolated signing workflow.
 | `customer bootstrap` | Orchestrator only | Chains publish → manifest → sign → create → grant → sign → create → smoke |
 | `customer create --sign-with-key` | Optional local sign + Fleet deploy | Default `--resume true` repairs retryable stuck jobs |
 | `customer repair` | Registry reconcile + redeploy | Marks stale attempts failed; no PVC delete |
+| `customer get-config` | Fleet lifecycle role (SM read) | Writes mode-0600 `config.yaml`/`env.json`; stdout hashes/counts only |
+| `customer list-callers` | Fleet lifecycle role (SM read) | Safe caller JSON with user/project/membership; never hashes |
+| `customer revoke-caller` | Operator IAM (SM write) | Sets caller status; signed create still required |
+| `customer update-quota` | Operator IAM (SM write) | Patches caller rate/quota limits; does not reset counters |
+| `customer quota-status` | Reports-admin HTTP | Live remaining via `/admin/reports/api/quota-status` |
 | `customer list` | Registry + workspace inventory | Uses shared registry path; safe JSON only |
 | `customer delete --sign-with-key` | Optional local delete approval + Fleet delete | Reads `job_id` from workspace `plan.json` |
 | Core `plan`/`deploy`/`delete` | Fleet lifecycle role | Reference-only signed intent required |

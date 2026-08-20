@@ -49,8 +49,7 @@ replica; it neither provisions nor binds RDS.
 
 For Fleet SQLite customer onboarding, config updates, caller grants, and smoke
 checks, see the [Customer Administrator Guide](../operations/customer-administration).
-Packaged `customer` helpers require explicit reference-only inputs (no built-in
-ACME or staging defaults) and mutate only with signed intents or delete
+Packaged `customer` helpers require operator-supplied reference-only inputs and mutate only with signed intents or delete
 approvals. Dedicated RDS remains an optional **core** Fleet path with external
 admission—not a `customer` verb input.
 
