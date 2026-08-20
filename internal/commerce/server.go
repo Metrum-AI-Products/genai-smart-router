@@ -27,6 +27,8 @@ type Server struct {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /success", s.handleSuccessPage)
+	mux.HandleFunc("GET /cancel", s.handleCancelPage)
 	mux.HandleFunc("POST /v1/checkout/sessions", s.handleCreateCheckout)
 	mux.HandleFunc("POST /webhooks/stripe", s.handleWebhook)
 	mux.HandleFunc("GET /v1/entitlements/status", s.handleEntitlementStatus)
@@ -35,6 +37,41 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleSuccessPage(w http.ResponseWriter, r *http.Request) {
+	sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, `<!doctype html><html><head><meta charset="utf-8"><title>Payment received</title></head><body>`)
+	_, _ = io.WriteString(w, `<h1>Payment received</h1>`)
+	_, _ = io.WriteString(w, `<p>Checkout completed. Entitlement is confirmed by the Stripe webhook, not this page.</p>`)
+	if sessionID != "" {
+		_, _ = io.WriteString(w, `<p>Session: <code>`+htmlEscape(sessionID)+`</code></p>`)
+		_, _ = io.WriteString(w, `<p><a href="/v1/entitlements/status?checkout_session_id=`+htmlEscape(sessionID)+`">View entitlement status</a></p>`)
+	} else {
+		_, _ = io.WriteString(w, `<p><a href="/v1/entitlements/status">Entitlement status API</a> (pass checkout_session_id or customer_alias)</p>`)
+	}
+	_, _ = io.WriteString(w, `</body></html>`)
+}
+
+func (s *Server) handleCancelPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, `<!doctype html><html><head><meta charset="utf-8"><title>Checkout canceled</title></head><body>`)
+	_, _ = io.WriteString(w, `<h1>Checkout canceled</h1><p>No charge was completed. You can start again from the purchase API.</p>`)
+	_, _ = io.WriteString(w, `</body></html>`)
+}
+
+func htmlEscape(s string) string {
+	replacer := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		`"`, "&quot;",
+		"'", "&#39;",
+	)
+	return replacer.Replace(s)
 }
 
 type createCheckoutRequest struct {
@@ -66,7 +103,7 @@ func (s *Server) handleCreateCheckout(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "not-self-serve", "sku is not checkout eligible")
 		return
 	}
-	success := firstNonEmpty(req.SuccessURL, s.SuccessURL)
+	success := withCheckoutSessionID(firstNonEmpty(req.SuccessURL, s.SuccessURL))
 	cancel := firstNonEmpty(req.CancelURL, s.CancelURL)
 	if success == "" || cancel == "" {
 		writeErr(w, http.StatusBadRequest, "urls-required", "success_url and cancel_url are required")
@@ -245,6 +282,22 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 
 func writeErr(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]string{"error": code, "message": message})
+}
+
+// withCheckoutSessionID ensures Stripe can append the completed session id on redirect.
+func withCheckoutSessionID(successURL string) string {
+	u := strings.TrimSpace(successURL)
+	if u == "" {
+		return u
+	}
+	if strings.Contains(u, "{CHECKOUT_SESSION_ID}") {
+		return u
+	}
+	sep := "?"
+	if strings.Contains(u, "?") {
+		sep = "&"
+	}
+	return u + sep + "session_id={CHECKOUT_SESSION_ID}"
 }
 
 func firstNonEmpty(values ...string) string {
