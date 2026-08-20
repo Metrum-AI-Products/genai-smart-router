@@ -931,6 +931,8 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 		s.serveAdminReportAsset(w, r, strings.TrimPrefix(r.URL.Path, prefix+"/"))
 	case r.URL.Path == prefix+"/api/version":
 		s.handleAdminReportVersion(w, r)
+	case r.URL.Path == prefix+"/api/quota-status":
+		s.handleAdminQuotaStatus(w, r, subject, globalReports)
 	case r.URL.Path == prefix+"/api/summary":
 		if !s.requireAdminReportUsageStore(w) {
 			return

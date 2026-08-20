@@ -498,7 +498,7 @@ rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspee
   `plan`, `deploy`, `status`, approved `delete`, and registry-local
   `tenants`/`licenses` inventory through the one normalized GORM+SQLite
   lifecycle registry. Operator convenience verbs under `customer
-  write-manifest|create|status|smoke|grant-caller|update-config|delete` consume
+  write-manifest|create|status|smoke|grant-caller|get-config|list-callers|revoke-caller|update-quota|quota-status|update-config|delete` consume
   externally signed mode-`0600` intents/delete approvals only: no ACME/staging
   reference defaults, no donor-key copy, and no private-key arguments.
   The customer convenience path is SQLite-only (never emits or accepts

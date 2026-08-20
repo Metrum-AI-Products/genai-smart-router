@@ -23,7 +23,7 @@ type customerCommonFlags struct {
 
 func fleetCustomer(args []string) {
 	if len(args) == 0 {
-		die("usage: metrum-genai-smartrouter-fleetctl customer <write-manifest|create|status|smoke|grant-caller|update-config|publish-runtime-bundle|prepare-runtime-bundle|bootstrap|repair|list|delete> [flags]")
+		die("usage: metrum-genai-smartrouter-fleetctl customer <write-manifest|create|status|smoke|grant-caller|update-config|get-config|list-callers|revoke-caller|update-quota|quota-status|publish-runtime-bundle|prepare-runtime-bundle|bootstrap|repair|list|delete> [flags]")
 	}
 	switch args[0] {
 	case "write-manifest":
@@ -36,6 +36,16 @@ func fleetCustomer(args []string) {
 		customerSmoke(args[1:])
 	case "grant-caller":
 		customerGrantCaller(args[1:])
+	case "get-config":
+		customerGetConfig(args[1:])
+	case "list-callers":
+		customerListCallers(args[1:])
+	case "revoke-caller":
+		customerRevokeCaller(args[1:])
+	case "update-quota":
+		customerUpdateQuota(args[1:])
+	case "quota-status":
+		customerQuotaStatus(args[1:])
 	case "update-config":
 		customerUpdateConfig(args[1:])
 	case "publish-runtime-bundle":

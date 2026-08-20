@@ -5,9 +5,13 @@ doc_type: howto
 
 # Deploy To Kubernetes
 
-Use Kubernetes when GenAI Smart Router needs to run inside a customer-managed cluster with cluster-native ingress, Secrets, and operational controls. The generic base defaults to a serialized single-writer SQLite deployment on its `/app/state` PVC; PostgreSQL is an explicit option for multi-replica or externally managed database designs. This is the canonical Kubernetes installation page; post-deployment topology guidance lives in [Enterprise Deployment Patterns](../operations/deployment-patterns).
+Use Kubernetes when GenAI Smart Router needs to run inside a **customer-operated** cluster with cluster-native ingress, Secrets, and operational controls. The generic base defaults to a serialized single-writer SQLite deployment on its `/app/state` PVC; PostgreSQL is an explicit option for multi-replica or externally managed database designs. This is the canonical Kubernetes installation page for teams that operate their own cluster; post-deployment topology guidance lives in [Enterprise Deployment Patterns](../operations/deployment-patterns).
+
+**Metrum-hosted** production administrators should not use this page. They do not receive cluster access, ConfigMaps, Secrets, or image-push steps. Use the [Customer Administrator Guide](../operations/customer-administration) and the packaged `customer` CLI.
 
 Metrum maintains Kustomize-friendly manifests as a production-oriented starting point. Review them against your cluster's ingress controller, network policy engine, storage class, registry, and secret-management process before production rollout.
+
+For a managed Metrum-hosted hostname, skip this page and use the [Customer Administrator Guide](../operations/customer-administration).
 
 The base and example overlay are deployment-neutral. Choose your own hostname,
 ingress class, certificate workflow, registry, database topology, storage class,
@@ -55,9 +59,9 @@ A Kubernetes deployment needs:
 | Area | Required design |
 |---|---|
 | Namespace | A deployment-owned namespace with least-privilege RBAC. |
-| Router config | A reviewed ConfigMap or mounted config artifact for `config.yaml`, depending on the customer's config-handling policy. |
-| Provider keys | A Secret or external secret integration that injects provider credentials as env vars or `env.json`. |
-| License | A Secret containing the Metrum-issued `license.json`, mounted at the path configured in `server.license.path`. |
+| Router runtime files | **One Kubernetes Secret** (for example `smart-llmrouter-secrets` or `router-runtime`) with keys `config.yaml`, `env.json`, and `license.json`, mounted read-only under `/app/config/`. Do not store production `config.yaml` in a ConfigMap. |
+| Provider keys | Included as `env.json` in that same Secret, or an equivalent secret-manager injection of the same file. |
+| License | The `license.json` key in that same Secret, mounted at the path configured in `server.license.path`. |
 | State and usage database | The generic base stores router state and `/app/state/usage.sqlite` on one `ReadWriteOnce` PVC. It remains one replica with `Recreate`; do not share SQLite between router writers. |
 | Workload | A single-router Deployment for the generic SQLite path. Multi-replica deployments explicitly use PostgreSQL. |
 | Network | Service, Ingress or Gateway, TLS, and NetworkPolicy for clients and upstream providers/private model services. The SQLite base has no database DSN or TCP/5432 egress. |
@@ -93,16 +97,14 @@ The suggested layout is:
 
 ```text
 namespace/
-  router-config ConfigMap or mounted config artifact
-  provider-keys Secret or external secret reference
-  license Secret
+  router-runtime Secret (config.yaml, env.json, license.json)
   router Deployment
   router Service
   router Ingress or Gateway
   NetworkPolicy
 ```
 
-The router container should run the packaged image tag for the target release, not `latest`. The generic ConfigMap configures:
+The router container should run the packaged image tag for the target release, not `latest`. Example `config.yaml` content for the Secret:
 
 ```yaml
 server:
@@ -128,19 +130,12 @@ Create deployment-owned secrets before applying the router workload. Do not comm
 kubectl create namespace smart-llmrouter
 
 kubectl -n smart-llmrouter create secret generic smart-llmrouter-secrets \
+  --from-file=config.yaml=./config.yaml \
   --from-file=env.json=./env.json \
   --from-file=license.json=./license.json
 ```
 
-The router config is mounted at `/app/config/config.yaml`. Provider keys are mounted at `/app/config/env.json`. The signed license is mounted read-only at `/app/config/license.json`. Durable license and router state are written under `/app/state`.
-
-When a deployment configuration includes caller token hashes, browser-admin
-credentials, or other sensitive deployment values, store the entire runtime
-`config.yaml` in a Kubernetes Secret rather than a ConfigMap. Mount it beside
-`env.json` so the router's adjacent-file loading behavior remains intact. Keep
-the database DSN and any private CA material in the same protected runtime
-secret or equivalent secret-manager integration; do not render those values
-into checked-in manifests.
+The router config is mounted at `/app/config/config.yaml`. Provider keys are mounted at `/app/config/env.json`. The signed license is mounted read-only at `/app/config/license.json`. Durable license and router state are written under `/app/state`. Store the entire production runtime bundle in that Secret. Caller token hashes, browser-admin credentials, provider keys, and DSNs belong there, not in a ConfigMap.
 
 For automated delivery evidence, bind a runtime Secret by its Kubernetes UID
 and `resourceVersion`, never by its data or a captured content checksum. A
@@ -179,62 +174,6 @@ If server-side dry-run is unavailable, use client-side dry-run as a syntax check
 kubectl apply --dry-run=client -f /tmp/smart-llmrouter.yaml
 ```
 
-For automated staging or production delivery, do not treat CI or Make
-variables as approval for an account, cluster, namespace, or overlay. Keep a
-reviewed environment target policy in an independently controlled store, give
-the delivery identity read-only access to that exact policy, verify its account
-and role before creating a kubeconfig, and reject any rendered resource outside
-the approved namespace. Bind smoke and promotion evidence to the exact
-immutable image digest from the exact approved registry/repository, a
-digest-normalized fingerprint of the validated rendered configuration, live
-Deployment pod-template/generation state, attested runtime Secret
-UID/resourceVersion, and the immutable attestation ConfigMap identity.
-Recheck that state before
-promotion so a rollback or replacement cannot reuse stale smoke evidence. For
-automated delivery, use a deployment-owned label to derive an allowlisted
-namespace inventory for the router Deployment, Service, Ingress, NetworkPolicy,
-PVC, PodDisruptionBudget, and ServiceAccount. Bind both resource identity and a
-normalized declarative-configuration fingerprint derived from the isolated
-client-rendered manifest. Treat server-side dry-run output only as a candidate
-live object to validate against that desired fingerprint; never let fields
-preserved by another field manager become expected configuration. Exclude only
-documented Kubernetes runtime allocations, not routing or security settings,
-and reject unexpected live labels, annotations, owner references, finalizers,
-or spec fields before a mutation. For a `WaitForFirstConsumer` PVC, document
-and normalize only the Kubernetes-owned selected-node annotation and
-PVC-protection finalizer; do not broadly ignore PVC metadata. A discovery-owned
-ingress allow policy may use the router label only in `spec.podSelector`, never
-in its metadata, so it remains outside the delivery inventory; delivery has no
-name-based exception for label-selected resources. Reapply a legacy companion
-policy with the reviewed discovery workflow before the next delivery run;
-delivery deliberately treats the legacy label-selected object as stale. Verify
-both before smoke and promotion. Do
-not use a broad prune: a
-removed or renamed resource should fail delivery until it is removed through a
-separately approved migration. Treat rollback as an artifact deployment too:
-require an explicitly approved immutable digest and full pod-template SHA-256
-from approved release evidence, resolve a matching owned historical revision
-before undoing, and verify the restored workload's complete template, digest,
-and rollout identity before recording rollback success.
-
-For a credentialed deployment smoke, keep the command in an owner-only
-mode-`0600` shell script or equivalent protected CI file, and pass only its
-path to the runner. Treat an arbitrary smoke script as a potentially mutating
-staging action: it requires the same explicit confirmation and protected target
-boundary as apply and rollback. The EKS runner opens the validated non-symlink
-file once and executes that bound descriptor, so a later path replacement
-cannot alter the command. Smoke evidence must bind to a passed apply that
-predates it; any later apply invalidates the smoke for promotion. Do not
-interpolate command content, router tokens, or
-authorization headers into Make recipes, command arguments, CI logs, or
-evidence files. Capture diagnostic output only in the protected runner.
-
-Supply-chain evidence for automated delivery should use recognized document
-formats, not marker fields alone: a supported SPDX or CycloneDX SBOM and an
-in-toto SLSA provenance statement with its structured build definition and run
-details. Bind every artifact to the exact immutable image digest and target
-architecture before it can authorize delivery.
-
 Check rollout:
 
 ```bash
@@ -242,79 +181,13 @@ kubectl -n smart-llmrouter rollout status deploy/smart-llmrouter
 kubectl -n smart-llmrouter get pods,svc,ingress
 ```
 
-The generic base `NetworkPolicy` does not constrain ingress, so non-EKS users
-must apply their own reviewed client/ingress policy before exposure. For EKS,
-copy the reviewed `tenant-router-ingress-guard.example.yaml` into the
-deployment-owned overlay before exposure; it denies ingress until discovery
-selects the real ingress namespace. After the rollout is Ready, rerun the
-explicit-target discovery so Linkerd mode can also verify durable ingress/router
-injection and router Pods, then use the matching deployment bundle to render and activate
-that companion policy. Do not substitute a fixed namespace in the overlay or
-use an ambient `kubectl` context. The activation target verifies the discovery
-account and selected EKS endpoint against the named AWS profile and explicit
-kubeconfig/context snapshot before every server-side dry-run or apply, and uses
-private copies of the exact rendered policy bytes rather than rereading caller
-paths. It accepts only
-discovery evidence generated within the preceding 15 minutes; rerun discovery
-after that window rather than applying a stale ingress or Linkerd identity.
-
-For a non-Linkerd deployment:
-
-```bash
-make eks-render-ingress-network-policy \
-  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
-  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
-
-make eks-validate-tenant-network-policies \
-  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
-  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
-  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-cluster.yaml \
-  EKS_POLICY_CONTEXT=<approved-deployment-context> \
-  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
-
-make eks-apply-tenant-network-policies \
-  EKS_POLICY_APPLY_CONFIRM=apply \
-  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
-  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
-  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-cluster.yaml \
-  EKS_POLICY_CONTEXT=<approved-deployment-context> \
-  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
-```
-
-For a Linkerd deployment, render both reviewed artifacts instead. The same
-target dry-runs both, then applies the Linkerd `Server` and
-`ServerAuthorization` before the ingress allow policy:
-
-```bash
-make eks-render-linkerd-policy \
-  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
-  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
-  EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
-
-make eks-validate-tenant-network-policies \
-  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
-  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
-  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-cluster.yaml \
-  EKS_POLICY_CONTEXT=<approved-deployment-context> \
-  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
-  EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
-
-make eks-apply-tenant-network-policies \
-  EKS_POLICY_APPLY_CONFIRM=apply \
-  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
-  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
-  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-cluster.yaml \
-  EKS_POLICY_CONTEXT=<approved-deployment-context> \
-  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
-  EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
-```
+Use **Recreate** when the router uses a single `ReadWriteOnce` SQLite PVC so only one pod mounts state.
 
 ## Network Policy
 
 The generic base policy limits egress for HTTPS, DNS, and an example private
-Postgres CIDR but intentionally leaves ingress to the deployment. On EKS, add
-the reviewed deny-ingress guard to the deployment-owned overlay before exposure;
-the discovery-derived companion policy then becomes the selected ingress allow.
+Postgres CIDR but intentionally leaves ingress to the deployment. Apply a
+reviewed client/ingress NetworkPolicy before exposure.
 Update the deployment for:
 
 - approved provider endpoints or private upstream ranges;
@@ -362,14 +235,14 @@ When admin reports are enabled, verify browser-admin authentication and authoriz
 
 Use immutable image tags and reviewed config changes. Before rollout:
 
-1. Back up the router ConfigMap, Secret references, PVC or state backup, and usage database.
-2. Push the new per-architecture image tag to the private registry.
+1. Back up the runtime Secret, PVC or state backup, and usage database.
+2. Push the new per-architecture image tag to **your** private registry.
 3. Update the overlay image patch.
 4. Run `kubectl apply --dry-run=server`.
-5. Apply and wait for rollout.
+5. Apply and wait for rollout (`Recreate` for SQLite).
 6. Smoke `/readyz`, `/docs/`, `/v1/models`, one chat request, and admin reports if enabled.
 
-Rollback uses the previous image tag and previous ConfigMap/Secret versions:
+Rollback uses the previous image tag and previous Secret version:
 
 ```bash
 kubectl -n smart-llmrouter rollout undo deploy/smart-llmrouter

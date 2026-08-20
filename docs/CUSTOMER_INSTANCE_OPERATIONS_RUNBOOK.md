@@ -308,6 +308,28 @@ metrum-genai-smartrouter-fleetctl customer smoke \
   --token-file ~/.local/share/metrum-fleet/acme/CALLER_TOKEN_ADMIN.txt \
   --model high
 
+# Download live config (mode 0600 files; stdout is hashes and counts only)
+metrum-genai-smartrouter-fleetctl customer get-config \
+  --customer-id acme \
+  --profile-ref "$FLEET_PROFILE_REF" \
+  --runtime-bundle-ref "$FLEET_RUNTIME_BUNDLE_REF" \
+  --license-ref "$FLEET_LICENSE_REF" \
+  --config-out /protected/config.yaml \
+  --env-out /protected/env.json
+
+# List callers (safe JSON; includes project/user fields)
+metrum-genai-smartrouter-fleetctl customer list-callers \
+  --customer-id acme \
+  --profile-ref "$FLEET_PROFILE_REF" \
+  --runtime-bundle-ref "$FLEET_RUNTIME_BUNDLE_REF" \
+  --license-ref "$FLEET_LICENSE_REF"
+
+# Live quota remaining (reports admin basic auth; filter by user or caller)
+metrum-genai-smartrouter-fleetctl customer quota-status \
+  --customer-id acme \
+  --admin-basic-file /protected/basic-admin \
+  --owner-user acme-admin
+
 # Delete (single command with --sign-with-key; reads job_id from workspace plan.json)
 metrum-genai-smartrouter-fleetctl customer delete \
   --customer-id acme \
@@ -343,7 +365,7 @@ the caller's `/v1/models`; smoke requires exact assistant content `OK`.
 
 `metrum-genai-smartrouterctl callers generate` remains the customer-local draft tool and
 returns `activation: configuration-controller-required`. On Metrum-managed EKS
-SQLite customers, Fleet `customer grant-caller` / `customer update-config` is the
+SQLite customers, Fleet `customer grant-caller` / `customer update-config` / `customer revoke-caller` / `customer update-quota` is the
 configuration controller prepare path: it writes
 `aws-secretsmanager:///smartrouter/fleet/customers/<id>/runtime-bundle` with the
 operator IAM identity (CreateSecret/PutSecretValue) and a new unsigned manifest;

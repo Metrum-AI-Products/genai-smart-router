@@ -87,8 +87,8 @@ revision is a Fleet deploy of an approved `runtime_bundle_ref` (new
 `config_revision`), not an in-place `metrum-genai-smartrouterctl` mutation. See
 [User Key Generation](./key-generation#activation-boundary) and the
 [Customer Administrator Guide](./customer-administration) for customer-admin
-workflows. Packaged `customer` helpers are SQLite-only, require explicit
-references (no ACME or staging defaults), and refuse dedicated-RDS selection.
+workflows. Packaged `customer` helpers are SQLite-only, require operator-supplied
+protected references, and refuse dedicated-RDS selection.
 After activation, `customer smoke` requires `--model` from the caller's
 authenticated `/v1/models` list and succeeds only on HTTP `200` with exact
 assistant content `OK`.
@@ -113,7 +113,7 @@ profile.
 Its plan retains only deterministic database ID/profile evidence—never a DSN,
 endpoint, credential, secret reference, or raw adapter response. The typed
 adapter enforces private/encrypted/no-proxy policy, ownership tags, and
-final-snapshot deletion, but is unattached by the default EKS constructor.
+final-snapshot deletion, and stays unattached until an approved admission is supplied.
 
 The first disposable non-production E2E requires an external, expiring,
 mode-`0600` RDS admission file passed to the existing Fleet `deploy` command.
