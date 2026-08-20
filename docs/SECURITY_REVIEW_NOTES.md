@@ -33,7 +33,7 @@ License operations are covered by `docs/LICENSE_OPERATIONS.md`. Security review 
 
 Commercial/control-plane systems must remain separated from router runtime secrets. Payment-provider credentials, webhook secrets, commercial-system administration, and fulfillment replay records belong in the approved control-plane environment, not router config or deployment packages. An approved commercial event may authorize license issuance or online-lease renewal, but it must not grant access to raw license-signing keys. The router must not store or process card details.
 
-GitHub issue #545 owns the product-flow security and reliability acceptance criteria; #42 owns the customer-facing commercial/package wording. Public docs must not claim a commercial mechanism as available before those issues' implementation and acceptance criteria are met.
+GitHub issue #921 owns the commerce purchase-path security and reliability acceptance criteria; #42 owns the customer-facing commercial/package wording. Public docs must not claim a commercial mechanism as available before #921 sandbox acceptance and #42 wording approval.
 
 ## Tenant And Caller Isolation
 

@@ -197,9 +197,9 @@ Use `go run ./cmd/router-license safe-summary --license license.json` to inspect
 
 When Metrum provides a signed revocation bundle, configure `server.license.revocation.mode: file` and mount the bundle at `server.license.revocation.path`. Effective `revoked`, `suspended`, or `superseded` entries block serving without license grace; `router-license revocation validate` and `revocation safe-summary` provide operator-safe verification.
 
-Metrum-side license issuance, renewal, replacement, volume top-up, offline customer support, commercial/control-plane boundaries, and acceptance checklists are documented in [docs/LICENSE_OPERATIONS.md](docs/LICENSE_OPERATIONS.md). That runbook is internal/operator guidance; #545 owns the product flow and #42 owns customer-facing commercial/package copy.
+Metrum-side license issuance, renewal, replacement, volume top-up, offline customer support, commercial/control-plane boundaries, and acceptance checklists are documented in [docs/LICENSE_OPERATIONS.md](docs/LICENSE_OPERATIONS.md). That runbook is internal/operator guidance; #921 owns the commerce purchase/entitlement flow and #42 owns customer-facing commercial/package copy.
 
-Customer-facing commercial access paths are documented under `docs-site/docs/licensing/`: enterprise self-hosted, private managed deployment, evaluation/pilot access, renewal/top-up, and marketplace/private-offer procurement. Do not describe a purchase, portal, download, or renewal mechanism as shipped until #545 is implemented and #42 has approved the customer-facing wording.
+Customer-facing commercial access paths are documented under `docs-site/docs/licensing/`: enterprise self-hosted, private managed deployment, evaluation/pilot access, renewal/top-up, and marketplace/private-offer procurement. Do not describe a purchase, portal, download, or renewal mechanism as shipped until #921 sandbox acceptance is complete and #42 has approved the customer-facing wording.
 
 Provider credential variables referenced by the current `config.example.yaml`:
 

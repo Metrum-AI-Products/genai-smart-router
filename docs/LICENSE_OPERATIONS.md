@@ -11,10 +11,10 @@ Related work:
 - #169 tracks online license leases.
 - #159 defines the license envelope shape for capability, time, volume, and operational limits.
 - #158 makes license enforcement mandatory for normal builds and leaves any no-license mode as an explicit internal development build.
-- #545 owns the hosted tenant product flow and its commercial/control-plane boundary.
+- #921 owns the Stripe-verified purchase path and commercial entitlement/fulfillment boundary; #545 is superseded for that launch path.
 - #42 owns customer-facing commercial and package copy.
 
-The machine-readable source for launch SKU templates is `docs/enterprise-license-skus.json`. Keep that artifact, this runbook, and customer-facing Docusaurus license docs aligned when packaging changes. GitHub issue #545 is the product-flow source of truth; #42 owns the corresponding customer-facing commercial copy.
+The machine-readable source for launch SKU templates is `docs/enterprise-license-skus.json`. Keep that artifact, this runbook, and customer-facing Docusaurus license docs aligned when packaging changes. GitHub issue #921 is the commerce purchase/entitlement source of truth; #42 owns the corresponding customer-facing commercial copy.
 
 ## Operating Rules
 
@@ -37,7 +37,7 @@ The machine-readable source for launch SKU templates is `docs/enterprise-license
 | Support engineer | Guides customer installation, renewal, replacement, and diagnostics using safe status fields. |
 | Release engineer | Confirms shipped binaries contain public verification keys and normal builds enforce licensing. |
 | Security reviewer | Reviews signing-key custody, secure delivery, and incident handling. |
-| Commercial control-plane operator | Maintains approved commercial and entitlement records, and reconciles authorized fulfillment requests under #545. Customer-facing commercial copy is governed by #42. |
+| Commercial control-plane operator | Maintains approved commercial and entitlement records, and reconciles authorized fulfillment requests under #921. Customer-facing commercial copy is governed by #42. |
 
 Maintain an external entitlement record with at least:
 
@@ -58,14 +58,20 @@ The `product` field is required and must be `genai-smart-router`. Payload exampl
 
 Launch SKU summary:
 
-| SKU | Template | Commercial motion | Default term | Default volume / window | Primary use |
-|---|---|---|---|---|---|
-| `eval-72h` | `eval-72h` | Metrum-managed evaluation | 72 hours | 5M total tokens, 5k total requests | Free or partner proof window |
-| `pilot-30d` | `pilot-30d` | Paid pilot | 30 days | 1M tokens / 1 hour, 1k requests / 1 hour | Time-boxed customer validation |
-| `enterprise-annual` | `enterprise-annual` | Enterprise self-hosted | 12 months | Unlimited unless the contract adds a ceiling | Default BYOK annual contract |
-| `credit-pack-5m` | `credit-pack-5m` | Volume top-up | 12 months | 5M total tokens, 100k total requests | Small prepaid or top-up envelope |
-| `credit-pack-25m` | `credit-pack-25m` | Volume top-up | 12 months | 25M total tokens, 500k total requests | Larger prepaid or top-up envelope |
-| `marketplace-seat` | `marketplace-seat` | AWS/Azure private offer | Contract term | Contract-defined per-seat or pooled volume | Marketplace procurement |
+| SKU | Template | Commercial motion | Billing | Self-serve Stripe | Auto-provision | Default term | Primary use |
+|---|---|---|---|---|---|---|---|
+| `eval-72h` | `eval-72h` | Metrum-managed evaluation | payment | yes | yes | 72 hours | Free or partner proof window |
+| `pilot-30d` | `pilot-30d` | Paid pilot (license template) | payment | no | no | 30 days | License template for hosted pilot |
+| `hosted-pilot-30d` | `pilot-30d` | Paid pilot hosted | payment | yes | yes | 30 days | Self-serve hosted pilot Checkout |
+| `credit-pack-5m` | `credit-pack-5m` | Volume top-up | top_up | yes | no | 12 months | Small prepaid or top-up envelope |
+| `credit-pack-25m` | `credit-pack-25m` | Volume top-up | top_up | yes | no | 12 months | Larger prepaid or top-up envelope |
+| `hosted-instance-monthly` | `hosted-instance-monthly` | Hosted subscription | subscription | yes | yes (first paid) | 1 month | Monthly hosted instance |
+| `hosted-instance-annual` | `hosted-instance-annual` | Hosted subscription | subscription | yes | yes (first paid) | 12 months | Annual hosted instance |
+| `hosted-instance-additional-monthly` | `hosted-instance-additional-monthly` | Hosted add-on | subscription_addon | yes | yes | 1 month | Extra hosted instance |
+| `enterprise-annual` | `enterprise-annual` | Enterprise self-hosted | invoice_only | no | no | 12 months | Default BYOK annual contract |
+| `marketplace-seat` | `marketplace-seat` | AWS/Azure private offer | invoice_only | no | no | Contract term | Marketplace procurement |
+
+Placeholder USD amounts live only in `docs/enterprise-license-skus.json` (`pricing_status: placeholder_assumption`). Do not publish dollar amounts in `docs-site/`. Operator Stripe sync notes: `docs/COMMERCE_STRIPE.md` (#921).
 
 Default features should be encoded exactly as stable license feature names. Do not encode deployment-defined model group names in license features, SKU names, or public docs.
 
@@ -498,13 +504,13 @@ server:
 
 ## Commercial And Customer Control-plane Boundary
 
-GitHub issue #545 is the single source of truth for the hosted tenant product flow and its commercial/control-plane behavior. GitHub issue #42 owns the customer-facing commercial and package copy. This runbook deliberately does not define a checkout, customer portal, payment-provider integration, webhook schema, or self-service policy.
+GitHub issue #921 is the source of truth for Stripe-verified purchase, entitlement recording, and Fleet bootstrap fulfillment. GitHub issue #42 owns the customer-facing commercial and package copy. Public self-serve checkout is not claimed as shipped; see docs/COMMERCE_STRIPE.md for operator sandbox notes.
 
 - An approved external entitlement record may authorize a license issuance, renewal, replacement, revocation, or top-up. The control-plane service must make that decision idempotently and retain only the safe references needed for support and audit.
 - Keep payment data, payment-provider credentials, webhook secrets, signing-service credentials, and full customer records outside router configuration, deployment packages, and runtime logs. The router runtime never processes card data or holds private license-signing keys.
 - Bind fulfillment to an approved SKU/template and deployment record. Verify the signed license before delivery; use the existing secure delivery and support workflow in this runbook.
 - If a commercial decision changes an issued entitlement, choose a reviewed technical action such as a replacement license, revocation bundle, or lease-state change. Do not hand-edit customer license or quota state.
-- Customer-facing materials must not describe a purchase, portal, download, or renewal mechanism as available until #545 is implemented and #42 has approved the shipped wording.
+- Customer-facing materials must not describe a purchase, portal, download, or renewal mechanism as available until #921 sandbox acceptance is complete and #42 has approved the shipped wording.
 
 ## Deployment Binding, Revocation, And Online Leases
 

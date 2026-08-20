@@ -11,7 +11,7 @@ At launch, one customer router instance maps to one isolated runtime identity an
 | Owner | Responsibility |
 | --- | --- |
 | Customer administrator | Supplies approved upstream/BYOK information through the protected onboarding path and accepts the activated instance. |
-| Commercial/control-plane owner | Verifies entitlement and creates the authorized provisioning intent. #545 owns this durable customer job. |
+| Commercial/control-plane owner | Verifies entitlement and creates the authorized provisioning intent. #921 owns verified purchase entitlement and fulfillment enqueue; Fleet provisioning remains #555. |
 | Platform operator | Uses the binary-package-only `metrum-genai-smartrouter-fleetctl` lifecycle when its non-production gates permit it. It resolves approved AWS/EKS policy, applies only instance-owned Kubernetes resources, and publishes ingress only after activation. |
 | Infra/Security approver | Approves account/region, network, KMS, IAM, durability, quota, DNS, and change-control policy before live execution. |
 | Release approver | Owns protected production-like rehearsal, change window, canary/cutover, and recovery authorization under #518. |

@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: smartrouter-commerce
+resources:
+  - namespace.yaml
+  - secret.example.yaml
+  - purchase-deployment.yaml
+  - fulfillment-deployment.yaml
+  - service.yaml
+  - ingress.example.yaml
+configMapGenerator:
+  - name: commerce-sku-catalog
+    files:
+      - enterprise-license-skus.json=../../../../docs/enterprise-license-skus.json
+    options:
+      disableNameSuffixHash: true
+commonLabels:
+  app.kubernetes.io/part-of: smartrouter-commerce
+  app.kubernetes.io/component: commerce

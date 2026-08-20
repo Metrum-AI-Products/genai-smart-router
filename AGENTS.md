@@ -289,7 +289,7 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
   deterministic job/intent, namespace, database profile, and manifest digest.
   `metrum-genai-smartrouter-fleetctl` may consume but MUST NOT create, update, emit, or persist
   that admission. Production profiles remain rejected until #518 authorizes
-  them. #545 and #586 supply approved customer/config/license intent; #507
+  them. #921 (commerce entitlement) and #586 supply approved customer/config/license intent for provisioning; #507
   supplies migration compatibility.
 - The #555 security/operations review requires one qualified reviewer, and a
   single-maintainer deployment may self-review. The reviewer may be the same
