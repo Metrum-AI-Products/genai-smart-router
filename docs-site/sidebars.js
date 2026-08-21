@@ -63,6 +63,8 @@ const sidebars = {
         "configuration/admin-authentication",
         "configuration/admin-authorization",
         "privacy",
+        "legal/terms-of-use",
+        "legal/eula",
         "legal/dpa",
         "legal/subprocessors",
         "legal/transfer-schedule",

@@ -18,6 +18,7 @@ PACKAGE_DOCS = [
     "KUBERNETES_INSTALL.md",
     "PACKAGE_VALIDATION.md",
     "solution-brief.md",
+    "END_USER_LICENSE_AGREEMENT.md",
 ]
 
 
