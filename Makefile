@@ -11,8 +11,8 @@ HOST_GOARCH := $(shell go env GOHOSTARCH)
 PYTHON ?= python3
 # Packaged CLIs are ELF binaries only. Release packages never ship Go source,
 # cmd/, internal/, or go.mod. Fleet-only CLIs stay out of customer Docker images.
-PACKAGE_BINARIES := router router-token-gen router-usage-report router-migrate metrum-genai-smartrouterctl metrum-genai-smartrouter-fleetctl metrum-genai-smartrouter-fleet-sign metrum-genai-smartrouter-license smartrouterctl metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
-FLEET_ONLY_BINARIES := metrum-genai-smartrouter-fleetctl metrum-genai-smartrouter-fleet-sign metrum-genai-smartrouter-license metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
+PACKAGE_BINARIES := router router-token-gen router-usage-report router-migrate metrum-genai-smartrouterctl metrum-genai-smartrouter-fleetctl metrum-genai-smartrouter-fleet-sign metrum-genai-smartrouter-license metrum-genai-customer-lifecycle smartrouterctl metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
+FLEET_ONLY_BINARIES := metrum-genai-smartrouter-fleetctl metrum-genai-smartrouter-fleet-sign metrum-genai-smartrouter-license metrum-genai-customer-lifecycle metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
 DOCKER_RUNTIME_BINARIES := router router-token-gen router-usage-report router-migrate metrum-genai-smartrouterctl
 
 # Inspect coding evaluations are deliberately opt-in: they call a live endpoint

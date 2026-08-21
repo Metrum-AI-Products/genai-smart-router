@@ -138,6 +138,22 @@ kubectl kustomize deploy/kubernetes/overlays/commerce-sandbox >/tmp/commerce-san
 
 Staging apply requires: (1) MFA/SSO session for EKS, (2) a published commerce image digest replacing `registry.example.com/metrum-genai-commerce:sandbox`, (3) out-of-band Secret `commerce-stripe` with test keys, (4) namespace bootstrap RBAC for `smartrouter-commerce` (delivery role is router-overlay scoped and does not create this namespace by default).
 
+## Customer lifecycle onboard CLI
+
+For greenfield BYOK customers, prefer the operator orchestrator documented in
+[`CUSTOMER_LIFECYCLE_CLI.md`](CUSTOMER_LIFECYCLE_CLI.md) using **packaged binaries only**
+(`METRUM_FLEET_BIN_DIR` / release `dist/bin`):
+
+`metrum-genai-customer-lifecycle onboard --intent …` validates hostname + BYOK +
+fleet-eks durable paths, creates **real** Stripe Checkout via this purchase API
+(pay gate), issues a license into SSM `license_ref`, then runs **explicit**
+`metrum-genai-smartrouter-fleetctl customer bootstrap`. Do not forge webhooks or
+treat `COMMERCE_FLEET` auto-fulfillment as the BYOK acceptance path.
+Example intent (placeholders only): `examples/customer-lifecycle/onboard-acme.sandbox.example.json`.
+
+Local ShellFleet + lifecycle CLI is distinct from the `#929` EKS commerce-pod
+deploy in `smartrouter-commerce`. See also [`CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md`](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md).
+
 ## Refund / dispute
 
 Refund or dispute should mark entitlement `revoked_pending`. Do not auto-delete the Fleet instance; cleanup remains signed Fleet `customer delete`.
