@@ -338,7 +338,7 @@ func customerGrantCaller(args []string) {
 		die("create token-out directory: %v", err)
 	}
 	writeMode0600(outPath, []byte(generated.Token+"\n"))
-	patched, err := applyConfigPatch(bundle.ConfigYAML, map[string]any{"callers": []any{callerRow}})
+	patched, err := applyGrantCallerPatch(bundle.ConfigYAML, callerRow, *ownerUser, *project)
 	if err != nil {
 		die("%v", err)
 	}

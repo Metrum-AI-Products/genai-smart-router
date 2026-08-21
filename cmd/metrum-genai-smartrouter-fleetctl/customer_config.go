@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -136,4 +137,106 @@ func cloneStringMap(in map[string]any) map[string]any {
 		out[k] = v
 	}
 	return out
+}
+
+// applyGrantCallerPatch merges a caller and, when the config already has an explicit
+// account directory (users/projects/memberships), ensures matching directory rows exist.
+// Explicit directories disable router synthetic accounts; a new owner/project without
+// memberships fails config validation and CrashLoops the router after publish.
+func applyGrantCallerPatch(configYAML string, callerRow map[string]any, ownerUser, project string) (string, error) {
+	ownerUser = strings.TrimSpace(ownerUser)
+	project = strings.TrimSpace(project)
+	if ownerUser == "" || project == "" {
+		return "", fmt.Errorf("grant-caller account directory patch requires owner-user and project")
+	}
+	if callerRow == nil {
+		return "", fmt.Errorf("grant-caller requires caller row")
+	}
+	root, err := parseConfigRoot(configYAML)
+	if err != nil {
+		return "", err
+	}
+	usersIdx := accountIndex(root["users"], "id")
+	projectsIdx := accountIndex(root["projects"], "id")
+	membershipsIdx := membershipIndex(root["project_memberships"])
+	hasExplicit := len(usersIdx) > 0 || len(projectsIdx) > 0 || len(membershipsIdx) > 0
+	if hasExplicit {
+		root["users"] = ensureAccountEntry(root["users"], ownerUser, map[string]any{
+			"id":     ownerUser,
+			"name":   ownerUser,
+			"type":   "human",
+			"status": "active",
+		})
+		root["projects"] = ensureAccountEntry(root["projects"], project, map[string]any{
+			"id":     project,
+			"name":   project,
+			"status": "active",
+		})
+		root["project_memberships"] = ensureProjectMembership(root["project_memberships"], ownerUser, project)
+	}
+	existing, _ := asAnySlice(root["callers"])
+	merged, err := mergeCallers(existing, []any{callerRow})
+	if err != nil {
+		return "", err
+	}
+	root["callers"] = merged
+	out, err := yaml.Marshal(root)
+	if err != nil {
+		return "", fmt.Errorf("encode patched config.yaml: %w", err)
+	}
+	return string(out), nil
+}
+
+func ensureAccountEntry(v any, id string, row map[string]any) any {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return v
+	}
+	if sl, ok := asAnySlice(v); ok {
+		for _, raw := range sl {
+			m, ok := asStringMap(raw)
+			if !ok {
+				continue
+			}
+			if stringField(m, "id") == id {
+				return sl
+			}
+		}
+		return append(append([]any{}, sl...), cloneStringMap(row))
+	}
+	if m, ok := asStringMap(v); ok {
+		out := cloneStringMap(m)
+		if _, exists := out[id]; !exists {
+			entry := cloneStringMap(row)
+			delete(entry, "id")
+			out[id] = entry
+		}
+		return out
+	}
+	return []any{cloneStringMap(row)}
+}
+
+func ensureProjectMembership(v any, userID, project string) any {
+	userID = strings.TrimSpace(userID)
+	project = strings.TrimSpace(project)
+	row := map[string]any{
+		"user_id": userID,
+		"project": project,
+		"role":    "owner",
+		"status":  "active",
+	}
+	sl, ok := asAnySlice(v)
+	if !ok || sl == nil {
+		return []any{row}
+	}
+	for _, raw := range sl {
+		m, ok := asStringMap(raw)
+		if !ok {
+			continue
+		}
+		if stringField(m, "user_id") == userID && stringField(m, "project") == project {
+			return sl
+		}
+	}
+	return append(append([]any{}, sl...), row)
 }

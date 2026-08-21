@@ -499,3 +499,88 @@ func TestPublishRuntimeBundleOperatorClearsFleetSession(t *testing.T) {
 		t.Fatal("session token not cleared")
 	}
 }
+
+func TestApplyGrantCallerPatchProvisionsExplicitDirectory(t *testing.T) {
+	configYAML := `users:
+  - id: bootstrap-owner
+    name: Bootstrap Owner
+    status: active
+projects:
+  - id: bootstrap
+    name: Bootstrap
+    status: active
+project_memberships:
+  - user_id: bootstrap-owner
+    project: bootstrap
+    status: active
+    role: owner
+callers: []
+models:
+  default: {}
+`
+	caller := map[string]any{
+		"id":           "new-caller",
+		"owner_user":   "acme-admin",
+		"project":      "acme",
+		"environment":  "nonproduction",
+		"status":       "active",
+		"token_sha256": "abc",
+		"allow":        []any{"default"},
+	}
+	patched, err := applyGrantCallerPatch(configYAML, caller, "acme-admin", "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := parseConfigRoot(patched)
+	if err != nil {
+		t.Fatal(err)
+	}
+	users := accountIndex(root["users"], "id")
+	projects := accountIndex(root["projects"], "id")
+	memberships := membershipIndex(root["project_memberships"])
+	if _, ok := users["acme-admin"]; !ok {
+		t.Fatalf("missing user: %v", users)
+	}
+	if _, ok := projects["acme"]; !ok {
+		t.Fatalf("missing project: %v", projects)
+	}
+	if _, ok := memberships["acme-admin\x00acme"]; !ok {
+		t.Fatalf("missing membership: %v", memberships)
+	}
+	if _, ok := users["bootstrap-owner"]; !ok {
+		t.Fatalf("lost bootstrap user: %v", users)
+	}
+	callers, _ := asAnySlice(root["callers"])
+	if len(callers) != 1 {
+		t.Fatalf("callers=%d", len(callers))
+	}
+}
+
+func TestApplyGrantCallerPatchSkipsSyntheticDirectory(t *testing.T) {
+	configYAML := "callers: []\nmodels:\n  default: {}\n"
+	caller := map[string]any{
+		"id":         "new-caller",
+		"owner_user": "acme-admin",
+		"project":    "acme",
+		"status":     "active",
+		"allow":      []any{"default"},
+	}
+	patched, err := applyGrantCallerPatch(configYAML, caller, "acme-admin", "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := parseConfigRoot(patched)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := root["users"]; ok {
+		t.Fatalf("users should remain absent for synthetic accounts: %#v", root["users"])
+	}
+	if _, ok := root["projects"]; ok {
+		t.Fatalf("projects should remain absent: %#v", root["projects"])
+	}
+	callers, _ := asAnySlice(root["callers"])
+	if len(callers) != 1 {
+		t.Fatalf("callers=%d", len(callers))
+	}
+}
