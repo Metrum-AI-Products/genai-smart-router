@@ -24,6 +24,7 @@ bin/metrum-genai-smartrouterctl
 bin/metrum-genai-smartrouter-fleetctl
 bin/metrum-genai-smartrouter-fleet-sign
 bin/metrum-genai-smartrouter-license
+bin/metrum-genai-customer-lifecycle
 bin/smartrouterctl
 bin/metrum-fleetctl
 bin/metrum-smartrouterctl  # one-release rename notice

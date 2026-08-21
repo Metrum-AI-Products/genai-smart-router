@@ -14,6 +14,7 @@ Binary packages include:
 - `bin/metrum-genai-smartrouter-fleetctl`
 - `bin/metrum-genai-smartrouter-fleet-sign`
 - `bin/metrum-genai-smartrouter-license` (Metrum license issuer only; never for customer self-issue)
+- `bin/metrum-genai-customer-lifecycle` (Metrum operator lifecycle CLI only; never for customer self-service)
 - `bin/smartrouterctl` (one-release rename notice → `metrum-genai-smartrouterctl`)
 - `bin/metrum-fleetctl` (one-release rename notice → `metrum-genai-smartrouter-fleetctl`)
 - `bin/metrum-smartrouterctl` (one-release rename notice → `metrum-genai-smartrouter-fleetctl`)
