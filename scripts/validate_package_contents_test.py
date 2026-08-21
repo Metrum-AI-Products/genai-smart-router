@@ -140,6 +140,7 @@ def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> di
         f"{root}/bin/metrum-genai-smartrouter-fleetctl": elf(62),
         f"{root}/bin/metrum-genai-smartrouter-fleet-sign": elf(62),
         f"{root}/bin/metrum-genai-smartrouter-license": elf(62),
+        f"{root}/bin/metrum-genai-customer-lifecycle": elf(62),
         f"{root}/bin/smartrouterctl": elf(62),
         f"{root}/bin/metrum-fleetctl": elf(62),
         f"{root}/bin/metrum-smartrouterctl": elf(62),
@@ -225,6 +226,16 @@ def main() -> int:
         del missing_cli_files["smart-llmrouter-v1.0.0-linux-amd64/bin/metrum-genai-smartrouter-fleetctl"]
         write_tar(missing_cli, missing_cli_files)
         expect_errors(missing_cli, allowlist, ["required package file is missing: bin/metrum-genai-smartrouter-fleetctl"])
+
+        missing_lifecycle = root / "missing-lifecycle.tar.gz"
+        missing_lifecycle_files = binary_package_files()
+        del missing_lifecycle_files["smart-llmrouter-v1.0.0-linux-amd64/bin/metrum-genai-customer-lifecycle"]
+        write_tar(missing_lifecycle, missing_lifecycle_files)
+        expect_errors(
+            missing_lifecycle,
+            allowlist,
+            ["required package file is missing: bin/metrum-genai-customer-lifecycle"],
+        )
 
         good_docker = root / "smart-llmrouter-v1.0.0-docker-linux-amd64.tar.gz"
         write_tar(good_docker, docker_package_files())
