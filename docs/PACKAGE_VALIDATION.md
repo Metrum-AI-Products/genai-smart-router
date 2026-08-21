@@ -24,7 +24,10 @@ smart-llmrouter-<version>-docker-linux-<arch>/
   docs/
 ```
 
-Package docs are copied only from `scripts/package_docs_allowlist.txt` during release creation. In a delivered package, the offline docs should be this bootstrap set plus the package-safe solution brief.
+Package docs are copied only from `scripts/package_docs_allowlist.txt` during
+release creation. In a delivered package, the offline docs should include the
+bootstrap set, the package-safe solution brief, and
+`END_USER_LICENSE_AGREEMENT.md`.
 
 For a Docker package, load the saved image and version-check all operational binaries, including the non-serving migration runner:
 

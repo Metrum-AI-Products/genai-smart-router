@@ -69,6 +69,8 @@ Use the quick-start document that matches the package:
 - `DOCKER_COMPOSE_INSTALL.md` for Docker Compose packages.
 - `KUBERNETES_INSTALL.md` for Kubernetes deployment planning.
 - `PACKAGE_VALIDATION.md` for package-content and runtime-health checks.
+- `END_USER_LICENSE_AGREEMENT.md` for the software license terms. Installing,
+  accessing, or using the Software accepts those terms.
 
 After the router is reachable, open:
 

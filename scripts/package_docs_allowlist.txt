@@ -10,3 +10,4 @@ docs/KUBERNETES_INSTALL.md
 docs/PACKAGE_VALIDATION.md
 docs/DATA_MIGRATIONS.md
 docs/solution-brief.md
+docs/END_USER_LICENSE_AGREEMENT.md
