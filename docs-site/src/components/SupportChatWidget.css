@@ -139,11 +139,22 @@
   display: none !important;
 }
 
+.supportChatLauncher--open {
+  top: 72px;
+  right: 14px;
+  bottom: auto;
+}
+
 @media (max-width: 640px) {
   .supportChatLauncher {
     right: 10px;
     bottom: 52px;
     max-width: calc(100vw - 20px);
+  }
+
+  .supportChatLauncher--open {
+    top: 64px;
+    right: 10px;
   }
 
   .supportChatPopover {

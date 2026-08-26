@@ -143,7 +143,9 @@ export default function SupportChatWidget() {
 
   return (
     <>
-      <div className="supportChatLauncher">
+      <div
+        className={`supportChatLauncher${open ? " supportChatLauncher--open" : ""}`}
+      >
         <div className="supportChatLauncher__controls">
           <button
             type="button"
