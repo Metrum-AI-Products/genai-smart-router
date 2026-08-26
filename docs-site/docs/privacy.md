@@ -13,17 +13,17 @@ questions and data-subject requests can be sent to
 
 ## Optional support chat
 
-The optional support chat is opened from the floating **Support** button. Its
-widget bundle, custom element, and widget network connections load only after
-you select **Allow support chat** in the consent prompt that appears on first
-use. Before that choice, the site may read the single first-party
-`metrum_docs_convai_consent` preference to restore a prior choice, but it does
-not create that preference.
+The floating **Support** button is an open/close toggle for the optional
+support chat. Its widget bundle, custom element, and widget network
+connections load only after you select **Allow support chat** in the consent
+prompt that appears on first use. Before that choice, the site may read the
+single first-party `metrum_docs_convai_consent` preference to restore a prior
+choice, but it does not create that preference.
 
-After you grant consent, **Withdraw support chat** is available from the
-Support button options control (not a permanent sitewide panel). Withdrawal
-immediately removes the widget and prevents the page from loading it again
-unless you grant consent later.
+After you grant consent, **Withdraw support chat** remains available from the
+Support options control (**···**) whether the chat panel is open or closed
+(not a permanent sitewide panel). Withdrawal immediately removes the widget
+and prevents the page from loading it again unless you grant consent later.
 
 Widget and session data are processed by that provider under its processor terms.
 This processing may involve the United States. Contact Metrum for the current
