@@ -2,6 +2,32 @@
 
 Last deployed: 2026-08-26
 
+## 2026-08-26 EKS llm-api image refresh to b59cc0e (Support launcher open position)
+
+Rolled Fleet customer `llm-api` at `https://llm-api.apps.metrum.ai` from router
+`3cbbfb8` to `b59cc0e` (PR #939) so the floating **Support** / **···** cluster
+moves to the top-right under the docs navbar while chat is open and no longer
+covers the ElevenLabs send control. Closed-state placement is unchanged.
+Compose production was not changed.
+
+- Restic release snapshot `4fa842a2` (stable names, tag `version:b59cc0e`).
+- ECR image `smart-llmrouter:b59cc0e-linux-amd64` digest
+  `sha256:c2857bb72657bab54f5ebb68684ca9dea1baf228096c9ce518af42500e25936a`.
+- Staging Fleet profile `approved_release_digest` updated to that immutable
+  digest; signed `customer write-manifest` + `customer create --sign-with-key`
+  job `job-31d1b8528140886f9f32`, config revision
+  `llm-api-image-b59cc0e-20260826t041339z`.
+- `/readyz`: 200 version `b59cc0e`; `/v1/models`: 25 groups; `high` chat smoke
+  exact `OK`; ordinary-caller `/metrics`: 403; hosted `/docs/` JS contains
+  `supportChatLauncher--open`, `supportChatLauncher`, and `Allow support chat`.
+- Compose `https://llm-api-engg.metrum.ai/readyz`: 200 version `8d91f5c`
+  (unchanged).
+
+Rollback: signed Fleet `customer create` against the previous profile digest
+`sha256:17ed327f6eb2f8911bbb19e4a13dd93d06cdc88ff3a6d5b6a86a557970f2891b` /
+job `job-c7d88cfa67d56362525b`, or `customer delete --sign-with-key`. Does not
+roll back Compose.
+
 ## 2026-08-26 EKS llm-api image refresh to 3cbbfb8 (Support persistent toggle)
 
 Rolled Fleet customer `llm-api` at `https://llm-api.apps.metrum.ai` from router
