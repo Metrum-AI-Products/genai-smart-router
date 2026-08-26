@@ -1,6 +1,73 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-08-19
+Last deployed: 2026-08-26
+
+## 2026-08-26 EKS llm-api image refresh to 8fdb816 (support-chat launcher)
+
+Rolled Fleet customer `llm-api` at `https://llm-api.apps.metrum.ai` from router
+`9450330` to `8fdb816` (PR #935) so embedded `/docs/` hides the ElevenLabs
+support chat behind a consent-gated floating **Support** launcher. Compose
+production was not changed.
+
+- Restic release snapshot `c421adf0` (stable names, tag `version:8fdb816`).
+- ECR image `smart-llmrouter:8fdb816-linux-amd64` digest
+  `sha256:c3b25021c9003c37dcab973672f09b44923de1f224ecfd887b27f5b983230a5b`.
+- Staging Fleet profile `approved_release_digest` updated to that immutable
+  digest; signed `customer write-manifest` + `customer create --sign-with-key`
+  job `job-9d26065341efe8cd42d6`, config revision
+  `llm-api-image-8fdb816-20260826t022229z`.
+- `/readyz`: 200 version `8fdb816`; `/v1/models`: 25 groups; `high` chat smoke
+  exact `OK`; ordinary-caller `/metrics`: 403; hosted `/docs/` JS contains
+  `elevenlabs-convai`, `supportChatLauncher`, and `Allow support chat`.
+- Compose `https://llm-api-engg.metrum.ai/readyz`: 200 version `8d91f5c`
+  (unchanged).
+
+Rollback: signed Fleet `customer create` against the previous profile digest
+`sha256:23754ef4bfadd9fa86d0a28fd9c51bfac392f30c50619a65d89a35dc95d007e9` /
+job `job-1f81d5e5cb0c242c69c7`, or `customer delete --sign-with-key`. Does not
+roll back Compose.
+
+## 2026-08-20 EKS llm-api image refresh to 9450330 (customer admin CLI)
+
+Rolled Fleet customer `llm-api` at `https://llm-api.apps.metrum.ai` from router
+`b523f29` to `9450330` (PR #920) so embedded `/docs/` documents CLI-only managed
+admin (`get-config`, `list-callers`, `revoke-caller`, `update-quota`,
+`quota-status`) and stops teaching ConfigMap vs Secret. Compose production was
+not changed.
+
+- Restic release snapshot `a86b7734` (stable names, tag `version:9450330`).
+- ECR image `smart-llmrouter:9450330-linux-amd64` digest
+  `sha256:23754ef4bfadd9fa86d0a28fd9c51bfac392f30c50619a65d89a35dc95d007e9`.
+- Staging Fleet profile `approved_release_digest` updated to that immutable
+  digest; signed `customer write-manifest` + `customer create --sign-with-key`
+  job `job-1f81d5e5cb0c242c69c7`.
+- `/readyz`: 200 version `9450330`; `/v1/models`: 25 groups; `high` chat smoke
+  exact `OK`; hosted customer-administration docs include `get-config` /
+  `list-callers` and do not ask ConfigMap vs Secret.
+- Packaged `customer get-config` against live llm-api: 25 model groups, mode
+  `0600` files.
+
+Rollback: signed Fleet `customer create` against the previous profile digest /
+prior job, or `customer delete --sign-with-key`. Does not roll back Compose.
+
+## 2026-08-19 EKS llm-api image refresh to b523f29 (hosted support widget)
+
+Rolled Fleet customer `llm-api` at `https://llm-api.apps.metrum.ai` from router
+`48b2537` to `b523f29` so embedded `/docs/` includes the consent-gated ConvAI
+support widget. Compose production was not changed.
+
+- ECR image `smart-llmrouter:b523f29-linux-amd64` digest
+  `sha256:58e8b1c284d475913bd0862b01fc151b3294214e8b004aedff7068207e841dbb`.
+- Staging Fleet profile `approved_release_digest` updated to that immutable
+  digest; signed `customer write-manifest` + `customer create --sign-with-key`
+  job `job-4aea95e4641c84c3765a`, config revision
+  `llm-api-image-b523f29-20260819t234601z`.
+- `/readyz`: 200 version `b523f29`; `/v1/models`: 25 groups; `high` chat smoke
+  exact `OK`; hosted `/docs/` JS contains `elevenlabs-convai` and
+  `Allow support chat`.
+
+Rollback: signed Fleet `customer create` against the previous profile digest /
+prior job, or `customer delete --sign-with-key`. Does not roll back Compose.
 
 ## 2026-08-19 Parallel EKS SQLite instance (llm-api.apps.metrum.ai)
 
