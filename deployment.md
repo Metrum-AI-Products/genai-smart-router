@@ -2,6 +2,32 @@
 
 Last deployed: 2026-08-26
 
+## 2026-08-26 EKS llm-api image refresh to 3cbbfb8 (Support persistent toggle)
+
+Rolled Fleet customer `llm-api` at `https://llm-api.apps.metrum.ai` from router
+`8fdb816` to `3cbbfb8` (PR #937) so the floating **Support** control stays
+visible while chat is open (open/close toggle) and **Withdraw support chat**
+remains reachable via the options control. Compose production was not changed.
+
+- Restic release snapshot `a658b769` (stable names, tag `version:3cbbfb8`).
+- ECR image `smart-llmrouter:3cbbfb8-linux-amd64` digest
+  `sha256:17ed327f6eb2f8911bbb19e4a13dd93d06cdc88ff3a6d5b6a86a557970f2891b`.
+- Staging Fleet profile `approved_release_digest` updated to that immutable
+  digest; signed `customer write-manifest` + `customer create --sign-with-key`
+  job `job-c7d88cfa67d56362525b`, config revision
+  `llm-api-image-3cbbfb8-20260826t030126z`.
+- `/readyz`: 200 version `3cbbfb8`; `/v1/models`: 25 groups; `high` chat smoke
+  exact `OK`; ordinary-caller `/metrics`: 403; hosted `/docs/` JS contains
+  `supportChatLauncher`, `Allow support chat`, and `Withdraw support chat`,
+  and does not contain `supportChatClose`.
+- Compose `https://llm-api-engg.metrum.ai/readyz`: 200 version `8d91f5c`
+  (unchanged).
+
+Rollback: signed Fleet `customer create` against the previous profile digest
+`sha256:c3b25021c9003c37dcab973672f09b44923de1f224ecfd887b27f5b983230a5b` /
+job `job-9d26065341efe8cd42d6`, or `customer delete --sign-with-key`. Does not
+roll back Compose.
+
 ## 2026-08-26 EKS llm-api image refresh to 8fdb816 (support-chat launcher)
 
 Rolled Fleet customer `llm-api` at `https://llm-api.apps.metrum.ai` from router
