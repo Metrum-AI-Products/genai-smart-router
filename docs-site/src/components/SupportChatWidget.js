@@ -105,13 +105,13 @@ export default function SupportChatWidget() {
     setShowConsent(false);
   };
 
-  const closeChat = () => {
-    setOpen(false);
-    setShowWithdraw(false);
-  };
-
   const onLauncherClick = () => {
     setShowWithdraw(false);
+    if (open) {
+      setShowConsent(false);
+      setOpen(false);
+      return;
+    }
     if (consent === "granted") {
       setShowConsent(false);
       setOpen(true);
@@ -143,93 +143,82 @@ export default function SupportChatWidget() {
 
   return (
     <>
-      {!open && (
-        <div className="supportChatLauncher">
-          <div className="supportChatLauncher__controls">
+      <div className="supportChatLauncher">
+        <div className="supportChatLauncher__controls">
+          <button
+            type="button"
+            className="supportChatLauncher__btn"
+            aria-expanded={open || showConsent || showWithdraw}
+            aria-controls={PANEL_ID}
+            onClick={onLauncherClick}
+          >
+            Support
+          </button>
+          {consent === "granted" && (
             <button
               type="button"
-              className="supportChatLauncher__btn"
-              aria-expanded={showConsent || showWithdraw ? "true" : "false"}
-              aria-controls={PANEL_ID}
-              onClick={onLauncherClick}
-            >
-              Support
-            </button>
-            {consent === "granted" && (
-              <button
-                type="button"
-                className="supportChatLauncher__more"
-                aria-label="Support chat options"
-                aria-expanded={showWithdraw ? "true" : "false"}
-                onClick={() => {
-                  setShowConsent(false);
-                  setShowWithdraw((value) => !value);
-                }}
-              >
-                ···
-              </button>
-            )}
-          </div>
-          {showConsent && (
-            <div
-              className="supportChatPopover"
-              role="dialog"
-              aria-label="Support chat consent"
-            >
-              <p className="supportChatPopover__text">
-                Optional support chat stays off until you allow it. See the{" "}
-                <a href="/docs/privacy">privacy notice</a>.
-              </p>
-              <div className="supportChatPopover__actions">
-                <button
-                  type="button"
-                  className="supportChatPopover__primary"
-                  onClick={allow}
-                >
-                  Allow support chat
-                </button>
-                <button
-                  type="button"
-                  className="supportChatPopover__secondary"
-                  onClick={notNow}
-                >
-                  Not now
-                </button>
-              </div>
-            </div>
-          )}
-          {showWithdraw && consent === "granted" && (
-            <div
-              className="supportChatPopover"
-              role="dialog"
+              className="supportChatLauncher__more"
               aria-label="Support chat options"
+              aria-expanded={showWithdraw ? "true" : "false"}
+              onClick={() => {
+                setShowConsent(false);
+                setShowWithdraw((value) => !value);
+              }}
             >
-              <p className="supportChatPopover__text">
-                Support chat is allowed on this browser. You can withdraw
-                consent anytime.
-              </p>
-              <div className="supportChatPopover__actions">
-                <button
-                  type="button"
-                  className="supportChatPopover__danger"
-                  onClick={withdraw}
-                >
-                  Withdraw support chat
-                </button>
-              </div>
-            </div>
+              ···
+            </button>
           )}
         </div>
-      )}
-      {open && (
-        <button
-          type="button"
-          className="supportChatClose"
-          onClick={closeChat}
-        >
-          Close
-        </button>
-      )}
+        {showConsent && (
+          <div
+            className="supportChatPopover"
+            role="dialog"
+            aria-label="Support chat consent"
+          >
+            <p className="supportChatPopover__text">
+              Optional support chat stays off until you allow it. See the{" "}
+              <a href="/docs/privacy">privacy notice</a>.
+            </p>
+            <div className="supportChatPopover__actions">
+              <button
+                type="button"
+                className="supportChatPopover__primary"
+                onClick={allow}
+              >
+                Allow support chat
+              </button>
+              <button
+                type="button"
+                className="supportChatPopover__secondary"
+                onClick={notNow}
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        )}
+        {showWithdraw && consent === "granted" && (
+          <div
+            className="supportChatPopover"
+            role="dialog"
+            aria-label="Support chat options"
+          >
+            <p className="supportChatPopover__text">
+              Support chat is allowed on this browser. You can withdraw
+              consent anytime.
+            </p>
+            <div className="supportChatPopover__actions">
+              <button
+                type="button"
+                className="supportChatPopover__danger"
+                onClick={withdraw}
+              >
+                Withdraw support chat
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
       <div
         id={PANEL_ID}
         ref={hostRef}
