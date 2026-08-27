@@ -1,6 +1,34 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-08-26
+Last deployed: 2026-08-27
+
+## 2026-08-27 EKS llm-api image refresh to 5b382c7 (promotion gates + ambient AWS auth)
+
+Rolled Fleet customer `llm-api` at `https://llm-api.apps.metrum.ai` from router
+`b59cc0e` to `5b382c7` (PR #942) after merging automated promotion-gate and
+ambient-AWS-auth prerequisite work. Compose production was not changed.
+
+- Restic release snapshot `8e627000` (stable names, tag `version:5b382c7`).
+- ECR image `smart-llmrouter:5b382c7-linux-amd64` digest
+  `sha256:56c5bd0b719a8e4729fcb8671e2bbe1ed842368d5ab78ac70ce1ae6ddd7bf88f`.
+- Staging Fleet profile `approved_release_digest` updated to that immutable
+  digest; signed `customer write-manifest` + `customer create --sign-with-key`
+  job `job-ffd9cd8d83a920bb6346`, config revision
+  `llm-api-image-5b382c7-20260827t141817z`.
+- `/readyz`: 200 version `5b382c7`; `/v1/models`: 25 groups; group `high` chat
+  smoke returned `OK`; ordinary-caller `/metrics`: 403.
+- Compose `https://llm-api-engg.metrum.ai/readyz`: 200 version `8d91f5c`
+  (unchanged).
+
+Overlay staging (`https://smartrouter.apps.metrum.ai`) was **not** updated:
+`make eks-preflight` failed closed because the ambient lifecycle IAM user could
+not assume `genai-smart-router-eks-staging-delivery`. Retry after the operator
+session matches the approved delivery assumed-role identity.
+
+Rollback: signed Fleet `customer create` against the previous profile digest
+`sha256:c2857bb72657bab54f5ebb68684ca9dea1baf228096c9ce518af42500e25936a` /
+job `job-31d1b8528140886f9f32`, or `customer delete --sign-with-key`. Does not
+roll back Compose.
 
 ## 2026-08-26 EKS llm-api image refresh to b59cc0e (Support launcher open position)
 
