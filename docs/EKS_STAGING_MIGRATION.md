@@ -744,11 +744,13 @@ or unexpected restored image fails closed. Removal of the Ingress or Deployment
 remains a separate approved recovery action. EC2 traffic and data remain
 unaffected.
 
-A future production cutover requires separate approval and a new runbook
-section covering an EC2 write freeze, logical Postgres export/import, row and
-report reconciliation, final state handling, DNS transition, client acceptance,
-and an explicit rollback window. Do not make either public production hostname
-point at EKS before that process passes.
+A future production cutover requires separate approval and the
+[`llm-api-engg.metrum.ai` EKS cutover planning runbook](LLM_API_ENGG_EKS_CUTOVER_PLAN.md),
+including an EC2 write freeze, logical Postgres export/import, row and report
+reconciliation, final state handling, DNS transition, client acceptance, and
+an explicit rollback window. The runbook is planning-only and grants no
+mutation authority. Do not make a public production hostname point at EKS
+before the protected #518 process passes.
 
 The first cutover step is a **parallel** Fleet SQLite customer instance at
 `llm-api.apps.metrum.ai` (see

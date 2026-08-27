@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "authority": "planning_only_no_apply",
+  "plan_id": "replace-with-approved-plan-id",
+  "change_reference": "#725",
+  "dependencies": {
+    "migration": "#507",
+    "production_promotion": "#518",
+    "fleet_lifecycle": "#555"
+  },
+  "source": {
+    "hostname": "llm-api-engg.metrum.ai",
+    "runtime": "ec2-compose",
+    "authority_before_cutover": true,
+    "write_freeze_required": true
+  },
+  "target": {
+    "runtime": "eks-fleet",
+    "hostname": "llm-api-engg.metrum.ai",
+    "replicas": 1,
+    "deployment_strategy": "Recreate",
+    "state_access_mode": "ReadWriteOnce",
+    "database": "private-encrypted-postgresql",
+    "production_profile_authorized": false
+  },
+  "release": {
+    "image_digest": "registry.example/smart-llmrouter@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "configuration_revision": "replace-with-approved-config-revision",
+    "configuration_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "license_revision": "replace-with-approved-license-revision",
+    "promotion_manifest_reference": "protected/promotion-manifest.json",
+    "promotion_manifest_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "migration": {
+    "plan_reference": "protected/migration-plan.json",
+    "plan_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "compatibility": "restore-required",
+    "rollback_class": "database-restore-required",
+    "logical_backup_required": true,
+    "restore_rehearsal_required": true,
+    "reverse_migration_allowed": false,
+    "reprice_historical_usage": false
+  },
+  "traffic": {
+    "canary_scope_id": "replace-with-approved-scope",
+    "max_canary_percent": 5,
+    "observation_minutes": 30,
+    "no_dual_writers": true,
+    "expansion_gates_reference": "protected/traffic-gates.json"
+  },
+  "dns": {
+    "hostname": "llm-api-engg.metrum.ai",
+    "exact_host_only": true,
+    "transition_plan_reference": "protected/dns-transition.json",
+    "rollback_plan_reference": "protected/dns-rollback.json",
+    "staging_hostname_forbidden": true
+  },
+  "acceptance": {
+    "api_matrix_reference": "protected/api-matrix.json",
+    "client_matrix_reference": "protected/client-matrix.json",
+    "state_reconciliation_reference": "protected/reconciliation.json",
+    "metrics_admin_isolation_required": true,
+    "ordinary_metrics_status": "403 metrics-forbidden"
+  },
+  "rollback": {
+    "window_minutes": 1440,
+    "decision_deadline": "2029-01-01T00:00:00Z",
+    "source_retained": true,
+    "source_write_reenable_requires_restore_decision": true,
+    "known_good_image_digest": "registry.example/smart-llmrouter@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "cleanup_separately_approved": true
+  },
+  "approvals": {
+    "release_approver": "replace-release-approver",
+    "operations_approver": "replace-operations-approver",
+    "independent_observer": "replace-independent-observer",
+    "stop_authority": "replace-stop-authority",
+    "issued_at": "2028-12-31T23:00:00Z",
+    "expires_at": "2029-01-01T00:00:00Z"
+  },
+  "gate_record": {
+    "current_stage": "design-rehearsal",
+    "decision": "no-go",
+    "decision_reference": "protected/stage-decision.json",
+    "decision_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+    "rollback_window_decision": "pending",
+    "authority_after_decision": "ec2-compose"
+  },
+  "evidence": {
+    "preflight": {
+      "reference": "protected/preflight.ndjson",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "rehearsal": {
+      "reference": "protected/rehearsal.ndjson",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "api_client": {
+      "reference": "protected/api-client.ndjson",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    "reconciliation": {
+      "reference": "protected/reconciliation.ndjson",
+      "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    "dns_tls": {
+      "reference": "protected/dns-tls.ndjson",
+      "sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    "rollback": {
+      "reference": "protected/rollback.ndjson",
+      "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  }
+}

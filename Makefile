@@ -128,7 +128,7 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test test-migration-operational-postgres test-migration-data-jobs-postgres test-migration-data-job-ownership-postgres test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-package-binaries build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all dist-backup package-dist-backup compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate llm-api-engg-cutover-plan-test ci-eks-staging-contract test test-migration-operational-postgres test-migration-data-jobs-postgres test-migration-data-job-ownership-postgres test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-package-binaries build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all dist-backup package-dist-backup compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
 
 help: eks-help
 
@@ -198,6 +198,7 @@ eks-help:
 	@echo "  eks-rollback-staging   mutating staging only: requires validated supply-chain evidence, confirmation, digest, approved pod-template SHA-256"
 	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
 	@echo "  production-promotion-validate read-only: validates evidence manifest; never deploys production"
+	@echo "  llm-api-engg-cutover-plan-test offline planning schema/template tests; never applies production"
 	@echo "Required: any operator-selected AWS profile that resolves to the approved staging delivery assumed role, plus the protected target policy Parameter; credentials are never Make variables."
 	@echo "Preflight also verifies the immutable runtime/image attestation, exact fail-closed admission policy/binding, and denied policy mutation/delete authority."
 	@echo "  eks-supply-chain-validate read-only: validates digest/release-binding/SBOM/provenance/signature/scan evidence"
@@ -244,6 +245,9 @@ eks-supply-chain-validate:
 production-promotion-validate:
 	@$(PYTHON) scripts/validate_production_promotion.py --from-make-environment
 
+llm-api-engg-cutover-plan-test:
+	$(PYTHON) scripts/validate_llm_api_engg_cutover_plan_test.py
+
 ci-eks-staging-contract:
 	$(PYTHON) scripts/eks_delivery_contract_test.py
 	$(PYTHON) scripts/enroll_fleet_operator_test.py
@@ -253,6 +257,7 @@ ci-eks-staging-contract:
 	$(PYTHON) scripts/validate_staging_supply_chain_test.py
 	$(PYTHON) scripts/validate_eks_staging_workflow_test.py
 	$(PYTHON) scripts/validate_production_promotion_test.py
+	$(PYTHON) scripts/validate_llm_api_engg_cutover_plan_test.py
 	$(PYTHON) scripts/eks_promotion_evidence_integration_test.py
 	$(PYTHON) scripts/validate_eks_staging_workflow.py
 
@@ -426,6 +431,7 @@ secret-check:
 	python3 scripts/apply_tenant_network_policies_test.py
 	python3 scripts/eks_delivery_contract_test.py
 	python3 scripts/validate_production_promotion_test.py
+	python3 scripts/validate_llm_api_engg_cutover_plan_test.py
 	python3 scripts/eks_promotion_evidence_integration_test.py
 	python3 scripts/check_license_skus.py
 	$(MAKE) validate-build-metadata

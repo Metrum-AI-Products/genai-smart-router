@@ -7,7 +7,10 @@ doc_type: howto
 
 This guide is for **customer platform administrators**: the people who own router configuration, provider credentials, model groups, caller access, quotas, and routine operational changes for one deployment.
 
-**Metrum-hosted production** (a hostname such as `llm-api.apps.metrum.ai`) is **CLI and docs only**. You do not edit Kubernetes objects. Do not look for a ConfigMap or a Secret, and do not use `kubectl`. Metrum applies configuration through the customer CLI.
+**Metrum-hosted production** is **CLI and docs only**. You do not edit
+Kubernetes objects. Do not look for a ConfigMap or a Secret, and do not use
+`kubectl`. Metrum applies configuration through the customer CLI; use the base
+URL assigned to your deployment.
 
 | Deployment shape | Where config lives | How you change it |
 | --- | --- | --- |

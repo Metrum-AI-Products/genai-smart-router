@@ -126,4 +126,7 @@ After this gate passes, an external protected workflow may request the human
 decision; it must not infer authorization from the manifest. Any later EKS,
 database, state, or DNS action needs a separate approved runbook and
 least-privilege identity. See `docs/EKS_STAGING_MIGRATION.md` for current
-staging constraints and `docs/EKS_STAGING_CICD.md` for staging delivery.
+staging constraints and `docs/EKS_STAGING_CICD.md` for staging delivery. The
+hostname-specific, planning-only contract for `llm-api-engg.metrum.ai` is
+`docs/LLM_API_ENGG_EKS_CUTOVER_PLAN.md`; validating it still grants no
+production mutation or rollout authority.

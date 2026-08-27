@@ -116,7 +116,8 @@ per the approved retention decision.
 
 ## Related
 
-- [#725](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/725) — future EC2-to-EKS migration tracker
+- [#725](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/725) — planning-only EC2-to-EKS migration tracker
+- [`docs/LLM_API_ENGG_EKS_CUTOVER_PLAN.md`](LLM_API_ENGG_EKS_CUTOVER_PLAN.md) — secret-free hostname-specific cutover plan and evidence contract
 - [#518](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/518) — production promotion / cutover authority (out of scope)
 - [#555](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/555) — Fleet lifecycle
 - [`docs/ACME_EKS_PRODUCTION_LIKE_DEPLOY.md`](ACME_EKS_PRODUCTION_LIKE_DEPLOY.md) — completed RDS rehearsal (destroyed)
