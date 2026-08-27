@@ -11,12 +11,15 @@ The router does not provide a one-click production deploy. **Metrum-hosted**
 customer administrators activate signed config revisions with the packaged
 `customer` CLI as described in [Customer Administrator Guide](./customer-administration);
 they do not run EKS Make targets or `kubectl`. Operators of self-hosted
-clusters use their protected change-management workflow with separate approval and execution
-roles. Runtime credentials, router tokens, provider keys, customer content,
-and deployment configuration remain in the protected deployment boundary.
-Use two distinct authenticated approval roles for a production change; release
-metadata can record the approver references, but it is never a substitute for
-the protected workflow's authorization checks.
+clusters use their protected change-management workflow with objective
+automated promotion gates. Runtime credentials, router tokens, provider keys,
+customer content, and deployment configuration remain in the protected deployment
+boundary. Promotion manifests record automated gate results and validity windows;
+they never substitute for objective evidence or protected execution controls.
+
+Authenticate to AWS and Kubernetes **before** running any install, delivery, or
+promotion command. Login, SSO, MFA bootstrap, and profile selection are
+prerequisites, not steps in these docs.
 
 Before a promotion, confirm that the intended model groups meet their quality,
 cost, latency, tool, modality, and API-compatibility criteria. Start with a
@@ -28,7 +31,8 @@ For an EKS staging delivery, retain the safe image-normalized rendered-manifest
 configuration fingerprint. The production review gate matches that fingerprint
 and immutable artifact exactly across passed staging promotion-plan and
 migration-rehearsal evidence, without storing or publishing raw deployment
-configuration.
+configuration. Metrum-specific EKS delivery runbooks stay in internal operator
+documentation; this page describes generic promotion expectations only.
 
 The protected review bundle contains one hash-pinned supply-chain validation
 result rather than direct references to SBOM, provenance, scan, or signature

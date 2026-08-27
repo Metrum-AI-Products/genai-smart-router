@@ -18,7 +18,7 @@
     "dns",
     "acceptance",
     "rollback",
-    "approvals",
+    "change_control",
     "gate_record",
     "evidence"
   ],
@@ -192,24 +192,20 @@
         "cleanup_separately_approved": {"type": "boolean", "const": true}
       }
     },
-    "approvals": {
+    "change_control": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "release_approver",
-        "operations_approver",
         "independent_observer",
         "stop_authority",
-        "issued_at",
-        "expires_at"
+        "evaluated_at",
+        "valid_until"
       ],
       "properties": {
-        "release_approver": {"$ref": "#/$defs/id"},
-        "operations_approver": {"$ref": "#/$defs/id"},
         "independent_observer": {"$ref": "#/$defs/id"},
         "stop_authority": {"$ref": "#/$defs/id"},
-        "issued_at": {"$ref": "#/$defs/timestamp"},
-        "expires_at": {"$ref": "#/$defs/timestamp"}
+        "evaluated_at": {"$ref": "#/$defs/timestamp"},
+        "valid_until": {"$ref": "#/$defs/timestamp"}
       }
     },
     "gate_record": {

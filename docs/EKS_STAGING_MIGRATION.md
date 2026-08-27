@@ -223,27 +223,28 @@ delivery role.
 
 The role profile may use any local AWS profile name—including `-`, `_`, `.`,
 `@`, `+`, `=`, and `,`—but never accept credentials as flags or configuration
-content. Before lifecycle work, the operator runs `aws sso login` or the
-organization's equivalent federated login for the source profile, then verifies:
+content. **Authentication is a prerequisite:** authenticate to AWS out of band
+before any numbered delivery step. Delivery commands consume the currently
+authenticated session and fail closed if `aws sts get-caller-identity` does not
+succeed. They do not run SSO login, MFA bootstrap, or profile selection.
 
+Verify the intended identity before lifecycle work:
 
 ```bash
 aws sts get-caller-identity \
-  --profile <operator-delivery-profile> \
   --query '{Account:Account,Arn:Arn}' \
   --output json
 ```
 
 #### Headless and noninteractive source authentication
 
-The delivery CLI does not require a local browser. It delegates source
-authentication to the operator-selected AWS profile, so use one of these
-approved source-profile mechanisms before invoking a delivery target:
+Identity setup is out of band. The delivery CLI does not require a local browser
+during apply/rollout, but it also does not perform login. Configure one of these
+approved source-profile mechanisms **before** invoking a delivery target:
 
-- **Headless Identity Center device authorization:** run
-  `aws sso login --use-device-code --profile <operator-federated-profile>`.
-  Complete the short-lived authorization from a separate browser, without
-  copying device codes into evidence or chat.
+- **Headless Identity Center device authorization:** complete organization SSO
+  login separately (for example `aws sso login --use-device-code` against your
+  federated source profile when your organization uses Identity Center).
 - **Organization credential process:** configure
   `credential_process = <approved-command>` in the federated source profile.
   The command must emit short-lived AWS credentials only to the AWS CLI process;

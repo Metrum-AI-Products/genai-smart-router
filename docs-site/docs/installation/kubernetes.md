@@ -196,38 +196,11 @@ Update the deployment for:
 
 Network policy enforcement depends on the cluster CNI. Validate both allowed and denied flows in staging.
 
-When using the repository Make delivery helpers for EKS tenant ingress
-isolation, render and activate policies from short-lived discovery evidence
-(valid for 15 minutes only; rerun discovery if the window expires):
+## Prerequisites
 
-```bash
-# Non-Linkerd ingress NetworkPolicy render path
-make eks-render-ingress-network-policy \
-  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
-  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
-
-make eks-validate-tenant-network-policies \
-  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
-  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
-  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved.yaml \
-  EKS_POLICY_CONTEXT=<approved-context> \
-  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
-
-make eks-apply-tenant-network-policies \
-  EKS_POLICY_APPLY_CONFIRM=apply \
-  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
-  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
-  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved.yaml \
-  EKS_POLICY_CONTEXT=<approved-context> \
-  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
-```
-
-These targets bind an explicit kubeconfig/context to the discovered AWS/EKS
-target rather than an ambient kubectl session. Do not paste rendered policy
-YAML into a generic `kubectl apply -f` from an unscoped shell. If Linkerd is
-selected, use `make eks-render-linkerd-policy` (which also renders the companion
-ingress policy) and pass `EKS_LINKERD_POLICY_OUTPUT` to the same validate/apply
-targets.
+You must already have working `kubectl` access to the target cluster and any
+cloud credentials your organization requires. Authenticate out of band; these
+install steps do not run AWS SSO login, MFA bootstrap, or profile selection.
 
 ## Smoke Tests
 

@@ -41,7 +41,7 @@ TOP_LEVEL = {
     "migration",
     "canary",
     "rollback",
-    "approval",
+    "promotion_gates",
 }
 SUPPLY_CHAIN_RESULT_FIELDS = {"outcome", "timestamp", "image_digest", "supply_chain"}
 STAGING_PROMOTION_EVIDENCE_REFERENCE = "evidence-promotion-plan.safe.json"
@@ -265,29 +265,21 @@ def validate(manifest: object, now: dt.datetime, evidence_root: Path) -> dict[st
         "configuration.version",
     )
     fingerprint = string_at(config["fingerprint"], "configuration.fingerprint", HASH)
-    approval = object_at(manifest["approval"], "approval", {"change_reference", "release_approved_by", "operations_approved_by", "issued_at", "expires_at"})
+    gates = object_at(manifest["promotion_gates"], "promotion_gates", {"change_reference", "result", "evaluated_at", "valid_until"})
     manifest_scalar(
-        string_at(approval["change_reference"], "approval.change_reference", SAFE_REF),
-        "approval.change_reference",
+        string_at(gates["change_reference"], "promotion_gates.change_reference", SAFE_REF),
+        "promotion_gates.change_reference",
     )
-    release_approver = manifest_scalar(
-        string_at(approval["release_approved_by"], "approval.release_approved_by", IDENTIFIER),
-        "approval.release_approved_by",
-    )
-    operations_approver = manifest_scalar(
-        string_at(approval["operations_approved_by"], "approval.operations_approved_by", IDENTIFIER),
-        "approval.operations_approved_by",
-    )
-    if release_approver == operations_approver:
-        fail("approval release and operations approvers must be distinct")
-    issued_at = parse_time(approval["issued_at"], "approval.issued_at")
-    expires_at = parse_time(approval["expires_at"], "approval.expires_at")
-    if issued_at > now:
-        fail("approval has not been issued yet")
-    if expires_at <= now:
-        fail("approval has expired")
-    if expires_at <= issued_at or expires_at - issued_at > dt.timedelta(hours=1):
-        fail("approval lifetime must be greater than zero and no more than one hour")
+    if gates["result"] != "passed":
+        fail("promotion_gates.result must be passed")
+    evaluated_at = parse_time(gates["evaluated_at"], "promotion_gates.evaluated_at")
+    valid_until = parse_time(gates["valid_until"], "promotion_gates.valid_until")
+    if evaluated_at > now:
+        fail("promotion_gates have not been evaluated yet")
+    if valid_until <= now:
+        fail("promotion_gates validity window has expired")
+    if valid_until <= evaluated_at or valid_until - evaluated_at > dt.timedelta(hours=1):
+        fail("promotion_gates validity window must be greater than zero and no more than one hour")
     staging = staging_promotion_evidence(manifest["staging_evidence"], evidence_root, now)
     if staging["image_digest"] != digest or staging["configuration_fingerprint"] != fingerprint:
         fail("staging_evidence must bind the promoted artifact and configuration fingerprint")

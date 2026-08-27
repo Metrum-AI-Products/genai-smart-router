@@ -70,13 +70,11 @@
     "known_good_image_digest": "registry.example/smart-llmrouter@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
     "cleanup_separately_approved": true
   },
-  "approvals": {
-    "release_approver": "replace-release-approver",
-    "operations_approver": "replace-operations-approver",
+  "change_control": {
     "independent_observer": "replace-independent-observer",
     "stop_authority": "replace-stop-authority",
-    "issued_at": "2028-12-31T23:00:00Z",
-    "expires_at": "2029-01-01T00:00:00Z"
+    "evaluated_at": "2028-12-31T23:00:00Z",
+    "valid_until": "2029-01-01T00:00:00Z"
   },
   "gate_record": {
     "current_stage": "design-rehearsal",

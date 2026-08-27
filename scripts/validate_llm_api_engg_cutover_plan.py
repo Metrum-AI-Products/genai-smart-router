@@ -152,26 +152,24 @@ def validate_plan(plan: object, schema: dict[str, object]) -> dict[str, object]:
     if not isinstance(plan, dict):
         raise ValueError("plan must be an object")
 
-    approvals = plan["approvals"]
+    change_control = plan["change_control"]
     rollback = plan["rollback"]
     release = plan["release"]
     target = plan["target"]
     gate_record = plan["gate_record"]
-    assert isinstance(approvals, dict)
+    assert isinstance(change_control, dict)
     assert isinstance(rollback, dict)
     assert isinstance(release, dict)
     assert isinstance(target, dict)
     assert isinstance(gate_record, dict)
 
-    if approvals["release_approver"] == approvals["operations_approver"]:
-        raise ValueError("release and operations approvers must be distinct")
-    issued_at = parse_timestamp(approvals["issued_at"], "plan.approvals.issued_at")
-    expires_at = parse_timestamp(approvals["expires_at"], "plan.approvals.expires_at")
-    if expires_at <= issued_at or expires_at - issued_at > dt.timedelta(hours=1):
-        raise ValueError("approval lifetime must be greater than zero and no more than one hour")
+    evaluated_at = parse_timestamp(change_control["evaluated_at"], "plan.change_control.evaluated_at")
+    valid_until = parse_timestamp(change_control["valid_until"], "plan.change_control.valid_until")
+    if valid_until <= evaluated_at or valid_until - evaluated_at > dt.timedelta(hours=1):
+        raise ValueError("change-control validity window must be greater than zero and no more than one hour")
     deadline = parse_timestamp(rollback["decision_deadline"], "plan.rollback.decision_deadline")
-    if deadline < expires_at:
-        raise ValueError("rollback decision deadline must not precede approval expiry")
+    if deadline < valid_until:
+        raise ValueError("rollback decision deadline must not precede change-control validity expiry")
     if release["image_digest"].rsplit("@", 1)[1] == rollback["known_good_image_digest"].rsplit("@", 1)[1]:
         raise ValueError("known-good rollback image must have a distinct content digest")
     if target["production_profile_authorized"] is False and (

@@ -180,9 +180,10 @@ def main() -> int:
         "legacy discovery targets must retain their discovery profile default",
     )
     require(
-        "EKS_DELIVERY_AWS_PROFILE = genai-smart-router-eks-staging-delivery"
-        in make_database.stdout,
-        "delivery targets must use a separate staging delivery profile default",
+        "EKS_DELIVERY_AWS_PROFILE =" in make_database.stdout
+        and "EKS_DELIVERY_AWS_PROFILE = genai-smart-router-eks-staging-delivery"
+        not in make_database.stdout,
+        "delivery targets must default to ambient AWS credentials (empty EKS_DELIVERY_AWS_PROFILE)",
     )
 
     # Keep the exact bare-Make inspection path independent of the bootstrap

@@ -237,7 +237,18 @@ def main() -> int:
     if "router_workload_injection_evidence" not in discovery_script or "ingress_workload_injection_evidence" not in discovery_script:
         raise SystemExit("Linkerd discovery must verify durable ingress and router injection before policy rendering")
 
-    for path in (PUBLIC_KUBERNETES_DOC, STAGING_RUNBOOK, STAGING_OVERLAY_README, IDENTITY_BOOTSTRAP):
+    public_kubernetes = PUBLIC_KUBERNETES_DOC.read_text(encoding="utf-8")
+    for forbidden in (
+        "make eks-render-ingress-network-policy",
+        "EKS_POLICY_AWS_PROFILE",
+        "aws sso login",
+    ):
+        if forbidden in public_kubernetes:
+            raise SystemExit(f"{PUBLIC_KUBERNETES_DOC.name} must not document Metrum EKS operator Make targets or AWS login")
+    if "Prerequisites" not in public_kubernetes or "out of band" not in public_kubernetes:
+        raise SystemExit(f"{PUBLIC_KUBERNETES_DOC.name} must document cloud/cluster auth as an out-of-band prerequisite")
+
+    for path in (STAGING_RUNBOOK, STAGING_OVERLAY_README, IDENTITY_BOOTSTRAP):
         deployment_path = path.read_text(encoding="utf-8")
         if "make eks-render-ingress-network-policy" not in deployment_path:
             raise SystemExit(f"{path.name} must document the non-Linkerd ingress policy render path")

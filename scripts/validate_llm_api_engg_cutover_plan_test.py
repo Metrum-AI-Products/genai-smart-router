@@ -80,12 +80,9 @@ def main() -> int:
         set_path(candidate, path, replacement)
         rejected(candidate)
 
-    same_approver = clone(plan)
-    same_approver["approvals"]["operations_approver"] = same_approver["approvals"]["release_approver"]
-    rejected(same_approver)
-    long_approval = clone(plan)
-    long_approval["approvals"]["expires_at"] = "2029-01-01T01:00:01Z"
-    rejected(long_approval)
+    long_window = clone(plan)
+    long_window["change_control"]["valid_until"] = "2029-01-01T01:00:01Z"
+    rejected(long_window)
     same_rollback = clone(plan)
     same_rollback["rollback"]["known_good_image_digest"] = same_rollback["release"]["image_digest"]
     rejected(same_rollback)

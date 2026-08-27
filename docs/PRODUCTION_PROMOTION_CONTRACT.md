@@ -12,7 +12,8 @@ Create a protected, non-committed release manifest using
 image digest to passed staging and migration-rehearsal evidence, one
 hash-pinned safe staging supply-chain validation result, a redacted
 configuration fingerprint, a bounded canary, a known-good rollback artifact,
-and two distinct time-bounded approver references.
+and an objective `promotion_gates` block with a passed automated gate result and
+time-bounded validity window.
 
 ```bash
 PRODUCTION_RELEASE_MANIFEST='tmp/release/production-manifest.json' \
@@ -45,7 +46,7 @@ artifacts inside the protected build/release boundary: they are not promotion
 manifest fields or promotion-gate inputs.
 
 The validator rejects duplicate JSON members before it examines content, expired
-or longer-than-one-hour approvals, mutable or changed evidence, absent evidence,
+or longer-than-one-hour promotion-gate validity windows, mutable or changed evidence, absent evidence,
 a failed signature or scan result, an unsafe canary, unapproved migration
 compatibility, and any external payload with a missing, changed, or additional
 field. Its only successful result is `review_required_no_production_apply`.
@@ -57,7 +58,7 @@ review through another registry alias.
 Every passed staging, migration-rehearsal, and supply-chain validation-result
 payload must include a safe RFC3339 timestamp that is not in the future and is
 no more than 24 hours old relative to the validator host's UTC clock. A new
-approval cannot refresh old staging or supply-chain evidence; regenerate and
+promotion-gates evaluation cannot refresh old staging or supply-chain evidence; regenerate and
 hash-pin the current protected evidence bundle.
 
 The approved staging target policy, rather than the promotion manifest or a
@@ -109,16 +110,22 @@ hashes, Basic credentials, DSNs, database exports, raw configs, customer data,
 DNS records, cloud identities, or command transcripts. The checked-in fixture
 is synthetic CI test data and cannot authorize a promotion.
 
-## Human approval defaults
+## Automated promotion gates
 
-Use a protected production environment with two distinct approvers: release
-owner and operations owner. The manifest records distinct safe identifiers for
-both roles; the protected environment must independently authenticate and
-enforce those approvals rather than trusting manifest text. Require a change
-reference, one-hour approval expiry, a 5% canary for 30 minutes, and a rollback
-artifact recorded before the window. A real cutover additionally requires the #507 migration classification,
+The manifest records `promotion_gates` with `result: passed`, a change reference,
+`evaluated_at`, and `valid_until` (maximum one hour). There are no human approver
+fields. Objective evidence, rehearsal, backup, security, migration, canary, and
+rollback gates must pass before a protected workflow may proceed. Require a 5%
+canary for 30 minutes and a rollback artifact recorded before the window. A real
+cutover additionally requires the #507 migration classification,
 backup/restore verification, explicit EC2 write-freeze or source-of-truth
 decision, customer acceptance, and an approved rollback window.
+
+## Prerequisites
+
+Authenticate to AWS and Kubernetes **before** running any delivery, Fleet, or
+promotion command. Login, SSO, MFA bootstrap, and profile selection are out of
+band; delivery tools fail closed when the ambient session is missing.
 
 ## Execution boundary
 

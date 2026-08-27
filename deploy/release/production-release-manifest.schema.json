@@ -15,7 +15,7 @@
     "migration",
     "canary",
     "rollback",
-    "approval"
+    "promotion_gates"
   ],
   "properties": {
     "schema_version": {"type": "integer", "const": 1},
@@ -28,7 +28,7 @@
     "migration": {"$ref": "#/$defs/migration"},
     "canary": {"$ref": "#/$defs/canary"},
     "rollback": {"$ref": "#/$defs/rollback"},
-    "approval": {"$ref": "#/$defs/approval"}
+    "promotion_gates": {"$ref": "#/$defs/promotionGates"}
   },
   "$defs": {
     "digest": {"type": "string", "pattern": "^[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}$"},
@@ -115,16 +115,16 @@
       "format": "date-time",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
     },
-    "approval": {
+    "promotionGates": {
+      "description": "Objective automated gate evaluation bound to the manifest artifact, evidence hashes, canary, migration, and rollback sections. No human approver fields.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["change_reference", "release_approved_by", "operations_approved_by", "issued_at", "expires_at"],
+      "required": ["change_reference", "result", "evaluated_at", "valid_until"],
       "properties": {
         "change_reference": {"$ref": "#/$defs/safeRef"},
-        "release_approved_by": {"type": "string", "pattern": "^[A-Za-z0-9._-]{3,80}$"},
-        "operations_approved_by": {"type": "string", "pattern": "^[A-Za-z0-9._-]{3,80}$"},
-        "issued_at": {"$ref": "#/$defs/timestamp"},
-        "expires_at": {"$ref": "#/$defs/timestamp"}
+        "result": {"const": "passed"},
+        "evaluated_at": {"$ref": "#/$defs/timestamp"},
+        "valid_until": {"$ref": "#/$defs/timestamp"}
       }
     }
   }

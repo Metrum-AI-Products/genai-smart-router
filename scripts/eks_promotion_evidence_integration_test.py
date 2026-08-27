@@ -257,12 +257,11 @@ def release_manifest(
             "class": "compatible-schema",
             "known_good_image_digest": "registry.example/router@sha256:" + "b" * 64,
         },
-        "approval": {
+        "promotion_gates": {
             "change_reference": "change/e2e-001",
-            "release_approved_by": "release-e2e",
-            "operations_approved_by": "operations-e2e",
-            "issued_at": timestamp(now - dt.timedelta(minutes=5)),
-            "expires_at": timestamp(now + dt.timedelta(minutes=30)),
+            "result": "passed",
+            "evaluated_at": timestamp(now - dt.timedelta(minutes=5)),
+            "valid_until": timestamp(now + dt.timedelta(minutes=30)),
         },
     }
 

@@ -9,5 +9,5 @@
   "migration": {"id": "usage-expand-v1", "compatibility": "backward-compatible", "rehearsal_evidence": {"result": "passed", "reference": "rehearsal-20260720.json", "sha256": "cdd65a564043a6b282b8f4081601cef24718a310b995173e0cf9ef5e7e1547e1"}},
   "canary": {"scope_id": "approved-canary-a", "max_traffic_percent": 5, "observation_minutes": 30},
   "rollback": {"class": "compatible-schema", "known_good_image_digest": "registry.example/smart-llmrouter@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
-  "approval": {"change_reference": "change/518-20260720", "release_approved_by": "release-owner", "operations_approved_by": "operations-owner", "issued_at": "2029-01-01T00:00:00Z", "expires_at": "2029-01-01T00:30:00Z"}
+  "promotion_gates": {"change_reference": "change/518-20260720", "result": "passed", "evaluated_at": "2029-01-01T00:00:00Z", "valid_until": "2029-01-01T00:30:00Z"}
 }

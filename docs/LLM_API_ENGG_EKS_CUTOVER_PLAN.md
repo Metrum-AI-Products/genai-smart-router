@@ -15,8 +15,8 @@ The protected execution owner must consume, without duplicating:
   for forward-only migration compatibility, backup/restore, state integrity,
   and rollback classification;
 - [#518](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/518)
-  for protected rehearsal, production-profile authorization, two distinct
-  approvers, canary, cutover, rollback, and evidence gates;
+  for protected rehearsal, production-profile authorization, objective automated
+  promotion gates, canary, cutover, rollback, and evidence gates;
 - [#555](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/555)
   for the single Fleet lifecycle, exact-host activation, isolated namespace,
   private encrypted PostgreSQL, PVC, license/config binding, and activation
@@ -59,9 +59,14 @@ rtk python3 scripts/validate_llm_api_engg_cutover_plan.py \
   --evidence-record /protected/change/preflight-check.json
 ```
 
-Success is only `planning_contract_valid_no_apply`. It never means go, approval,
-or permission to execute. A real evidence store must independently hash-pin,
-authenticate, retain, and authorize its records.
+Success is only `planning_contract_valid_no_apply`. It never means go,
+permission to execute, or that objective gates have passed in production. A real
+evidence store must independently hash-pin, authenticate, retain, and authorize
+its records.
+
+Authenticate to AWS and Kubernetes out of band before any delivery or evidence
+collection step. Login is a prerequisite, not part of this runbook's numbered
+stages.
 
 ## Immutable topology and authority invariants
 
@@ -89,7 +94,7 @@ authenticate, retain, and authorize its records.
 
 Any changed image digest, configuration/license revision, migration plan,
 target profile, canary scope, DNS plan, rollback plan, or evidence checksum
-invalidates approval and returns the plan to Stage 0.
+invalidates the current gate evaluation and returns the plan to Stage 0.
 
 ## Stage 0 — design and production-shaped rehearsal
 
@@ -111,9 +116,9 @@ Planning/rehearsal checklist:
 - [ ] Each exposed group has an owner, workload contract, API dialects,
   modalities, tool surfaces, objective success threshold, cost/latency target,
   promotion criterion, and rollback criterion.
-- [ ] Two distinct production approvers, independent observer, change owner,
-  communications owner, stop authority, window, and rollback deadline are
-  named in the protected system.
+- [ ] Independent observer, change owner, communications owner, stop authority,
+  window, rollback deadline, and automated gate validity window are recorded in
+  the protected system.
 
 Any missing or mismatched item is no-go. Rehearsal evidence does not authorize
 production mutation.
@@ -228,10 +233,10 @@ For every stage, the protected change record must capture:
 - every checklist check ID with one evidence record and hash;
 - thresholds, observed safe scalar result, pass/fail/blocked decision, and
   sanitized error class;
-- approver references and expiry enforced by the protected workflow;
+- automated gate evaluation timestamps and validity enforced by the protected workflow;
 - stop/rollback decision, authority before/after, and next permitted stage.
 
-Immediate no-go conditions include missing/expired approval, pending #507 or
+Immediate no-go conditions include missing/expired gate validity, pending #507 or
 #518 gate, changed binding, stale/unknown backup, failed restore rehearsal,
 wrong proxy CIDR, TLS/RDS failure, RBAC/Secret overreach, more than one replica,
 dual writer, quota/license mismatch, report or API/client regression, metrics

@@ -242,6 +242,19 @@ def open_protected_smoke_command_file(value: str) -> int:
         raise
 
 
+def aws_auth_prerequisite_detail(detail: str) -> str:
+    lowered = detail.lower()
+    if "sso token" in lowered or "could not connect to the endpoint url" in lowered or "unable to locate credentials" in lowered:
+        return "authenticate to AWS before running this command"
+    return detail
+
+
+def aws_cli_prefix(profile: str) -> list[str]:
+    if profile:
+        return ["aws", "--profile", profile]
+    return ["aws"]
+
+
 def command(args: list[str], env: dict[str, str], *, quiet: bool = False, raw: bool = False) -> str:
     proc = subprocess.run(args, env=env, text=True, capture_output=True)
     if proc.returncode:
@@ -250,7 +263,7 @@ def command(args: list[str], env: dict[str, str], *, quiet: bool = False, raw: b
         # result rather than mistake it for a command transport failure.
         if args[:3] == ["kubectl", "auth", "can-i"] and proc.stdout.strip() == "no":
             return "no\n"
-        detail = scrub(proc.stderr or proc.stdout)
+        detail = aws_auth_prerequisite_detail(scrub(proc.stderr or proc.stdout))
         fail(f"{args[0]} failed (exit {proc.returncode}): {detail}")
     return "" if quiet else (proc.stdout if raw else scrub(proc.stdout))
 
@@ -688,8 +701,8 @@ class Delivery:
         self.promotion_evidence_dir = promotion_evidence_dir
 
     def _validate_inputs(self) -> None:
-        if not PROFILE.fullmatch(self.args.aws_profile):
-            fail("--aws-profile must be a documented AWS profile identifier")
+        if self.args.aws_profile and not PROFILE.fullmatch(self.args.aws_profile):
+            fail("--aws-profile must be a documented AWS profile identifier when provided")
         if self.args.action in {
             "render",
             "plan",
@@ -905,7 +918,7 @@ class Delivery:
 
     def aws_json(self, arguments: list[str], env: dict[str, str], target: TargetPolicy) -> dict[str, Any]:
         raw = command(
-            ["aws", "--profile", self.args.aws_profile, "--region", target.aws_region, *arguments, "--output", "json"],
+            [*aws_cli_prefix(self.args.aws_profile), "--region", target.aws_region, *arguments, "--output", "json"],
             env,
             raw=True,
         )
@@ -998,9 +1011,7 @@ class Delivery:
             fail("approved EKS cluster is unavailable or does not match the protected target")
         command(
             [
-                "aws",
-                "--profile",
-                self.args.aws_profile,
+                *aws_cli_prefix(self.args.aws_profile),
                 "--region",
                 target.aws_region,
                 "eks",
@@ -2519,7 +2530,7 @@ def parser() -> argparse.ArgumentParser:
     # --smoke-command-file argument and reintroduce command content in argv.
     p = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     p.add_argument("action", choices=("preflight", "status", "render", "plan", "apply", "rollback", "smoke", "promotion-plan"))
-    p.add_argument("--aws-profile", required=True)
+    p.add_argument("--aws-profile", default="")
     p.add_argument("--image-digest", default="")
     p.add_argument("--confirm", default="")
     p.add_argument("--rollback-pod-template-sha256", default="")

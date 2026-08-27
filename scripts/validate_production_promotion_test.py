@@ -210,9 +210,9 @@ def assert_schema_fixture_contract(valid: dict[str, object]) -> None:
         else:
             raise AssertionError(f"schema accepted invalid fixture: {expected}")
 
-    missing_approval = clone(valid)
-    del missing_approval["approval"]
-    assert_schema_rejected(missing_approval, "missing required fields")
+    missing_gates = clone(valid)
+    del missing_gates["promotion_gates"]
+    assert_schema_rejected(missing_gates, "missing required fields")
     failed_staging = clone(valid)
     failed_staging["staging_evidence"]["result"] = "failed"
     assert_schema_rejected(failed_staging, "does not match const")
@@ -274,11 +274,11 @@ def main() -> int:
     boolean_schema_version["schema_version"] = True
     assert "schema_version 1" in failure(boolean_schema_version)
     for mutation, expected in (
-        (("approval", "expires_at", "2020-01-01T00:00:00Z"), "expired"),
+        (("promotion_gates", "valid_until", "2020-01-01T00:00:00Z"), "expired"),
         (("canary", "max_traffic_percent", 11), "1 through 10"),
         (("artifact", "image_digest", "tag:latest"), "invalid safe format"),
         (("staging_evidence", "result", "failed"), "must be passed"),
-        (("approval", "token", "never"), "exactly"),
+        (("promotion_gates", "token", "never"), "exactly"),
     ):
         candidate = clone(valid)
         parent, key, value = mutation
@@ -362,9 +362,7 @@ def main() -> int:
 
     for field_path in (
         ("release_id",),
-        ("approval", "change_reference"),
-        ("approval", "release_approved_by"),
-        ("approval", "operations_approved_by"),
+        ("promotion_gates", "change_reference"),
     ):
         candidate = clone(valid)
         target = candidate
@@ -406,8 +404,8 @@ def main() -> int:
         assert credential_digest not in message
         now = dt.datetime.now(dt.timezone.utc)
         refresh_evidence_timestamps(candidate, evidence_root, now)
-        candidate["approval"]["issued_at"] = timestamp(now - dt.timedelta(minutes=1))
-        candidate["approval"]["expires_at"] = timestamp(now + dt.timedelta(minutes=29))
+        candidate["promotion_gates"]["evaluated_at"] = timestamp(now - dt.timedelta(minutes=1))
+        candidate["promotion_gates"]["valid_until"] = timestamp(now + dt.timedelta(minutes=29))
         manifest_path = temporary_root / "manifest.json"
         manifest_path.write_text(json.dumps(candidate))
         cli = subprocess.run(
@@ -558,8 +556,8 @@ def main() -> int:
         manifest_path = temporary_root / "manifest.json"
         loop_manifest = clone(valid)
         loop_now = dt.datetime.now(dt.timezone.utc)
-        loop_manifest["approval"]["issued_at"] = timestamp(loop_now - dt.timedelta(minutes=1))
-        loop_manifest["approval"]["expires_at"] = timestamp(loop_now + dt.timedelta(minutes=29))
+        loop_manifest["promotion_gates"]["evaluated_at"] = timestamp(loop_now - dt.timedelta(minutes=1))
+        loop_manifest["promotion_gates"]["valid_until"] = timestamp(loop_now + dt.timedelta(minutes=29))
         manifest_path.write_text(json.dumps(loop_manifest))
         result = subprocess.run(
             [
@@ -587,8 +585,8 @@ def main() -> int:
         evidence_root = temporary_root / "evidence"
         shutil.copytree(EVIDENCE, evidence_root)
         refresh_evidence_timestamps(live_manifest, evidence_root, now)
-        live_manifest["approval"]["issued_at"] = timestamp(now - dt.timedelta(minutes=1))
-        live_manifest["approval"]["expires_at"] = timestamp(now + dt.timedelta(minutes=29))
+        live_manifest["promotion_gates"]["evaluated_at"] = timestamp(now - dt.timedelta(minutes=1))
+        live_manifest["promotion_gates"]["valid_until"] = timestamp(now + dt.timedelta(minutes=29))
         live_manifest_path = temporary_root / "manifest.json"
         live_manifest_path.write_text(json.dumps(live_manifest))
         result = promotion_make(str(live_manifest_path), str(evidence_root))

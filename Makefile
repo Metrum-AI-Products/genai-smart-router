@@ -67,7 +67,7 @@ export EVAL_MODEL EVAL_BASE_URL EVAL_API EVAL_LIMIT EVAL_CONCURRENCY EVAL_TIMEOU
 # Delivery and discovery use different AWS profiles. Keep the legacy
 # EKS_AWS_PROFILE default below for discovery/session bootstrap; delivery must
 # never overwrite it because those targets create the discovery-role profile.
-EKS_DELIVERY_AWS_PROFILE ?= genai-smart-router-eks-staging-delivery
+EKS_DELIVERY_AWS_PROFILE ?=
 IMAGE_DIGEST ?=
 EKS_CONFIRM ?=
 ROLLBACK_POD_TEMPLATE_SHA256 ?=

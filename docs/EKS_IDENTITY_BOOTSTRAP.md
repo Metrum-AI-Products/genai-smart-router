@@ -5,6 +5,11 @@ does not deploy the router, modify AWS, or replace the validation-only staging
 overlay. The shared operator and CI command wrapper is tracked separately; this
 document defines the guarantees it must preserve.
 
+**Authentication is a prerequisite, never a numbered delivery step.** Complete
+AWS and Kubernetes login, SSO, MFA, or profile setup out of band. Delivery,
+Fleet, and Make targets consume the currently authenticated session and fail
+closed with a secret-free message when it is missing. They do not invoke login.
+
 ## Reauthenticate And Discover
 
 Use an authorized short-lived federated AWS session. Do not copy credentials or
