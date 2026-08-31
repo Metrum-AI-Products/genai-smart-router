@@ -65,6 +65,10 @@ metrum-genai-smartrouterctl blueprint render \
   --intent deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml \
   --out /tmp/shadeform-blueprint
 
+# Blueprint also emits:
+#   charts/smart-llmrouter/  (Level-1 Helm chart)
+#   operator/                (Level-2 CRD scaffold when packaging.operator: true)
+
 # Start from generated config; replace the placeholder caller hash:
 metrum-genai-smartrouterctl callers generate \
   --owner-user local-operator --project local --env dev \
