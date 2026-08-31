@@ -1,5 +1,6 @@
-// smartrouterctl is the customer-local Router operations CLI. It has no cloud,
-// deployment, configuration-activation, key-rotation, or license-signing authority.
+// smartrouterctl is the customer-local Router operations CLI. It may write
+// local config.yaml and SQLite usage backups on file-owned installs. It has no
+// cloud, Fleet, Kubernetes API, remote activation, or license-signing authority.
 package main
 
 import (
@@ -15,6 +16,7 @@ import (
 
 	"smart-llmrouter/internal/buildinfo"
 	"smart-llmrouter/internal/router"
+	"smart-llmrouter/internal/smartrouterctl"
 )
 
 func main() {
@@ -23,7 +25,7 @@ func main() {
 		return
 	}
 	if len(os.Args) < 2 {
-		die("usage: smartrouterctl <version|config|callers|status|license|models|usage> [flags]")
+		die("usage: smartrouterctl <version|config|callers|providers|models|status|license|usage|blueprint> [flags]")
 	}
 	switch os.Args[1] {
 	case "version":
@@ -32,14 +34,18 @@ func main() {
 		configCommand(os.Args[2:])
 	case "callers":
 		callersCommand(os.Args[2:])
+	case "providers":
+		providersCommand(os.Args[2:])
+	case "models":
+		modelsCommand(os.Args[2:])
 	case "status":
 		statusCommand(os.Args[2:])
 	case "license":
 		licenseCommand(os.Args[2:])
-	case "models":
-		modelsCommand(os.Args[2:])
 	case "usage":
 		usageCommand(os.Args[2:])
+	case "blueprint":
+		blueprintCommand(os.Args[2:])
 	default:
 		die("unsupported command %q", os.Args[1])
 	}
@@ -69,32 +75,271 @@ func configCommand(args []string) {
 }
 
 func callersCommand(args []string) {
-	if len(args) == 0 || args[0] != "generate" {
-		die("usage: smartrouterctl callers generate [flags]")
+	if len(args) == 0 {
+		die("usage: smartrouterctl callers <list|generate|revoke|rotate> [flags]")
 	}
-	fs := flag.NewFlagSet("callers generate", flag.ExitOnError)
-	owner := fs.String("owner-user", "", "caller owner user id")
-	project := fs.String("project", "", "caller project name")
-	environment := fs.String("env", "dev", "caller environment")
-	key := fs.String("key", "", "visible key slug")
-	allow := fs.String("allow", "", "comma-separated allowed model groups")
-	tokenOut := fs.String("token-out", "", "new mode-0600 token file; must not already exist")
-	fs.Parse(args[1:])
-	if strings.TrimSpace(*tokenOut) == "" {
-		die("token-out is required")
+	switch args[0] {
+	case "list":
+		fs := flag.NewFlagSet("callers list", flag.ExitOnError)
+		path := fs.String("config", "", "router configuration path")
+		fs.Parse(args[1:])
+		cfg := loadConfigRaw(*path)
+		rows := make([]map[string]any, 0, len(cfg.Callers))
+		for _, caller := range cfg.Callers {
+			rows = append(rows, map[string]any{
+				"id": caller.ID, "status": caller.Status, "allow": caller.Allow,
+				"owner_user": caller.OwnerUser, "project": caller.Project, "environment": caller.Environment,
+			})
+		}
+		sort.Slice(rows, func(i, j int) bool { return rows[i]["id"].(string) < rows[j]["id"].(string) })
+		writeJSON(map[string]any{"schema": "metrum.ai/smartrouter-caller-list/v1", "data": rows})
+	case "generate":
+		fs := flag.NewFlagSet("callers generate", flag.ExitOnError)
+		owner := fs.String("owner-user", "", "caller owner user id")
+		project := fs.String("project", "", "caller project name")
+		environment := fs.String("env", "dev", "caller environment")
+		key := fs.String("key", "", "visible key slug")
+		allow := fs.String("allow", "", "comma-separated allowed model groups")
+		tokenOut := fs.String("token-out", "", "new mode-0600 token file; must not already exist")
+		configPath := fs.String("config", "", "optional config to merge hashed caller into")
+		writeCfg := fs.Bool("write", false, "merge hashed caller into --config")
+		fs.Parse(args[1:])
+		if strings.TrimSpace(*tokenOut) == "" {
+			die("token-out is required")
+		}
+		generated, err := router.GenerateCallerToken(router.TokenGenerateOptions{
+			OwnerUser: *owner, Project: *project, Environment: *environment, KeySlug: *key, Allow: splitCSV(*allow),
+		})
+		if err != nil {
+			die("generate caller token: %v", err)
+		}
+		if err := writeNewPrivateFile(*tokenOut, []byte(generated.Token+"\n")); err != nil {
+			die("write token: %v", err)
+		}
+		activation := "configuration-controller-required"
+		backup := ""
+		if *writeCfg {
+			if strings.TrimSpace(*configPath) == "" {
+				die("--write requires --config")
+			}
+			cfg := loadConfigRaw(*configPath)
+			smartrouterctl.EnsureAccountDirectory(cfg, generated.Caller.OwnerUser, generated.Caller.Project)
+			if err := smartrouterctl.MergeCaller(cfg, generated.Caller); err != nil {
+				die("merge caller: %v", err)
+			}
+			backup, err = smartrouterctl.WriteConfigAtomic(*configPath, cfg)
+			if err != nil {
+				die("write config: %v", err)
+			}
+			activation = "local-config-written-restart-required"
+		}
+		out := map[string]any{
+			"schema": "metrum.ai/smartrouter-caller-grant/v1", "caller_id": generated.Caller.ID,
+			"token_id": generated.TokenID, "allowed_model_groups": generated.Caller.Allow,
+			"token_file": filepath.Base(*tokenOut), "activation": activation,
+		}
+		if backup != "" {
+			out["config_backup"] = filepath.Base(backup)
+		}
+		writeJSON(out)
+	case "revoke":
+		fs := flag.NewFlagSet("callers revoke", flag.ExitOnError)
+		path := fs.String("config", "", "router configuration path")
+		id := fs.String("id", "", "caller id")
+		fs.Parse(args[1:])
+		cfg := loadConfigRaw(*path)
+		if err := smartrouterctl.RevokeCaller(cfg, *id); err != nil {
+			die("%v", err)
+		}
+		backup, err := smartrouterctl.WriteConfigAtomic(*path, cfg)
+		if err != nil {
+			die("write config: %v", err)
+		}
+		writeJSON(map[string]any{
+			"schema": "metrum.ai/smartrouter-caller-revoke/v1", "caller_id": *id, "status": "disabled",
+			"config_backup": filepath.Base(backup), "activation": "local-config-written-restart-required",
+		})
+	case "rotate":
+		fs := flag.NewFlagSet("callers rotate", flag.ExitOnError)
+		path := fs.String("config", "", "router configuration path")
+		id := fs.String("id", "", "caller id")
+		tokenOut := fs.String("token-out", "", "new mode-0600 token file")
+		fs.Parse(args[1:])
+		if strings.TrimSpace(*tokenOut) == "" {
+			die("token-out is required")
+		}
+		cfg := loadConfigRaw(*path)
+		var existing *router.CallerConfig
+		for i := range cfg.Callers {
+			if cfg.Callers[i].ID == *id {
+				existing = &cfg.Callers[i]
+				break
+			}
+		}
+		if existing == nil {
+			die("caller %q not found", *id)
+		}
+		generated, err := router.GenerateCallerToken(router.TokenGenerateOptions{
+			OwnerUser: existing.OwnerUser, Project: existing.Project, Environment: existing.Environment,
+			KeySlug: "rot" + time.Now().UTC().Format("150405"), Allow: append([]string(nil), existing.Allow...),
+		})
+		if err != nil {
+			die("generate caller token: %v", err)
+		}
+		if err := writeNewPrivateFile(*tokenOut, []byte(generated.Token+"\n")); err != nil {
+			die("write token: %v", err)
+		}
+		if err := smartrouterctl.RotateCallerHash(cfg, *id, generated.TokenSHA256, generated.TokenID); err != nil {
+			die("%v", err)
+		}
+		backup, err := smartrouterctl.WriteConfigAtomic(*path, cfg)
+		if err != nil {
+			die("write config: %v", err)
+		}
+		writeJSON(map[string]any{
+			"schema": "metrum.ai/smartrouter-caller-rotate/v1", "caller_id": *id, "token_id": generated.TokenID,
+			"token_file": filepath.Base(*tokenOut), "config_backup": filepath.Base(backup),
+			"activation": "local-config-written-restart-required",
+		})
+	default:
+		die("unsupported callers command %q", args[0])
 	}
-	generated, err := router.GenerateCallerToken(router.TokenGenerateOptions{OwnerUser: *owner, Project: *project, Environment: *environment, KeySlug: *key, Allow: splitCSV(*allow)})
-	if err != nil {
-		die("generate caller token: %v", err)
+}
+
+func providersCommand(args []string) {
+	if len(args) == 0 {
+		die("usage: smartrouterctl providers <list|upsert|remove> [flags]")
 	}
-	if err := writeNewPrivateFile(*tokenOut, []byte(generated.Token+"\n")); err != nil {
-		die("write token: %v", err)
+	switch args[0] {
+	case "list":
+		fs := flag.NewFlagSet("providers list", flag.ExitOnError)
+		path := fs.String("config", "", "router configuration path")
+		fs.Parse(args[1:])
+		cfg := loadConfigRaw(*path)
+		rows := make([]map[string]any, 0, len(cfg.Provider))
+		for name, provider := range cfg.Provider {
+			rows = append(rows, map[string]any{
+				"name": name, "base_url": provider.BaseURL, "dialect": provider.Dialect,
+				"api_key_env": provider.APIKeyEnv, "model_count": len(provider.Models),
+			})
+		}
+		sort.Slice(rows, func(i, j int) bool { return rows[i]["name"].(string) < rows[j]["name"].(string) })
+		writeJSON(map[string]any{"schema": "metrum.ai/smartrouter-provider-list/v1", "data": rows})
+	case "upsert":
+		fs := flag.NewFlagSet("providers upsert", flag.ExitOnError)
+		path := fs.String("config", "", "router configuration path")
+		name := fs.String("name", "", "provider name")
+		baseURL := fs.String("base-url", "", "upstream base URL")
+		dialect := fs.String("dialect", "openai-chat", "upstream dialect")
+		apiKeyEnv := fs.String("api-key-env", "", "environment variable name for api_key")
+		modelRef := fs.String("model-ref", "", "provider model map key")
+		modelID := fs.String("model", "", "served model id")
+		fs.Parse(args[1:])
+		cfg := loadConfigRaw(*path)
+		provider := router.ProviderConfig{
+			BaseURL: *baseURL, Dialect: *dialect, APIKeyEnv: *apiKeyEnv, AuthScheme: "bearer",
+			Models: map[string]router.ProviderModel{},
+		}
+		if strings.TrimSpace(*apiKeyEnv) != "" {
+			provider.APIKey = "${" + strings.TrimSpace(*apiKeyEnv) + "}"
+		}
+		if existing, ok := cfg.Provider[*name]; ok {
+			provider.Models = existing.Models
+			if provider.Models == nil {
+				provider.Models = map[string]router.ProviderModel{}
+			}
+			if strings.TrimSpace(*baseURL) == "" {
+				provider.BaseURL = existing.BaseURL
+			}
+			if strings.TrimSpace(*apiKeyEnv) == "" {
+				provider.APIKeyEnv = existing.APIKeyEnv
+				provider.APIKey = existing.APIKey
+			}
+		}
+		if strings.TrimSpace(*modelRef) != "" {
+			served := strings.TrimSpace(*modelID)
+			if served == "" {
+				served = *modelRef
+			}
+			provider.Models[*modelRef] = router.ProviderModel{Model: served}
+		}
+		if err := smartrouterctl.UpsertProvider(cfg, *name, provider); err != nil {
+			die("%v", err)
+		}
+		backup, err := smartrouterctl.WriteConfigAtomic(*path, cfg)
+		if err != nil {
+			die("write config: %v", err)
+		}
+		writeJSON(map[string]any{
+			"schema": "metrum.ai/smartrouter-provider-upsert/v1", "name": *name,
+			"base_url": provider.BaseURL, "config_backup": filepath.Base(backup),
+			"activation": "local-config-written-restart-required",
+		})
+	case "remove":
+		fs := flag.NewFlagSet("providers remove", flag.ExitOnError)
+		path := fs.String("config", "", "router configuration path")
+		name := fs.String("name", "", "provider name")
+		fs.Parse(args[1:])
+		cfg := loadConfigRaw(*path)
+		if err := smartrouterctl.RemoveProvider(cfg, *name); err != nil {
+			die("%v", err)
+		}
+		backup, err := smartrouterctl.WriteConfigAtomic(*path, cfg)
+		if err != nil {
+			die("write config: %v", err)
+		}
+		writeJSON(map[string]any{
+			"schema": "metrum.ai/smartrouter-provider-remove/v1", "name": *name,
+			"config_backup": filepath.Base(backup), "activation": "local-config-written-restart-required",
+		})
+	default:
+		die("unsupported providers command %q", args[0])
 	}
-	writeJSON(map[string]any{
-		"schema": "metrum.ai/smartrouter-caller-grant/v1", "caller_id": generated.Caller.ID,
-		"token_id": generated.TokenID, "allowed_model_groups": generated.Caller.Allow,
-		"token_file": filepath.Base(*tokenOut), "activation": "configuration-controller-required",
-	})
+}
+
+func modelsCommand(args []string) {
+	if len(args) == 0 {
+		die("usage: smartrouterctl models <list|upsert-group|set-targets> [flags]")
+	}
+	switch args[0] {
+	case "list":
+		fs := flag.NewFlagSet("models list", flag.ExitOnError)
+		path := fs.String("config", "", "router configuration path")
+		fs.Parse(args[1:])
+		cfg := loadConfigRaw(*path)
+		groups := make([]map[string]any, 0, len(cfg.Models))
+		for name, group := range cfg.Models {
+			groups = append(groups, map[string]any{"name": name, "strategy": group.Strategy, "target_count": len(group.Targets)})
+		}
+		sort.Slice(groups, func(i, j int) bool { return groups[i]["name"].(string) < groups[j]["name"].(string) })
+		writeJSON(map[string]any{"schema": "metrum.ai/smartrouter-model-list/v1", "data": groups})
+	case "upsert-group", "set-targets":
+		fs := flag.NewFlagSet("models upsert-group", flag.ExitOnError)
+		path := fs.String("config", "", "router configuration path")
+		name := fs.String("name", "", "model group name")
+		strategy := fs.String("strategy", "static", "routing strategy")
+		targetsRaw := fs.String("targets", "", "comma-separated provider:model_ref[:weight]")
+		fs.Parse(args[1:])
+		targets, err := parseTargets(*targetsRaw)
+		if err != nil {
+			die("%v", err)
+		}
+		cfg := loadConfigRaw(*path)
+		if err := smartrouterctl.UpsertModelGroup(cfg, *name, *strategy, targets); err != nil {
+			die("%v", err)
+		}
+		backup, err := smartrouterctl.WriteConfigAtomic(*path, cfg)
+		if err != nil {
+			die("write config: %v", err)
+		}
+		writeJSON(map[string]any{
+			"schema": "metrum.ai/smartrouter-model-group-upsert/v1", "name": *name, "strategy": *strategy,
+			"target_count": len(targets), "config_backup": filepath.Base(backup),
+			"activation": "local-config-written-restart-required",
+		})
+	default:
+		die("unsupported models command %q", args[0])
+	}
 }
 
 func statusCommand(args []string) {
@@ -102,7 +347,7 @@ func statusCommand(args []string) {
 	path := fs.String("config", "", "router configuration path")
 	fs.Parse(args)
 	cfg := loadConfig(*path)
-	writeJSON(map[string]any{"schema": "metrum.ai/smartrouter-customer-status/v1", "config": configSummary(cfg), "authority": "local-read-only"})
+	writeJSON(map[string]any{"schema": "metrum.ai/smartrouter-customer-status/v1", "config": configSummary(cfg), "authority": "local-file-owned"})
 }
 
 func licenseCommand(args []string) {
@@ -136,40 +381,103 @@ func licenseCommand(args []string) {
 	writeJSON(map[string]any{"schema": "metrum.ai/smartrouter-license-status/v1", "enabled": true, "valid": true, "code": "license-valid", "expires_at": envelope.Payload.ExpiresAt, "features": features})
 }
 
-func modelsCommand(args []string) {
-	if len(args) == 0 || args[0] != "list" {
-		die("usage: smartrouterctl models list --config PATH")
+func usageCommand(args []string) {
+	if len(args) == 0 {
+		die("usage: smartrouterctl usage <summary|backup|restore> [flags]")
 	}
-	fs := flag.NewFlagSet("models list", flag.ExitOnError)
-	path := fs.String("config", "", "router configuration path")
-	fs.Parse(args[1:])
-	cfg := loadConfig(*path)
-	groups := make([]map[string]any, 0, len(cfg.Models))
-	for name, group := range cfg.Models {
-		groups = append(groups, map[string]any{"name": name, "strategy": group.Strategy, "target_count": len(group.Targets)})
+	switch args[0] {
+	case "summary":
+		fs := flag.NewFlagSet("usage summary", flag.ExitOnError)
+		path := fs.String("config", "", "router configuration path")
+		since := fs.Duration("since", 24*time.Hour, "summary window")
+		fs.Parse(args[1:])
+		cfg := loadConfig(*path)
+		if cfg.Server.UsageDB.Enable == nil || !*cfg.Server.UsageDB.Enable {
+			die("usage database is disabled")
+		}
+		to := time.Now().UTC()
+		markdown, err := router.GenerateUsageMarkdown(router.UsageReportOptions{
+			Driver: cfg.Server.UsageDB.Driver, DBPath: cfg.Server.UsageDB.Path, DSN: cfg.Server.UsageDB.DSN,
+			MigrationPolicy: cfg.Server.UsageDB.MigrationPolicy, From: to.Add(-*since), To: to,
+		})
+		if err != nil {
+			die("generate usage summary: %v", err)
+		}
+		fmt.Print(markdown)
+	case "backup":
+		fs := flag.NewFlagSet("usage backup", flag.ExitOnError)
+		path := fs.String("config", "", "router configuration path")
+		out := fs.String("out", "", "destination sqlite path")
+		confirm := fs.Bool("confirm-offline", false, "confirm router is stopped and SQLite is exclusive")
+		fs.Parse(args[1:])
+		if strings.TrimSpace(*out) == "" {
+			die("--out is required")
+		}
+		cfg := loadConfigRaw(*path)
+		result, err := smartrouterctl.BackupSQLiteUsage(cfg, *out, *confirm)
+		if err != nil {
+			die("%v", err)
+		}
+		writeJSON(result)
+	case "restore":
+		fs := flag.NewFlagSet("usage restore", flag.ExitOnError)
+		path := fs.String("config", "", "router configuration path")
+		from := fs.String("from", "", "backup sqlite path")
+		confirm := fs.Bool("confirm-offline", false, "confirm router is stopped and SQLite is exclusive")
+		fs.Parse(args[1:])
+		if strings.TrimSpace(*from) == "" {
+			die("--from is required")
+		}
+		cfg := loadConfigRaw(*path)
+		result, err := smartrouterctl.RestoreSQLiteUsage(cfg, *from, *confirm)
+		if err != nil {
+			die("%v", err)
+		}
+		writeJSON(result)
+	default:
+		die("unsupported usage command %q", args[0])
 	}
-	sort.Slice(groups, func(i, j int) bool { return groups[i]["name"].(string) < groups[j]["name"].(string) })
-	writeJSON(map[string]any{"schema": "metrum.ai/smartrouter-model-list/v1", "data": groups})
 }
 
-func usageCommand(args []string) {
-	if len(args) == 0 || args[0] != "summary" {
-		die("usage: smartrouterctl usage summary --config PATH [--since 24h]")
+func blueprintCommand(args []string) {
+	if len(args) == 0 || args[0] != "render" {
+		die("usage: smartrouterctl blueprint render --intent PATH --out DIR")
 	}
-	fs := flag.NewFlagSet("usage summary", flag.ExitOnError)
-	path := fs.String("config", "", "router configuration path")
-	since := fs.Duration("since", 24*time.Hour, "summary window")
+	fs := flag.NewFlagSet("blueprint render", flag.ExitOnError)
+	intentPath := fs.String("intent", "", "stack intent YAML path")
+	outDir := fs.String("out", "", "output directory")
 	fs.Parse(args[1:])
-	cfg := loadConfig(*path)
-	if cfg.Server.UsageDB.Enable == nil || !*cfg.Server.UsageDB.Enable {
-		die("usage database is disabled")
-	}
-	to := time.Now().UTC()
-	markdown, err := router.GenerateUsageMarkdown(router.UsageReportOptions{Driver: cfg.Server.UsageDB.Driver, DBPath: cfg.Server.UsageDB.Path, DSN: cfg.Server.UsageDB.DSN, MigrationPolicy: cfg.Server.UsageDB.MigrationPolicy, From: to.Add(-*since), To: to})
+	intent, err := smartrouterctl.LoadIntent(*intentPath)
 	if err != nil {
-		die("generate usage summary: %v", err)
+		die("load intent: %v", err)
 	}
-	fmt.Print(markdown)
+	result, err := smartrouterctl.RenderBlueprint(intent, *outDir)
+	if err != nil {
+		die("render blueprint: %v", err)
+	}
+	writeJSON(result)
+}
+
+func parseTargets(raw string) ([]router.Target, error) {
+	parts := splitCSV(raw)
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("--targets is required (provider:model_ref[:weight])")
+	}
+	out := make([]router.Target, 0, len(parts))
+	for _, part := range parts {
+		fields := strings.Split(part, ":")
+		if len(fields) < 2 {
+			return nil, fmt.Errorf("invalid target %q", part)
+		}
+		weight := 100
+		if len(fields) >= 3 {
+			if _, err := fmt.Sscanf(fields[2], "%d", &weight); err != nil || weight <= 0 {
+				return nil, fmt.Errorf("invalid weight in target %q", part)
+			}
+		}
+		out = append(out, router.Target{Provider: fields[0], ModelRef: fields[1], Weight: weight})
+	}
+	return out, nil
 }
 
 func loadConfig(path string) *router.Config {
@@ -177,6 +485,14 @@ func loadConfig(path string) *router.Config {
 		die("config is required")
 	}
 	cfg, err := router.LoadConfig(path)
+	if err != nil {
+		die("load config: %v", err)
+	}
+	return cfg
+}
+
+func loadConfigRaw(path string) *router.Config {
+	cfg, err := smartrouterctl.LoadConfigRaw(path)
 	if err != nil {
 		die("load config: %v", err)
 	}
@@ -212,7 +528,7 @@ func setDiff(before, after []string) map[string][]string {
 	return map[string][]string{"added": difference(after, before), "removed": difference(before, after)}
 }
 func difference(left, right []string) []string {
-	seen := make(map[string]struct{}, len(right))
+	seen := map[string]struct{}{}
 	for _, value := range right {
 		seen[value] = struct{}{}
 	}

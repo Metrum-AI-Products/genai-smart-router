@@ -113,11 +113,14 @@ sudo install -m 0640 -o router -g router config/env.json /etc/smart-llmrouter/en
 sudo install -m 0640 -o router -g router license.json /etc/smart-llmrouter/license.json
 ```
 
-`metrum-genai-smartrouterctl` is the customer-local operations CLI. It validates or safely
-compares local configuration, generates a caller token exactly once into a new
-mode-`0600` file, and reports safe local configuration, license, model, and
-aggregate-usage status. It cannot activate configuration, rotate keys, sign
-licenses, or access cloud/Fleet/cross-customer systems.
+`metrum-genai-smartrouterctl` is the customer-local operations CLI. On file-owned
+installs it validates or diffs local configuration, can write local `config.yaml`
+for callers/providers/model groups (with a timestamped sibling backup), renders a
+Kubernetes architecture blueprint from a stack intent, backs up or restores a
+SQLite usage database with `--confirm-offline`, generates a caller token into a
+new mode-`0600` file, and reports safe local configuration, license, model, and
+aggregate-usage status. It cannot activate configuration on a remote managed
+hostname, sign licenses, or access cloud/Fleet/Kubernetes APIs.
 
 `metrum-genai-smartrouter-fleetctl` is the binary-package-only #555 Fleet lifecycle authority.
 It owns reference-only `plan`, idempotent `deploy`, exact-job `status`,

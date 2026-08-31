@@ -36,13 +36,31 @@ Before first production traffic:
 - Define `models.*` groups and `providers.*.models` catalog entries for the upstream routes you will activate.
 - Choose SQLite or PostgreSQL usage storage according to your installation path ([Docker Compose](../installation/docker-compose), [Binary](../installation/binary), [Kubernetes](../installation/kubernetes)).
 
-Validate YAML/JSON syntax locally. On self-hosted installs you may also run:
+Validate YAML/JSON syntax locally. On self-hosted / file-owned installs you may also run:
 
 ```bash
 metrum-genai-smartrouterctl config validate --config /path/to/config.yaml
+metrum-genai-smartrouterctl callers list --config /path/to/config.yaml
+metrum-genai-smartrouterctl providers list --config /path/to/config.yaml
+metrum-genai-smartrouterctl models list --config /path/to/config.yaml
 ```
 
-(`metrum-genai-smartrouterctl` validates and diffs local config; it does not activate config on a managed hostname by itself.)
+`metrum-genai-smartrouterctl` may write local `config.yaml` (callers, providers, model
+groups) and SQLite usage backups on file-owned installs. It does not activate config
+on a managed hostname, call the Kubernetes API, or sign licenses. After a local write,
+restart or reload the router through your normal process.
+
+`metrum-genai-smartrouterctl blueprint render` emits architecture docs, local-upstream
+`config.yaml`, the nvidia-local-serving Kustomize overlay, a Level-1 Helm chart under
+`charts/smart-llmrouter/`, and (when `packaging.operator: true`) a Level-2 CRD operator
+scaffold under `operator/` that maps only to existing router config fields. The CLI does
+not install a controller into the router image or call the Kubernetes API.
+
+```bash
+metrum-genai-smartrouterctl blueprint render \
+  --intent deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml \
+  --out /tmp/blueprint
+```
 
 ## How To Update Config (Private Managed)
 

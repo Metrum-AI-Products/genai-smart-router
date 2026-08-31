@@ -1,0 +1,10 @@
+# NVIDIA GPU Operator values for profile nvidia-local-serving (pin v26.7.0).
+# When the node image already owns drivers/toolkit, keep both disabled.
+driver:
+  enabled: true
+toolkit:
+  enabled: true
+devicePlugin:
+  enabled: true
+# Do not enable DRA and the device plugin for the same device on the same node.
+# LMCache / Mooncake are intentionally omitted from this values file.

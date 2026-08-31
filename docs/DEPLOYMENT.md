@@ -138,6 +138,13 @@ Use `docs/DOCKER_DEPLOYMENT.md` when deploying the packaged Docker image tarball
 
 Kubernetes examples are maintained under `deploy/kubernetes/`. They are Kustomize-friendly raw manifests with placeholder-only Secret examples, an external Postgres DSN, `/readyz` and `/healthz` probes, ingress, network policy, a state PVC, and a PDB. The base kustomization does not apply `secret.example.yaml`; operators must create real Secrets through the deployment secret-management process first. Before using the manifests in production, operators must push the per-architecture package image to a deployment-owned registry, replace every placeholder, review the network policy against the cluster CNI, and smoke `/readyz`, `/docs/`, `/v1/models`, one caller request, and admin reports if enabled. Keep the example at one router replica unless the selected state/license/quota design has been validated for horizontal scaling.
 
+For NVIDIA local-serving (in-cluster vLLM + router, KV cache off by default), use
+`deploy/kubernetes/overlays/nvidia-local-serving/` and
+`metrum-genai-smartrouterctl blueprint render` from
+`deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml`. Offline gate:
+`make test-k8s-nvidia-local-serving`. Live Shadeform steps:
+`docs/SHADEFORM_NVIDIA_LOCAL_SERVING_E2E.md`.
+
 The Metrum-managed EKS validation environment has a separate, private runbook
 at `docs/EKS_STAGING_MIGRATION.md` and a deployment-specific overlay under
 `deploy/kubernetes/overlays/metrum-staging/`. They preserve the existing EC2

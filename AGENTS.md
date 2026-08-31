@@ -510,10 +510,16 @@ rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspee
   `metrum-smartrouterctl` is a one-release rename notice only; it MUST NOT
   retain lifecycle behavior.
 - `metrum-genai-smartrouterctl` is customer-local. It MAY validate/diff local config,
-  generate a caller token into a new mode-`0600` file exactly once, and read
+  write file-owned local `config.yaml` changes (callers, providers, model groups),
+  render a Kubernetes architecture blueprint from a stack intent (including a Level-1
+  Helm chart and, when requested, a Level-2 CRD operator scaffold that maps only to
+  existing router fields), back up/restore SQLite usage databases with
+  `--confirm-offline`, generate a caller token into a new mode-`0600` file, and read
   safe local config/license/model/aggregate-usage status. It MUST NOT access
-  AWS/EKS/RDS/DNS, Fleet state, cross-customer state, config activation, key
-  rotation, or license signing.
+  AWS/EKS/RDS/DNS, Fleet state, cross-customer state, remote managed-hostname
+  activation, or license signing. Restart/reload after a local config write remains
+  the operator's existing process. Live `kubectl apply` uses a pre-authenticated
+  kubeconfig and is never performed by this CLI.
 - Fleet binaries belong only in binary packages. Customer Docker images MAY
   contain `metrum-genai-smartrouterctl` but MUST NOT contain `metrum-genai-smartrouter-fleetctl` or the
   compatibility command.

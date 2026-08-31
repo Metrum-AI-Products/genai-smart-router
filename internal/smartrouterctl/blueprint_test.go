@@ -1,0 +1,252 @@
+package smartrouterctl_test
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"smart-llmrouter/internal/router"
+	"smart-llmrouter/internal/smartrouterctl"
+)
+
+func TestRenderBlueprintNvidiaLocalServing(t *testing.T) {
+	intentPath := filepath.Join("..", "..", "deploy", "kubernetes", "intents", "shadeform-nvidia-local-models.example.yaml")
+	intent, err := smartrouterctl.LoadIntent(intentPath)
+	if err != nil {
+		t.Fatalf("load intent: %v", err)
+	}
+	out := t.TempDir()
+	result, err := smartrouterctl.RenderBlueprint(intent, out)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if result.ServingModelCount < 2 {
+		t.Fatalf("serving models=%d, want >=2", result.ServingModelCount)
+	}
+	if result.KVCacheEnabled {
+		t.Fatal("kv cache must be disabled by default")
+	}
+	if result.RouterRequestsGPU {
+		t.Fatal("router must not request GPUs")
+	}
+	if !result.HelmChartEmitted {
+		t.Fatal("helm chart must be emitted by default")
+	}
+	if !result.OperatorEmitted {
+		t.Fatal("operator scaffold expected when packaging.operator is true")
+	}
+	if _, err := os.Stat(filepath.Join(out, "charts", "smart-llmrouter", "Chart.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "operator", "crds", "smartrouter.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	valuesChart, err := os.ReadFile(filepath.Join(out, "charts", "smart-llmrouter", "values.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(valuesChart), "nvidia-compatible") {
+		t.Fatalf("chart values missing nvidia-compatible gpuProfile: %s", valuesChart)
+	}
+	if result.GPUOperator != "v26.7.0" {
+		t.Fatalf("gpu operator=%q", result.GPUOperator)
+	}
+	cfgRaw, err := os.ReadFile(filepath.Join(out, "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfgText := string(cfgRaw)
+	for _, needle := range []string{
+		"svc.cluster.local",
+		"local-chat",
+		"local-coder",
+		"LOCAL_VLLM_API_KEY",
+		"${LOCAL_VLLM_API_KEY}",
+	} {
+		if !strings.Contains(cfgText, needle) {
+			t.Fatalf("config missing %q", needle)
+		}
+	}
+	for _, cloud := range []string{"openrouter.ai", "api.openai.com", "api.anthropic.com"} {
+		if strings.Contains(cfgText, cloud) {
+			t.Fatalf("config must not reference cloud upstream %q", cloud)
+		}
+	}
+	dep, err := os.ReadFile(filepath.Join(out, "overlays", "nvidia-local-serving", "serving", "vllm-chat-deployment.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(dep), "nvidia.com/gpu") {
+		t.Fatal("serving deployment must request nvidia.com/gpu")
+	}
+	arch, err := os.ReadFile(filepath.Join(out, "architecture.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(arch), "LMCache / Mooncake") || !strings.Contains(string(arch), "omitted") {
+		t.Fatalf("architecture.md should mark KV cache omitted: %s", arch)
+	}
+	values, err := os.ReadFile(filepath.Join(out, "overlays", "nvidia-local-serving", "gpu-operator-values.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(values), "driver:") {
+		t.Fatal("gpu operator values missing driver block")
+	}
+}
+
+func TestSQLiteBackupRestoreRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "usage.sqlite")
+	if err := smartrouterctl.OpenEmptySQLite(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(dir, "config.yaml")
+	cfgBody := `
+server:
+  listen: ":8080"
+  usage_db:
+    enabled: true
+    driver: sqlite
+    path: ` + dbPath + `
+    migration_policy: auto-safe
+  license:
+    enabled: false
+providers:
+  local:
+    base_url: http://127.0.0.1:8000/v1
+    dialect: openai-chat
+    api_key: "${LOCAL_VLLM_API_KEY}"
+    api_key_env: LOCAL_VLLM_API_KEY
+    models:
+      chat:
+        model: local-chat
+models:
+  local-chat:
+    strategy: static
+    targets:
+      - provider: local
+        model_ref: chat
+        weight: 100
+users:
+  - {id: op, name: op, type: service_account, status: active}
+projects:
+  - {id: local, name: local, status: active}
+project_memberships:
+  - {user_id: op, project: local, role: member, status: active}
+callers:
+  - id: op-local-dev
+    owner_user: op
+    project: local
+    environment: dev
+    status: active
+    token_sha256: ` + strings.Repeat("a", 64) + `
+    token_id: rtr_metrum_op_local_dev_k1
+    allow: [local-chat]
+`
+	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := smartrouterctl.LoadConfigRaw(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(dir, "usage-backup.sqlite")
+	if _, err := smartrouterctl.BackupSQLiteUsage(cfg, backup, false); err == nil {
+		t.Fatal("backup without confirm must fail")
+	}
+	if _, err := smartrouterctl.BackupSQLiteUsage(cfg, backup, true); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+	_ = os.Remove(dbPath)
+	if _, err := smartrouterctl.RestoreSQLiteUsage(cfg, backup, true); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFileOwnedProviderAndModelUpsert(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	body := `
+server:
+  listen: ":8080"
+  usage_db:
+    enabled: true
+    driver: sqlite
+    path: /tmp/unused.sqlite
+    migration_policy: auto-safe
+  license:
+    enabled: false
+providers:
+  seed:
+    base_url: http://seed.svc:8000/v1
+    dialect: openai-chat
+    api_key: "${SEED_KEY}"
+    api_key_env: SEED_KEY
+    models:
+      m1:
+        model: m1
+models:
+  g1:
+    strategy: static
+    targets:
+      - provider: seed
+        model_ref: m1
+        weight: 100
+users: [{id: op, name: op, type: service_account, status: active}]
+projects: [{id: local, name: local, status: active}]
+project_memberships: [{user_id: op, project: local, role: member, status: active}]
+callers:
+  - id: op-local-dev
+    owner_user: op
+    project: local
+    environment: dev
+    status: active
+    token_sha256: ` + strings.Repeat("b", 64) + `
+    token_id: rtr_metrum_op_local_dev_k1
+    allow: [g1]
+`
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := smartrouterctl.LoadConfigRaw(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := smartrouterctl.UpsertProvider(cfg, "vllm-a", router.ProviderConfig{
+		BaseURL: "http://vllm-a.smart-llmrouter.svc.cluster.local:8000/v1",
+		Dialect: "openai-chat", APIKey: "${LOCAL_VLLM_API_KEY}", APIKeyEnv: "LOCAL_VLLM_API_KEY",
+		Models: map[string]router.ProviderModel{"chat": {Model: "local-chat"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := smartrouterctl.UpsertModelGroup(cfg, "local-a", "static", nil); err == nil {
+		t.Fatal("empty targets must fail")
+	}
+	if err := smartrouterctl.UpsertModelGroup(cfg, "local-a", "static", []router.Target{
+		{Provider: "vllm-a", ModelRef: "chat", Weight: 100},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	backup, err := smartrouterctl.WriteConfigAtomic(cfgPath, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backup == "" {
+		t.Fatal("expected sibling backup")
+	}
+	reloaded, err := smartrouterctl.LoadConfigRaw(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Provider["vllm-a"].APIKey != "${LOCAL_VLLM_API_KEY}" {
+		t.Fatalf("api_key placeholder lost: %q", reloaded.Provider["vllm-a"].APIKey)
+	}
+	if _, ok := reloaded.Models["local-a"]; !ok {
+		t.Fatal("model group not written")
+	}
+}

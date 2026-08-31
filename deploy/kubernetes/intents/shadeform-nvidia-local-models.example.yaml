@@ -1,0 +1,39 @@
+schema: metrum.ai/smartrouter-stack-intent/v1
+profile: nvidia-local-serving
+namespace: smart-llmrouter
+router_image: registry.example.com/smart-llmrouter:<version>-linux-amd64
+edge: ingress
+usage_driver: sqlite
+default_model_group: local-chat
+gpu_operator:
+  enabled: true
+  version: v26.7.0
+  # Set true when the Shadeform (or other) node image already owns NVIDIA drivers.
+  driver_owned_by_ami: false
+kv_cache:
+  enabled: false
+packaging:
+  # Level-1 Helm chart is emitted by default.
+  helm: true
+  # Level-2 CRD operator scaffold (no controller binary). Enable when required.
+  operator: true
+serving_models:
+  - name: vllm-chat
+    served_model_id: local-chat
+    huggingface_id: Qwen/Qwen2.5-7B-Instruct
+    image: vllm/vllm-openai:v0.8.5
+    gpu_count: 1
+    port: 8000
+    model_group: local-chat
+    api_key_env: LOCAL_VLLM_API_KEY
+  - name: vllm-coder
+    served_model_id: local-coder
+    huggingface_id: Qwen/Qwen2.5-Coder-7B-Instruct
+    image: vllm/vllm-openai:v0.8.5
+    gpu_count: 1
+    port: 8000
+    model_group: local-coder
+    api_key_env: LOCAL_VLLM_API_KEY
+caller_allow:
+  - local-chat
+  - local-coder

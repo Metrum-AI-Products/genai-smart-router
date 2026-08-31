@@ -79,9 +79,12 @@ consume one mode-`0600`, profile-key-signed, reference-only deployment intent;
 it binds the protected profile and immutable manifest without exposing resolved
 configuration. One-release rename notices (`metrum-fleetctl`,
 `metrum-smartrouterctl`, and related old names) only report the rename.
-Customer-local `metrum-genai-smartrouterctl` safely validates/diffs
-local config, creates a caller token once in a new mode-`0600` file, and
-reports safe local status; it has no cloud or activation authority. On a
+Customer-local `metrum-genai-smartrouterctl` validates/diffs local config, may write
+file-owned local `config.yaml` (callers, providers, model groups), can render a
+Kubernetes architecture blueprint, backs up/restores SQLite usage with
+`--confirm-offline`, creates a caller token in a new mode-`0600` file, and
+reports safe local status; it has no cloud, Kubernetes API, or remote managed
+hostname activation authority. On a
 Fleet-managed SQLite customer instances, activating a new caller or config
 revision is a Fleet deploy of an approved `runtime_bundle_ref` (new
 `config_revision`), not an in-place `metrum-genai-smartrouterctl` mutation. See
