@@ -19,12 +19,12 @@ spec:
     spec:
       containers:
         - name: vllm
-          image: vllm/vllm-openai:v0.8.5
+          image: vllm/vllm-openai:v0.11.0
           args:
             - "--model"
-            - "Qwen/Qwen2.5-7B-Instruct"
+            - "Qwen/Qwen3.5-4B-Instruct"
             - "--served-model-name"
-            - "local-chat"
+            - "local-small-chat"
             - "--host"
             - "0.0.0.0"
             - "--port"

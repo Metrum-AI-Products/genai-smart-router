@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-tiny
+  namespace: smart-llmrouter
+  labels:
+    app.kubernetes.io/name: vllm-tiny
+    app.kubernetes.io/component: local-serving
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: vllm-tiny
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

@@ -18,8 +18,9 @@ go run ./cmd/metrum-genai-smartrouterctl blueprint render --intent "$INTENT" --o
 echo "==> assert local upstreams and no cloud URLs"
 CFG="$OUT/config.yaml"
 grep -q 'svc.cluster.local' "$CFG"
-grep -q 'local-chat' "$CFG"
-grep -q 'local-coder' "$CFG"
+grep -q 'local-tiny' "$CFG"
+grep -q 'local-small-chat' "$CFG"
+grep -q 'local-small-coder' "$CFG"
 grep -q 'LOCAL_VLLM_API_KEY' "$CFG"
 if grep -E 'openrouter\.ai|api\.openai\.com|api\.anthropic\.com' "$CFG"; then
   echo "cloud upstream URLs are forbidden in this profile" >&2
@@ -32,6 +33,7 @@ grep -q 'kv_cache_enabled: false' "$OUT/inventory.yaml"
 grep -q 'router_requests_gpu: false' "$OUT/inventory.yaml"
 
 echo "==> assert serving requests GPUs"
+grep -q 'nvidia.com/gpu' "$OUT/overlays/nvidia-local-serving/serving/vllm-tiny-deployment.yaml"
 grep -q 'nvidia.com/gpu' "$OUT/overlays/nvidia-local-serving/serving/vllm-chat-deployment.yaml"
 grep -q 'nvidia.com/gpu' "$OUT/overlays/nvidia-local-serving/serving/vllm-coder-deployment.yaml"
 
@@ -52,6 +54,7 @@ go test ./internal/smartrouterctl ./cmd/metrum-genai-smartrouterctl -count=1
 echo "==> kubectl kustomize overlay"
 if command -v kubectl >/dev/null 2>&1; then
   RENDERED="$(kubectl kustomize "$OVERLAY")"
+  echo "$RENDERED" | grep -q 'name: vllm-tiny'
   echo "$RENDERED" | grep -q 'name: vllm-chat'
   echo "$RENDERED" | grep -q 'name: vllm-coder'
   echo "$RENDERED" | grep -q 'nvidia.com/gpu'

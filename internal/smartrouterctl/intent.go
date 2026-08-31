@@ -5,6 +5,7 @@ package smartrouterctl
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -18,6 +19,7 @@ const IntentSchema = "metrum.ai/smartrouter-stack-intent/v1"
 type StackIntent struct {
 	Schema            string               `yaml:"schema" json:"schema"`
 	Profile           string               `yaml:"profile" json:"profile"`
+	HardwareProfile   string               `yaml:"hardware_profile" json:"hardware_profile"`
 	Namespace         string               `yaml:"namespace" json:"namespace"`
 	RouterImage       string               `yaml:"router_image" json:"router_image"`
 	Edge              string               `yaml:"edge" json:"edge"`
@@ -56,15 +58,16 @@ type KVCacheIntent struct {
 }
 
 type ServingModelIntent struct {
-	Name          string `yaml:"name" json:"name"`
-	ServedModelID string `yaml:"served_model_id" json:"served_model_id"`
-	HuggingFaceID string `yaml:"huggingface_id" json:"huggingface_id"`
-	Image         string `yaml:"image" json:"image"`
-	GPUCount      int    `yaml:"gpu_count" json:"gpu_count"`
-	Port          int    `yaml:"port" json:"port"`
-	ModelGroup    string `yaml:"model_group" json:"model_group"`
-	ServiceDNS    string `yaml:"service_dns" json:"service_dns"`
-	APIKeyEnv     string `yaml:"api_key_env" json:"api_key_env"`
+	Name              string `yaml:"name" json:"name"`
+	ServedModelID     string `yaml:"served_model_id" json:"served_model_id"`
+	HuggingFaceID     string `yaml:"huggingface_id" json:"huggingface_id"`
+	Image             string `yaml:"image" json:"image"`
+	GPUCount          int    `yaml:"gpu_count" json:"gpu_count"`
+	Port              int    `yaml:"port" json:"port"`
+	ModelGroup        string `yaml:"model_group" json:"model_group"`
+	ServiceDNS        string `yaml:"service_dns" json:"service_dns"`
+	ModelSizeBillions int    `yaml:"model_size_billions" json:"model_size_billions"`
+	APIKeyEnv         string `yaml:"api_key_env" json:"api_key_env"`
 }
 
 // LoadIntent reads and validates a stack intent YAML file.
@@ -119,8 +122,14 @@ func (i *StackIntent) Validate() error {
 		if !i.GPUOperator.Enabled {
 			return fmt.Errorf("nvidia-local-serving requires gpu_operator.enabled")
 		}
-		if len(i.ServingModels) < 2 {
-			return fmt.Errorf("nvidia-local-serving requires at least two serving_models")
+		if len(i.ServingModels) < 3 {
+			return fmt.Errorf("nvidia-local-serving requires at least three serving_models")
+		}
+		switch strings.ToLower(strings.TrimSpace(i.HardwareProfile)) {
+		case "b200", "h200", "l40s":
+			i.HardwareProfile = strings.ToLower(strings.TrimSpace(i.HardwareProfile))
+		default:
+			return fmt.Errorf("nvidia-local-serving hardware_profile must be b200, h200, or l40s")
 		}
 	}
 	if i.GPUOperator.Enabled && strings.TrimSpace(i.GPUOperator.Version) == "" {
@@ -146,6 +155,16 @@ func (i *StackIntent) Validate() error {
 		if strings.TrimSpace(model.ServiceDNS) == "" {
 			i.ServingModels[idx].ServiceDNS = fmt.Sprintf("http://%s.%s.svc.cluster.local:%d/v1", model.Name, i.Namespace, i.ServingModels[idx].Port)
 		}
+		if i.Profile == "nvidia-local-serving" {
+			if model.ModelSizeBillions < 1 {
+				return fmt.Errorf("serving_models[%d].model_size_billions is required", idx)
+			}
+			serviceURL, err := url.Parse(i.ServingModels[idx].ServiceDNS)
+			if err != nil || serviceURL.Scheme != "http" || serviceURL.Hostname() == "" ||
+				!strings.HasSuffix(strings.ToLower(serviceURL.Hostname()), ".svc.cluster.local") {
+				return fmt.Errorf("serving_models[%d].service_dns must be an http *.svc.cluster.local URL", idx)
+			}
+		}
 		if strings.TrimSpace(model.APIKeyEnv) == "" {
 			i.ServingModels[idx].APIKeyEnv = "LOCAL_VLLM_API_KEY"
 		}
@@ -153,6 +172,32 @@ func (i *StackIntent) Validate() error {
 			return fmt.Errorf("serving_models[%d].image is required", idx)
 		}
 		seenGroups[i.ServingModels[idx].ModelGroup] = struct{}{}
+	}
+	if i.Profile == "nvidia-local-serving" {
+		smallModels := 0
+		primaryModels := 0
+		for _, model := range i.ServingModels {
+			if model.ModelSizeBillions <= 9 {
+				smallModels++
+			}
+			if model.ModelSizeBillions >= 20 && model.ModelSizeBillions <= 40 {
+				primaryModels++
+			}
+		}
+		if i.HardwareProfile == "l40s" {
+			for _, model := range i.ServingModels {
+				if model.ModelSizeBillions > 9 {
+					return fmt.Errorf("nvidia-local-serving on l40s requires models at or below 9B")
+				}
+			}
+		} else {
+			if primaryModels == 0 {
+				return fmt.Errorf("nvidia-local-serving on %s requires a 20-40B primary model", i.HardwareProfile)
+			}
+			if smallModels < 2 {
+				return fmt.Errorf("nvidia-local-serving on %s requires at least two models at or below 9B", i.HardwareProfile)
+			}
+		}
 	}
 	if strings.TrimSpace(i.DefaultModelGroup) == "" && len(i.ServingModels) > 0 {
 		i.DefaultModelGroup = i.ServingModels[0].ModelGroup

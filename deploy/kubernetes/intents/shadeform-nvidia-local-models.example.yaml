@@ -1,10 +1,13 @@
 schema: metrum.ai/smartrouter-stack-intent/v1
 profile: nvidia-local-serving
+# This fallback matrix targets a four-GPU L40S host. Use the B200/H200 matrix
+# documented in SHADEFORM_NVIDIA_LOCAL_SERVING_E2E.md when that capacity exists.
+hardware_profile: l40s
 namespace: smart-llmrouter
 router_image: registry.example.com/smart-llmrouter:<version>-linux-amd64
 edge: ingress
 usage_driver: sqlite
-default_model_group: local-chat
+default_model_group: local-small-chat
 gpu_operator:
   enabled: true
   version: v26.7.0
@@ -18,22 +21,34 @@ packaging:
   # Level-2 CRD operator scaffold (no controller binary). Enable when required.
   operator: true
 serving_models:
-  - name: vllm-chat
-    served_model_id: local-chat
-    huggingface_id: Qwen/Qwen2.5-7B-Instruct
-    image: vllm/vllm-openai:v0.8.5
+  - name: vllm-tiny
+    served_model_id: local-tiny
+    huggingface_id: Qwen/Qwen3.5-3B-Instruct
+    image: vllm/vllm-openai:v0.11.0
     gpu_count: 1
     port: 8000
-    model_group: local-chat
+    model_group: local-tiny
+    model_size_billions: 3
+    api_key_env: LOCAL_VLLM_API_KEY
+  - name: vllm-chat
+    served_model_id: local-small-chat
+    huggingface_id: Qwen/Qwen3.5-4B-Instruct
+    image: vllm/vllm-openai:v0.11.0
+    gpu_count: 1
+    port: 8000
+    model_group: local-small-chat
+    model_size_billions: 4
     api_key_env: LOCAL_VLLM_API_KEY
   - name: vllm-coder
-    served_model_id: local-coder
-    huggingface_id: Qwen/Qwen2.5-Coder-7B-Instruct
-    image: vllm/vllm-openai:v0.8.5
+    served_model_id: local-small-coder
+    huggingface_id: Qwen/Qwen3-Coder-8B-Instruct
+    image: vllm/vllm-openai:v0.11.0
     gpu_count: 1
     port: 8000
-    model_group: local-coder
+    model_group: local-small-coder
+    model_size_billions: 8
     api_key_env: LOCAL_VLLM_API_KEY
 caller_allow:
-  - local-chat
-  - local-coder
+  - local-tiny
+  - local-small-chat
+  - local-small-coder

@@ -19,6 +19,13 @@ spec:
           to:
             - podSelector:
                 matchLabels:
+                    app.kubernetes.io/name: vllm-tiny
+        - ports:
+            - port: 8000
+              protocol: TCP
+          to:
+            - podSelector:
+                matchLabels:
                     app.kubernetes.io/name: vllm-chat
         - ports:
             - port: 8000

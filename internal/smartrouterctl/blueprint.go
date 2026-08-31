@@ -332,21 +332,19 @@ devicePlugin:
 }
 
 func writeOverlayKustomization(path string, intent *StackIntent) error {
-	resources := []string{"../../../base"}
+	resources := make([]string, 0, len(intent.ServingModels)*2+1)
 	for _, model := range intent.ServingModels {
 		resources = append(resources,
 			"serving/"+model.Name+"-deployment.yaml",
 			"serving/"+model.Name+"-service.yaml",
 		)
 	}
+	resources = append(resources, "networkpolicy-patch.yaml")
 	doc := map[string]any{
 		"apiVersion": "kustomize.config.k8s.io/v1beta1",
 		"kind":       "Kustomization",
 		"namespace":  intent.Namespace,
 		"resources":  resources,
-		"patches": []map[string]string{
-			{"path": "networkpolicy-patch.yaml"},
-		},
 	}
 	return writeYAML(path, doc)
 }

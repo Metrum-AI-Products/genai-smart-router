@@ -45,6 +45,7 @@ runtimeSecret:
   name: smart-llmrouter-secrets
 
 config:
+  # Use existingSecretKey=config.yaml when the runtime Secret owns all runtime files.
   existingConfigMap: smart-llmrouter-config
   existingSecretKey: ""
 
@@ -202,8 +203,16 @@ spec:
               mountPath: /tmp
       volumes:
         - name: config
+          {{- if .Values.config.existingSecretKey }}
+          secret:
+            secretName: {{ .Values.runtimeSecret.name }}
+            items:
+              - key: {{ .Values.config.existingSecretKey }}
+                path: config.yaml
+          {{- else }}
           configMap:
             name: {{ .Values.config.existingConfigMap }}
+          {{- end }}
         - name: secrets
           secret:
             secretName: {{ .Values.runtimeSecret.name }}
