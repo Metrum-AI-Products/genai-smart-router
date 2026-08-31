@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-coder
+  namespace: smart-llmrouter
+  labels:
+    app.kubernetes.io/name: vllm-coder
+    app.kubernetes.io/component: local-serving
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vllm-coder
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vllm-coder
+        app.kubernetes.io/component: local-serving
+    spec:
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.8.5
+          args:
+            - "--model"
+            - "Qwen/Qwen2.5-Coder-7B-Instruct"
+            - "--served-model-name"
+            - "local-coder"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+            requests:
+              nvidia.com/gpu: "1"

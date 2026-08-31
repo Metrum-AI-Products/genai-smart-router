@@ -72,6 +72,77 @@ func TestCustomerConfigAndModelReadCommands(t *testing.T) {
 	}
 }
 
+func TestBlueprintRenderCLI(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "blueprint")
+	intent := filepath.Join("..", "..", "deploy", "kubernetes", "intents", "shadeform-nvidia-local-models.example.yaml")
+	output, err := exec.Command("go", "run", ".", "blueprint", "render", "--intent", intent, "--out", out).CombinedOutput()
+	if err != nil {
+		t.Fatalf("blueprint render: %v: %s", err, output)
+	}
+	if !strings.Contains(string(output), "metrum.ai/smartrouter-blueprint-render/v1") {
+		t.Fatalf("unexpected output: %s", output)
+	}
+	if _, err := os.Stat(filepath.Join(out, "architecture.md")); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := os.ReadFile(filepath.Join(out, "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(cfg), "svc.cluster.local") {
+		t.Fatal("expected cluster DNS in generated config")
+	}
+}
+
+func TestCallerGenerateWriteMergesConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	body := `
+server:
+  listen: ":8080"
+  usage_db: {enabled: true, driver: sqlite, path: /tmp/x.sqlite, migration_policy: auto-safe}
+  license: {enabled: false}
+providers:
+  seed:
+    base_url: http://seed.svc:8000/v1
+    dialect: openai-chat
+    api_key: "${SEED_KEY}"
+    api_key_env: SEED_KEY
+    models: {m1: {model: m1}}
+models:
+  default:
+    strategy: static
+    targets: [{provider: seed, model_ref: m1, weight: 100}]
+users: [{id: op, name: op, type: service_account, status: active}]
+projects: [{id: local, name: local, status: active}]
+project_memberships: [{user_id: op, project: local, role: member, status: active}]
+callers: []
+`
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tokenPath := filepath.Join(dir, "caller.token")
+	output, err := exec.Command("go", "run", ".", "callers", "generate",
+		"--owner-user", "op", "--project", "local", "--allow", "default",
+		"--token-out", tokenPath, "--config", cfgPath, "--write").CombinedOutput()
+	if err != nil {
+		t.Fatalf("generate --write: %v: %s", err, output)
+	}
+	if !strings.Contains(string(output), "local-config-written-restart-required") {
+		t.Fatalf("expected local write activation: %s", output)
+	}
+	raw, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "op-local-dev") || !strings.Contains(string(raw), "token_sha256") {
+		t.Fatalf("caller not merged: %s", raw)
+	}
+	if strings.Contains(string(output), strings.TrimSpace(string(mustRead(t, tokenPath)))) {
+		t.Fatal("raw token must not appear in CLI output")
+	}
+}
+
 func TestCustomerCLIFailsClosedForFleetAuthority(t *testing.T) {
 	for _, command := range [][]string{{"deploy"}, {"config", "activate"}, {"license", "sign"}, {"keys", "rotate"}} {
 		args := append([]string{"run", "."}, command...)
@@ -80,4 +151,13 @@ func TestCustomerCLIFailsClosedForFleetAuthority(t *testing.T) {
 			t.Fatalf("%v did not fail closed: %v %s", command, err, output)
 		}
 	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }

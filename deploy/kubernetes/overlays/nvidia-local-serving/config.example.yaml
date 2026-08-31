@@ -1,0 +1,1170 @@
+server:
+    listen: :8080
+    default_model_group: local-chat
+    openai_compatibility:
+        tolerate_responses_body_on_chat_endpoint: false
+    admin_auth:
+        basic:
+            enabled: false
+            realm: ""
+            allow_insecure_http: false
+            trusted_proxy_cidrs: []
+            users: []
+        oidc:
+            enabled: false
+            issuer_url: ""
+            client_id_env: ""
+            client_secret_env: ""
+            redirect_url: ""
+            scopes: []
+            allowed_domains: []
+            groups_claim: ""
+            email_claim: ""
+            subject_claim: ""
+            domain: ""
+        sessions:
+            cookie_name: ""
+            ttl: 0s
+            secure_cookies: null
+            same_site: ""
+        authorization:
+            enabled: false
+            source: ""
+            policy_file: ""
+            policy: []
+    admin_reports:
+        enabled: false
+        path_prefix: ""
+        default_since: ""
+        max_range: ""
+        max_rows: 0
+        export_markdown: false
+        baselines: []
+        security:
+            enabled: false
+            retention_days: 0
+    license:
+        enabled: true
+        path: /app/config/license.json
+        state_path: /app/state/license-state.json
+        revocation:
+            mode: ""
+            path: ""
+            recheck_interval: 0s
+            require_current_bundle: false
+            fail_closed_on_bundle_error: false
+        instance_fingerprint: ""
+        instance_fingerprint_file: ""
+        instance_fingerprint_env: ""
+        recheck_interval: 0s
+        grace_period_on_validation_error: 0s
+        fail_open_for_dev: false
+    client_ip:
+        trusted_proxy_cidrs: []
+        header_order: []
+        store_ip: null
+    cache:
+        enabled: false
+        max_bytes: 0
+        default_ttl: 0s
+    logging:
+        path: /app/logs/requests.jsonl
+        rotate_mb: 0
+        keep: 0
+    usage_db:
+        driver: sqlite
+        path: /app/state/usage.sqlite
+        dsn: ""
+        enabled: true
+        migration_policy: deployment-job
+    upstream:
+        timeout_ms: 120000
+        default_attempt_timeout_ms: 0
+        max_response_bytes: 52428800
+        allow_private_image_urls: false
+    diagnostics:
+        enabled: null
+        retention_days: 0
+        store_sanitized_upstream_errors: null
+        max_error_bytes: 0
+    content_capture:
+        enabled: false
+        retention_days: 0
+        capture_request: false
+        capture_response: false
+        capture_tool_calls: false
+        capture_images: false
+        capture_upstream_errors: false
+        capture_headers_allowlist: []
+        redact_before_storage: null
+        redaction_patterns: []
+        max_capture_bytes: 0
+        encryption:
+            enabled: false
+            kms_key_id: ""
+    retention:
+        enabled: false
+        dry_run: null
+        default_batch_size: 0
+        classes: []
+    decision_telemetry:
+        enabled: false
+        max_candidates: 0
+        max_filter_reasons: 0
+        record_candidates: null
+        record_cache_reasons: null
+    traffic_shape:
+        enabled: false
+        default_caller:
+            enabled: null
+            request_start_per_sec: 0
+            request_burst: 0
+            input_tokens_per_sec: 0
+            input_token_burst: 0
+            output_reservation_tokens_per_sec: 0
+            output_reservation_token_burst: 0
+            total_reserved_tokens_per_sec: 0
+            total_reserved_token_burst: 0
+            queue:
+                enabled: false
+                max_wait_ms: 0
+                max_depth: 0
+            upstream_429_backoff:
+                enabled: null
+                min_backoff_ms: 0
+                max_backoff_ms: 0
+                multiplier: 0
+                honor_retry_after: null
+            upstream_quota_backoff:
+                enabled: null
+                min_backoff_ms: 0
+                max_backoff_ms: 0
+                multiplier: 0
+                honor_retry_after: null
+users:
+    - id: local-operator
+      name: Local Operator
+      email: ""
+      type: service_account
+      status: active
+      description: ""
+projects:
+    - id: local
+      name: Local
+      status: active
+      description: ""
+project_memberships:
+    - user_id: local-operator
+      project: local
+      role: member
+      status: active
+      source: ""
+      joined_at: ""
+providers:
+    local-vllm-chat:
+        base_url: http://vllm-chat.smart-llmrouter.svc.cluster.local:8000/v1
+        dialect: openai-chat
+        api_key: ${LOCAL_VLLM_API_KEY}
+        api_key_env: LOCAL_VLLM_API_KEY
+        key_id: ""
+        auth_scheme: bearer
+        headers: {}
+        traffic_shape:
+            enabled: null
+            request_start_per_sec: 0
+            request_burst: 0
+            input_tokens_per_sec: 0
+            input_token_burst: 0
+            output_reservation_tokens_per_sec: 0
+            output_reservation_token_burst: 0
+            total_reserved_tokens_per_sec: 0
+            total_reserved_token_burst: 0
+            queue:
+                enabled: false
+                max_wait_ms: 0
+                max_depth: 0
+            upstream_429_backoff:
+                enabled: null
+                min_backoff_ms: 0
+                max_backoff_ms: 0
+                multiplier: 0
+                honor_retry_after: null
+            upstream_quota_backoff:
+                enabled: null
+                min_backoff_ms: 0
+                max_backoff_ms: 0
+                multiplier: 0
+                honor_retry_after: null
+        models:
+            vllm-chat:
+                model: local-chat
+                dialect: ""
+                display_name: ""
+                context_tokens: 0
+                input_price_per_million_usd: 0
+                output_price_per_million_usd: 0
+                image_input_price_per_million_tokens_usd: 0
+                image_input_price_per_image_usd: 0
+                pricing_source: ""
+                pricing_updated_at: ""
+                pricing_notes: in-cluster GPU allocation; set chargeback values if reports need allocated cost
+                tool_support:
+                    openai_chat: []
+                    openai_responses: []
+                    anthropic_messages: []
+                    provider_hosted: []
+                reasoning:
+                    supported: false
+                    mode: ""
+                    control: ""
+                    default_on: false
+                    min_budget_tokens: 0
+                    max_budget_tokens: 0
+                    budget_must_be_less_than_max_tokens: false
+                    stream_block: ""
+                    rejects_max_tokens: false
+                    rejects_temperature: false
+                    rejects_top_p: false
+                    supports_summaries: false
+                input_modalities:
+                    - text
+                output_modalities:
+                    - text
+                honors_max_tokens: null
+                force_store_false: false
+                output_token_field: ""
+                traffic_shape:
+                    enabled: null
+                    request_start_per_sec: 0
+                    request_burst: 0
+                    input_tokens_per_sec: 0
+                    input_token_burst: 0
+                    output_reservation_tokens_per_sec: 0
+                    output_reservation_token_burst: 0
+                    total_reserved_tokens_per_sec: 0
+                    total_reserved_token_burst: 0
+                    queue:
+                        enabled: false
+                        max_wait_ms: 0
+                        max_depth: 0
+                    upstream_429_backoff:
+                        enabled: null
+                        min_backoff_ms: 0
+                        max_backoff_ms: 0
+                        multiplier: 0
+                        honor_retry_after: null
+                    upstream_quota_backoff:
+                        enabled: null
+                        min_backoff_ms: 0
+                        max_backoff_ms: 0
+                        multiplier: 0
+                        honor_retry_after: null
+                request_shape_support:
+                    required_input_modalities: []
+                    max_request_bytes: 0
+                    max_estimated_input_tokens: 0
+                    min_requested_output_tokens: 0
+                    max_requested_output_tokens: 0
+                    max_tool_schema_bytes: 0
+                    supports_large_coding_agent_payloads: null
+                    supported_inbound_dialects: []
+                    unsupported_request_features: []
+                    validation_status: ""
+                    validation_notes: ""
+                responses_to_chat:
+                    enabled: false
+                    text: false
+                    function_tools: false
+                    tool_choice: false
+                    structured_outputs: false
+                    reasoning: false
+                    images: false
+                    streaming: false
+                    validation_status: ""
+                    validation_notes: ""
+                bridges:
+                    chat_to_responses:
+                        enabled: false
+                        text: null
+                        tools: false
+                        tool_choice: false
+                        parallel_tool_calls: false
+                        structured_outputs: false
+                        images: false
+                        reasoning: false
+                        streaming: false
+                        stateful_sessions:
+                            enabled: false
+                            backend: ""
+                            session_header: ""
+                            ttl_seconds: 0
+                            max_entries: 0
+                            redis:
+                                address: ""
+                                namespace: ""
+                                db: 0
+                                username_env: ""
+                                password_env: ""
+                                username: ""
+                                password: ""
+                                tls:
+                                    enabled: false
+                                    server_name: ""
+                                    insecure_skip_verify: false
+                                connect_timeout_ms: 0
+                                read_timeout_ms: 0
+                                write_timeout_ms: 0
+                                pool_size: 0
+                    responses_to_chat:
+                        enabled: false
+                        text: null
+                        tools: false
+                        tool_choice: false
+                        parallel_tool_calls: false
+                        structured_outputs: false
+                        images: false
+                        reasoning: false
+                        streaming: false
+                        stateful_sessions:
+                            enabled: false
+                            backend: ""
+                            session_header: ""
+                            ttl_seconds: 0
+                            max_entries: 0
+                            redis:
+                                address: ""
+                                namespace: ""
+                                db: 0
+                                username_env: ""
+                                password_env: ""
+                                username: ""
+                                password: ""
+                                tls:
+                                    enabled: false
+                                    server_name: ""
+                                    insecure_skip_verify: false
+                                connect_timeout_ms: 0
+                                read_timeout_ms: 0
+                                write_timeout_ms: 0
+                                pool_size: 0
+                weight: 0
+                rpm: 0
+                tier: ""
+                cost: 0
+    local-vllm-coder:
+        base_url: http://vllm-coder.smart-llmrouter.svc.cluster.local:8000/v1
+        dialect: openai-chat
+        api_key: ${LOCAL_VLLM_API_KEY}
+        api_key_env: LOCAL_VLLM_API_KEY
+        key_id: ""
+        auth_scheme: bearer
+        headers: {}
+        traffic_shape:
+            enabled: null
+            request_start_per_sec: 0
+            request_burst: 0
+            input_tokens_per_sec: 0
+            input_token_burst: 0
+            output_reservation_tokens_per_sec: 0
+            output_reservation_token_burst: 0
+            total_reserved_tokens_per_sec: 0
+            total_reserved_token_burst: 0
+            queue:
+                enabled: false
+                max_wait_ms: 0
+                max_depth: 0
+            upstream_429_backoff:
+                enabled: null
+                min_backoff_ms: 0
+                max_backoff_ms: 0
+                multiplier: 0
+                honor_retry_after: null
+            upstream_quota_backoff:
+                enabled: null
+                min_backoff_ms: 0
+                max_backoff_ms: 0
+                multiplier: 0
+                honor_retry_after: null
+        models:
+            vllm-coder:
+                model: local-coder
+                dialect: ""
+                display_name: ""
+                context_tokens: 0
+                input_price_per_million_usd: 0
+                output_price_per_million_usd: 0
+                image_input_price_per_million_tokens_usd: 0
+                image_input_price_per_image_usd: 0
+                pricing_source: ""
+                pricing_updated_at: ""
+                pricing_notes: in-cluster GPU allocation; set chargeback values if reports need allocated cost
+                tool_support:
+                    openai_chat: []
+                    openai_responses: []
+                    anthropic_messages: []
+                    provider_hosted: []
+                reasoning:
+                    supported: false
+                    mode: ""
+                    control: ""
+                    default_on: false
+                    min_budget_tokens: 0
+                    max_budget_tokens: 0
+                    budget_must_be_less_than_max_tokens: false
+                    stream_block: ""
+                    rejects_max_tokens: false
+                    rejects_temperature: false
+                    rejects_top_p: false
+                    supports_summaries: false
+                input_modalities:
+                    - text
+                output_modalities:
+                    - text
+                honors_max_tokens: null
+                force_store_false: false
+                output_token_field: ""
+                traffic_shape:
+                    enabled: null
+                    request_start_per_sec: 0
+                    request_burst: 0
+                    input_tokens_per_sec: 0
+                    input_token_burst: 0
+                    output_reservation_tokens_per_sec: 0
+                    output_reservation_token_burst: 0
+                    total_reserved_tokens_per_sec: 0
+                    total_reserved_token_burst: 0
+                    queue:
+                        enabled: false
+                        max_wait_ms: 0
+                        max_depth: 0
+                    upstream_429_backoff:
+                        enabled: null
+                        min_backoff_ms: 0
+                        max_backoff_ms: 0
+                        multiplier: 0
+                        honor_retry_after: null
+                    upstream_quota_backoff:
+                        enabled: null
+                        min_backoff_ms: 0
+                        max_backoff_ms: 0
+                        multiplier: 0
+                        honor_retry_after: null
+                request_shape_support:
+                    required_input_modalities: []
+                    max_request_bytes: 0
+                    max_estimated_input_tokens: 0
+                    min_requested_output_tokens: 0
+                    max_requested_output_tokens: 0
+                    max_tool_schema_bytes: 0
+                    supports_large_coding_agent_payloads: null
+                    supported_inbound_dialects: []
+                    unsupported_request_features: []
+                    validation_status: ""
+                    validation_notes: ""
+                responses_to_chat:
+                    enabled: false
+                    text: false
+                    function_tools: false
+                    tool_choice: false
+                    structured_outputs: false
+                    reasoning: false
+                    images: false
+                    streaming: false
+                    validation_status: ""
+                    validation_notes: ""
+                bridges:
+                    chat_to_responses:
+                        enabled: false
+                        text: null
+                        tools: false
+                        tool_choice: false
+                        parallel_tool_calls: false
+                        structured_outputs: false
+                        images: false
+                        reasoning: false
+                        streaming: false
+                        stateful_sessions:
+                            enabled: false
+                            backend: ""
+                            session_header: ""
+                            ttl_seconds: 0
+                            max_entries: 0
+                            redis:
+                                address: ""
+                                namespace: ""
+                                db: 0
+                                username_env: ""
+                                password_env: ""
+                                username: ""
+                                password: ""
+                                tls:
+                                    enabled: false
+                                    server_name: ""
+                                    insecure_skip_verify: false
+                                connect_timeout_ms: 0
+                                read_timeout_ms: 0
+                                write_timeout_ms: 0
+                                pool_size: 0
+                    responses_to_chat:
+                        enabled: false
+                        text: null
+                        tools: false
+                        tool_choice: false
+                        parallel_tool_calls: false
+                        structured_outputs: false
+                        images: false
+                        reasoning: false
+                        streaming: false
+                        stateful_sessions:
+                            enabled: false
+                            backend: ""
+                            session_header: ""
+                            ttl_seconds: 0
+                            max_entries: 0
+                            redis:
+                                address: ""
+                                namespace: ""
+                                db: 0
+                                username_env: ""
+                                password_env: ""
+                                username: ""
+                                password: ""
+                                tls:
+                                    enabled: false
+                                    server_name: ""
+                                    insecure_skip_verify: false
+                                connect_timeout_ms: 0
+                                read_timeout_ms: 0
+                                write_timeout_ms: 0
+                                pool_size: 0
+                weight: 0
+                rpm: 0
+                tier: ""
+                cost: 0
+models:
+    local-chat:
+        strategy: static
+        script: ""
+        script_http:
+            enabled: false
+            allow_hosts: []
+            allow_http: false
+            timeout_ms: 0
+            max_response_bytes: 0
+            headers: {}
+        external_policy:
+            url: ""
+            method: ""
+            allow_hosts: []
+            allow_http: false
+            timeout_ms: 0
+            max_response_bytes: 0
+            headers: {}
+            on_error: ""
+            include_request: false
+        intelligent_routing:
+            mode: ""
+            decision_model:
+                provider: ""
+                model_ref: ""
+                dialect: ""
+            timeout_ms: 0
+            max_output_tokens: 0
+            max_retries: 0
+            max_concurrent: 0
+            max_decision_cost_usd: 0
+            confidence_threshold: 0
+            context_mode: ""
+            on_error: ""
+            schema_version: ""
+        routing_policy:
+            dynamic_score:
+                cold_start_policy: ""
+                min_observations: 0
+                observation_window_seconds: 0
+                max_score_adjustment_percent: 0
+                low_confidence_fallback: ""
+                hard_filters:
+                    require_requested_api_skin: false
+                    require_input_modalities: false
+                    require_tool_support_when_tools_present: false
+                    require_forced_tool_choice_support: false
+                    require_structured_output_support: false
+                    require_reasoning_support_when_requested: false
+                    require_honors_max_tokens_when_caller_capped: false
+                signals:
+                    request_shape:
+                        enabled: false
+                        fields: []
+                    prompt_features:
+                        enabled: false
+                        max_scan_bytes: 0
+                        features: []
+                    complexity:
+                        enabled: false
+                        weights: {}
+                    observed_performance:
+                        enabled: false
+                        fields: []
+                    cost:
+                        enabled: false
+                        fields: []
+                    budget_pressure:
+                        enabled: false
+                        buckets: []
+                    evaluation_metadata:
+                        enabled: false
+                        max_age_days: 0
+                        fields: []
+                    recent_penalties:
+                        enabled: false
+                        ttl_seconds: 0
+                        reasons: []
+                score_terms: []
+                thresholds:
+                    max_error_rate: null
+                    max_timeout_rate: null
+                    max_p95_latency_ms: null
+                    max_ttfb_ms: null
+                    min_output_tokens_per_second: null
+                evaluation_metadata: []
+        contract: null
+        pii_filter:
+            enabled: false
+            mode: ""
+            fail_on_match: false
+            apply_to:
+                system: null
+                messages: null
+                responses_input: null
+                tool_results: null
+                image_urls: false
+            restore_response: null
+            max_replacements_per_request: 0
+            rules: []
+        content_capture:
+            enabled: false
+            retention_days: 0
+            capture_request: false
+            capture_response: false
+            capture_tool_calls: false
+            capture_images: false
+            capture_upstream_errors: false
+            capture_headers_allowlist: []
+            redact_before_storage: null
+            redaction_patterns: []
+            max_capture_bytes: 0
+            encryption:
+                enabled: false
+                kms_key_id: ""
+        attempt_timeout_ms: 0
+        targets:
+            - provider: local-vllm-chat
+              model: ""
+              model_ref: vllm-chat
+              dialect: ""
+              display_name: ""
+              context_tokens: 0
+              tool_only: false
+              timeout_ms: 0
+              default_thinking: {}
+              default_openai_chat_thinking: {}
+              tags: []
+              weight: 100
+              rpm: 0
+              tier: ""
+              cost: 0
+              input_price_per_million_usd: 0
+              output_price_per_million_usd: 0
+              image_input_price_per_million_tokens_usd: 0
+              image_input_price_per_image_usd: 0
+              pricing_source: ""
+              pricing_updated_at: ""
+              pricing_notes: ""
+              tool_support:
+                openai_chat: []
+                openai_responses: []
+                anthropic_messages: []
+                provider_hosted: []
+              reasoning:
+                supported: false
+                mode: ""
+                control: ""
+                default_on: false
+                min_budget_tokens: 0
+                max_budget_tokens: 0
+                budget_must_be_less_than_max_tokens: false
+                stream_block: ""
+                rejects_max_tokens: false
+                rejects_temperature: false
+                rejects_top_p: false
+                supports_summaries: false
+              input_modalities: []
+              output_modalities: []
+              honors_max_tokens: null
+              force_store_false: false
+              output_token_field: ""
+              validation: null
+              traffic_shape:
+                enabled: null
+                request_start_per_sec: 0
+                request_burst: 0
+                input_tokens_per_sec: 0
+                input_token_burst: 0
+                output_reservation_tokens_per_sec: 0
+                output_reservation_token_burst: 0
+                total_reserved_tokens_per_sec: 0
+                total_reserved_token_burst: 0
+                queue:
+                    enabled: false
+                    max_wait_ms: 0
+                    max_depth: 0
+                upstream_429_backoff:
+                    enabled: null
+                    min_backoff_ms: 0
+                    max_backoff_ms: 0
+                    multiplier: 0
+                    honor_retry_after: null
+                upstream_quota_backoff:
+                    enabled: null
+                    min_backoff_ms: 0
+                    max_backoff_ms: 0
+                    multiplier: 0
+                    honor_retry_after: null
+              request_shape_support:
+                required_input_modalities: []
+                max_request_bytes: 0
+                max_estimated_input_tokens: 0
+                min_requested_output_tokens: 0
+                max_requested_output_tokens: 0
+                max_tool_schema_bytes: 0
+                supports_large_coding_agent_payloads: null
+                supported_inbound_dialects: []
+                unsupported_request_features: []
+                validation_status: ""
+                validation_notes: ""
+              responses_to_chat:
+                enabled: false
+                text: false
+                function_tools: false
+                tool_choice: false
+                structured_outputs: false
+                reasoning: false
+                images: false
+                streaming: false
+                validation_status: ""
+                validation_notes: ""
+              bridges:
+                chat_to_responses:
+                    enabled: false
+                    text: null
+                    tools: false
+                    tool_choice: false
+                    parallel_tool_calls: false
+                    structured_outputs: false
+                    images: false
+                    reasoning: false
+                    streaming: false
+                    stateful_sessions:
+                        enabled: false
+                        backend: ""
+                        session_header: ""
+                        ttl_seconds: 0
+                        max_entries: 0
+                        redis:
+                            address: ""
+                            namespace: ""
+                            db: 0
+                            username_env: ""
+                            password_env: ""
+                            username: ""
+                            password: ""
+                            tls:
+                                enabled: false
+                                server_name: ""
+                                insecure_skip_verify: false
+                            connect_timeout_ms: 0
+                            read_timeout_ms: 0
+                            write_timeout_ms: 0
+                            pool_size: 0
+                responses_to_chat:
+                    enabled: false
+                    text: null
+                    tools: false
+                    tool_choice: false
+                    parallel_tool_calls: false
+                    structured_outputs: false
+                    images: false
+                    reasoning: false
+                    streaming: false
+                    stateful_sessions:
+                        enabled: false
+                        backend: ""
+                        session_header: ""
+                        ttl_seconds: 0
+                        max_entries: 0
+                        redis:
+                            address: ""
+                            namespace: ""
+                            db: 0
+                            username_env: ""
+                            password_env: ""
+                            username: ""
+                            password: ""
+                            tls:
+                                enabled: false
+                                server_name: ""
+                                insecure_skip_verify: false
+                            connect_timeout_ms: 0
+                            read_timeout_ms: 0
+                            write_timeout_ms: 0
+                            pool_size: 0
+    local-coder:
+        strategy: static
+        script: ""
+        script_http:
+            enabled: false
+            allow_hosts: []
+            allow_http: false
+            timeout_ms: 0
+            max_response_bytes: 0
+            headers: {}
+        external_policy:
+            url: ""
+            method: ""
+            allow_hosts: []
+            allow_http: false
+            timeout_ms: 0
+            max_response_bytes: 0
+            headers: {}
+            on_error: ""
+            include_request: false
+        intelligent_routing:
+            mode: ""
+            decision_model:
+                provider: ""
+                model_ref: ""
+                dialect: ""
+            timeout_ms: 0
+            max_output_tokens: 0
+            max_retries: 0
+            max_concurrent: 0
+            max_decision_cost_usd: 0
+            confidence_threshold: 0
+            context_mode: ""
+            on_error: ""
+            schema_version: ""
+        routing_policy:
+            dynamic_score:
+                cold_start_policy: ""
+                min_observations: 0
+                observation_window_seconds: 0
+                max_score_adjustment_percent: 0
+                low_confidence_fallback: ""
+                hard_filters:
+                    require_requested_api_skin: false
+                    require_input_modalities: false
+                    require_tool_support_when_tools_present: false
+                    require_forced_tool_choice_support: false
+                    require_structured_output_support: false
+                    require_reasoning_support_when_requested: false
+                    require_honors_max_tokens_when_caller_capped: false
+                signals:
+                    request_shape:
+                        enabled: false
+                        fields: []
+                    prompt_features:
+                        enabled: false
+                        max_scan_bytes: 0
+                        features: []
+                    complexity:
+                        enabled: false
+                        weights: {}
+                    observed_performance:
+                        enabled: false
+                        fields: []
+                    cost:
+                        enabled: false
+                        fields: []
+                    budget_pressure:
+                        enabled: false
+                        buckets: []
+                    evaluation_metadata:
+                        enabled: false
+                        max_age_days: 0
+                        fields: []
+                    recent_penalties:
+                        enabled: false
+                        ttl_seconds: 0
+                        reasons: []
+                score_terms: []
+                thresholds:
+                    max_error_rate: null
+                    max_timeout_rate: null
+                    max_p95_latency_ms: null
+                    max_ttfb_ms: null
+                    min_output_tokens_per_second: null
+                evaluation_metadata: []
+        contract: null
+        pii_filter:
+            enabled: false
+            mode: ""
+            fail_on_match: false
+            apply_to:
+                system: null
+                messages: null
+                responses_input: null
+                tool_results: null
+                image_urls: false
+            restore_response: null
+            max_replacements_per_request: 0
+            rules: []
+        content_capture:
+            enabled: false
+            retention_days: 0
+            capture_request: false
+            capture_response: false
+            capture_tool_calls: false
+            capture_images: false
+            capture_upstream_errors: false
+            capture_headers_allowlist: []
+            redact_before_storage: null
+            redaction_patterns: []
+            max_capture_bytes: 0
+            encryption:
+                enabled: false
+                kms_key_id: ""
+        attempt_timeout_ms: 0
+        targets:
+            - provider: local-vllm-coder
+              model: ""
+              model_ref: vllm-coder
+              dialect: ""
+              display_name: ""
+              context_tokens: 0
+              tool_only: false
+              timeout_ms: 0
+              default_thinking: {}
+              default_openai_chat_thinking: {}
+              tags: []
+              weight: 100
+              rpm: 0
+              tier: ""
+              cost: 0
+              input_price_per_million_usd: 0
+              output_price_per_million_usd: 0
+              image_input_price_per_million_tokens_usd: 0
+              image_input_price_per_image_usd: 0
+              pricing_source: ""
+              pricing_updated_at: ""
+              pricing_notes: ""
+              tool_support:
+                openai_chat: []
+                openai_responses: []
+                anthropic_messages: []
+                provider_hosted: []
+              reasoning:
+                supported: false
+                mode: ""
+                control: ""
+                default_on: false
+                min_budget_tokens: 0
+                max_budget_tokens: 0
+                budget_must_be_less_than_max_tokens: false
+                stream_block: ""
+                rejects_max_tokens: false
+                rejects_temperature: false
+                rejects_top_p: false
+                supports_summaries: false
+              input_modalities: []
+              output_modalities: []
+              honors_max_tokens: null
+              force_store_false: false
+              output_token_field: ""
+              validation: null
+              traffic_shape:
+                enabled: null
+                request_start_per_sec: 0
+                request_burst: 0
+                input_tokens_per_sec: 0
+                input_token_burst: 0
+                output_reservation_tokens_per_sec: 0
+                output_reservation_token_burst: 0
+                total_reserved_tokens_per_sec: 0
+                total_reserved_token_burst: 0
+                queue:
+                    enabled: false
+                    max_wait_ms: 0
+                    max_depth: 0
+                upstream_429_backoff:
+                    enabled: null
+                    min_backoff_ms: 0
+                    max_backoff_ms: 0
+                    multiplier: 0
+                    honor_retry_after: null
+                upstream_quota_backoff:
+                    enabled: null
+                    min_backoff_ms: 0
+                    max_backoff_ms: 0
+                    multiplier: 0
+                    honor_retry_after: null
+              request_shape_support:
+                required_input_modalities: []
+                max_request_bytes: 0
+                max_estimated_input_tokens: 0
+                min_requested_output_tokens: 0
+                max_requested_output_tokens: 0
+                max_tool_schema_bytes: 0
+                supports_large_coding_agent_payloads: null
+                supported_inbound_dialects: []
+                unsupported_request_features: []
+                validation_status: ""
+                validation_notes: ""
+              responses_to_chat:
+                enabled: false
+                text: false
+                function_tools: false
+                tool_choice: false
+                structured_outputs: false
+                reasoning: false
+                images: false
+                streaming: false
+                validation_status: ""
+                validation_notes: ""
+              bridges:
+                chat_to_responses:
+                    enabled: false
+                    text: null
+                    tools: false
+                    tool_choice: false
+                    parallel_tool_calls: false
+                    structured_outputs: false
+                    images: false
+                    reasoning: false
+                    streaming: false
+                    stateful_sessions:
+                        enabled: false
+                        backend: ""
+                        session_header: ""
+                        ttl_seconds: 0
+                        max_entries: 0
+                        redis:
+                            address: ""
+                            namespace: ""
+                            db: 0
+                            username_env: ""
+                            password_env: ""
+                            username: ""
+                            password: ""
+                            tls:
+                                enabled: false
+                                server_name: ""
+                                insecure_skip_verify: false
+                            connect_timeout_ms: 0
+                            read_timeout_ms: 0
+                            write_timeout_ms: 0
+                            pool_size: 0
+                responses_to_chat:
+                    enabled: false
+                    text: null
+                    tools: false
+                    tool_choice: false
+                    parallel_tool_calls: false
+                    structured_outputs: false
+                    images: false
+                    reasoning: false
+                    streaming: false
+                    stateful_sessions:
+                        enabled: false
+                        backend: ""
+                        session_header: ""
+                        ttl_seconds: 0
+                        max_entries: 0
+                        redis:
+                            address: ""
+                            namespace: ""
+                            db: 0
+                            username_env: ""
+                            password_env: ""
+                            username: ""
+                            password: ""
+                            tls:
+                                enabled: false
+                                server_name: ""
+                                insecure_skip_verify: false
+                            connect_timeout_ms: 0
+                            read_timeout_ms: 0
+                            write_timeout_ms: 0
+                            pool_size: 0
+callers:
+    - id: local-operator-local-dev
+      owner_user: local-operator
+      user: ""
+      project: local
+      environment: dev
+      status: active
+      token_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      token_id: rtr_metrum_local-operator_local_dev_k1
+      allow:
+        - local-chat
+        - local-coder
+      metrics_admin: false
+      content_admin: false
+      content_capture:
+        enabled: false
+        retention_days: 0
+        capture_request: false
+        capture_response: false
+        capture_tool_calls: false
+        capture_images: false
+        capture_upstream_errors: false
+        capture_headers_allowlist: []
+        redact_before_storage: null
+        redaction_patterns: []
+        max_capture_bytes: 0
+        encryption:
+            enabled: false
+            kms_key_id: ""
+      rate:
+        rpm: 60
+        tpm: 100000
+        concurrent: 4
+      traffic_shape:
+        enabled: null
+        request_start_per_sec: 0
+        request_burst: 0
+        input_tokens_per_sec: 0
+        input_token_burst: 0
+        output_reservation_tokens_per_sec: 0
+        output_reservation_token_burst: 0
+        total_reserved_tokens_per_sec: 0
+        total_reserved_token_burst: 0
+        queue:
+            enabled: false
+            max_wait_ms: 0
+            max_depth: 0
+        upstream_429_backoff:
+            enabled: null
+            min_backoff_ms: 0
+            max_backoff_ms: 0
+            multiplier: 0
+            honor_retry_after: null
+        upstream_quota_backoff:
+            enabled: null
+            min_backoff_ms: 0
+            max_backoff_ms: 0
+            multiplier: 0
+            honor_retry_after: null
+      quota:
+        day:
+            requests: 0
+            tokens: 0
+        month:
+            requests: 0
+            tokens: 0
+        soft_pct: 0
+      key:
+        lifetime_tokens: 0
+        soft_pct: 0
+        on_exhaust: ""
+state_path: /app/state/router-state.json

@@ -1,0 +1,11 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smart-llmrouter
+spec:
+  template:
+    spec:
+      containers:
+        - name: router
+          image: registry.example.com/smart-llmrouter:<version>-linux-amd64
+          # Router must not request nvidia.com/gpu; serving pods own accelerators.

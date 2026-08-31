@@ -66,6 +66,12 @@ For PostgreSQL, take and verify a consistent logical or storage snapshot with th
 
 For SQLite, schedule exclusive downtime, stop every router and migration process, use an SQLite-safe backup method, verify integrity with approved SQLite tooling, and confirm source and backup free space before applying work. Restore while the database remains exclusively offline, verify integrity again, then run the same verify/status gate. SQLite is not a multi-replica migration option.
 
+On file-owned installs, `metrum-genai-smartrouterctl usage backup` and `usage restore`
+perform an SQLite-safe copy of the configured `server.usage_db.path` plus `-wal`/`-shm`
+sidecars when `--confirm-offline` is set. They refuse PostgreSQL and point operators at
+this document. CLI backup/restore is an approved SQLite method; it does **not** replace
+the `router-migrate` plan/apply/verify-serving gate.
+
 Each release must publish its migration contract: migration ID and scope, online or maintenance execution mode, lock/timeout class, data-job requirement, backup evidence requirement, compatible schema/data window, and rollback class. Package rollback never performs a reverse migration; follow the release-specific restore requirement.
 
 ```sh

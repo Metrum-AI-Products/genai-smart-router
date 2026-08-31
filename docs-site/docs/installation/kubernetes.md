@@ -78,7 +78,27 @@ When the release includes Kubernetes examples, the base manifests live in:
 deploy/kubernetes/base/
 deploy/kubernetes/overlays/sqlite-bootstrap/
 deploy/kubernetes/overlays/example/
+deploy/kubernetes/overlays/nvidia-local-serving/
+deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml
 ```
+
+### NVIDIA local-serving profile
+
+When the cluster already runs OpenAI-compatible serving stacks on NVIDIA GPUs, use the
+`nvidia-local-serving` overlay so Smart Router points only at in-cluster Service DNS
+names. The router Pod does **not** request `nvidia.com/gpu`; serving Deployments do.
+LMCache and Mooncake stay off unless you enable them separately.
+
+```bash
+metrum-genai-smartrouterctl blueprint render \
+  --intent deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml \
+  --out /tmp/blueprint
+# Review /tmp/blueprint/architecture.md and config.yaml, then:
+kubectl apply -k deploy/kubernetes/overlays/nvidia-local-serving
+```
+
+Offline CI dry-run: `make test-k8s-nvidia-local-serving`. Live GPU-node steps stay in
+operator runbooks; cloud/cluster login is a prerequisite, never a CLI workflow step.
 
 For a fresh PVC, set the same immutable image in `sqlite-bootstrap/job.yaml` and `example/patch-image.yaml`, then run:
 

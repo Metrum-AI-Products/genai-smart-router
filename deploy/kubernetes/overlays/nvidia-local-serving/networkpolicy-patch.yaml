@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    labels:
+        app.kubernetes.io/name: smart-llmrouter
+    name: smart-llmrouter-restrict
+spec:
+    egress:
+        - ports:
+            - port: 53
+              protocol: TCP
+            - port: 53
+              protocol: UDP
+          to:
+            - namespaceSelector: {}
+        - ports:
+            - port: 8000
+              protocol: TCP
+          to:
+            - podSelector:
+                matchLabels:
+                    app.kubernetes.io/name: vllm-chat
+        - ports:
+            - port: 8000
+              protocol: TCP
+          to:
+            - podSelector:
+                matchLabels:
+                    app.kubernetes.io/name: vllm-coder
+    podSelector:
+        matchLabels:
+            app.kubernetes.io/name: smart-llmrouter
+    policyTypes:
+        - Egress
