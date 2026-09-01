@@ -195,6 +195,10 @@ spec:
               mountPath: /app/config/license.json
               subPath: license.json
               readOnly: true
+            - name: secrets
+              mountPath: /app/config/license.pub
+              subPath: license.pub
+              readOnly: true
             - name: state
               mountPath: /app/state
             - name: logs

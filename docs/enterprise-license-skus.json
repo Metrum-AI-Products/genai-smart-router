@@ -114,6 +114,44 @@
       "notes": "Free or partner evaluation. Intended for time-boxed proof with a small caller and model-group footprint. Self-serve Stripe Checkout under #921 may auto-provision a non-prod SQLite instance."
     },
     {
+      "sku": "oss-self-managed",
+      "license_template": "oss-self-managed",
+      "commercial_motion": "self-managed",
+      "billing_kind": "none",
+      "pricing_status": "not-applicable",
+      "term": {
+        "duration": "8760h",
+        "grace": "0h"
+      },
+      "features": [
+        "routing",
+        "usage_reporting",
+        "admin_reports",
+        "admin_security_reports",
+        "dynamic_score",
+        "intelligent_routing",
+        "external_policy",
+        "typescript_routing",
+        "model_group_contracts",
+        "retention_rollups",
+        "content_capture",
+        "external_policy_http",
+        "private_upstreams",
+        "audit_log_export",
+        "pii_filtering",
+        "usage_csv_export",
+        "usage_baseline_export"
+      ],
+      "limits": {},
+      "deployment": {
+        "mode": "self_managed",
+        "allowed_environments": [],
+        "instance_fingerprint_required": false
+      },
+      "support_tier": "community",
+      "notes": "Self-managed OSS deployment. Operators generate and retain their own signing keypair."
+    },
+    {
       "sku": "pilot-30d",
       "license_template": "pilot-30d",
       "commercial_motion": "paid-pilot",

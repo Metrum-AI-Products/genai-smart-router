@@ -3,6 +3,7 @@ package router
 import (
 	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -39,6 +40,25 @@ func TestLicenseEnvelopeVerificationAndTamperFailures(t *testing.T) {
 	env.Signature.ValueBase64 = "not-base64"
 	if err := VerifyLicenseEnvelope(env, keys, now); err == nil {
 		t.Fatal("tampered signature verified")
+	}
+}
+func TestLicenseUsesConfiguredSelfManagedPublicKey(t *testing.T) {
+	pub, _, err := GenerateLicenseKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "license.pub")
+	if err := os.WriteFile(path, []byte(base64.StdEncoding.EncodeToString(pub)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := licenseVerificationKeys(LicenseConfig{PublicKeys: []LicensePublicKeyConfig{{
+		KeyID: "self-managed", Path: path,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) != 1 || keys[0].KeyID != "self-managed" || !keys[0].PublicKey.Equal(pub) {
+		t.Fatalf("configured keys=%#v", keys)
 	}
 }
 

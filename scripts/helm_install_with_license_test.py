@@ -32,16 +32,20 @@ def main() -> None:
 
         kubeconfig = root / "config"
         kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
-        license_key = root / "license.key"
         secret_value = "must-not-appear-in-command-log"
-        license_key.write_text(secret_value + "\n", encoding="utf-8")
         write_executable(
             root / "license-cli",
             """#!/usr/bin/env python3
             import os, pathlib, sys
             pathlib.Path(os.environ['COMMAND_LOG']).open('a').write('license ' + ' '.join(sys.argv[1:]) + '\\n')
-            out = sys.argv[sys.argv.index('--out') + 1]
-            pathlib.Path(out).write_text('{"signed":true}\\n')
+            if sys.argv[1] == 'generate-keypair':
+                private = pathlib.Path(sys.argv[sys.argv.index('--private-key-out') + 1])
+                public = pathlib.Path(sys.argv[sys.argv.index('--public-key-out') + 1])
+                private.parent.mkdir(parents=True, exist_ok=True)
+                private.write_text('private\\n')
+                public.write_text('public\\n')
+            else:
+                pathlib.Path(sys.argv[sys.argv.index('--out') + 1]).write_text('{"signed":true}\\n')
             """,
         )
         write_executable(
@@ -62,11 +66,11 @@ def main() -> None:
         )
 
         env = os.environ | {
+            "HOME": str(root),
             "COMMAND_LOG": str(log),
             "LICENSE_CLI": str(root / "license-cli"),
             "KUBECTL": str(root / "kubectl"),
             "HELM": str(root / "helm"),
-            "LICENSE_SIGNING_KEY_FILE": str(license_key),
         }
         result = subprocess.run(
             [
@@ -90,8 +94,9 @@ def main() -> None:
         )
         assert result.returncode == 0, result.stderr
         commands = log.read_text(encoding="utf-8").splitlines()
-        assert commands[0].startswith("license issue ")
-        assert f"--key {license_key}" in commands[0]
+        assert commands[0].startswith("license generate-keypair ")
+        license_command = next(command for command in commands if command.startswith("license issue "))
+        assert "--allow-unknown-runtime-key" in license_command
         assert any(command.startswith(f"kubectl --kubeconfig {kubeconfig} create namespace router-test") for command in commands)
         assert any(command.startswith(f"kubectl --kubeconfig {kubeconfig} -n router-test create secret generic smart-llmrouter-secrets") for command in commands)
         assert sum(command.startswith(f"kubectl --kubeconfig {kubeconfig} apply -f -") for command in commands) == 2

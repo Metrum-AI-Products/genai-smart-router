@@ -152,12 +152,16 @@ func buildLocalConfig(intent *StackIntent) (*router.Config, error) {
 				Enable:          &enabled,
 				Driver:          intent.UsageDriver,
 				Path:            "/app/state/usage.sqlite",
-				MigrationPolicy: "deployment-job",
+				MigrationPolicy: "auto-safe",
 			},
 			License: router.LicenseConfig{
 				Enabled:   true,
 				Path:      "/app/config/license.json",
 				StatePath: "/app/state/license-state.json",
+				PublicKeys: []router.LicensePublicKeyConfig{{
+					KeyID: "self-managed",
+					Path:  "/app/config/license.pub",
+				}},
 			},
 			Upstream: router.UpstreamConfig{
 				TimeoutMS:        120000,
