@@ -22,6 +22,7 @@ EXPECTED_SKUS = {
     "hosted-instance-annual",
     "hosted-instance-additional-monthly",
     "marketplace-seat",
+    "oss-self-managed",
 }
 DISALLOWED_GROUP_NAMES = {
     "default",
@@ -185,17 +186,21 @@ def main() -> int:
         if unknown_features or unknown_addons:
             fail(f"{name}: unknown features {sorted(unknown_features | unknown_addons)!r}")
         limit_obj = sku.get("limits")
-        if not isinstance(limit_obj, dict) or not limit_obj:
-            fail(f"{name}: limits must be a non-empty object")
-        unknown_limits = set(limit_obj) - limits
-        if unknown_limits:
-            fail(f"{name}: unknown limits {sorted(unknown_limits)!r}")
+        if name == "oss-self-managed":
+            if limit_obj != {}:
+                fail("oss-self-managed: limits must be empty")
+        else:
+            if not isinstance(limit_obj, dict) or not limit_obj:
+                fail(f"{name}: limits must be a non-empty object")
+            unknown_limits = set(limit_obj) - limits
+            if unknown_limits:
+                fail(f"{name}: unknown limits {sorted(unknown_limits)!r}")
+            validate_commercial_fields(sku, name)
         deployment = sku.get("deployment")
         if not isinstance(deployment, dict) or not deployment.get("mode"):
             fail(f"{name}: deployment.mode is required")
         if "term" not in sku or "duration" not in sku["term"]:
             fail(f"{name}: term.duration is required")
-        validate_commercial_fields(sku, name)
 
     assert_no_disallowed_group_names(data)
     print("license SKU catalog check passed")

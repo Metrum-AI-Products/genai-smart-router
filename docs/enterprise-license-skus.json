@@ -129,7 +129,6 @@
         "admin_reports",
         "admin_security_reports",
         "dynamic_score",
-        "intelligent_routing",
         "external_policy",
         "typescript_routing",
         "model_group_contracts",
