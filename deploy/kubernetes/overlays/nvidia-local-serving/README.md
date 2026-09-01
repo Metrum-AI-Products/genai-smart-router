@@ -7,8 +7,9 @@
 # 1. Authenticated k3s kubeconfig with a NetworkPolicy-enforcing CNI.
 # 2. At least three allocatable nvidia.com/gpu devices. This overlay does not
 #    schedule a 20–40B primary; use a B200/H200 intent for that hardware class.
-# 3. NVIDIA GPU Operator at >=v26.7.0, with driver/toolkit disabled when the
-#    node image owns them. Never enable DRA with the device plugin.
+# 3. NVIDIA GPU Operator at >=v26.7.0. The checked-in gpu-operator-values.yaml
+#    disables driver/toolkit for Shadeform CUDA images (AMI-owned). Prefer the
+#    blueprint-rendered values file. Never enable DRA with the device plugin.
 # 4. Mode-0600 runtime Secret with config.yaml, env.json, and license.json.
 #
 # Render a fresh blueprint:

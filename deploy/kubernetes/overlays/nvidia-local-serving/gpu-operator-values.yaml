@@ -1,9 +1,13 @@
 # NVIDIA GPU Operator values for profile nvidia-local-serving (pin v26.7.0).
-# When the node image already owns drivers/toolkit, keep both disabled.
+# Shadeform CUDA images own the NVIDIA driver and toolkit. Keep both disabled
+# here so operators do not dual-install drivers when applying the checked-in
+# overlay. Blueprint render still regenerates this file from intent:
+# driver_owned_by_ami=true => driver/toolkit disabled; false => enabled.
+# Live installs must use the blueprint-rendered copy.
 driver:
-  enabled: true
+  enabled: false
 toolkit:
-  enabled: true
+  enabled: false
 devicePlugin:
   enabled: true
 # Do not enable DRA and the device plugin for the same device on the same node.

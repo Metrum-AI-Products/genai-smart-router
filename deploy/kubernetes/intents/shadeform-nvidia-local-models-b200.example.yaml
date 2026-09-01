@@ -1,9 +1,8 @@
 schema: metrum.ai/smartrouter-stack-intent/v1
 profile: nvidia-local-serving
-# This fallback matrix targets a four-GPU L40S host. Use
-# shadeform-nvidia-local-models-b200.example.yaml (or hardware_profile h200)
-# when B200/H200 capacity exists.
-hardware_profile: l40s
+# B200/H200 matrix: one Qwen3.8-class 20–40B primary plus two <=9B models.
+# Set hardware_profile to h200 when that is the selected Shadeform SKU.
+hardware_profile: b200
 namespace: smart-llmrouter
 router_image: registry.example.com/smart-llmrouter:<version>-linux-amd64
 edge: ingress
@@ -17,46 +16,40 @@ gpu_operator:
 kv_cache:
   enabled: false
 packaging:
-  # Level-1 Helm chart is emitted by default.
   helm: true
-  # Level-2 CRD operator scaffold (no controller binary). Enable when required.
   operator: true
 serving_models:
-  - name: vllm-tiny
-    served_model_id: local-tiny
-    huggingface_id: Qwen/Qwen3-1.7B
+  - name: vllm-primary
+    served_model_id: local-qwen38
+    huggingface_id: Qwen/Qwen3.8-27B
     image: vllm/vllm-openai:v0.11.0
     gpu_count: 1
     port: 8000
-    # Avoid reserving a 262k-token KV cache for a tiny smoke workload.
     max_model_len: 8192
-    model_group: local-tiny
-    model_size_billions: 2
+    model_group: local-qwen38
+    model_size_billions: 27
     api_key_env: LOCAL_VLLM_API_KEY
   - name: vllm-chat
     served_model_id: local-small-chat
-    huggingface_id: Qwen/Qwen3-4B-Instruct-2507
+    huggingface_id: Qwen/Qwen3.5-4B
     image: vllm/vllm-openai:v0.11.0
     gpu_count: 1
     port: 8000
-    # Avoid reserving a 262k-token KV cache for a tiny smoke workload.
     max_model_len: 8192
     model_group: local-small-chat
     model_size_billions: 4
     api_key_env: LOCAL_VLLM_API_KEY
   - name: vllm-coder
     served_model_id: local-small-coder
-    # No official Qwen3-Coder <=9B; use a current Qwen3 instruct as the small coder slot.
     huggingface_id: Qwen/Qwen3-8B
     image: vllm/vllm-openai:v0.11.0
     gpu_count: 1
     port: 8000
-    # Avoid reserving a 262k-token KV cache for a tiny smoke workload.
     max_model_len: 8192
     model_group: local-small-coder
     model_size_billions: 8
     api_key_env: LOCAL_VLLM_API_KEY
 caller_allow:
-  - local-tiny
+  - local-qwen38
   - local-small-chat
   - local-small-coder

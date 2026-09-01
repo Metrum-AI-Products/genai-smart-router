@@ -1,6 +1,6 @@
 ---
 title: Evaluation and Pilot Deployments
-doc_type: guide
+doc_type: howto
 ---
 
 # Evaluation and Pilot Deployments

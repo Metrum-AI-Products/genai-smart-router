@@ -76,8 +76,8 @@ func validNvidiaLocalIntent(hardwareProfile string) *smartrouterctl.StackIntent 
 		ServingModels: []smartrouterctl.ServingModelIntent{
 			{
 				Name:              "vllm-primary",
-				ServedModelID:     "Qwen/Qwen3.8-27B-Instruct",
-				HuggingFaceID:     "Qwen/Qwen3.8-27B-Instruct",
+				ServedModelID:     "local-qwen38",
+				HuggingFaceID:     "Qwen/Qwen3.8-27B",
 				Image:             "vllm/vllm-openai:v0.11.0",
 				GPUCount:          1,
 				ModelGroup:        "local-qwen38",
@@ -85,8 +85,8 @@ func validNvidiaLocalIntent(hardwareProfile string) *smartrouterctl.StackIntent 
 			},
 			{
 				Name:              "vllm-chat",
-				ServedModelID:     "Qwen/Qwen3.5-4B-Instruct",
-				HuggingFaceID:     "Qwen/Qwen3.5-4B-Instruct",
+				ServedModelID:     "local-small-chat",
+				HuggingFaceID:     "Qwen/Qwen3.5-4B",
 				Image:             "vllm/vllm-openai:v0.11.0",
 				GPUCount:          1,
 				ModelGroup:        "local-small-chat",
@@ -94,8 +94,8 @@ func validNvidiaLocalIntent(hardwareProfile string) *smartrouterctl.StackIntent 
 			},
 			{
 				Name:              "vllm-coder",
-				ServedModelID:     "Qwen/Qwen3-Coder-8B-Instruct",
-				HuggingFaceID:     "Qwen/Qwen3-Coder-8B-Instruct",
+				ServedModelID:     "local-small-coder",
+				HuggingFaceID:     "Qwen/Qwen3-8B",
 				Image:             "vllm/vllm-openai:v0.11.0",
 				GPUCount:          1,
 				ModelGroup:        "local-small-coder",

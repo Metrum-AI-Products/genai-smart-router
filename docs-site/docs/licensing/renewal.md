@@ -1,6 +1,6 @@
 ---
 title: Renewal and Rotation
-doc_type: guide
+doc_type: howto
 ---
 
 # Renewal and Rotation
