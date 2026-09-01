@@ -30,7 +30,8 @@ On file-owned installs, `metrum-genai-smartrouterctl providers upsert` and
 local `config.yaml`. For a full NVIDIA local-serving Kubernetes layout (multiple
 in-cluster models plus router), render
 `metrum-genai-smartrouterctl blueprint render` from
-`deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml` so generated
+`deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml` (L40S) or
+`shadeform-nvidia-local-models-b200.example.yaml` (B200/H200) so generated
 providers use only cluster Service DNS names.
 
 If the internal service requires a bearer token, set `auth_scheme: bearer` and load `api_key` from the deployment environment. If access is enforced entirely by network policy, mTLS, or a service mesh, omit `api_key`; the router will not add an upstream authorization header.

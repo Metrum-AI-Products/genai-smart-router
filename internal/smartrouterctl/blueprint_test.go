@@ -118,6 +118,9 @@ func TestRenderBlueprintNvidiaLocalServing(t *testing.T) {
 	if !strings.Contains(string(values), "driver:") {
 		t.Fatal("gpu operator values missing driver block")
 	}
+	if !strings.Contains(string(values), "enabled: false") {
+		t.Fatalf("L40S example sets driver_owned_by_ami; rendered values must disable driver/toolkit: %s", values)
+	}
 }
 
 func TestSQLiteBackupRestoreRoundTrip(t *testing.T) {

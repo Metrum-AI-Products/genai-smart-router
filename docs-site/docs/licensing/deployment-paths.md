@@ -1,6 +1,6 @@
 ---
 title: Deployment Paths
-doc_type: guide
+doc_type: howto
 ---
 
 # Deployment Paths

@@ -13,10 +13,26 @@ Cloud and cluster authentication are prerequisites. Do not put login, MFA, or
 credential-copy steps in automation. Stop with **`authenticate first, then retry`**
 if a Shadeform API call, SSH connection, or `kubectl get nodes` is unauthorized.
 
-Before provisioning, verify without printing values:
+Before provisioning, verify without printing values. Load
+`SHADEFORM_API_KEY` from process environment first, then ignored `ops.env.json`,
+then ignored `env.json`:
 
 ```bash
-python3 -c 'import json, os; v=os.environ.get("SHADEFORM_API_KEY") or json.load(open("env.json")).get("SHADEFORM_API_KEY"); assert v, "SHADEFORM_API_KEY missing"; print("SHADEFORM_API_KEY: present")'
+python3 -c 'import json, os; from pathlib import Path
+v = os.environ.get("SHADEFORM_API_KEY")
+if not v:
+  for p in ("ops.env.json", "env.json"):
+    path = Path(p)
+    if not path.is_file():
+      continue
+    try:
+      v = json.loads(path.read_text()).get("SHADEFORM_API_KEY")
+    except Exception:
+      v = None
+    if v:
+      break
+assert v, "SHADEFORM_API_KEY missing"
+print("SHADEFORM_API_KEY: present")'
 command -v k3sup kubectl helm jq curl
 test -r "${LICENSE_SIGNING_KEY_FILE:?LICENSE_SIGNING_KEY_FILE is required}"
 ```
@@ -43,7 +59,11 @@ node GPU name, driver/CUDA, k3s version, topology, disk plan, and allocatable
 | `b200` / `h200` | one Qwen3.8-class 20–40B instruct/chat model plus at least two current <=9B instruct/coder models | a matrix without the 20–40B primary |
 | `l40s` | three current small models: ~3B general, <=9B chat, <=9B coder | a 20–40B primary |
 
-The checked-in intent is the conservative `l40s` fallback and assumes four GPUs.
+Checked-in intents:
+
+- `deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml` — conservative `l40s` fallback (four GPUs assumed).
+- `deploy/kubernetes/intents/shadeform-nvidia-local-models-b200.example.yaml` — B200/H200 matrix with a 20–40B primary.
+
 For B200/H200, set `hardware_profile: b200` or `h200`, provide a 20–40B model with
 `model_size_billions` in that range, and retain two <=9B models. Blueprint render
 rejects an external Service URL, fewer than three models, and an invalid hardware
@@ -52,13 +72,25 @@ matrix.
 ## 1. Create the Shadeform host and install k3s
 
 Use the Shadeform instance-types API to select an *available* SKU/region and OS
-with enough GPUs. The following is intentionally parameterized so no account,
-SSH key, region, or image identifier enters Git:
+with enough GPUs. GPU type and count live under `.configuration`; regions live
+under `.availability[]`. Prefer a CUDA Shade OS so the node image owns the NVIDIA
+driver and toolkit.
 
 ```bash
 curl -fsS 'https://api.shadeform.ai/v1/instances/types?available=true&sort=price' \
   -H "X-API-KEY: ${SHADEFORM_API_KEY}" |
-  jq -r '.instance_types[] | select(.gpu_type == "B200" or .gpu_type == "H200" or .gpu_type == "L40S") | select(.num_gpus >= 3) | [.cloud, .region, .shade_instance_type, .num_gpus, .hourly_price] | @tsv'
+  jq -r '
+    .instance_types[]
+    | select(.configuration.gpu_type == "B200"
+          or .configuration.gpu_type == "H200"
+          or .configuration.gpu_type == "L40S")
+    | select(.configuration.num_gpus >= 3)
+    | . as $t
+    | ($t.availability // [])[]
+    | select(.available == true)
+    | [$t.cloud, .region, $t.shade_instance_type, $t.configuration.num_gpus, $t.hourly_price, $t.configuration.gpu_type]
+    | @tsv
+  '
 
 # Create the selected candidate with a pre-registered SSH key. Capture only the
 # returned instance ID in the operator journal; never print the API key.
@@ -90,9 +122,13 @@ policy that the selected CNI does not enforce.
 
 Determine driver ownership from the node image. For an AMI/image-owned driver and
 toolkit set `driver_owned_by_ami: true`; otherwise let GPU Operator own both.
-Never enable DRA and the NVIDIA device plugin for the same device.
+Never enable DRA and the NVIDIA device plugin for the same device. Live installs
+must use the **blueprint-rendered** GPU Operator values file (not a stale checked-in
+copy): with `driver_owned_by_ami: true`, rendered values set `driver.enabled` and
+`toolkit.enabled` to `false`.
 
 ```bash
+# L40S fallback intent, or shadeform-nvidia-local-models-b200.example.yaml for B200/H200.
 metrum-genai-smartrouterctl blueprint render \
   --intent deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml \
   --out /tmp/shadeform-blueprint
@@ -118,13 +154,21 @@ provider URLs and one static local target for each model group.
 ```bash
 # Create the caller file locally. The wrapper issues the license, creates the
 # namespace, atomically replaces the runtime Secret, and runs Helm.
+# Adjust --allow to the live model groups (local-tiny/... or local-qwen38/...).
 metrum-genai-smartrouterctl callers generate \
   --owner-user local-operator --project local --env dev \
   --allow local-tiny,local-small-chat,local-small-coder \
   --token-out /tmp/shadeform-caller.token \
   --config /tmp/shadeform-blueprint/config.yaml --write
 
+# Serving overlay does not create the namespace. Create it before apply.
+kubectl create namespace smart-llmrouter --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -k /tmp/shadeform-blueprint/overlays/nvidia-local-serving
+
+# Self-managed entitlement signing.key_id MUST be "self-managed" to match the
+# blueprint public_keys entry. Bind one concrete instance fingerprint in both
+# the entitlement allowed_instances list and server.license.instance_fingerprint
+# when the SKU sets instance_fingerprint_required / max_instances.
 scripts/helm_install_with_license.sh \
   --kubeconfig "$KUBECONFIG" \
   --namespace smart-llmrouter \
@@ -154,7 +198,7 @@ kubectl -n smart-llmrouter port-forward svc/smart-llmrouter 18080:80 &
 TOKEN=$(cat /tmp/shadeform-caller.token)
 curl -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18080/readyz
 curl -fsS -H "Authorization: Bearer ${TOKEN}" http://127.0.0.1:18080/v1/models
-# Repeat non-stream chat for local-tiny, local-small-chat, local-small-coder.
+# Repeat non-stream chat for each allowed local group.
 # Verify safe attempt metadata names the expected local provider/model only.
 # Repeat one model with stream:true and require a completed SSE stream.
 curl -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18080/v1/models

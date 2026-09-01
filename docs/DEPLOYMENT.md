@@ -141,8 +141,9 @@ Kubernetes examples are maintained under `deploy/kubernetes/`. They are Kustomiz
 For NVIDIA local-serving (in-cluster vLLM + router, KV cache off by default), use
 `deploy/kubernetes/overlays/nvidia-local-serving/` and
 `metrum-genai-smartrouterctl blueprint render` from
-`deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml`. Offline gate:
-`make test-k8s-nvidia-local-serving`. Live Shadeform steps:
+`deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml` (L40S
+fallback) or `shadeform-nvidia-local-models-b200.example.yaml` (B200/H200).
+Offline gate: `make test-k8s-nvidia-local-serving`. Live Shadeform steps:
 `docs/SHADEFORM_NVIDIA_LOCAL_SERVING_E2E.md`.
 
 The Metrum-managed EKS validation environment has a separate, private runbook
