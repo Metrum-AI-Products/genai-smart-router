@@ -64,6 +64,7 @@ type ServingModelIntent struct {
 	Image             string `yaml:"image" json:"image"`
 	GPUCount          int    `yaml:"gpu_count" json:"gpu_count"`
 	Port              int    `yaml:"port" json:"port"`
+	MaxModelLen       int    `yaml:"max_model_len" json:"max_model_len"`
 	ModelGroup        string `yaml:"model_group" json:"model_group"`
 	ServiceDNS        string `yaml:"service_dns" json:"service_dns"`
 	ModelSizeBillions int    `yaml:"model_size_billions" json:"model_size_billions"`
@@ -148,6 +149,9 @@ func (i *StackIntent) Validate() error {
 		}
 		if model.Port < 1 {
 			i.ServingModels[idx].Port = 8000
+		}
+		if i.Profile == "nvidia-local-serving" && model.MaxModelLen < 1 {
+			i.ServingModels[idx].MaxModelLen = 8192
 		}
 		if strings.TrimSpace(model.ModelGroup) == "" {
 			i.ServingModels[idx].ModelGroup = model.Name

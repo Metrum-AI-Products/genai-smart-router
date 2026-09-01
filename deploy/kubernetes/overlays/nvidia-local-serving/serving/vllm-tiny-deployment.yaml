@@ -22,13 +22,15 @@ spec:
           image: vllm/vllm-openai:v0.11.0
           args:
             - "--model"
-            - "Qwen/Qwen3.5-3B-Instruct"
+            - "Qwen/Qwen3-1.7B"
             - "--served-model-name"
             - "local-tiny"
             - "--host"
             - "0.0.0.0"
             - "--port"
             - "8000"
+            - "--max-model-len"
+            - "8192"
           ports:
             - name: http
               containerPort: 8000

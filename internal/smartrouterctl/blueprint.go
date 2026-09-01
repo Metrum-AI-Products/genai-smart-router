@@ -432,6 +432,8 @@ spec:
             - "0.0.0.0"
             - "--port"
             - "{{.Port}}"
+            - "--max-model-len"
+            - "{{.MaxModelLen}}"
           ports:
             - name: http
               containerPort: {{.Port}}
@@ -459,13 +461,14 @@ spec:
       targetPort: http
 `))
 	data := map[string]any{
-		"Name":      model.Name,
-		"Namespace": namespace,
-		"Image":     model.Image,
-		"HF":        hf,
-		"Served":    model.ServedModelID,
-		"Port":      model.Port,
-		"GPU":       model.GPUCount,
+		"Name":        model.Name,
+		"Namespace":   namespace,
+		"Image":       model.Image,
+		"HF":          hf,
+		"Served":      model.ServedModelID,
+		"Port":        model.Port,
+		"MaxModelLen": model.MaxModelLen,
+		"GPU":         model.GPUCount,
 	}
 	depPath := filepath.Join(dir, model.Name+"-deployment.yaml")
 	svcPath := filepath.Join(dir, model.Name+"-service.yaml")

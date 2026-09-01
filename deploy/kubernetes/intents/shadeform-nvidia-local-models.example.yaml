@@ -11,8 +11,8 @@ default_model_group: local-small-chat
 gpu_operator:
   enabled: true
   version: v26.7.0
-  # Set true when the Shadeform (or other) node image already owns NVIDIA drivers.
-  driver_owned_by_ami: false
+  # Shadeform's selected CUDA image already owns the NVIDIA driver and toolkit.
+  driver_owned_by_ami: true
 kv_cache:
   enabled: false
 packaging:
@@ -23,30 +23,36 @@ packaging:
 serving_models:
   - name: vllm-tiny
     served_model_id: local-tiny
-    huggingface_id: Qwen/Qwen3.5-3B-Instruct
+    huggingface_id: Qwen/Qwen3-1.7B
     image: vllm/vllm-openai:v0.11.0
     gpu_count: 1
     port: 8000
+    # Avoid reserving a 262k-token KV cache for a tiny smoke workload.
+    max_model_len: 8192
     model_group: local-tiny
-    model_size_billions: 3
+    model_size_billions: 2
     api_key_env: LOCAL_VLLM_API_KEY
   - name: vllm-chat
     served_model_id: local-small-chat
-    huggingface_id: Qwen/Qwen3.5-4B-Instruct
+    huggingface_id: Qwen/Qwen3-4B-Instruct-2507
     image: vllm/vllm-openai:v0.11.0
     gpu_count: 1
     port: 8000
+    # Avoid reserving a 262k-token KV cache for a tiny smoke workload.
+    max_model_len: 8192
     model_group: local-small-chat
     model_size_billions: 4
     api_key_env: LOCAL_VLLM_API_KEY
   - name: vllm-coder
     served_model_id: local-small-coder
-    huggingface_id: Qwen/Qwen3-Coder-8B-Instruct
+    huggingface_id: Qwen/Qwen2.5-Coder-3B-Instruct
     image: vllm/vllm-openai:v0.11.0
     gpu_count: 1
     port: 8000
+    # Avoid reserving a 262k-token KV cache for a tiny smoke workload.
+    max_model_len: 8192
     model_group: local-small-coder
-    model_size_billions: 8
+    model_size_billions: 3
     api_key_env: LOCAL_VLLM_API_KEY
 caller_allow:
   - local-tiny

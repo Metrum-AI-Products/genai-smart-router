@@ -18,12 +18,14 @@ Before provisioning, verify without printing values:
 ```bash
 python3 -c 'import json, os; v=os.environ.get("SHADEFORM_API_KEY") or json.load(open("env.json")).get("SHADEFORM_API_KEY"); assert v, "SHADEFORM_API_KEY missing"; print("SHADEFORM_API_KEY: present")'
 command -v k3sup kubectl helm jq curl
-stat -c 'license.json mode=%a' /secure/path/license.json  # must be 600
+test -n "${METRUM_LICENSE_SIGNING_KEY:-}" && printf '%s\n' 'METRUM_LICENSE_SIGNING_KEY: present'
 ```
 
 The router image must be pullable by the chosen node and have an immutable tag or
 digest. Keep the signed `license.json`, caller token, kubeconfig, runtime `env.json`,
-and any registry credentials outside Git.
+approved entitlement, and any registry credentials outside Git. The signing key is
+operator-local only: it MUST NOT enter Helm values, Kubernetes, the router image,
+or a generated safe summary.
 
 A three-service model matrix needs **at least three schedulable NVIDIA GPUs**:
 one GPU-requesting vLLM Deployment per model. Confirm this before downloading any
@@ -113,24 +115,27 @@ a Helm chart for the router. Its `config.yaml` supplies only `*.svc.cluster.loca
 provider URLs and one static local target for each model group.
 
 ```bash
-# Create all runtime material locally. Files are mode 0600 and never committed.
+# Create the caller file locally. The wrapper issues the license, creates the
+# namespace, atomically replaces the runtime Secret, and runs Helm.
 metrum-genai-smartrouterctl callers generate \
   --owner-user local-operator --project local --env dev \
   --allow local-tiny,local-small-chat,local-small-coder \
   --token-out /tmp/shadeform-caller.token \
   --config /tmp/shadeform-blueprint/config.yaml --write
 
-kubectl -n smart-llmrouter create secret generic smart-llmrouter-secrets \
-  --from-file=config.yaml=/tmp/shadeform-blueprint/config.yaml \
-  --from-file=env.json=/secure/path/local-env.json \
-  --from-file=license.json=/secure/path/license.json
 kubectl apply -k /tmp/shadeform-blueprint/overlays/nvidia-local-serving
-helm upgrade --install smart-llmrouter /tmp/shadeform-blueprint/charts/smart-llmrouter \
-  --namespace smart-llmrouter --create-namespace \
-  --set image.repository='<immutable-router-repository>' \
-  --set image.tag='<immutable-router-tag>' \
-  --set config.existingSecretKey=config.yaml \
-  --set runtimeSecret.name=smart-llmrouter-secrets
+scripts/helm_install_with_license.sh \
+  --kubeconfig "$KUBECONFIG" \
+  --namespace smart-llmrouter \
+  --release smart-llmrouter \
+  --chart /tmp/shadeform-blueprint/charts/smart-llmrouter \
+  --entitlement /secure/path/approved-entitlement.yaml \
+  --signing-key-env METRUM_LICENSE_SIGNING_KEY \
+  --valid-for 12h \
+  --config /tmp/shadeform-blueprint/config.yaml \
+  --env-file /secure/path/local-env.json \
+  --image-repository smart-llmrouter \
+  --image-tag issue-943
 ```
 
 The router must have no `nvidia.com/gpu` request. Each vLLM Deployment must have

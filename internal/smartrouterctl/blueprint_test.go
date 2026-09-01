@@ -88,6 +88,9 @@ func TestRenderBlueprintNvidiaLocalServing(t *testing.T) {
 	if !strings.Contains(string(dep), "nvidia.com/gpu") {
 		t.Fatal("serving deployment must request nvidia.com/gpu")
 	}
+	if !strings.Contains(string(dep), "--max-model-len") || !strings.Contains(string(dep), "\"8192\"") {
+		t.Fatalf("serving deployment must bound its vLLM context length: %s", dep)
+	}
 	overlay, err := os.ReadFile(filepath.Join(out, "overlays", "nvidia-local-serving", "kustomization.yaml"))
 	if err != nil {
 		t.Fatal(err)

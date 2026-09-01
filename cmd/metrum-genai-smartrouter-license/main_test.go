@@ -175,6 +175,48 @@ func TestRouterLicenseCLIIssueValidateRenewTopUpAndSafeSummary(t *testing.T) {
 		t.Fatalf("revocation summary wrong or unsafe: %s", revocationSummary)
 	}
 }
+func TestRouterLicenseCLIIssueReadsSignerFromEnvironmentAndAppliesValidity(t *testing.T) {
+	dir := t.TempDir()
+	pub := filepath.Join(dir, "license.pub")
+	priv := filepath.Join(dir, "license.key")
+	runCLI(t, "generate-keypair", "--public-key-out", pub, "--private-key-out", priv)
+	key, err := os.ReadFile(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TEST_ROUTER_LICENSE_SIGNING_KEY", strings.TrimSpace(string(key)))
+
+	entitlementPath := filepath.Join(dir, "entitlement.json")
+	entitlement := `{
+  "license_id": "lic_env_validity_test",
+  "customer_id": "cust_env_validity_test",
+  "sku": "eval-72h",
+  "signing": {"key_id": "test-license-key"}
+}`
+	if err := os.WriteFile(entitlementPath, []byte(entitlement), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	licensePath := filepath.Join(dir, "license.json")
+	catalog := filepath.Join("..", "..", "docs", "enterprise-license-skus.json")
+	before := time.Now().UTC()
+	runCLI(t, "issue",
+		"--catalog", catalog,
+		"--entitlement", entitlementPath,
+		"--key-env", "TEST_ROUTER_LICENSE_SIGNING_KEY",
+		"--valid-for", "2h",
+		"--public-key", pub,
+		"--allow-unknown-runtime-key",
+		"--out", licensePath,
+	)
+	env, err := readEnvelope(licensePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validity := env.Payload.ExpiresAt.Sub(before)
+	if validity < 119*time.Minute || validity > 121*time.Minute {
+		t.Fatalf("license validity=%s, want 2h", validity)
+	}
+}
 
 func TestRouterLicenseCLIRejectsInvalidEntitlementFeature(t *testing.T) {
 	dir := t.TempDir()
