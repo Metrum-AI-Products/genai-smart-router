@@ -32,9 +32,7 @@ def main() -> None:
 
         kubeconfig = root / "config"
         kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
-        license_key = root / "license.key"
         secret_value = "must-not-appear-in-command-log"
-        license_key.write_text(secret_value + "\n", encoding="utf-8")
         write_executable(
             root / "license-cli",
             """#!/usr/bin/env python3
@@ -60,13 +58,23 @@ def main() -> None:
             open(os.environ['COMMAND_LOG'], 'a').write('helm ' + ' '.join(sys.argv[1:]) + '\\n')
             """,
         )
+        write_executable(
+            root / "aws",
+            """#!/usr/bin/env python3
+            import os, sys
+            open(os.environ['COMMAND_LOG'], 'a').write('aws ' + ' '.join(sys.argv[1:]) + '\\n')
+            print(os.environ['SECRET_VALUE'])
+            """,
+        )
 
         env = os.environ | {
             "COMMAND_LOG": str(log),
             "LICENSE_CLI": str(root / "license-cli"),
             "KUBECTL": str(root / "kubectl"),
             "HELM": str(root / "helm"),
-            "LICENSE_SIGNING_KEY_FILE": str(license_key),
+            "AWS_CLI": str(root / "aws"),
+            "LICENSE_SIGNING_KEY_SECRET_ID": "smartrouter/license/signing/metrum-license-ed25519-2026-06-prod",
+            "SECRET_VALUE": secret_value,
         }
         result = subprocess.run(
             [
@@ -90,8 +98,9 @@ def main() -> None:
         )
         assert result.returncode == 0, result.stderr
         commands = log.read_text(encoding="utf-8").splitlines()
-        assert commands[0].startswith("license issue ")
-        assert f"--key {license_key}" in commands[0]
+        assert commands[0].startswith("aws secretsmanager get-secret-value ")
+        license_command = next(command for command in commands if command.startswith("license issue "))
+        assert "--key " in license_command
         assert any(command.startswith(f"kubectl --kubeconfig {kubeconfig} create namespace router-test") for command in commands)
         assert any(command.startswith(f"kubectl --kubeconfig {kubeconfig} -n router-test create secret generic smart-llmrouter-secrets") for command in commands)
         assert sum(command.startswith(f"kubectl --kubeconfig {kubeconfig} apply -f -") for command in commands) == 2
