@@ -35,7 +35,7 @@ func TestRouterLicenseCLIKeySignVerifyInspect(t *testing.T) {
 		IssuedAt:      time.Now().UTC().Add(-time.Hour),
 		NotBefore:     time.Now().UTC().Add(-time.Hour),
 		ExpiresAt:     time.Now().UTC().Add(time.Hour),
-		Issuer:        "metrum-ai",
+		Issuer:        router.LicenseIssuer,
 	}
 	payloadRaw, err := json.Marshal(payload)
 	if err != nil {

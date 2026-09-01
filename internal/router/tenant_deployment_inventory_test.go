@@ -60,7 +60,7 @@ func TestFleetInventoryTracksTenantsAndLicenses(t *testing.T) {
 		NotBefore:     "2026-08-13T00:00:00Z",
 		ExpiresAt:     "2027-08-13T00:00:00Z",
 		KeyID:         "test-license-key",
-		Issuer:        "metrum-ai",
+		Issuer:        LicenseIssuer,
 	}
 	summaryPath := filepath.Join(t.TempDir(), "summary.json")
 	raw, err := json.MarshalIndent(summary, "", "  ")

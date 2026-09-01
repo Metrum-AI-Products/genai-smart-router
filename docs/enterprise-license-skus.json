@@ -53,9 +53,9 @@
   },
   "defaults": {
     "product": "genai-smart-router",
-    "issuer": "metrum-ai",
+    "issuer": "self-managed",
     "schema_version": 1,
-    "support_contact": "contact@metrum.ai",
+    "support_contact": "",
     "license_state_reset": "License-wide volume counters reset only when a replacement license has a new license_id. Per-caller counters remain independent."
   },
   "skus": [

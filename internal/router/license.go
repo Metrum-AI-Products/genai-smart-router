@@ -23,7 +23,7 @@ import (
 
 const (
 	LicenseProduct = "genai-smart-router"
-	LicenseIssuer  = "metrum-ai"
+	LicenseIssuer  = "self-managed"
 
 	licenseProduct = LicenseProduct
 	licenseIssuer  = LicenseIssuer
