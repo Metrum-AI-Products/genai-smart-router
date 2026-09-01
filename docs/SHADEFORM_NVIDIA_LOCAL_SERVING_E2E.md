@@ -18,17 +18,15 @@ Before provisioning, verify without printing values:
 ```bash
 python3 -c 'import json, os; v=os.environ.get("SHADEFORM_API_KEY") or json.load(open("env.json")).get("SHADEFORM_API_KEY"); assert v, "SHADEFORM_API_KEY missing"; print("SHADEFORM_API_KEY: present")'
 command -v k3sup kubectl helm jq curl
-aws sts get-caller-identity --query Account --output text
+test -r "${LICENSE_SIGNING_KEY_FILE:?LICENSE_SIGNING_KEY_FILE is required}"
 ```
 
 The router image must be pullable by the chosen node and have an immutable tag or
 digest. Keep the signed `license.json`, caller token, kubeconfig, runtime `env.json`,
-approved entitlement, and any registry credentials outside Git. The wrapper resolves
-the signer automatically: it first uses the normal protected
-`LICENSE_SIGNING_KEY_FILE` lifecycle reference, then falls back to AWS Secrets
-Manager `smartrouter/license/signing/metrum-license-ed25519-2026-06-prod`.
-Use `--license-key-secret-id` only to override that reference. Private material
-MUST NOT enter Helm values, Kubernetes, the router image, or a generated safe summary.
+approved entitlement, and any registry credentials outside Git. The normal operator
+flow supplies `LICENSE_SIGNING_KEY_FILE` from the protected lifecycle intent; its
+private material MUST NOT enter Helm values, Kubernetes, the router image, or a
+generated safe summary.
 
 A three-service model matrix needs **at least three schedulable NVIDIA GPUs**:
 one GPU-requesting vLLM Deployment per model. Confirm this before downloading any
