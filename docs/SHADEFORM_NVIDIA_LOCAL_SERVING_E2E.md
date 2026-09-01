@@ -18,14 +18,15 @@ Before provisioning, verify without printing values:
 ```bash
 python3 -c 'import json, os; v=os.environ.get("SHADEFORM_API_KEY") or json.load(open("env.json")).get("SHADEFORM_API_KEY"); assert v, "SHADEFORM_API_KEY missing"; print("SHADEFORM_API_KEY: present")'
 command -v k3sup kubectl helm jq curl
-test -n "${METRUM_LICENSE_SIGNING_KEY:-}" && printf '%s\n' 'METRUM_LICENSE_SIGNING_KEY: present'
+test -r "${LICENSE_SIGNING_KEY_FILE:?LICENSE_SIGNING_KEY_FILE is required}"
 ```
 
 The router image must be pullable by the chosen node and have an immutable tag or
 digest. Keep the signed `license.json`, caller token, kubeconfig, runtime `env.json`,
-approved entitlement, and any registry credentials outside Git. The signing key is
-operator-local only: it MUST NOT enter Helm values, Kubernetes, the router image,
-or a generated safe summary.
+approved entitlement, and any registry credentials outside Git. The normal operator
+flow supplies `LICENSE_SIGNING_KEY_FILE` from the protected lifecycle intent; its
+private material MUST NOT enter Helm values, Kubernetes, the router image, or a
+generated safe summary.
 
 A three-service model matrix needs **at least three schedulable NVIDIA GPUs**:
 one GPU-requesting vLLM Deployment per model. Confirm this before downloading any
@@ -130,7 +131,6 @@ scripts/helm_install_with_license.sh \
   --release smart-llmrouter \
   --chart /tmp/shadeform-blueprint/charts/smart-llmrouter \
   --entitlement /secure/path/approved-entitlement.yaml \
-  --signing-key-env METRUM_LICENSE_SIGNING_KEY \
   --valid-for 12h \
   --config /tmp/shadeform-blueprint/config.yaml \
   --env-file /secure/path/local-env.json \

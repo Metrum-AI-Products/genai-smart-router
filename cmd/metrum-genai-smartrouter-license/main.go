@@ -418,7 +418,6 @@ func issue(args []string) error {
 	catalogPath := fs.String("catalog", defaultCatalogPath, "SKU catalog path")
 	entitlementPath := fs.String("entitlement", "", "entitlement YAML or JSON")
 	keyPath := fs.String("key", "", "path to base64 Ed25519 private key")
-	keyEnv := fs.String("key-env", "", "environment variable containing a base64 Ed25519 private key")
 	validFor := fs.Duration("valid-for", 0, "override entitlement term with a positive duration from issuance")
 	outPath := fs.String("out", "", "signed license output path")
 	payloadOut := fs.String("payload-out", "", "optional unsigned payload audit output path")
@@ -429,11 +428,8 @@ func issue(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *entitlementPath == "" || *outPath == "" {
-		return fmt.Errorf("entitlement and out are required")
-	}
-	if (*keyPath == "") == (*keyEnv == "") {
-		return fmt.Errorf("exactly one of key or key-env is required")
+	if *entitlementPath == "" || *keyPath == "" || *outPath == "" {
+		return fmt.Errorf("entitlement, key, and out are required")
 	}
 	if *validFor < 0 {
 		return fmt.Errorf("valid-for must be positive")
@@ -452,12 +448,7 @@ func issue(args []string) error {
 	if err != nil {
 		return err
 	}
-	var priv ed25519.PrivateKey
-	if *keyPath != "" {
-		priv, err = readPrivateKey(*keyPath)
-	} else {
-		priv, err = readPrivateKeyEnv(*keyEnv)
-	}
+	priv, err := readPrivateKey(*keyPath)
 	if err != nil {
 		return err
 	}
@@ -838,17 +829,6 @@ func readPrivateKey(path string) (ed25519.PrivateKey, error) {
 		return nil, err
 	}
 	return parsePrivateKey(string(raw))
-}
-
-func readPrivateKeyEnv(name string) (ed25519.PrivateKey, error) {
-	if strings.TrimSpace(name) == "" {
-		return nil, fmt.Errorf("key environment variable name is required")
-	}
-	raw := os.Getenv(name)
-	if strings.TrimSpace(raw) == "" {
-		return nil, fmt.Errorf("key environment variable %q is empty or unset", name)
-	}
-	return parsePrivateKey(raw)
 }
 
 func parsePrivateKey(raw string) (ed25519.PrivateKey, error) {

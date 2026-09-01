@@ -32,6 +32,9 @@ def main() -> None:
 
         kubeconfig = root / "config"
         kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+        license_key = root / "license.key"
+        secret_value = "must-not-appear-in-command-log"
+        license_key.write_text(secret_value + "\n", encoding="utf-8")
         write_executable(
             root / "license-cli",
             """#!/usr/bin/env python3
@@ -58,13 +61,12 @@ def main() -> None:
             """,
         )
 
-        secret_value = "must-not-appear-in-command-log"
         env = os.environ | {
             "COMMAND_LOG": str(log),
             "LICENSE_CLI": str(root / "license-cli"),
             "KUBECTL": str(root / "kubectl"),
             "HELM": str(root / "helm"),
-            "TEST_SIGNER": secret_value,
+            "LICENSE_SIGNING_KEY_FILE": str(license_key),
         }
         result = subprocess.run(
             [
@@ -74,7 +76,6 @@ def main() -> None:
                 "--release", "router-test",
                 "--chart", "/tmp/chart",
                 "--entitlement", str(entitlement),
-                "--signing-key-env", "TEST_SIGNER",
                 "--valid-for", "12h",
                 "--config", str(config),
                 "--env-file", str(upstream_env),
@@ -90,7 +91,7 @@ def main() -> None:
         assert result.returncode == 0, result.stderr
         commands = log.read_text(encoding="utf-8").splitlines()
         assert commands[0].startswith("license issue ")
-        assert "--key-env TEST_SIGNER" in commands[0]
+        assert f"--key {license_key}" in commands[0]
         assert any(command.startswith(f"kubectl --kubeconfig {kubeconfig} create namespace router-test") for command in commands)
         assert any(command.startswith(f"kubectl --kubeconfig {kubeconfig} -n router-test create secret generic smart-llmrouter-secrets") for command in commands)
         assert sum(command.startswith(f"kubectl --kubeconfig {kubeconfig} apply -f -") for command in commands) == 2

@@ -175,21 +175,16 @@ func TestRouterLicenseCLIIssueValidateRenewTopUpAndSafeSummary(t *testing.T) {
 		t.Fatalf("revocation summary wrong or unsafe: %s", revocationSummary)
 	}
 }
-func TestRouterLicenseCLIIssueReadsSignerFromEnvironmentAndAppliesValidity(t *testing.T) {
+func TestRouterLicenseCLIIssueAppliesValidity(t *testing.T) {
 	dir := t.TempDir()
 	pub := filepath.Join(dir, "license.pub")
 	priv := filepath.Join(dir, "license.key")
 	runCLI(t, "generate-keypair", "--public-key-out", pub, "--private-key-out", priv)
-	key, err := os.ReadFile(priv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("TEST_ROUTER_LICENSE_SIGNING_KEY", strings.TrimSpace(string(key)))
 
 	entitlementPath := filepath.Join(dir, "entitlement.json")
 	entitlement := `{
-  "license_id": "lic_env_validity_test",
-  "customer_id": "cust_env_validity_test",
+  "license_id": "lic_validity_test",
+  "customer_id": "cust_validity_test",
   "sku": "eval-72h",
   "signing": {"key_id": "test-license-key"}
 }`
@@ -202,7 +197,7 @@ func TestRouterLicenseCLIIssueReadsSignerFromEnvironmentAndAppliesValidity(t *te
 	runCLI(t, "issue",
 		"--catalog", catalog,
 		"--entitlement", entitlementPath,
-		"--key-env", "TEST_ROUTER_LICENSE_SIGNING_KEY",
+		"--key", priv,
 		"--valid-for", "2h",
 		"--public-key", pub,
 		"--allow-unknown-runtime-key",
