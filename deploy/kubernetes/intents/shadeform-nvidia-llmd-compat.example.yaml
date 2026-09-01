@@ -1,0 +1,41 @@
+schema: metrum.ai/smartrouter-stack-intent/v1
+profile: nvidia-llmd-compat
+hardware_profile: l40s
+namespace: smart-llmrouter
+router_image: registry.example.com/smart-llmrouter:<version>-linux-amd64
+edge: ingress
+usage_driver: sqlite
+default_model_group: local-llmd-chat
+gpu_operator:
+  enabled: true
+  version: v26.7.0
+  driver_owned_by_ami: true
+kv_cache:
+  enabled: false
+packaging:
+  helm: true
+  operator: false
+llmd:
+  chart_oci: oci://ghcr.io/llm-d/charts/llm-d-router-standalone
+  chart_version: v0.9.0
+  release_name: llm-d-local
+  frontend_service: llm-d-local-epp
+  frontend_port: 8081
+  model_server:
+    name: vllm-llmd-backend
+    huggingface_id: Qwen/Qwen3-1.7B
+    image: vllm/vllm-openai:v0.11.0
+    gpu_count: 1
+    port: 8000
+    max_model_len: 8192
+    match_label_key: app
+    match_label_value: vllm-llmd-backend
+serving_models:
+  - name: llm-d-frontend
+    backend: llm-d
+    served_model_id: local-llmd-chat
+    model_group: local-llmd-chat
+    model_size_billions: 2
+    api_key_env: LOCAL_VLLM_API_KEY
+caller_allow:
+  - local-llmd-chat

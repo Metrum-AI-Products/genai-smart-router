@@ -280,8 +280,17 @@ func TestTenantDeploymentContractRejectsUnprotectedOrProductionProfile(t *testin
 	if err := os.WriteFile(path, []byte(production), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadTenantDeploymentProfile("file://" + path); err == nil || !strings.Contains(err.Error(), "production profiles") {
-		t.Fatalf("production profile accepted: %v", err)
+	if loaded, err := LoadTenantDeploymentProfile("file://" + path); err != nil {
+		t.Fatalf("production profile rejected: %v", err)
+	} else if loaded.Environment != "production" {
+		t.Fatalf("production profile environment = %q", loaded.Environment)
+	}
+	invalid := strings.Replace(production, "environment: production", "environment: staging", 1)
+	if err := os.WriteFile(path, []byte(invalid), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadTenantDeploymentProfile("file://" + path); err == nil || !strings.Contains(err.Error(), "environment must be") {
+		t.Fatalf("invalid environment accepted: %v", err)
 	}
 	if _, err := LoadTenantDeploymentProfile("https://example.test/profile"); err == nil || !strings.Contains(err.Error(), "protected") {
 		t.Fatalf("unsupported profile adapter did not fail closed: %v", err)

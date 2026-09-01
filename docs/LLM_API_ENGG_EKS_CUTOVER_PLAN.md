@@ -1,3 +1,6 @@
+# Historical (superseded 2026-09-01): planning-only cutover contract before Fleet
+# production promotion. See docs/EKS_PRODUCTION_OPERATIONS.md.
+
 # `llm-api-engg.metrum.ai` EKS cutover planning runbook
 
 This internal runbook is the planning deliverable for

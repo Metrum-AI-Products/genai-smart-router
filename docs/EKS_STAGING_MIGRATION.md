@@ -1,3 +1,7 @@
+# Historical (superseded 2026-09-01): Metrum production moved to Fleet EKS tenant
+# llm-api. See docs/EKS_PRODUCTION_OPERATIONS.md. Do not follow this runbook for
+# current Metrum production operations.
+
 # EKS Staging Migration Runbook
 
 This internal runbook deploys a validation-only GenAI Smart Router instance to

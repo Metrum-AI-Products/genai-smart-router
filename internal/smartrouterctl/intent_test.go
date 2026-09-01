@@ -7,6 +7,43 @@ import (
 	"smart-llmrouter/internal/smartrouterctl"
 )
 
+func TestNvidiaLLMDCompatRequiresLLMDBlock(t *testing.T) {
+	intent := validNvidiaLLMDIntent()
+	intent.LLMD = nil
+	err := intent.Validate()
+	if err == nil || !strings.Contains(err.Error(), "llmd block") {
+		t.Fatalf("Validate() error = %v, want llmd block error", err)
+	}
+}
+
+func validNvidiaLLMDIntent() *smartrouterctl.StackIntent {
+	return &smartrouterctl.StackIntent{
+		Profile:         "nvidia-llmd-compat",
+		HardwareProfile: "l40s",
+		GPUOperator: smartrouterctl.GPUOperatorIntent{
+			Enabled: true,
+		},
+		LLMD: &smartrouterctl.LLMDCompatIntent{
+			ModelServer: smartrouterctl.ModelServerIntent{
+				Name:            "vllm-llmd-backend",
+				HuggingFaceID:   "Qwen/Qwen3-1.7B",
+				Image:           "vllm/vllm-openai:v0.11.0",
+				GPUCount:        1,
+				Port:            8000,
+				MaxModelLen:     8192,
+				MatchLabelKey:   "app",
+				MatchLabelValue: "vllm-llmd-backend",
+			},
+		},
+		ServingModels: []smartrouterctl.ServingModelIntent{{
+			Name:          "llm-d-frontend",
+			Backend:       "llm-d",
+			ServedModelID: "local-llmd-chat",
+			ModelGroup:    "local-llmd-chat",
+		}},
+	}
+}
+
 func TestNvidiaLocalServingRejectsExternalService(t *testing.T) {
 	intent := validNvidiaLocalIntent("b200")
 	intent.ServingModels[0].ServiceDNS = "https://vllm.example.com/v1"

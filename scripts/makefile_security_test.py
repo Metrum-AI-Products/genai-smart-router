@@ -76,79 +76,17 @@ def main() -> int:
     )
 
     eks_profile_dry_run = run_make(
-        "-n", "eks-preflight", f"EKS_DELIVERY_AWS_PROFILE={MALICIOUS_EKS_INPUT}"
+        "-n", "eks-discover", f"EKS_AWS_PROFILE={MALICIOUS_EKS_INPUT}"
     )
-    eks_evidence_dry_run = run_make(
-        "-n", "eks-release-evidence", f"EKS_EVIDENCE_DIR={MALICIOUS_EKS_INPUT}"
-    )
-    eks_promotion_evidence_dry_run = run_make(
-        "-n",
-        "eks-release-evidence",
-        f"EKS_PROMOTION_EVIDENCE_DIR={MALICIOUS_EKS_INPUT}",
-    )
-    eks_combined = (
-        eks_profile_dry_run.stdout
-        + eks_profile_dry_run.stderr
-        + eks_evidence_dry_run.stdout
-        + eks_evidence_dry_run.stderr
-        + eks_promotion_evidence_dry_run.stdout
-        + eks_promotion_evidence_dry_run.stderr
-    )
+    eks_combined = eks_profile_dry_run.stdout + eks_profile_dry_run.stderr
     require(
         "id >/tmp/smart-llmrouter-eks-make-poc" not in eks_combined,
         f"EKS dry-run exposed executable payload:\n{eks_combined}",
     )
     require(
-        "$EKS_DELIVERY_AWS_PROFILE" in eks_combined
-        or "${EKS_DELIVERY_AWS_PROFILE}" in eks_combined,
-        "EKS delivery profile must defer expansion to the recipe shell",
+        "$EKS_AWS_PROFILE" in eks_combined or "${EKS_AWS_PROFILE}" in eks_combined,
+        "EKS discovery profile must defer expansion to the recipe shell",
     )
-    require(
-        "$EKS_EVIDENCE_DIR" in eks_combined or "${EKS_EVIDENCE_DIR}" in eks_combined,
-        "EKS evidence directory must defer expansion to the recipe shell",
-    )
-    require(
-        "$EKS_PROMOTION_EVIDENCE_DIR" in eks_combined
-        or "${EKS_PROMOTION_EVIDENCE_DIR}" in eks_combined,
-        "EKS promotion evidence directory must defer expansion to the recipe shell",
-    )
-
-    supply_chain_dry_run = run_make(
-        "-n",
-        "eks-supply-chain-validate",
-        f"IMAGE_DIGEST={MALICIOUS_EKS_INPUT}",
-        f"EKS_IMAGE_ARCHITECTURE={MALICIOUS_EKS_INPUT}",
-        f"EKS_SUPPLY_CHAIN_DIR={MALICIOUS_EKS_INPUT}",
-    )
-    supply_chain_output = supply_chain_dry_run.stdout + supply_chain_dry_run.stderr
-    require(
-        "id >/tmp/smart-llmrouter-eks-make-poc" not in supply_chain_output,
-        f"supply-chain dry-run exposed executable payload:\n{supply_chain_output}",
-    )
-    for variable in ("IMAGE_DIGEST", "EKS_SUPPLY_CHAIN_DIR"):
-        require(
-            f"${variable}" in supply_chain_output or f"${{{variable}}}" in supply_chain_output,
-            f"supply-chain {variable} must defer expansion to the recipe shell",
-        )
-    require(
-        "EKS_IMAGE_ARCHITECTURE" not in supply_chain_output,
-        "supply-chain architecture must come from the reviewed target policy, not a Make input",
-    )
-
-    with tempfile.TemporaryDirectory() as temporary:
-        marker = Path(temporary) / "make-shell-injection"
-        executed = run_make(
-            "eks-supply-chain-validate",
-            f'IMAGE_DIGEST="; touch {marker}; #',
-            "EKS_IMAGE_ARCHITECTURE=linux/arm64",
-            f"EKS_SUPPLY_CHAIN_DIR={temporary}",
-        )
-        require(executed.returncode != 0, "malicious IMAGE_DIGEST was accepted")
-        require(not marker.exists(), "supply-chain recipe evaluated IMAGE_DIGEST as shell syntax")
-        require(
-            "IMAGE_DIGEST must be a lower-case immutable" in executed.stderr,
-            f"supply-chain validation did not receive the hostile value safely:\n{executed.stderr}",
-        )
 
     discovery_dry_run = run_make("-n", "eks-session-bootstrap")
     discovery_combined = discovery_dry_run.stdout + discovery_dry_run.stderr
@@ -156,34 +94,22 @@ def main() -> int:
         "$EKS_AWS_PROFILE" in discovery_combined or "${EKS_AWS_PROFILE}" in discovery_combined,
         "legacy discovery/session bootstrap must retain the discovery profile variable",
     )
-    require(
-        "$EKS_DELIVERY_AWS_PROFILE" not in discovery_combined
-        and "${EKS_DELIVERY_AWS_PROFILE}" not in discovery_combined,
-        "legacy discovery/session bootstrap must not use the delivery profile variable",
-    )
 
     # `make -pn` with no goal still walks the default `test` target. Recipes
     # containing recursive `$(MAKE)` commands execute even under `-n`, which
     # would invoke the API-compatibility bootstrap and require `uv`. Anchor
-    # database inspection to the EKS help target instead: it remains a
-    # side-effect-free Makefile parse while avoiding unrelated toolchains.
+    # database inspection to the help target instead.
     no_uv_path = os.pathsep.join(
         directory
         for directory in os.environ["PATH"].split(os.pathsep)
         if not (Path(directory) / "uv").exists()
     )
     require(shutil.which("uv", path=no_uv_path) is None, "no-uv test path still resolves uv")
-    make_database = run_make("-pn", "eks-help", environment={"PATH": no_uv_path})
+    make_database = run_make("-pn", "help", environment={"PATH": no_uv_path})
     require(make_database.returncode == 0, f"Make database inspection failed:\n{make_database.stderr}")
     require(
         "EKS_AWS_PROFILE = genai-smart-router-eks-discovery" in make_database.stdout,
         "legacy discovery targets must retain their discovery profile default",
-    )
-    require(
-        "EKS_DELIVERY_AWS_PROFILE =" in make_database.stdout
-        and "EKS_DELIVERY_AWS_PROFILE = genai-smart-router-eks-staging-delivery"
-        not in make_database.stdout,
-        "delivery targets must default to ambient AWS credentials (empty EKS_DELIVERY_AWS_PROFILE)",
     )
 
     # Keep the exact bare-Make inspection path independent of the bootstrap

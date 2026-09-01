@@ -1,6 +1,41 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-08-27
+Last deployed: 2026-09-01
+
+## 2026-09-01 Metrum production authority on Fleet EKS (alias hostnames)
+
+Metrum engineering production moves from EC2 Docker Compose to the Fleet SQLite
+tenant `llm-api` on cluster `metrum`. Production hostnames
+`llm-api-engg.metrum.ai` and `llm-api.metrum.ai` are served via Fleet
+`approved_alias_hostnames` and Ingress reconciliation (CNAME to
+`llm-api.apps.metrum.ai`).
+
+- Code: Fleet multi-host Ingress, `environment: production` profile support.
+- Operator runbook: `docs/EKS_PRODUCTION_OPERATIONS.md`.
+- Discovery: `docs/EKS_PRODUCTION_DISCOVERY.md`.
+- Staging overlay and `eks_delivery.py` removed; Fleet is the sole EKS path.
+- Compose usage archive: `scripts/archive_compose_usage.sh` before decommission.
+- Rollback: restore DigitalOcean A records + restart Compose router/Caddy.
+
+Pre-cutover probes (2026-09-01): `llm-api-engg.metrum.ai` → EC2 `54.84.22.33`;
+`llm-api.apps.metrum.ai` → EKS ingress ELB `/readyz` 200.
+
+Post-cutover (2026-09-01 UTC):
+
+- cert-manager `Certificate/llm-api-metrum-ai` issued `llm-api-metrum-ai-tls` (DNS-01,
+  `letsencrypt-do`).
+- Ingress `llm-api/router` reconciled for `llm-api.apps.metrum.ai`,
+  `llm-api-engg.metrum.ai`, and `llm-api.metrum.ai`.
+- DigitalOcean: replaced A records with CNAME → `llm-api.apps.metrum.ai`
+  (record ids `1830835046`, `1830835049`; prior A ids `1809575764`, `1822209965`).
+- Ingress pre-verify (`INGRESS_LB_IP=52.3.128.72`): both alias hostnames `/readyz`
+  200, router `5b382c7`.
+- Compose usage archive: `tmp/restic-compose-usage-archive/usage-20260901T174939Z.dump`
+  (3.5 MiB Postgres custom format). Restic snapshot `5fbc28c8` (tags
+  `purpose:compose-usage-archive`, `version:20260901T174939Z`).
+- Compose standdown on EC2 `54.84.22.33`: `docker compose stop router caddy`; postgres
+  left running for rollback forensics.
+- Rollback: restore A records to `54.84.22.33`, `docker compose start router caddy`.
 
 ## 2026-08-27 EKS llm-api image refresh to 5b382c7 (promotion gates + ambient AWS auth)
 

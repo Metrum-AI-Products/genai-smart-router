@@ -1,125 +1,53 @@
 # Production Runbook
 
-Internal note: this runbook is private operational material and is intentionally not included in binary or Docker release packages. Keep package-safe deployment bootstrap guidance in `docs/PACKAGE_README.md`, `docs/BINARY_INSTALL.md`, `docs/DOCKER_COMPOSE_INSTALL.md`, and the router-served Docusaurus installation docs.
+Internal note: Metrum engineering production runs on Fleet EKS. See
+**`docs/EKS_PRODUCTION_OPERATIONS.md`** for the current Metrum operator path.
 
-This runbook is for the current Metrum-managed engineering deployment. Smart LLM Router can also run on-prem or in an enterprise cloud account with different hostnames, model groups, providers, and caller policies.
+This runbook retains **customer Docker Compose** procedures only.
 
-Commercial, procurement, entitlement, and license-fulfillment operations are not performed from this production router host. Use the approved commercial/support systems and `docs/LICENSE_OPERATIONS.md`; #921 owns the commerce purchase/entitlement flow and #42 owns customer-facing commercial/package copy. Never copy payment-provider secrets, signing-service private credentials, customer license payloads, or commercial back-office exports into the production compose tree.
+## Customer Docker Compose deployment
 
-## Current Managed Deployment
+Smart LLM Router can run on-prem or in an enterprise cloud account with different
+hostnames, model groups, providers, and caller policies. Package-safe bootstrap
+guidance lives in `docs/PACKAGE_README.md`, `docs/BINARY_INSTALL.md`,
+`docs/DOCKER_COMPOSE_INSTALL.md`, and the router-served Docusaurus installation docs.
+
+### Layout
 
 ```text
-Host: ubuntu@100.30.225.66
-Compose directory: /opt/smart-llmrouter/compose
-Runtime config: /opt/smart-llmrouter/compose/config/config.yaml
-Runtime env: /opt/smart-llmrouter/compose/config/env.json
-Public URL: https://llm-api-engg.metrum.ai
+/opt/smart-llmrouter/compose/
+  docker-compose.yml
+  docker-compose.postgres-localhost.yml   # optional Postgres usage DB
+  config/config.yaml
+  config/env.json
+  state/
+  ROUTER_TOKEN*.txt
 ```
 
-Do not print router tokens, provider keys, token hashes, or full production config contents.
-
-## Config-Only Change
+### Config-only change
 
 1. Update `config.example.yaml` when the change affects reference config.
-2. Update ignored local `config.production.yaml`.
-3. Validate YAML with structured parsing.
-4. Run relevant tests, normally `rtk go test ./cmd/... ./internal/...`.
-5. Back up the live config as `config/config.yaml.bak.<purpose>-<UTC timestamp>`.
-6. Apply the config change with structured YAML tooling.
-7. Run `sudo docker compose config >/dev/null`, restart router, and verify `sudo docker compose ps router`.
-8. Verify `/readyz`, a relevant authenticated request, and local/remote config SHA-256 match.
-9. Update `deployment.md`.
+2. Validate YAML with structured parsing.
+3. Run `rtk go test ./cmd/... ./internal/...`.
+4. Back up live config as `config/config.yaml.bak.<purpose>-<UTC timestamp>`.
+5. Apply with structured YAML tooling; restart router; verify `/readyz`.
 
-## Package Deployment
+### Package deployment
 
-1. Run:
+1. `rtk go test ./cmd/... ./internal/...`
+2. `rtk make package-docker`
+3. Use `scripts/compose_package_upgrade.py plan|apply|rollback` against the
+   customer install root (see `docs/DOCKER_DEPLOYMENT.md`).
 
-```bash
-rtk go test ./cmd/... ./internal/...
-rtk make docs-build
-rtk make package-docker
-```
-
-2. Commit source/docs changes before packaging so the binary version is not dirty.
-3. Copy the package matching the production host CPU architecture to the host. The current Metrum-managed production host uses the `linux-amd64` package.
-4. Back up `/opt/smart-llmrouter` as `/opt/smart-llmrouter.backup.<purpose>-<UTC timestamp>`.
-5. Unpack the new package into a fresh directory.
-6. Copy forward live `compose/config`, `compose/state`, `compose/logs`, `.env`, and `ROUTER_TOKEN*.txt`.
-7. If applying a new production config, back up the copied config before replacing it.
-8. Set `SMART_LLMROUTER_VERSION=<version>-linux-amd64` in `compose/.env` for the current x86_64 production host, or the matching package architecture for other deployments.
-9. Ensure runtime ownership:
+### Verification
 
 ```bash
-sudo chown -R 65532:65532 compose/config compose/state compose/logs
-sudo find compose/config compose/state compose/logs -type d -exec chmod 0750 {} +
-sudo find compose/config -type f -exec chmod 0640 {} +
+curl -fsS https://<customer-hostname>/readyz
+curl -fsS https://<customer-hostname>/version
 ```
 
-10. Run `sudo docker compose config >/dev/null`, load the image, and start the stack.
+Run Codex CLI and Claude Code CLI smokes when routing or API compatibility changed.
 
-## Required Verification
+## Metrum Fleet production
 
-Run at minimum:
-
-```bash
-curl -fsS https://llm-api-engg.metrum.ai/readyz
-curl -fsS https://llm-api-engg.metrum.ai/version
-curl -fsS https://llm-api-engg.metrum.ai/docs/overview
-```
-
-With a router token, verify:
-
-- `/v1/models` returns the model groups allowed for that exact caller token;
-- a text request succeeds;
-- an omitted-model request behaves according to `server.default_model_group`;
-- changed model/provider/tool/VLM behavior passes a targeted smoke.
-
-Run real CLI smokes for production-affecting routing or API changes:
-
-- Claude Code with `claude -p` through `ANTHROPIC_BASE_URL`;
-- Codex CLI through `/v1/responses`;
-- opencode and aider when OpenAI-compatible coding routes or customer client compatibility changed;
-- image smoke when modality metadata changes;
-- OpenAI Chat tools smoke for Warp-style clients when tool routing changes.
-
-For reasoning-routing, provider-skin, or Codex-visible model metadata changes, run the repeatable reasoning proof before declaring the deployment healthy:
-
-```bash
-rtk python3 scripts/reasoning_smoke.py \
-  --base-url https://llm-api-engg.metrum.ai \
-  --token-file <router-token-file> \
-  --model reasoning-smoke \
-  --postgres-dsn "$ROUTER_USAGE_DB_DSN"
-```
-
-Add `--expect surface:provider:model:dialect` for every enabled surface in the deployed smoke group. The proof must show `/v1/models` reasoning metadata for the caller token, successful Chat/Responses/Anthropic smokes for enabled surfaces, usage DB rows for every request ID, `translated_reasoning_control` values of `reasoning_effort`, `reasoning`, and `thinking` respectively, selected reasoning-capable targets, and `fallbackUsed: false`. If an intended production group such as `big-coder` should expose reasoning choices, rerun the same command with `--model big-coder`.
-
-Record in `deployment.md`: deployed version or config timestamp, config backup path, smoke group target summary, `/v1/models` reasoning level count, smoke request IDs, selected provider/model/dialect for each surface, telemetry proof count, and rollback note. Do not paste router tokens, token hashes, provider keys, raw prompts, raw tool schemas, or full config.
-
-For coding-agent route changes, run the deterministic matrix before live smokes:
-
-```bash
-rtk python3 scripts/coding_agent_matrix.py --mode mock --output-dir tmp/coding-agent-matrix
-```
-
-Then follow `docs/CODING_AGENT_E2E_MATRIX.md` for live Codex, Claude Code, opencode, and aider coverage. Record request IDs and verify usage rows instead of relying only on client stdout.
-
-For VLM route changes, run direct upstream and router-level image smokes with a realistic budget, normally at least `512` output tokens, plus a tiny-cap enforcement smoke and a negative private-image-URL smoke. If an image target fails OCR or workload quality, explicit cap behavior, or URL-safety validation, restore the previous config backup or remove the target from the affected group, restart the router, and rerun `/readyz`, `/v1/models`, text, and image smokes before reopening traffic.
-
-## Cleanup
-
-After deployment:
-
-- remove uploaded packages and temporary config files from `/home/ubuntu`;
-- remove replaced `/opt/smart-llmrouter.replaced.*` trees after validation;
-- remove stale `/tmp/smart-llmrouter-*tar*` files;
-- run `sudo docker system prune -f` when safe;
-- do not prune Docker volumes unless intentionally resetting state.
-
-Record cleanup results in `deployment.md`.
-
-## Rollback
-
-Prefer config rollback for bad model/provider weights. Restore the previous `config.yaml` backup, restart router, then verify `/readyz` and a representative request.
-
-For package rollback, stop compose, move the current `/opt/smart-llmrouter` aside, restore the timestamped backup tree, start compose, and verify health, version, docs, and affected API behavior.
+See `docs/EKS_PRODUCTION_OPERATIONS.md`.

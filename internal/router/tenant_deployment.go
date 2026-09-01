@@ -52,6 +52,7 @@ type TenantDeploymentStatus struct {
 	ClusterAlias     string                          `json:"cluster_alias"`
 	Namespace        string                          `json:"namespace"`
 	Hostname         string                          `json:"hostname,omitempty"`
+	AliasHostnames   []string                        `json:"alias_hostnames,omitempty"`
 	ReleaseDigest    string                          `json:"release_digest"`
 	ResourceProfile  string                          `json:"resource_profile,omitempty"`
 	StateProfile     string                          `json:"state_profile,omitempty"`
@@ -118,31 +119,32 @@ type TenantDeploymentDatabaseStatus struct {
 }
 
 type tenantDeploymentJobRecord struct {
-	JobID            string    `gorm:"primaryKey;column:job_id;type:text"`
-	InstanceID       string    `gorm:"index;column:instance_id;type:text;not null"`
-	IdempotencyKey   string    `gorm:"uniqueIndex;column:idempotency_key;type:text;not null"`
-	ManifestSHA256   string    `gorm:"column:manifest_sha256;type:text;not null"`
-	ProfileID        string    `gorm:"column:profile_id;type:text;not null"`
-	CustomerID       string    `gorm:"column:customer_id;type:text;not null"`
-	Stage            string    `gorm:"column:stage;type:text;not null"`
-	Environment      string    `gorm:"column:environment;type:text;not null"`
-	Region           string    `gorm:"column:region;type:text;not null"`
-	ClusterAlias     string    `gorm:"column:cluster_alias;type:text;not null"`
-	Namespace        string    `gorm:"column:namespace;type:text;not null"`
-	Hostname         string    `gorm:"column:hostname;type:text;not null"`
-	ReleaseDigest    string    `gorm:"column:release_digest;type:text;not null"`
-	ResourceProfile  string    `gorm:"column:resource_profile;type:text;not null"`
-	StateProfile     string    `gorm:"column:state_profile;type:text;not null"`
-	ComputeProfile   string    `gorm:"column:compute_profile;type:text;not null"`
-	ConfigRevision   string    `gorm:"column:config_revision;type:text;not null"`
-	State            string    `gorm:"column:state;type:text;not null"`
-	CompletedAction  string    `gorm:"column:completed_action;type:text;not null"`
-	NextAction       string    `gorm:"column:next_action;type:text;not null"`
-	ErrorClass       string    `gorm:"column:error_class;type:text;not null"`
-	Retryable        bool      `gorm:"column:retryable;not null"`
-	ActivationPassed bool      `gorm:"column:activation_passed;not null"`
-	CreatedAt        time.Time `gorm:"column:created_at;not null"`
-	UpdatedAt        time.Time `gorm:"column:updated_at;not null"`
+	JobID              string    `gorm:"primaryKey;column:job_id;type:text"`
+	InstanceID         string    `gorm:"index;column:instance_id;type:text;not null"`
+	IdempotencyKey     string    `gorm:"uniqueIndex;column:idempotency_key;type:text;not null"`
+	ManifestSHA256     string    `gorm:"column:manifest_sha256;type:text;not null"`
+	ProfileID          string    `gorm:"column:profile_id;type:text;not null"`
+	CustomerID         string    `gorm:"column:customer_id;type:text;not null"`
+	Stage              string    `gorm:"column:stage;type:text;not null"`
+	Environment        string    `gorm:"column:environment;type:text;not null"`
+	Region             string    `gorm:"column:region;type:text;not null"`
+	ClusterAlias       string    `gorm:"column:cluster_alias;type:text;not null"`
+	Namespace          string    `gorm:"column:namespace;type:text;not null"`
+	Hostname           string    `gorm:"column:hostname;type:text;not null"`
+	AliasHostnamesJSON string    `gorm:"column:alias_hostnames_json;type:text;not null;default:''"`
+	ReleaseDigest      string    `gorm:"column:release_digest;type:text;not null"`
+	ResourceProfile    string    `gorm:"column:resource_profile;type:text;not null"`
+	StateProfile       string    `gorm:"column:state_profile;type:text;not null"`
+	ComputeProfile     string    `gorm:"column:compute_profile;type:text;not null"`
+	ConfigRevision     string    `gorm:"column:config_revision;type:text;not null"`
+	State              string    `gorm:"column:state;type:text;not null"`
+	CompletedAction    string    `gorm:"column:completed_action;type:text;not null"`
+	NextAction         string    `gorm:"column:next_action;type:text;not null"`
+	ErrorClass         string    `gorm:"column:error_class;type:text;not null"`
+	Retryable          bool      `gorm:"column:retryable;not null"`
+	ActivationPassed   bool      `gorm:"column:activation_passed;not null"`
+	CreatedAt          time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt          time.Time `gorm:"column:updated_at;not null"`
 }
 
 func (tenantDeploymentJobRecord) TableName() string { return "tenant_deployment_jobs" }
@@ -258,6 +260,7 @@ func OpenTenantDeploymentStore(path string) (*TenantDeploymentStore, error) {
 	}
 	// Backward-compatible column for registries created before compute profiles.
 	_ = db.Exec(`ALTER TABLE tenant_deployment_jobs ADD COLUMN compute_profile TEXT NOT NULL DEFAULT ''`).Error
+	_ = db.Exec(`ALTER TABLE tenant_deployment_jobs ADD COLUMN alias_hostnames_json TEXT NOT NULL DEFAULT ''`).Error
 	return store, nil
 }
 
@@ -299,11 +302,16 @@ func (s *TenantDeploymentStore) Close() error {
 func (s *TenantDeploymentStore) createOrLoad(ctx context.Context, plan TenantDeploymentPlan, intentID string) (tenantDeploymentJobRecord, error) {
 	now := time.Now().UTC()
 	idempotencySum := sha256.Sum256([]byte(plan.ProfileID + "\x00" + plan.CustomerID + "\x00" + plan.Stage + "\x00" + intentID))
+	aliasJSON, err := encodeTenantAliasHostnames(plan.AliasHostnames)
+	if err != nil {
+		return tenantDeploymentJobRecord{}, err
+	}
 	record := tenantDeploymentJobRecord{
 		JobID: plan.JobID, InstanceID: plan.InstanceID, IdempotencyKey: hex.EncodeToString(idempotencySum[:]), ManifestSHA256: plan.ManifestSHA256,
 		ProfileID: plan.ProfileID, CustomerID: plan.CustomerID, Stage: plan.Stage, Environment: plan.Environment,
 		Region: plan.Region, ClusterAlias: plan.ClusterAlias, Namespace: plan.Namespace, Hostname: plan.Hostname,
-		ReleaseDigest: plan.ReleaseDigest, ResourceProfile: plan.ResourceProfile, StateProfile: plan.StateProfile,
+		AliasHostnamesJSON: aliasJSON,
+		ReleaseDigest:      plan.ReleaseDigest, ResourceProfile: plan.ResourceProfile, StateProfile: plan.StateProfile,
 		ComputeProfile: plan.ComputeProfile, ConfigRevision: plan.ConfigRevision, State: TenantDeploymentRequested, NextAction: plan.Actions[0],
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -347,15 +355,20 @@ func (s *TenantDeploymentStore) Status(ctx context.Context, jobID, profileID str
 
 func statusFromDeploymentRecord(record tenantDeploymentJobRecord) TenantDeploymentStatus {
 	hostname := ""
+	aliasHostnames := []string(nil)
 	if record.ActivationPassed && record.State == TenantDeploymentReady {
 		hostname = record.Hostname
+		if stored, err := decodeTenantAliasHostnames(record.AliasHostnamesJSON); err == nil {
+			aliasHostnames = aliasHostnamesForStatus(stored)
+		}
 	}
 	return TenantDeploymentStatus{
 		Schema: "metrum.ai/smartrouter-deployment-status/v1", Mode: "eks", JobID: record.JobID,
 		InstanceID: record.InstanceID,
 		ProfileID:  record.ProfileID, CustomerID: record.CustomerID, Stage: record.Stage, Environment: record.Environment,
 		Region: record.Region, ClusterAlias: record.ClusterAlias, Namespace: record.Namespace, Hostname: hostname,
-		ReleaseDigest: record.ReleaseDigest, ResourceProfile: record.ResourceProfile, StateProfile: record.StateProfile,
+		AliasHostnames: aliasHostnames,
+		ReleaseDigest:  record.ReleaseDigest, ResourceProfile: record.ResourceProfile, StateProfile: record.StateProfile,
 		ComputeProfile: record.ComputeProfile, ConfigRevision: record.ConfigRevision, State: record.State,
 		CompletedAction: record.CompletedAction, NextAction: record.NextAction, ErrorClass: record.ErrorClass,
 		Retryable: record.Retryable, ActivationPassed: record.ActivationPassed,

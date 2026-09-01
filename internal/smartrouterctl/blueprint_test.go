@@ -10,6 +10,45 @@ import (
 	"smart-llmrouter/internal/smartrouterctl"
 )
 
+func TestRenderBlueprintNvidiaLLMDCompat(t *testing.T) {
+	intentPath := filepath.Join("..", "..", "deploy", "kubernetes", "intents", "shadeform-nvidia-llmd-compat.example.yaml")
+	intent, err := smartrouterctl.LoadIntent(intentPath)
+	if err != nil {
+		t.Fatalf("load intent: %v", err)
+	}
+	out := t.TempDir()
+	result, err := smartrouterctl.RenderBlueprint(intent, out)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if result.ServingModelCount != 1 {
+		t.Fatalf("serving models=%d, want 1", result.ServingModelCount)
+	}
+	cfgRaw, err := os.ReadFile(filepath.Join(out, "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfgText := string(cfgRaw)
+	for _, needle := range []string{"local-llmd-chat", "svc.cluster.local", "LOCAL_VLLM_API_KEY"} {
+		if !strings.Contains(cfgText, needle) {
+			t.Fatalf("config missing %q", needle)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(out, "overlays", "nvidia-llmd-compat", "llm-d", "helm-values.generated.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	dep, err := os.ReadFile(filepath.Join(out, "overlays", "nvidia-llmd-compat", "serving", "vllm-llmd-backend-deployment.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(dep), "app: \"vllm-llmd-backend\"") {
+		t.Fatalf("model server missing llm-d match label: %s", dep)
+	}
+	if _, err := os.Stat(filepath.Join(out, "overlays", "nvidia-llmd-compat", "serving", "llm-d-frontend-deployment.yaml")); err == nil {
+		t.Fatal("llm-d frontend must not emit a vLLM deployment")
+	}
+}
+
 func TestRenderBlueprintNvidiaLocalServing(t *testing.T) {
 	intentPath := filepath.Join("..", "..", "deploy", "kubernetes", "intents", "shadeform-nvidia-local-models.example.yaml")
 	intent, err := smartrouterctl.LoadIntent(intentPath)

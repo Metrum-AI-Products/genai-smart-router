@@ -1,9 +1,13 @@
 # Production Promotion Contract
 
-This is the repository-side review gate for issue #518. It records only safe,
-digest-pinned metadata and deliberately cannot deploy, access AWS/EKS, migrate a
-database, copy state, edit DNS, or use credentials. The EC2/Compose router
-remains the production authority until an explicitly approved cutover.
+> **Metrum production (2026-09-01):** Fleet tenant `llm-api` on EKS is authorized
+> with `environment: production`, alias hostnames for `llm-api-engg.metrum.ai`
+> and `llm-api.metrum.ai`, and SQLite usage on the tenant PVC. Maintainer
+> self-review record: `docs/EKS_PRODUCTION_OPERATIONS.md`.
+
+This document describes the repository-side review gate for issue #518. It
+records only safe, digest-pinned metadata and deliberately cannot deploy,
+access AWS/EKS, migrate a database, copy state, edit DNS, or use credentials.
 
 ## Required evidence
 
@@ -132,8 +136,6 @@ band; delivery tools fail closed when the ambient session is missing.
 After this gate passes, an external protected workflow may request the human
 decision; it must not infer authorization from the manifest. Any later EKS,
 database, state, or DNS action needs a separate approved runbook and
-least-privilege identity. See `docs/EKS_STAGING_MIGRATION.md` for current
-staging constraints and `docs/EKS_STAGING_CICD.md` for staging delivery. The
-hostname-specific, planning-only contract for `llm-api-engg.metrum.ai` is
-`docs/LLM_API_ENGG_EKS_CUTOVER_PLAN.md`; validating it still grants no
-production mutation or rollout authority.
+least-privilege identity. Metrum production operations:
+`docs/EKS_PRODUCTION_OPERATIONS.md`. Historical staging delivery:
+`docs/EKS_STAGING_MIGRATION.md` (archived).
