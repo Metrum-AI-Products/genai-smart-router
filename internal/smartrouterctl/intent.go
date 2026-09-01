@@ -28,8 +28,32 @@ type StackIntent struct {
 	KVCache           KVCacheIntent        `yaml:"kv_cache" json:"kv_cache"`
 	Packaging         PackagingIntent      `yaml:"packaging" json:"packaging"`
 	ServingModels     []ServingModelIntent `yaml:"serving_models" json:"serving_models"`
+	LLMD              *LLMDCompatIntent    `yaml:"llmd,omitempty" json:"llmd,omitempty"`
 	DefaultModelGroup string               `yaml:"default_model_group" json:"default_model_group"`
 	CallerAllow       []string             `yaml:"caller_allow" json:"caller_allow"`
+}
+
+// LLMDCompatIntent describes upstream llm-d standalone/gateway install inputs for
+// nvidia-llmd-compat. Smart Router never owns llm-d; this block documents Helm inputs only.
+type LLMDCompatIntent struct {
+	ChartOCI        string            `yaml:"chart_oci" json:"chart_oci"`
+	ChartVersion    string            `yaml:"chart_version" json:"chart_version"`
+	ReleaseName     string            `yaml:"release_name" json:"release_name"`
+	FrontendService string            `yaml:"frontend_service" json:"frontend_service"`
+	FrontendPort    int               `yaml:"frontend_port" json:"frontend_port"`
+	ModelServer     ModelServerIntent `yaml:"model_server" json:"model_server"`
+}
+
+// ModelServerIntent is the in-cluster vLLM backend selected by llm-d's InferencePool.
+type ModelServerIntent struct {
+	Name            string `yaml:"name" json:"name"`
+	HuggingFaceID   string `yaml:"huggingface_id" json:"huggingface_id"`
+	Image           string `yaml:"image" json:"image"`
+	GPUCount        int    `yaml:"gpu_count" json:"gpu_count"`
+	Port            int    `yaml:"port" json:"port"`
+	MaxModelLen     int    `yaml:"max_model_len" json:"max_model_len"`
+	MatchLabelKey   string `yaml:"match_label_key" json:"match_label_key"`
+	MatchLabelValue string `yaml:"match_label_value" json:"match_label_value"`
 }
 
 // PackagingIntent controls generated Helm chart and optional CRD operator scaffolds.
@@ -69,6 +93,8 @@ type ServingModelIntent struct {
 	ServiceDNS        string `yaml:"service_dns" json:"service_dns"`
 	ModelSizeBillions int    `yaml:"model_size_billions" json:"model_size_billions"`
 	APIKeyEnv         string `yaml:"api_key_env" json:"api_key_env"`
+	// Backend is vllm (default) or llm-d for an OpenAI-compatible llm-d frontend URL.
+	Backend string `yaml:"backend" json:"backend"`
 }
 
 // LoadIntent reads and validates a stack intent YAML file.
@@ -98,9 +124,9 @@ func (i *StackIntent) Validate() error {
 		return fmt.Errorf("unsupported intent schema %q", i.Schema)
 	}
 	switch strings.TrimSpace(i.Profile) {
-	case "minimal", "nvidia-local-serving":
+	case "minimal", "nvidia-local-serving", "nvidia-llmd-compat":
 	default:
-		return fmt.Errorf("profile must be minimal or nvidia-local-serving")
+		return fmt.Errorf("profile must be minimal, nvidia-local-serving, or nvidia-llmd-compat")
 	}
 	if strings.TrimSpace(i.Namespace) == "" {
 		i.Namespace = "smart-llmrouter"
@@ -133,6 +159,26 @@ func (i *StackIntent) Validate() error {
 			return fmt.Errorf("nvidia-local-serving hardware_profile must be b200, h200, or l40s")
 		}
 	}
+	if i.Profile == "nvidia-llmd-compat" {
+		if !i.GPUOperator.Enabled {
+			return fmt.Errorf("nvidia-llmd-compat requires gpu_operator.enabled")
+		}
+		if i.LLMD == nil {
+			return fmt.Errorf("nvidia-llmd-compat requires llmd block")
+		}
+		if len(i.ServingModels) != 1 {
+			return fmt.Errorf("nvidia-llmd-compat requires exactly one serving_models entry for the llm-d frontend")
+		}
+		switch strings.ToLower(strings.TrimSpace(i.HardwareProfile)) {
+		case "b200", "h200", "l40s":
+			i.HardwareProfile = strings.ToLower(strings.TrimSpace(i.HardwareProfile))
+		default:
+			return fmt.Errorf("nvidia-llmd-compat hardware_profile must be b200, h200, or l40s")
+		}
+		if err := i.LLMD.validate(i.Namespace); err != nil {
+			return err
+		}
+	}
 	if i.GPUOperator.Enabled && strings.TrimSpace(i.GPUOperator.Version) == "" {
 		i.GPUOperator.Version = "v26.7.0"
 	}
@@ -157,10 +203,19 @@ func (i *StackIntent) Validate() error {
 			i.ServingModels[idx].ModelGroup = model.Name
 		}
 		if strings.TrimSpace(model.ServiceDNS) == "" {
-			i.ServingModels[idx].ServiceDNS = fmt.Sprintf("http://%s.%s.svc.cluster.local:%d/v1", model.Name, i.Namespace, i.ServingModels[idx].Port)
+			if i.Profile == "nvidia-llmd-compat" && i.LLMD != nil {
+				i.ServingModels[idx].ServiceDNS = fmt.Sprintf(
+					"http://%s.%s.svc.cluster.local:%d/v1",
+					i.LLMD.FrontendService,
+					i.Namespace,
+					i.LLMD.FrontendPort,
+				)
+			} else {
+				i.ServingModels[idx].ServiceDNS = fmt.Sprintf("http://%s.%s.svc.cluster.local:%d/v1", model.Name, i.Namespace, i.ServingModels[idx].Port)
+			}
 		}
-		if i.Profile == "nvidia-local-serving" {
-			if model.ModelSizeBillions < 1 {
+		if i.Profile == "nvidia-local-serving" || i.Profile == "nvidia-llmd-compat" {
+			if i.Profile == "nvidia-local-serving" && model.ModelSizeBillions < 1 {
 				return fmt.Errorf("serving_models[%d].model_size_billions is required", idx)
 			}
 			serviceURL, err := url.Parse(i.ServingModels[idx].ServiceDNS)
@@ -172,8 +227,24 @@ func (i *StackIntent) Validate() error {
 		if strings.TrimSpace(model.APIKeyEnv) == "" {
 			i.ServingModels[idx].APIKeyEnv = "LOCAL_VLLM_API_KEY"
 		}
-		if strings.TrimSpace(model.Image) == "" {
+		backend := strings.ToLower(strings.TrimSpace(model.Backend))
+		if backend == "" {
+			backend = "vllm"
+			i.ServingModels[idx].Backend = backend
+		}
+		if backend != "vllm" && backend != "llm-d" {
+			return fmt.Errorf("serving_models[%d].backend must be vllm or llm-d", idx)
+		}
+		if i.Profile == "nvidia-llmd-compat" && backend != "llm-d" {
+			return fmt.Errorf("serving_models[%d].backend must be llm-d for nvidia-llmd-compat", idx)
+		}
+		if backend == "vllm" && strings.TrimSpace(model.Image) == "" {
 			return fmt.Errorf("serving_models[%d].image is required", idx)
+		}
+		if backend == "llm-d" && i.Profile == "nvidia-llmd-compat" {
+			if model.ModelSizeBillions < 1 {
+				i.ServingModels[idx].ModelSizeBillions = 2
+			}
 		}
 		seenGroups[i.ServingModels[idx].ModelGroup] = struct{}{}
 	}
@@ -214,5 +285,57 @@ func (i *StackIntent) Validate() error {
 		sort.Strings(groups)
 		i.CallerAllow = groups
 	}
+	return nil
+}
+
+func (l *LLMDCompatIntent) validate(namespace string) error {
+	if l == nil {
+		return fmt.Errorf("llmd block is required")
+	}
+	if strings.TrimSpace(l.ChartOCI) == "" {
+		l.ChartOCI = "oci://ghcr.io/llm-d/charts/llm-d-router-standalone"
+	}
+	if strings.TrimSpace(l.ChartVersion) == "" {
+		l.ChartVersion = "v0.9.0"
+	}
+	if strings.TrimSpace(l.ReleaseName) == "" {
+		l.ReleaseName = "llm-d-local"
+	}
+	if l.FrontendPort < 1 {
+		l.FrontendPort = 8081
+	}
+	if strings.TrimSpace(l.FrontendService) == "" {
+		l.FrontendService = l.ReleaseName + "-epp"
+	}
+	ms := l.ModelServer
+	if strings.TrimSpace(ms.Name) == "" {
+		l.ModelServer.Name = "vllm-llmd-backend"
+		ms = l.ModelServer
+	}
+	if strings.TrimSpace(ms.HuggingFaceID) == "" {
+		return fmt.Errorf("llmd.model_server.huggingface_id is required")
+	}
+	if strings.TrimSpace(ms.Image) == "" {
+		return fmt.Errorf("llmd.model_server.image is required")
+	}
+	if ms.GPUCount < 1 {
+		l.ModelServer.GPUCount = 1
+	}
+	if ms.Port < 1 {
+		l.ModelServer.Port = 8000
+	}
+	if ms.MaxModelLen < 1 {
+		l.ModelServer.MaxModelLen = 8192
+	}
+	if strings.TrimSpace(ms.MatchLabelKey) == "" {
+		l.ModelServer.MatchLabelKey = "app"
+	}
+	if strings.TrimSpace(ms.MatchLabelValue) == "" {
+		l.ModelServer.MatchLabelValue = ms.Name
+	}
+	if strings.TrimSpace(namespace) == "" {
+		namespace = "smart-llmrouter"
+	}
+	_ = namespace
 	return nil
 }

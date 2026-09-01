@@ -308,12 +308,17 @@ test-fleet-sqlite-customer-live:
 
 test-tenant-deploy-all: test-tenant-deploy-contract test-tenant-deploy-adapters test-tenant-deploy-security test-tenant-deploy-activation test-fleet-customer-cli
 
-.PHONY: test-k8s-nvidia-local-serving
+.PHONY: test-k8s-nvidia-local-serving test-k8s-nvidia-llmd-compat
 # Offline gate for nvidia-local-serving blueprint + Kustomize overlay.
 # Live Shadeform steps are documented in docs/SHADEFORM_NVIDIA_LOCAL_SERVING_E2E.md.
 test-k8s-nvidia-local-serving:
 	bash scripts/test_k8s_nvidia_local_serving.sh
 	python3 scripts/helm_install_with_license_test.py
+
+# Offline gate for nvidia-llmd-compat blueprint (llm-d frontend + vLLM backend).
+# Live steps: docs/SHADEFORM_NVIDIA_LLMD_COMPAT_E2E.md
+test-k8s-nvidia-llmd-compat:
+	bash scripts/test_k8s_nvidia_llmd_compat.sh
 
 test: secret-check capability-smoke-unit
 	go test ./...
