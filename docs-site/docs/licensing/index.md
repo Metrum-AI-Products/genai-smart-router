@@ -1,23 +1,22 @@
 ---
-title: How Licensing Works
+title: Self-Managed Licensing
 doc_type: explanation
 ---
 
-# How Licensing Works
+# Self-Managed Licensing
 
-Normal GenAI Smart Router release builds enforce an offline Metrum-issued signed JSON license. The deployed router verifies the license locally and does not need private signing keys or a network call to Metrum at startup.
+GenAI Smart Router uses locally signed, self-managed licenses. The deployment wrapper creates an Ed25519 keypair on the operator host when one does not already exist, issues `license.json`, and mounts only the public key plus license into the router runtime.
 
-Use this section for customer-facing install, renewal, and support workflows. It intentionally does not describe signing-key custody, signing-service internals, private deployment operations, or development bypass mechanics.
+## What Operators Keep
 
-## What Operators Install
-
-Operators install one Metrum-issued runtime file:
+Keep these files outside source control and outside Kubernetes:
 
 ```text
-license.json
+license.key      # mode 0600; signing key; operator host only
+license.key.pub  # base64 verification key
 ```
 
-Mount it at the configured `server.license.path` and keep the license state file at a durable `server.license.state_path`.
+The router receives `license.json` and `license.pub` in its runtime Secret:
 
 ```yaml
 server:
@@ -25,46 +24,35 @@ server:
     enabled: true
     path: /app/config/license.json
     state_path: /app/state/license-state.json
-    recheck_interval: 1h
+    public_keys:
+      - key_id: self-managed
+        path: /app/config/license.pub
 ```
 
-Do not edit `license.json`. Any payload change invalidates the signature.
+## Automated Helm Installation
 
-## What The Router Exposes
+Use the generated deployment wrapper. It generates a local keypair on first use, issues a license with the requested validity, atomically refreshes the runtime Secret, and installs or upgrades Helm:
 
-When authorized, operators can inspect safe license status fields such as:
+```bash
+scripts/helm_install_with_license.sh \
+  --kubeconfig "$KUBECONFIG" \
+  --namespace smart-llmrouter \
+  --release smart-llmrouter \
+  --chart /path/to/charts/smart-llmrouter \
+  --entitlement /protected/entitlement.json \
+  --valid-for 8760h \
+  --config /protected/config.yaml \
+  --env-file /protected/env.json \
+  --image-repository smart-llmrouter \
+  --image-tag <immutable-tag>
+```
 
-- status and reason;
-- license ID;
-- customer ID;
-- SKU;
-- key ID;
-- expiry;
-- grace-active flag;
-- enabled feature gates and safe limit status.
+Use `--license-key` and `--license-public-key` to reuse a keypair stored at a different protected local path.
 
-The router does not expose private signing keys, provider API keys, raw router tokens, token hashes, full config files, raw prompts, raw images, raw signatures, or full license payloads through ordinary caller APIs.
+## Rotation and Recovery
 
-## Customer Journey
+Do not edit `license.json`. Generate a replacement license with the same keypair for normal renewal, or generate a new keypair and update both `license.json` and `license.pub` together when rotating trust. Back up the private key securely; loss of that key requires trust rotation and a replacement license.
 
-1. Metrum issues a license for the contracted evaluation, pilot, annual deployment, renewal, replacement, private managed deployment, marketplace/private-offer term, or volume top-up.
-2. The customer installs the release package and mounts `license.json`.
-3. The operator validates `/readyz`, `/admin/license/status`, and one licensed caller workflow.
-4. The operator monitors license status through metrics, admin status, and request errors.
-5. Renewal, replacement, and top-up are handled by replacing `license.json` and restarting the router or waiting for the configured recheck interval.
+## Safe Status
 
-Metrum may provide a safe summary alongside the issued file. That summary is for support handoff and should include only scalar metadata such as license ID, customer ID, SKU, key ID, issuer, issue time, not-before time, expiry, feature names, and configured limits. It is not a substitute for the signed `license.json`.
-
-For the step-by-step replacement workflow, see [Renewal And Top-Up](/docs/licensing/renewal). For operational failure modes, see [Troubleshooting Licensing](/docs/troubleshooting/licensing).
-
-## Commercial Shapes
-
-Licenses can encode feature gates, time bounds, volume limits, concurrency or operational limits, and deployment scope. Common commercial shapes include short evaluations, paid pilots, annual enterprise self-hosted licenses, private managed deployments, marketplace/private-offer licenses, and prepaid volume top-ups.
-
-Evaluation, pilot, renewal, replacement, and top-up licenses are delivered through the approved commercial and support path.
-
-## Support Boundaries
-
-Share request IDs and safe status fields with support. Do not send provider keys, router tokens, token hashes, raw prompts, raw images, raw tool outputs, private host details, full production config, private signing material, or full customer-specific license payloads through ordinary support channels.
-
-For license issuance, renewal, volume top-up, or commercial plan changes, contact [contact@metrum.ai](mailto:contact@metrum.ai).
+Operators can inspect safe status fields including license ID, key ID, expiry, enabled features, and limit status. The router never exposes private signing keys, provider keys, caller tokens, raw signatures, or full runtime configuration through ordinary APIs.

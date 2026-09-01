@@ -1,30 +1,12 @@
 ---
-title: Billing, Cancellation, and Runtime Enforcement
+title: License Enforcement
 doc_type: explanation
 ---
 
-# Billing, Cancellation, and Runtime Enforcement
+# License Enforcement
 
-GenAI Smart Router separates commercial billing systems from router request handling. The router enforces the active signed license or online lease mode configured for the deployment. Commercial payment records stay in the approved procurement and support systems.
+License enforcement is self-managed and offline. The router verifies an operator-generated signed `license.json` with the corresponding public key configured in `server.license.public_keys`.
 
-## Offline License Enforcement
+License terms can contain expiry, feature, volume, concurrency, and deployment limits chosen by the operator. A failed term produces structured `license-*` errors; repair it by reissuing a license with the protected local signing key and updating the runtime Secret through the deployment wrapper.
 
-Enterprise self-hosted deployments can use an offline signed `license.json`. The router verifies the license locally and does not need to contact Metrum during startup or periodic license checks. This is the default fit for contracted self-hosted, private-cloud, on-prem, and air-gapped customers.
-
-If a license expires, exceeds a licensed volume/window/concurrency limit, or lacks a required feature, caller requests fail with structured `license-*` errors. See [Error Reference](../reference/errors).
-
-## Commercial Control Plane
-
-Commercial systems such as orders, invoices, private offers, managed-service records, or customer account systems authorize license issuance or replacement. The router runtime receives only the signed license or deployment entitlement it must enforce. Payment status, refunds, and disputes are handled outside the request path.
-
-When a commercial plan uses online lease renewal, the plan should state the renewal interval, grace behavior, payment-required state, cancellation timing, support escalation, and whether traffic is blocked or degraded when renewal fails. Offline enterprise contracts continue to use signed license files without a startup network dependency.
-
-## Cancellation, Refunds, And Revocation
-
-Cancellation or refund behavior depends on the commercial plan:
-
-- offline enterprise licenses usually continue according to the signed license until Metrum issues a replacement, revocation bundle, or corrected license under the contract;
-- online lease-required plans can reflect payment-required, canceled, or revoked status at the next lease renewal or grace boundary;
-- evaluation, pilot, or top-up packages use the replacement workflow defined by the commercial/support plan.
-
-For support, share request IDs and safe license status fields only. Do not send provider keys, router tokens, full config, private deployment details, signing material, raw prompts, raw images, raw tool outputs, or full customer-specific license payloads through ordinary support channels.
+The router has no billing, payment, procurement, marketplace, or hosted license-issuer dependency.

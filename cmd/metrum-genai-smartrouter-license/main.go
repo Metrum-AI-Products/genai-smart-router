@@ -417,7 +417,8 @@ func issue(args []string) error {
 	fs := flag.NewFlagSet("issue", flag.ExitOnError)
 	catalogPath := fs.String("catalog", defaultCatalogPath, "SKU catalog path")
 	entitlementPath := fs.String("entitlement", "", "entitlement YAML or JSON")
-	keyPath := fs.String("key", "", "base64 Ed25519 private key")
+	keyPath := fs.String("key", "", "path to base64 Ed25519 private key")
+	validFor := fs.Duration("valid-for", 0, "override entitlement term with a positive duration from issuance")
 	outPath := fs.String("out", "", "signed license output path")
 	payloadOut := fs.String("payload-out", "", "optional unsigned payload audit output path")
 	summaryOut := fs.String("summary-out", "", "optional safe summary output path")
@@ -430,7 +431,20 @@ func issue(args []string) error {
 	if *entitlementPath == "" || *keyPath == "" || *outPath == "" {
 		return fmt.Errorf("entitlement, key, and out are required")
 	}
-	payload, err := renderEntitlement(*catalogPath, *entitlementPath)
+	if *validFor < 0 {
+		return fmt.Errorf("valid-for must be positive")
+	}
+	entitlement, err := router.LoadLicenseEntitlement(*entitlementPath)
+	if err != nil {
+		return err
+	}
+	if *validFor > 0 {
+		now := time.Now().UTC()
+		entitlement.Term.IssuedAt = now
+		entitlement.Term.NotBefore = now
+		entitlement.Term.ExpiresAt = now.Add(*validFor)
+	}
+	payload, err := renderEntitlementFromValue(*catalogPath, entitlement)
 	if err != nil {
 		return err
 	}
@@ -814,7 +828,11 @@ func readPrivateKey(path string) (ed25519.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
+	return parsePrivateKey(string(raw))
+}
+
+func parsePrivateKey(raw string) (ed25519.PrivateKey, error) {
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(raw))
 	if err != nil {
 		return nil, err
 	}

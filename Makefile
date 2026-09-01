@@ -313,6 +313,7 @@ test-tenant-deploy-all: test-tenant-deploy-contract test-tenant-deploy-adapters 
 # Live Shadeform steps are documented in docs/SHADEFORM_NVIDIA_LOCAL_SERVING_E2E.md.
 test-k8s-nvidia-local-serving:
 	bash scripts/test_k8s_nvidia_local_serving.sh
+	python3 scripts/helm_install_with_license_test.py
 
 test: secret-check capability-smoke-unit
 	go test ./...

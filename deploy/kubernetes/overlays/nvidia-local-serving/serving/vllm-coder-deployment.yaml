@@ -19,16 +19,18 @@ spec:
     spec:
       containers:
         - name: vllm
-          image: vllm/vllm-openai:v0.8.5
+          image: vllm/vllm-openai:v0.11.0
           args:
             - "--model"
-            - "Qwen/Qwen2.5-Coder-7B-Instruct"
+            - "Qwen/Qwen2.5-Coder-3B-Instruct"
             - "--served-model-name"
-            - "local-coder"
+            - "local-small-coder"
             - "--host"
             - "0.0.0.0"
             - "--port"
             - "8000"
+            - "--max-model-len"
+            - "8192"
           ports:
             - name: http
               containerPort: 8000

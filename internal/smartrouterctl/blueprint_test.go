@@ -21,8 +21,8 @@ func TestRenderBlueprintNvidiaLocalServing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if result.ServingModelCount < 2 {
-		t.Fatalf("serving models=%d, want >=2", result.ServingModelCount)
+	if result.ServingModelCount < 3 {
+		t.Fatalf("serving models=%d, want >=3", result.ServingModelCount)
 	}
 	if result.KVCacheEnabled {
 		t.Fatal("kv cache must be disabled by default")
@@ -42,6 +42,13 @@ func TestRenderBlueprintNvidiaLocalServing(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(out, "operator", "crds", "smartrouter.yaml")); err != nil {
 		t.Fatal(err)
 	}
+	chartDeployment, err := os.ReadFile(filepath.Join(out, "charts", "smart-llmrouter", "templates", "deployment.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(chartDeployment), "{{- if .Values.config.existingSecretKey }}") {
+		t.Fatal("chart must support mounting generated config.yaml from the runtime Secret")
+	}
 	valuesChart, err := os.ReadFile(filepath.Join(out, "charts", "smart-llmrouter", "values.yaml"))
 	if err != nil {
 		t.Fatal(err)
@@ -57,10 +64,14 @@ func TestRenderBlueprintNvidiaLocalServing(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfgText := string(cfgRaw)
+	if !strings.Contains(cfgText, "license.pub") || !strings.Contains(cfgText, "self-managed") {
+		t.Fatalf("config must trust the self-managed license public key: %s", cfgText)
+	}
 	for _, needle := range []string{
 		"svc.cluster.local",
-		"local-chat",
-		"local-coder",
+		"local-tiny",
+		"local-small-chat",
+		"local-small-coder",
 		"LOCAL_VLLM_API_KEY",
 		"${LOCAL_VLLM_API_KEY}",
 	} {
@@ -73,12 +84,25 @@ func TestRenderBlueprintNvidiaLocalServing(t *testing.T) {
 			t.Fatalf("config must not reference cloud upstream %q", cloud)
 		}
 	}
-	dep, err := os.ReadFile(filepath.Join(out, "overlays", "nvidia-local-serving", "serving", "vllm-chat-deployment.yaml"))
+	dep, err := os.ReadFile(filepath.Join(out, "overlays", "nvidia-local-serving", "serving", "vllm-tiny-deployment.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(dep), "nvidia.com/gpu") {
 		t.Fatal("serving deployment must request nvidia.com/gpu")
+	}
+	if !strings.Contains(string(dep), "--max-model-len") || !strings.Contains(string(dep), "\"8192\"") {
+		t.Fatalf("serving deployment must bound its vLLM context length: %s", dep)
+	}
+	overlay, err := os.ReadFile(filepath.Join(out, "overlays", "nvidia-local-serving", "kustomization.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(overlay), "../") {
+		t.Fatalf("generated serving overlay must not reference files outside its output: %s", overlay)
+	}
+	if !strings.Contains(string(overlay), "networkpolicy-patch.yaml") {
+		t.Fatalf("generated serving overlay must include its local-only network policy: %s", overlay)
 	}
 	arch, err := os.ReadFile(filepath.Join(out, "architecture.md"))
 	if err != nil {

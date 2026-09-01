@@ -56,17 +56,25 @@ type OpenAICompatibilityConfig struct {
 }
 
 type LicenseConfig struct {
-	Enabled                      bool                    `yaml:"enabled" json:"enabled"`
-	Path                         string                  `yaml:"path" json:"path"`
-	StatePath                    string                  `yaml:"state_path" json:"statePath"`
-	Revocation                   LicenseRevocationConfig `yaml:"revocation" json:"revocation"`
-	InstanceFingerprint          string                  `yaml:"instance_fingerprint" json:"instanceFingerprint"`
-	InstanceFingerprintFile      string                  `yaml:"instance_fingerprint_file" json:"instanceFingerprintFile"`
-	InstanceFingerprintEnv       string                  `yaml:"instance_fingerprint_env" json:"instanceFingerprintEnv"`
-	RecheckInterval              time.Duration           `yaml:"recheck_interval" json:"recheckInterval"`
-	GracePeriodOnValidationError time.Duration           `yaml:"grace_period_on_validation_error" json:"gracePeriodOnValidationError"`
-	FailOpenForDev               bool                    `yaml:"fail_open_for_dev" json:"failOpenForDev"`
+	Enabled                      bool                     `yaml:"enabled" json:"enabled"`
+	Path                         string                   `yaml:"path" json:"path"`
+	StatePath                    string                   `yaml:"state_path" json:"statePath"`
+	PublicKeys                   []LicensePublicKeyConfig `yaml:"public_keys" json:"publicKeys"`
+	Revocation                   LicenseRevocationConfig  `yaml:"revocation" json:"revocation"`
+	InstanceFingerprint          string                   `yaml:"instance_fingerprint" json:"instanceFingerprint"`
+	InstanceFingerprintFile      string                   `yaml:"instance_fingerprint_file" json:"instanceFingerprintFile"`
+	InstanceFingerprintEnv       string                   `yaml:"instance_fingerprint_env" json:"instanceFingerprintEnv"`
+	RecheckInterval              time.Duration            `yaml:"recheck_interval" json:"recheckInterval"`
+	GracePeriodOnValidationError time.Duration            `yaml:"grace_period_on_validation_error" json:"gracePeriodOnValidationError"`
+	FailOpenForDev               bool                     `yaml:"fail_open_for_dev" json:"failOpenForDev"`
 	enabledSet                   bool
+}
+
+// LicensePublicKeyConfig identifies an operator-owned Ed25519 verification key.
+// Its file contains only the base64 public key, never signing material.
+type LicensePublicKeyConfig struct {
+	KeyID string `yaml:"key_id" json:"keyId"`
+	Path  string `yaml:"path" json:"path"`
 }
 
 type LicenseRevocationConfig struct {

@@ -189,7 +189,15 @@ func New(cfg *Config) (*Service, error) {
 		bridgeSessions.Close()
 		return nil, fmt.Errorf("generate admin report cursor key: %w", err)
 	}
-	s.license, err = newLicenseManager(cfg.Server.License, cfg, defaultLicensePublicKeys())
+	licenseKeys, err := licenseVerificationKeys(cfg.Server.License)
+	if err != nil {
+		_ = quota.Close()
+		_ = logger.Close()
+		_ = usage.Close()
+		bridgeSessions.Close()
+		return nil, err
+	}
+	s.license, err = newLicenseManager(cfg.Server.License, cfg, licenseKeys)
 	if err != nil {
 		_ = quota.Close()
 		_ = logger.Close()

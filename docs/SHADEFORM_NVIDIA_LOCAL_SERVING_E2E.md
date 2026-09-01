@@ -1,168 +1,184 @@
-# Shadeform NVIDIA local-serving e2e
+# Shadeform k3s NVIDIA local-serving e2e
 
-**Audience:** operators with a Shadeform GPU Kubernetes instance  
-**Date:** 2026-08-31  
 **Profile:** `nvidia-local-serving`  
-**KV cache:** off (LMCache / Mooncake not installed)
+**KV cache:** off — do not install LMCache or Mooncake for this run.
 
-This runbook validates GenAI Smart Router against **in-cluster** OpenAI-compatible
-models on a Shadeform GPU node. Cloud/cluster authentication is a prerequisite.
-Do not run Shadeform login, kubeconfig bootstrap, or credential copy as part of
-the numbered steps below.
+This is the live, single-node k3s validation path for GenAI Smart Router. It uses
+only in-cluster OpenAI-compatible Services as router upstreams. Do not use Fleet,
+OpenRouter, OpenAI, Anthropic, a router CRD controller, or a cloud inference API.
 
 ## Preconditions
 
-1. `kubectl` already targets the Shadeform cluster (`kubectl get nodes` succeeds).
-2. Nodes expose allocatable `nvidia.com/gpu` **or** you will install the NVIDIA
-   GPU Operator at floor `v26.7.0` using
-   [`deploy/kubernetes/overlays/nvidia-local-serving/gpu-operator-values.yaml`](../deploy/kubernetes/overlays/nvidia-local-serving/gpu-operator-values.yaml).
-3. When the Shadeform node image already owns drivers/toolkit, set
-   `driver.enabled=false` and `toolkit.enabled=false` in those values (same rule
-   as EKS accelerated AMIs).
-4. A Metrum-issued `license.json` and a mode-`0600` runtime Secret plan exist.
-5. Router image is loaded or pushed to a registry the cluster can pull.
+Cloud and cluster authentication are prerequisites. Do not put login, MFA, or
+credential-copy steps in automation. Stop with **`authenticate first, then retry`**
+if a Shadeform API call, SSH connection, or `kubectl get nodes` is unauthorized.
 
-If `kubectl get nodes` fails, stop with: authenticate first, then retry.
-
-## Offline dry-run (CI-safe)
+Before provisioning, verify without printing values:
 
 ```bash
-make test-k8s-nvidia-local-serving
+python3 -c 'import json, os; v=os.environ.get("SHADEFORM_API_KEY") or json.load(open("env.json")).get("SHADEFORM_API_KEY"); assert v, "SHADEFORM_API_KEY missing"; print("SHADEFORM_API_KEY: present")'
+command -v k3sup kubectl helm jq curl
+test -r "${LICENSE_SIGNING_KEY_FILE:?LICENSE_SIGNING_KEY_FILE is required}"
 ```
 
-This renders the stack intent, asserts local Service DNS in `config.yaml`,
-asserts the router Deployment does not request GPUs, and runs
-`kubectl kustomize` on the overlay. It does not contact Shadeform.
+The router image must be pullable by the chosen node and have an immutable tag or
+digest. Keep the signed `license.json`, caller token, kubeconfig, runtime `env.json`,
+approved entitlement, and any registry credentials outside Git. The normal operator
+flow supplies `LICENSE_SIGNING_KEY_FILE` from the protected lifecycle intent; its
+private material MUST NOT enter Helm values, Kubernetes, the router image, or a
+generated safe summary.
 
-## Live steps
+A three-service model matrix needs **at least three schedulable NVIDIA GPUs**:
+one GPU-requesting vLLM Deployment per model. Confirm this before downloading any
+weights.
 
-### 1. Confirm GPU capacity
+## Hardware and model matrix
+
+Select in this order: B200, H200, then L40S. Record the exact Shadeform SKU,
+node GPU name, driver/CUDA, k3s version, topology, disk plan, and allocatable
+`nvidia.com/gpu` before deploying a model.
+
+| Hardware profile | Required models | Do not deploy |
+|---|---|---|
+| `b200` / `h200` | one Qwen3.8-class 20–40B instruct/chat model plus at least two current <=9B instruct/coder models | a matrix without the 20–40B primary |
+| `l40s` | three current small models: ~3B general, <=9B chat, <=9B coder | a 20–40B primary |
+
+The checked-in intent is the conservative `l40s` fallback and assumes four GPUs.
+For B200/H200, set `hardware_profile: b200` or `h200`, provide a 20–40B model with
+`model_size_billions` in that range, and retain two <=9B models. Blueprint render
+rejects an external Service URL, fewer than three models, and an invalid hardware
+matrix.
+
+## 1. Create the Shadeform host and install k3s
+
+Use the Shadeform instance-types API to select an *available* SKU/region and OS
+with enough GPUs. The following is intentionally parameterized so no account,
+SSH key, region, or image identifier enters Git:
 
 ```bash
-kubectl get nodes -o json | jq -r '
-  .items[] | "\(.metadata.name) allocatable_gpu=\(.status.allocatable["nvidia.com/gpu"] // "0")"
-'
+curl -fsS 'https://api.shadeform.ai/v1/instances/types?available=true&sort=price' \
+  -H "X-API-KEY: ${SHADEFORM_API_KEY}" |
+  jq -r '.instance_types[] | select(.gpu_type == "B200" or .gpu_type == "H200" or .gpu_type == "L40S") | select(.num_gpus >= 3) | [.cloud, .region, .shade_instance_type, .num_gpus, .hourly_price] | @tsv'
+
+# Create the selected candidate with a pre-registered SSH key. Capture only the
+# returned instance ID in the operator journal; never print the API key.
+curl -fsS -X POST 'https://api.shadeform.ai/v1/instances/create' \
+  -H "X-API-KEY: ${SHADEFORM_API_KEY}" -H 'Content-Type: application/json' \
+  --data '{"cloud":"<cloud>","region":"<region>","shade_instance_type":"<sku>","shade_cloud":true,"name":"issue-943-k3s-e2e","os":"<selected-os>","ssh_key_id":"<registered-key-id>"}'
 ```
 
-### 2. Install NVIDIA GPU Operator (when AMI does not own drivers)
+Poll `/v1/instances/<id>/info` until `status` is `active`, then install k3s with
+k3sup using the returned IP, user, and SSH port:
 
 ```bash
-helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
-helm repo update
-helm upgrade --install gpu-operator nvidia/gpu-operator \
-  --namespace gpu-operator --create-namespace \
-  --version v26.7.0 \
-  -f deploy/kubernetes/overlays/nvidia-local-serving/gpu-operator-values.yaml
-kubectl -n gpu-operator rollout status deploy/gpu-operator
+k3sup install \
+  --ip "$SHADEFORM_PUBLIC_IP" \
+  --user "$SHADEFORM_SSH_USER" \
+  --ssh-port "$SHADEFORM_SSH_PORT" \
+  --ssh-key "$SHADEFORM_SSH_KEY" \
+  --local-path "$HOME/.kube/shadeform-k3s.yaml" \
+  --context shadeform-k3s
+export KUBECONFIG="$HOME/.kube/shadeform-k3s.yaml"
+kubectl get nodes -o wide
+kubectl version --short
 ```
 
-Do **not** install LMCache or Mooncake for this test.
+Use a k3s CNI that enforces `NetworkPolicy`; do not claim local-only egress from a
+policy that the selected CNI does not enforce.
 
-### 3. Render blueprint and prepare runtime Secret
+## 2. Confirm NVIDIA plumbing
+
+Determine driver ownership from the node image. For an AMI/image-owned driver and
+toolkit set `driver_owned_by_ami: true`; otherwise let GPU Operator own both.
+Never enable DRA and the NVIDIA device plugin for the same device.
 
 ```bash
 metrum-genai-smartrouterctl blueprint render \
   --intent deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml \
   --out /tmp/shadeform-blueprint
+helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+helm repo update
+helm upgrade --install gpu-operator nvidia/gpu-operator \
+  --namespace gpu-operator --create-namespace --version v26.7.0 \
+  -f /tmp/shadeform-blueprint/overlays/nvidia-local-serving/gpu-operator-values.yaml
+kubectl -n gpu-operator rollout status deploy/gpu-operator
+kubectl get nodes -o json | jq -r '.items[] | "\(.metadata.name) allocatable_gpu=\(.status.allocatable["nvidia.com/gpu"] // "0")"'
+```
 
-# Blueprint also emits:
-#   charts/smart-llmrouter/  (Level-1 Helm chart)
-#   operator/                (Level-2 CRD scaffold when packaging.operator: true)
+Run `nvidia-smi` in a GPU debug Pod or on the node and record only GPU name,
+driver version, CUDA version, and allocatable count. **Fail** if the count is less
+than three for this concurrent three-service matrix.
 
-# Start from generated config; replace the placeholder caller hash:
+## 3. Render and deploy local services plus router
+
+The render output has two deployable units: a self-contained serving overlay and
+a Helm chart for the router. Its `config.yaml` supplies only `*.svc.cluster.local`
+provider URLs and one static local target for each model group.
+
+```bash
+# Create the caller file locally. The wrapper issues the license, creates the
+# namespace, atomically replaces the runtime Secret, and runs Helm.
 metrum-genai-smartrouterctl callers generate \
   --owner-user local-operator --project local --env dev \
-  --allow local-chat,local-coder \
+  --allow local-tiny,local-small-chat,local-small-coder \
   --token-out /tmp/shadeform-caller.token \
   --config /tmp/shadeform-blueprint/config.yaml --write
 
-# Build Secret locally (never commit). Keys: config.yaml, env.json, license.json.
-# env.json must define LOCAL_VLLM_API_KEY (even a local opaque value).
+kubectl apply -k /tmp/shadeform-blueprint/overlays/nvidia-local-serving
+scripts/helm_install_with_license.sh \
+  --kubeconfig "$KUBECONFIG" \
+  --namespace smart-llmrouter \
+  --release smart-llmrouter \
+  --chart /tmp/shadeform-blueprint/charts/smart-llmrouter \
+  --entitlement /secure/path/approved-entitlement.yaml \
+  --valid-for 12h \
+  --config /tmp/shadeform-blueprint/config.yaml \
+  --env-file /secure/path/local-env.json \
+  --image-repository smart-llmrouter \
+  --image-tag issue-943
 ```
 
-Confirm generated providers use only `*.svc.cluster.local` URLs.
+The router must have no `nvidia.com/gpu` request. Each vLLM Deployment must have
+one. Check all three `rollout status` commands before any smoke.
 
-### 4. Apply serving + router overlay
+## 4. Direct and router smokes
 
-```bash
-kubectl apply -k deploy/kubernetes/overlays/nvidia-local-serving
-# Mount the Secret created above into the router Deployment per base/secret.example.yaml.
-kubectl -n smart-llmrouter rollout status deploy/smart-llmrouter
-kubectl -n smart-llmrouter rollout status deploy/vllm-chat
-kubectl -n smart-llmrouter rollout status deploy/vllm-coder
-```
+For every vLLM Service, run `GET /v1/models` and a non-empty
+`POST /v1/chat/completions` with `max_tokens: 16`. Record only HTTP status, served
+model ID, and request ID. Do not retain tokens or prompt bodies.
 
-### 5. Direct serving smokes
-
-```bash
-kubectl -n smart-llmrouter port-forward svc/vllm-chat 18000:8000 &
-curl -fsS http://127.0.0.1:18000/v1/models
-curl -fsS http://127.0.0.1:18000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"local-chat","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16}'
-
-kubectl -n smart-llmrouter port-forward svc/vllm-coder 18001:8000 &
-curl -fsS http://127.0.0.1:18001/v1/models
-curl -fsS http://127.0.0.1:18001/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"local-coder","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16}'
-```
-
-### 6. Router smokes (local upstreams only)
+Port-forward the router and verify:
 
 ```bash
 kubectl -n smart-llmrouter port-forward svc/smart-llmrouter 18080:80 &
 TOKEN=$(cat /tmp/shadeform-caller.token)
-curl -fsS http://127.0.0.1:18080/readyz
+curl -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18080/readyz
 curl -fsS -H "Authorization: Bearer ${TOKEN}" http://127.0.0.1:18080/v1/models
-curl -fsS -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
-  http://127.0.0.1:18080/v1/chat/completions \
-  -d '{"model":"local-chat","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}'
-curl -fsS -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
-  http://127.0.0.1:18080/v1/chat/completions \
-  -d '{"model":"local-coder","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}'
+# Repeat non-stream chat for local-tiny, local-small-chat, local-small-coder.
+# Verify safe attempt metadata names the expected local provider/model only.
+# Repeat one model with stream:true and require a completed SSE stream.
+curl -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18080/v1/models
+# The unauthenticated status must be 401 or 403.
+# A caller request for an unallowed model group must return a 4xx.
 ```
 
-Record only safe scalars: HTTP status, model group, request id, selected
-provider/model names. Do not retain prompts, tokens, or Secret contents.
+## Validation, evidence, and teardown
 
-### 7. SQLite backup / restore CLI round-trip
-
-Stop or drain the router so SQLite is exclusive, then:
+Run before PR creation:
 
 ```bash
-metrum-genai-smartrouterctl usage backup \
-  --config /tmp/shadeform-blueprint/config.yaml \
-  --out /tmp/usage-backup.sqlite \
-  --confirm-offline
-
-metrum-genai-smartrouterctl usage restore \
-  --config /tmp/shadeform-blueprint/config.yaml \
-  --from /tmp/usage-backup.sqlite \
-  --confirm-offline
-
-# Then run router-migrate --action=verify-serving before serving again.
+make test-k8s-nvidia-local-serving
+make secret-check
+go test ./internal/smartrouterctl ./cmd/metrum-genai-smartrouterctl
 ```
 
-## Pass criteria
+Attach safe scalars only: worktree/branch, Shadeform SKU, GPU/driver/CUDA,
+allocatable GPUs, k3s version/topology, model HF and served IDs, Service DNS,
+GPU requests, image tags/digests, smoke HTTP statuses/request IDs, local selected
+target names, no-KV-cache confirmation, and `make`/test outcomes.
 
-| Check | Expected |
-|---|---|
-| GPU Operator / allocatable GPUs | At least one `nvidia.com/gpu` |
-| Serving Deployments | `vllm-chat` and `vllm-coder` Ready |
-| Router Deployment | Ready, **no** `nvidia.com/gpu` request |
-| Router config providers | Only cluster Service DNS |
-| `/v1/models` | `local-chat` and `local-coder` only for the test caller |
-| Chat smokes | HTTP 2xx for both groups |
-| KV cache | Not installed |
-| Usage backup | `integrity_ok: true` |
-
-## Cleanup
-
-```bash
-kubectl delete -k deploy/kubernetes/overlays/nvidia-local-serving
-# Optionally remove gpu-operator release if it was installed only for this test.
-rm -f /tmp/shadeform-caller.token
-```
-
-Do not commit kubeconfigs, Shadeform API keys, runtime Secrets, or token files.
+After a successful run, delete the serving overlay and router release, uninstall
+GPU Operator only when this run installed it, terminate the Shadeform instance,
+remove kubeconfig/token/runtime files, then remove the merged Git worktree. If a
+live prerequisite or smoke fails and cannot be fixed in scope, record safe failure
+evidence on the issue, leave the worktree, and do not merge a greenwashed PR.

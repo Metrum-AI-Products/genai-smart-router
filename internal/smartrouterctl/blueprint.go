@@ -152,12 +152,16 @@ func buildLocalConfig(intent *StackIntent) (*router.Config, error) {
 				Enable:          &enabled,
 				Driver:          intent.UsageDriver,
 				Path:            "/app/state/usage.sqlite",
-				MigrationPolicy: "deployment-job",
+				MigrationPolicy: "auto-safe",
 			},
 			License: router.LicenseConfig{
 				Enabled:   true,
 				Path:      "/app/config/license.json",
 				StatePath: "/app/state/license-state.json",
+				PublicKeys: []router.LicensePublicKeyConfig{{
+					KeyID: "self-managed",
+					Path:  "/app/config/license.pub",
+				}},
 			},
 			Upstream: router.UpstreamConfig{
 				TimeoutMS:        120000,
@@ -332,21 +336,19 @@ devicePlugin:
 }
 
 func writeOverlayKustomization(path string, intent *StackIntent) error {
-	resources := []string{"../../../base"}
+	resources := make([]string, 0, len(intent.ServingModels)*2+1)
 	for _, model := range intent.ServingModels {
 		resources = append(resources,
 			"serving/"+model.Name+"-deployment.yaml",
 			"serving/"+model.Name+"-service.yaml",
 		)
 	}
+	resources = append(resources, "networkpolicy-patch.yaml")
 	doc := map[string]any{
 		"apiVersion": "kustomize.config.k8s.io/v1beta1",
 		"kind":       "Kustomization",
 		"namespace":  intent.Namespace,
 		"resources":  resources,
-		"patches": []map[string]string{
-			{"path": "networkpolicy-patch.yaml"},
-		},
 	}
 	return writeYAML(path, doc)
 }
@@ -434,6 +436,8 @@ spec:
             - "0.0.0.0"
             - "--port"
             - "{{.Port}}"
+            - "--max-model-len"
+            - "{{.MaxModelLen}}"
           ports:
             - name: http
               containerPort: {{.Port}}
@@ -461,13 +465,14 @@ spec:
       targetPort: http
 `))
 	data := map[string]any{
-		"Name":      model.Name,
-		"Namespace": namespace,
-		"Image":     model.Image,
-		"HF":        hf,
-		"Served":    model.ServedModelID,
-		"Port":      model.Port,
-		"GPU":       model.GPUCount,
+		"Name":        model.Name,
+		"Namespace":   namespace,
+		"Image":       model.Image,
+		"HF":          hf,
+		"Served":      model.ServedModelID,
+		"Port":        model.Port,
+		"MaxModelLen": model.MaxModelLen,
+		"GPU":         model.GPUCount,
 	}
 	depPath := filepath.Join(dir, model.Name+"-deployment.yaml")
 	svcPath := filepath.Join(dir, model.Name+"-service.yaml")

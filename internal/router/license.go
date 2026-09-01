@@ -23,7 +23,7 @@ import (
 
 const (
 	LicenseProduct = "genai-smart-router"
-	LicenseIssuer  = "metrum-ai"
+	LicenseIssuer  = "self-managed"
 
 	licenseProduct = LicenseProduct
 	licenseIssuer  = LicenseIssuer
@@ -285,6 +285,36 @@ func DefaultLicensePublicKeys() []LicensePublicKey {
 		out[i].PublicKey = append(ed25519.PublicKey(nil), out[i].PublicKey...)
 	}
 	return out
+}
+func licenseVerificationKeys(cfg LicenseConfig) ([]LicensePublicKey, error) {
+	if len(cfg.PublicKeys) == 0 {
+		return defaultLicensePublicKeys(), nil
+	}
+	keys := make([]LicensePublicKey, 0, len(cfg.PublicKeys))
+	seen := make(map[string]struct{}, len(cfg.PublicKeys))
+	for _, configured := range cfg.PublicKeys {
+		keyID := strings.TrimSpace(configured.KeyID)
+		path := strings.TrimSpace(configured.Path)
+		if keyID == "" || path == "" {
+			return nil, fmt.Errorf("license public_keys require key_id and path")
+		}
+		if _, exists := seen[keyID]; exists {
+			return nil, fmt.Errorf("license public_keys duplicate key_id %q", keyID)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read license public key %q: %w", keyID, err)
+		}
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
+		if err != nil || len(decoded) != ed25519.PublicKeySize {
+			return nil, fmt.Errorf("license public key %q must be a base64 Ed25519 public key", keyID)
+		}
+		seen[keyID] = struct{}{}
+		keys = append(keys, LicensePublicKey{
+			KeyID: keyID, Algorithm: "ed25519", PublicKey: ed25519.PublicKey(decoded),
+		})
+	}
+	return keys, nil
 }
 
 func (m *licenseManager) start() {

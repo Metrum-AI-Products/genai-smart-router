@@ -35,7 +35,7 @@ func TestRouterLicenseCLIKeySignVerifyInspect(t *testing.T) {
 		IssuedAt:      time.Now().UTC().Add(-time.Hour),
 		NotBefore:     time.Now().UTC().Add(-time.Hour),
 		ExpiresAt:     time.Now().UTC().Add(time.Hour),
-		Issuer:        "metrum-ai",
+		Issuer:        router.LicenseIssuer,
 	}
 	payloadRaw, err := json.Marshal(payload)
 	if err != nil {
@@ -173,6 +173,43 @@ func TestRouterLicenseCLIIssueValidateRenewTopUpAndSafeSummary(t *testing.T) {
 	revocationSummary := runCLI(t, "revocation", "safe-summary", "--bundle", revocationPath)
 	if !strings.Contains(revocationSummary, "revset-cli") || !strings.Contains(revocationSummary, "lic_issue_test_001") || strings.Contains(revocationSummary, "value_base64") {
 		t.Fatalf("revocation summary wrong or unsafe: %s", revocationSummary)
+	}
+}
+func TestRouterLicenseCLIIssueAppliesValidity(t *testing.T) {
+	dir := t.TempDir()
+	pub := filepath.Join(dir, "license.pub")
+	priv := filepath.Join(dir, "license.key")
+	runCLI(t, "generate-keypair", "--public-key-out", pub, "--private-key-out", priv)
+
+	entitlementPath := filepath.Join(dir, "entitlement.json")
+	entitlement := `{
+  "license_id": "lic_validity_test",
+  "customer_id": "cust_validity_test",
+  "sku": "eval-72h",
+  "signing": {"key_id": "test-license-key"}
+}`
+	if err := os.WriteFile(entitlementPath, []byte(entitlement), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	licensePath := filepath.Join(dir, "license.json")
+	catalog := filepath.Join("..", "..", "docs", "enterprise-license-skus.json")
+	before := time.Now().UTC()
+	runCLI(t, "issue",
+		"--catalog", catalog,
+		"--entitlement", entitlementPath,
+		"--key", priv,
+		"--valid-for", "2h",
+		"--public-key", pub,
+		"--allow-unknown-runtime-key",
+		"--out", licensePath,
+	)
+	env, err := readEnvelope(licensePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validity := env.Payload.ExpiresAt.Sub(before)
+	if validity < 119*time.Minute || validity > 121*time.Minute {
+		t.Fatalf("license validity=%s, want 2h", validity)
 	}
 }
 

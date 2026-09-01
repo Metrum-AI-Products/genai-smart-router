@@ -3,6 +3,8 @@ kind: Kustomization
 namespace: smart-llmrouter
 resources:
   - ../../base
+  - serving/vllm-tiny-deployment.yaml
+  - serving/vllm-tiny-service.yaml
   - serving/vllm-chat-deployment.yaml
   - serving/vllm-chat-service.yaml
   - serving/vllm-coder-deployment.yaml
