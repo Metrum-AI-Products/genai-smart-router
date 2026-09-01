@@ -34,6 +34,12 @@ in-cluster models plus router), render
 `shadeform-nvidia-local-models-b200.example.yaml` (B200/H200) so generated
 providers use only cluster Service DNS names.
 
+On AMD Instinct clusters, use the manual
+`k3s-amd-instinct-local-serving` overlay for vLLM/ROCm workloads. The same
+in-cluster Service DNS and router model-group contract applies, serving Pods
+request `amd.com/gpu`, and the router requests no GPU. The current blueprint
+CLI does not emit the AMD overlay.
+
 If the internal service requires a bearer token, set `auth_scheme: bearer` and load `api_key` from the deployment environment. If access is enforced entirely by network policy, mTLS, or a service mesh, omit `api_key`; the router will not add an upstream authorization header.
 
 ## Upstream Server Requirements

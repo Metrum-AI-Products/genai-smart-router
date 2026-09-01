@@ -79,6 +79,7 @@ deploy/kubernetes/base/
 deploy/kubernetes/overlays/sqlite-bootstrap/
 deploy/kubernetes/overlays/example/
 deploy/kubernetes/overlays/nvidia-local-serving/
+deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/
 deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml
 ```
 
@@ -99,6 +100,24 @@ kubectl apply -k deploy/kubernetes/overlays/nvidia-local-serving
 
 Offline CI dry-run: `make test-k8s-nvidia-local-serving`. Live GPU-node steps stay in
 operator runbooks; cloud/cluster login is a prerequisite, never a CLI workflow step.
+
+### AMD Instinct local-serving profile
+
+For operator-controlled k3s or Kubernetes clusters with AMD Instinct GPUs, the
+manual `k3s-amd-instinct-local-serving` overlay deploys one vLLM/ROCm Service per
+router model group. Serving Pods request `amd.com/gpu`; the Smart Router Pod does
+not. Upstreams remain in-cluster `*.svc.cluster.local` endpoints, and LMCache,
+Mooncake, llm-d, and cloud LLM APIs are outside this profile.
+
+Start with the one-GPU `local-tiny` milestone before applying the three-model
+matrix. Use AMD GPU Operator `v1.5.1` or later in either device-plugin or DRA
+mode, never both for the same device. The node image may own the working driver;
+do not let the operator replace it unless that driver lifecycle is intentional.
+The cluster CNI must enforce NetworkPolicy before relying on the checked-in
+traffic restrictions.
+
+Offline validation: `make test-k8s-amd-instinct-local-serving`. The internal
+operator runbook is `docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md`.
 
 For a fresh PVC, set the same immutable image in `sqlite-bootstrap/job.yaml` and `example/patch-image.yaml`, then run:
 

@@ -1,0 +1,35 @@
+# AMD GPU Operator v1.5.1 values for a k3s node whose host image already owns
+# the working amdgpu/ROCm driver. Use the device plugin path, not DRA.
+node-feature-discovery:
+  enabled: true
+kmm:
+  enabled: false
+  watch: false
+remediation:
+  enabled: false
+  installCRDs: false
+crds:
+  defaultCR:
+    install: true
+    upgrade: false
+deviceConfig:
+  spec:
+    selector:
+      feature.node.kubernetes.io/amd-gpu: "true"
+    driver:
+      enable: false
+      blacklist: false
+    devicePlugin:
+      enableDevicePlugin: true
+      enableNodeLabeller: true
+      kubeletSocketPath: /var/lib/kubelet/device-plugins
+    metricsExporter:
+      enable: false
+    testRunner:
+      enable: false
+    configManager:
+      enable: false
+    draDriver:
+      enable: false
+    remediationWorkflow:
+      enable: false
