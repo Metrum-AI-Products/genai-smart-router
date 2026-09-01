@@ -1,3 +1,6 @@
+# Historical (superseded 2026-09-01): staging Make/CI delivery removed. Metrum
+# production uses Fleet. See docs/EKS_PRODUCTION_OPERATIONS.md.
+
 # EKS Staging CI/CD Foundation
 
 This internal runbook defines the repository-side gate for a signed,

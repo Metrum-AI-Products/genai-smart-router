@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -821,31 +822,24 @@ func (a *EKSTenantDeploymentAdapters) EnableHostname(ctx context.Context, p Tena
 		return "", ownershipError()
 	}
 	class := a.profile.IngressClassName
-	pathType := networkingv1.PathTypePrefix
-	ingress := &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: p.Namespace, Labels: a.labels(p)},
-		Spec: networkingv1.IngressSpec{
-			IngressClassName: &class,
-			TLS:              []networkingv1.IngressTLS{{Hosts: []string{p.Hostname}, SecretName: a.profile.TLSSecretName}},
-			Rules: []networkingv1.IngressRule{{
-				Host: p.Hostname,
-				IngressRuleValue: networkingv1.IngressRuleValue{HTTP: &networkingv1.HTTPIngressRuleValue{Paths: []networkingv1.HTTPIngressPath{{
-					Path: "/", PathType: &pathType,
-					Backend: networkingv1.IngressBackend{Service: &networkingv1.IngressServiceBackend{Name: name, Port: networkingv1.ServiceBackendPort{Number: 80}}},
-				}}}},
-			}},
-		},
-	}
+	desired := tenantDeploymentIngressSpec(class, p.IngressHostnames(a.profile.TLSSecretName), name)
 	ingresses := a.kube.NetworkingV1().Ingresses(p.Namespace)
 	existing, err := ingresses.Get(ctx, name, metav1.GetOptions{})
 	if err == nil {
 		if !owned(existing.Labels, p) {
 			return "", ownershipError()
 		}
-		return tenantDeploymentResourceRef(p.Namespace, "ingress", name), nil
+		existing.Labels = a.labels(p)
+		existing.Spec = desired
+		_, err = ingresses.Update(ctx, existing, metav1.UpdateOptions{})
+		return tenantDeploymentResourceRef(p.Namespace, "ingress", name), err
 	}
 	if !apierrors.IsNotFound(err) {
 		return "", err
+	}
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: p.Namespace, Labels: a.labels(p)},
+		Spec:       desired,
 	}
 	_, err = ingresses.Create(ctx, ingress, metav1.CreateOptions{})
 	return tenantDeploymentResourceRef(p.Namespace, "ingress", name), err
@@ -867,3 +861,42 @@ func (a *EKSTenantDeploymentAdapters) DisableHostname(ctx context.Context, p Ten
 
 // Compile-time guard: typed HPA API remains part of the adapter contract.
 var _ = autoscalingv2.HorizontalPodAutoscaler{}
+
+func tenantDeploymentIngressSpec(class string, hostnames []TenantDeploymentHostnameAlias, serviceName string) networkingv1.IngressSpec {
+	pathType := networkingv1.PathTypePrefix
+	rules := make([]networkingv1.IngressRule, 0, len(hostnames))
+	for _, host := range hostnames {
+		rules = append(rules, networkingv1.IngressRule{
+			Host: host.Hostname,
+			IngressRuleValue: networkingv1.IngressRuleValue{HTTP: &networkingv1.HTTPIngressRuleValue{Paths: []networkingv1.HTTPIngressPath{{
+				Path:     "/",
+				PathType: &pathType,
+				Backend: networkingv1.IngressBackend{
+					Service: &networkingv1.IngressServiceBackend{
+						Name: serviceName,
+						Port: networkingv1.ServiceBackendPort{Number: 80},
+					},
+				},
+			}}}},
+		})
+	}
+	secretHosts := make(map[string][]string)
+	for _, host := range hostnames {
+		secretHosts[host.TLSSecretName] = append(secretHosts[host.TLSSecretName], host.Hostname)
+	}
+	tlsEntries := make([]networkingv1.IngressTLS, 0, len(secretHosts))
+	for secretName, hosts := range secretHosts {
+		tlsEntries = append(tlsEntries, networkingv1.IngressTLS{
+			Hosts:      append([]string(nil), hosts...),
+			SecretName: secretName,
+		})
+	}
+	sort.Slice(tlsEntries, func(i, j int) bool {
+		return tlsEntries[i].SecretName < tlsEntries[j].SecretName
+	})
+	return networkingv1.IngressSpec{
+		IngressClassName: &class,
+		TLS:              tlsEntries,
+		Rules:            rules,
+	}
+}

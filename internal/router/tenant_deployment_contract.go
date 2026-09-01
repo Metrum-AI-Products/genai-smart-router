@@ -41,6 +41,7 @@ var (
 	configRevisionPattern     = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$`)
 	referencePattern          = regexp.MustCompile(`^aws-(ssm|secretsmanager):///[A-Za-z0-9/_.+=@-]{1,512}$`)
 	hostnameSuffixPattern     = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$`)
+	fqdnPattern               = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`)
 	secretValueLikePatterns   = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9]{12,}|xox[baprs]-[a-z0-9-]{12,}|akia[0-9a-z]{12,})(?:$|[^a-z0-9])`),
 		regexp.MustCompile(`(?i)-----BEGIN [A-Z ]*PRIVATE KEY-----`),
@@ -93,6 +94,14 @@ type TenantDeploymentLicense struct {
 	Validity   string `json:"validity" yaml:"validity"`
 }
 
+// TenantDeploymentHostnameAlias binds one approved exact hostname to a
+// namespace-local TLS Secret. Aliases are profile-owned policy; manifests and
+// intents cannot inject additional hostnames.
+type TenantDeploymentHostnameAlias struct {
+	Hostname      string `json:"hostname" yaml:"hostname"`
+	TLSSecretName string `json:"tls_secret_name" yaml:"tls_secret_name"`
+}
+
 // TenantDeploymentIntent is the one sealed input to Fleet deployment commands.
 // It binds protected references to one immutable requested lifecycle operation.
 // The document may contain references, but never the values they resolve to.
@@ -131,6 +140,7 @@ type TenantDeploymentProfile struct {
 	IngressClassName           string                          `json:"ingress_class_name" yaml:"ingress_class_name"`
 	IngressNamespace           string                          `json:"ingress_namespace" yaml:"ingress_namespace"`
 	TLSSecretName              string                          `json:"tls_secret_name" yaml:"tls_secret_name"`
+	ApprovedAliasHostnames     []TenantDeploymentHostnameAlias `json:"approved_alias_hostnames,omitempty" yaml:"approved_alias_hostnames,omitempty"`
 	DatabaseMode               string                          `json:"database_mode" yaml:"database_mode"`
 	ApprovedDatabaseProfile    string                          `json:"approved_database_profile" yaml:"approved_database_profile"`
 	RDSInstanceClass           string                          `json:"rds_instance_class" yaml:"rds_instance_class"`
@@ -143,36 +153,37 @@ type TenantDeploymentProfile struct {
 }
 
 type TenantDeploymentPlan struct {
-	Schema               string   `json:"schema"`
-	Mode                 string   `json:"mode"`
-	JobID                string   `json:"job_id"`
-	InstanceID           string   `json:"instance_id"`
-	ProfileID            string   `json:"profile_id"`
-	Environment          string   `json:"environment"`
-	AccountAlias         string   `json:"account_alias"`
-	Region               string   `json:"region"`
-	ClusterAlias         string   `json:"cluster_alias"`
-	CustomerID           string   `json:"customer_id"`
-	Stage                string   `json:"stage"`
-	Namespace            string   `json:"namespace"`
-	Hostname             string   `json:"hostname"`
-	ReleaseDigest        string   `json:"release_digest"`
-	ResourceProfile      string   `json:"resource_profile"`
-	StateProfile         string   `json:"state_profile"`
-	ComputeProfile       string   `json:"compute_profile"`
-	NodeClassAlias       string   `json:"node_class_alias,omitempty"`
-	Architecture         string   `json:"architecture,omitempty"`
-	CPURequest           string   `json:"cpu_request,omitempty"`
-	CPULimit             string   `json:"cpu_limit,omitempty"`
-	MemoryRequest        string   `json:"memory_request,omitempty"`
-	MemoryLimit          string   `json:"memory_limit,omitempty"`
-	ConfigRevision       string   `json:"config_revision"`
-	ManifestSHA256       string   `json:"manifest_sha256"`
-	DatabaseProfile      string   `json:"database_profile,omitempty"`
-	DatabaseID           string   `json:"database_id,omitempty"`
-	LicenseValidityHours int      `json:"license_validity_hours,omitempty"`
-	LicenseRefDigest     string   `json:"license_ref_digest,omitempty"`
-	Actions              []string `json:"actions"`
+	Schema               string                          `json:"schema"`
+	Mode                 string                          `json:"mode"`
+	JobID                string                          `json:"job_id"`
+	InstanceID           string                          `json:"instance_id"`
+	ProfileID            string                          `json:"profile_id"`
+	Environment          string                          `json:"environment"`
+	AccountAlias         string                          `json:"account_alias"`
+	Region               string                          `json:"region"`
+	ClusterAlias         string                          `json:"cluster_alias"`
+	CustomerID           string                          `json:"customer_id"`
+	Stage                string                          `json:"stage"`
+	Namespace            string                          `json:"namespace"`
+	Hostname             string                          `json:"hostname"`
+	AliasHostnames       []TenantDeploymentHostnameAlias `json:"alias_hostnames,omitempty"`
+	ReleaseDigest        string                          `json:"release_digest"`
+	ResourceProfile      string                          `json:"resource_profile"`
+	StateProfile         string                          `json:"state_profile"`
+	ComputeProfile       string                          `json:"compute_profile"`
+	NodeClassAlias       string                          `json:"node_class_alias,omitempty"`
+	Architecture         string                          `json:"architecture,omitempty"`
+	CPURequest           string                          `json:"cpu_request,omitempty"`
+	CPULimit             string                          `json:"cpu_limit,omitempty"`
+	MemoryRequest        string                          `json:"memory_request,omitempty"`
+	MemoryLimit          string                          `json:"memory_limit,omitempty"`
+	ConfigRevision       string                          `json:"config_revision"`
+	ManifestSHA256       string                          `json:"manifest_sha256"`
+	DatabaseProfile      string                          `json:"database_profile,omitempty"`
+	DatabaseID           string                          `json:"database_id,omitempty"`
+	LicenseValidityHours int                             `json:"license_validity_hours,omitempty"`
+	LicenseRefDigest     string                          `json:"license_ref_digest,omitempty"`
+	Actions              []string                        `json:"actions"`
 	runtimeBundleRef     string
 	licenseRequestRef    string
 	computePolicy        TenantComputeProfile
@@ -343,6 +354,10 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 		return TenantDeploymentPlan{}, errors.New("customer_id must be a DNS label namespace")
 	}
 	hostname := namespace + "." + profile.HostnameSuffix
+	aliasHostnames, err := resolveTenantAliasHostnames(profile, hostname)
+	if err != nil {
+		return TenantDeploymentPlan{}, err
+	}
 	manifestBytes, err := json.Marshal(manifest)
 	if err != nil {
 		return TenantDeploymentPlan{}, fmt.Errorf("canonicalize deployment manifest: %w", err)
@@ -361,7 +376,7 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 		JobID: "job-" + jobSuffix, InstanceID: "instance-" + instanceSuffix,
 		ProfileID: profile.ProfileID, Environment: profile.Environment, AccountAlias: profile.AccountAlias,
 		Region: profile.Region, ClusterAlias: profile.ClusterAlias, CustomerID: manifest.CustomerID,
-		Stage: manifest.Stage, Namespace: namespace, Hostname: hostname,
+		Stage: manifest.Stage, Namespace: namespace, Hostname: hostname, AliasHostnames: aliasHostnames,
 		ReleaseDigest: profile.ApprovedReleaseDigest, ResourceProfile: manifest.ResourceProfile,
 		StateProfile: manifest.StateProfile, ComputeProfile: computeName,
 		NodeClassAlias: computePolicy.NodeClassAlias, Architecture: computePolicy.Architecture,
@@ -617,8 +632,8 @@ func validateTenantDeploymentProfile(profile TenantDeploymentProfile, raw []byte
 			return errors.New("rds_proxy_disabled must be true")
 		}
 	}
-	if profile.Environment != "nonproduction" {
-		return errors.New("production profiles are not accepted by the customer EKS lifecycle")
+	if profile.Environment != "nonproduction" && profile.Environment != "production" {
+		return errors.New("environment must be nonproduction or production")
 	}
 	if !awsRegionPattern.MatchString(profile.Region) {
 		return errors.New("region must be an AWS region identifier")
@@ -642,6 +657,9 @@ func validateTenantDeploymentProfile(profile TenantDeploymentProfile, raw []byte
 		if err := validateTenantComputeProfile(name, policy); err != nil {
 			return err
 		}
+	}
+	if _, err := validateApprovedAliasHostnames(profile.ApprovedAliasHostnames, profile.HostnameSuffix); err != nil {
+		return err
 	}
 	return rejectSecretShapedDeploymentData(raw)
 }
@@ -698,4 +716,102 @@ func truncateDNSLabel(value string, max int) string {
 		return value
 	}
 	return strings.TrimRight(value[:max], "-")
+}
+
+func validateFQDN(name, host string) error {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || !fqdnPattern.MatchString(host) || strings.Contains(host, "..") || strings.Contains(host, "*") {
+		return fmt.Errorf("%s must be an exact lowercase DNS hostname", name)
+	}
+	return nil
+}
+
+func validateApprovedAliasHostnames(aliases []TenantDeploymentHostnameAlias, hostnameSuffix string) ([]TenantDeploymentHostnameAlias, error) {
+	if len(aliases) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{}, len(aliases))
+	normalized := make([]TenantDeploymentHostnameAlias, 0, len(aliases))
+	suffix := strings.ToLower(strings.TrimSpace(hostnameSuffix))
+	for i, alias := range aliases {
+		field := fmt.Sprintf("approved_alias_hostnames[%d]", i)
+		if err := validateFQDN(field+".hostname", alias.Hostname); err != nil {
+			return nil, err
+		}
+		if err := validateDeploymentID(field+".tls_secret_name", alias.TLSSecretName); err != nil {
+			return nil, err
+		}
+		host := strings.ToLower(strings.TrimSpace(alias.Hostname))
+		if strings.HasSuffix(host, "."+suffix) {
+			return nil, fmt.Errorf("%s must not use the profile hostname suffix %q", field+".hostname", suffix)
+		}
+		if _, ok := seen[host]; ok {
+			return nil, fmt.Errorf("%s duplicates hostname %q", field, host)
+		}
+		seen[host] = struct{}{}
+		normalized = append(normalized, TenantDeploymentHostnameAlias{
+			Hostname:      host,
+			TLSSecretName: alias.TLSSecretName,
+		})
+	}
+	return normalized, nil
+}
+
+func resolveTenantAliasHostnames(profile TenantDeploymentProfile, primaryHostname string) ([]TenantDeploymentHostnameAlias, error) {
+	aliases, err := validateApprovedAliasHostnames(profile.ApprovedAliasHostnames, profile.HostnameSuffix)
+	if err != nil {
+		return nil, err
+	}
+	primary := strings.ToLower(strings.TrimSpace(primaryHostname))
+	for _, alias := range aliases {
+		if alias.Hostname == primary {
+			return nil, errors.New("approved alias hostnames must not duplicate the primary hostname")
+		}
+	}
+	return aliases, nil
+}
+
+// IngressHostnames returns the primary hostname plus approved aliases with TLS Secret names.
+func (p TenantDeploymentPlan) IngressHostnames(primaryTLSSecret string) []TenantDeploymentHostnameAlias {
+	hosts := make([]TenantDeploymentHostnameAlias, 0, 1+len(p.AliasHostnames))
+	hosts = append(hosts, TenantDeploymentHostnameAlias{
+		Hostname:      p.Hostname,
+		TLSSecretName: primaryTLSSecret,
+	})
+	hosts = append(hosts, p.AliasHostnames...)
+	return hosts
+}
+
+func aliasHostnamesForStatus(aliases []TenantDeploymentHostnameAlias) []string {
+	if len(aliases) == 0 {
+		return nil
+	}
+	out := make([]string, len(aliases))
+	for i, alias := range aliases {
+		out[i] = alias.Hostname
+	}
+	return out
+}
+
+func encodeTenantAliasHostnames(aliases []TenantDeploymentHostnameAlias) (string, error) {
+	if len(aliases) == 0 {
+		return "", nil
+	}
+	raw, err := json.Marshal(aliases)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func decodeTenantAliasHostnames(raw string) ([]TenantDeploymentHostnameAlias, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var aliases []TenantDeploymentHostnameAlias
+	if err := json.Unmarshal([]byte(raw), &aliases); err != nil {
+		return nil, errors.New("stored alias hostnames are invalid")
+	}
+	return aliases, nil
 }

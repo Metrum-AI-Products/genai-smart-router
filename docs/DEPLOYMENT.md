@@ -146,13 +146,10 @@ fallback) or `shadeform-nvidia-local-models-b200.example.yaml` (B200/H200).
 Offline gate: `make test-k8s-nvidia-local-serving`. Live Shadeform steps:
 `docs/SHADEFORM_NVIDIA_LOCAL_SERVING_E2E.md`.
 
-The Metrum-managed EKS validation environment has a separate, private runbook
-at `docs/EKS_STAGING_MIGRATION.md` and a deployment-specific overlay under
-`deploy/kubernetes/overlays/metrum-staging/`. They preserve the existing EC2
-Compose deployment as production authority while validating the Kubernetes
-overlay, fresh RDS database, wildcard ingress, and staging-only caller access.
-They are not product defaults, package contents, or a production cutover
-procedure.
+Metrum engineering production runs on the Fleet tenant documented in
+`docs/EKS_PRODUCTION_OPERATIONS.md`. Generic Kubernetes samples remain under
+`deploy/kubernetes/base/` and `deploy/kubernetes/overlays/example/`. Historical
+staging notes: `docs/EKS_STAGING_MIGRATION.md` (archived 2026-09-01).
 
 ## Example Deployment Host
 

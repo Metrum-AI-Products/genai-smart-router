@@ -1,0 +1,34 @@
+# Example protected Fleet profile for Metrum production (llm-api tenant).
+# Store the live document in SSM; never commit secrets or runtime bundles.
+api_version: metrum.ai/smartrouter-profile/v1
+profile_id: metrum-production
+environment: production
+account_alias: metrum
+region: us-east-1
+cluster_alias: metrum
+namespace_prefix: router
+hostname_suffix: apps.metrum.ai
+approved_release_digest: 121701826775.dkr.ecr.us-east-1.amazonaws.com/smart-llmrouter@sha256:REPLACE_WITH_IMMUTABLE_DIGEST
+approved_resource_profile: small
+approved_state_profile: sqlite-rwo-small
+approved_compute_profiles:
+  t3a.medium:
+    architecture: amd64
+    cpu_request: "500m"
+    cpu_limit: "2"
+    memory_request: 512Mi
+    memory_limit: 2Gi
+    node_class_alias: t3a.medium
+    allow_shared_worker_fallback: true
+lifecycle_approval_issuer: fleet-lifecycle-admin
+lifecycle_approval_public_key: REPLACE_WITH_BASE64_ED25519_PUBLIC_KEY
+storage_class: gp3
+state_storage_gib: 20
+ingress_class_name: nginx
+ingress_namespace: ingress-nginx
+tls_secret_name: apps-metrum-ai-wildcard-tls
+approved_alias_hostnames:
+  - hostname: llm-api-engg.metrum.ai
+    tls_secret_name: llm-api-metrum-ai-tls
+  - hostname: llm-api.metrum.ai
+    tls_secret_name: llm-api-metrum-ai-tls

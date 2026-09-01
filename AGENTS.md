@@ -69,7 +69,11 @@ These instructions apply to the whole repository.
 - Self-hosted upstream changes or examples require both admin and proxy-user docs. Cover enterprise-hosted vLLM/SGLang-style OpenAI-compatible services, private `/v1` base URLs, served model IDs, parser/chat-template requirements, tool-call behavior, caller-visible model groups, direct upstream smokes, router smokes, and rollback/operational notes. Verify current upstream documentation online before documenting vLLM, SGLang, or similar fast-moving serving frameworks.
 - Public API examples in `docs-site/` must be tested before deployment. For Python examples, use `uv` in an ignored temporary project under `tmp/`, run the exact documented dependency/install flow, and keep docs generic with placeholder router tokens.
 - Caller-token or model-group access behavior changes must keep the public Available Models And Access docs current. `/v1/models` is the caller-facing source of truth for allowed router model groups; examples that require a model value should link users there instead of assuming they already know an allowed group name.
-- Harbor benchmark traffic in production should use the reusable production caller `harbor-reusable-prod`, whose raw token is stored only on the production host at `/opt/smart-llmrouter/compose/ROUTER_TOKEN_HARBOR.txt`. This caller is intentionally allowed to all deployed model groups so Harbor can compare groups without creating temporary per-run API keys. Do not generate one caller token per `{agent, model_group}` for routine Harbor runs; use the run matrix, client, model group, timestamps, and usage-report filters to separate results. Temporary Harbor keys are acceptable only for isolated investigations and must be removed from production config and quota state after the run.
+- Harbor benchmark traffic in production should use the reusable production caller
+  `harbor-reusable-prod` granted on the Fleet tenant with access to all deployed
+  model groups. Do not generate one caller token per `{agent, model_group}` for
+  routine Harbor runs; use the run matrix, client, model group, timestamps, and
+  usage-report filters to separate results.
 
 ## Local Work-Item Tracking And Dashboard
 
@@ -239,21 +243,26 @@ These instructions apply to the whole repository.
 
 ## Production Host
 
-- This is the current Metrum-managed engineering deployment, not a product-default endpoint. GenAI Smart Router can also be licensed for on-prem or enterprise-cloud deployments with different hostnames, model group names, provider sets, and caller policies.
-- Host: `ubuntu@54.84.22.33` (current public IPv4 of `llm-api-jun2026`; do not stop/start the instance as part of a package upgrade — that changes the address unless an Elastic IP is attached)
-- SSH key: `~/.ssh/chetan-jun-2026.pem`
-- Public URL: `https://llm-api-engg.metrum.ai`
-- Compose directory: `/opt/smart-llmrouter/compose`
-- Runtime config: `/opt/smart-llmrouter/compose/config/config.yaml`
-- Provider keys: `/opt/smart-llmrouter/compose/config/env.json`
-- Router token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN.txt`
+- Metrum engineering production runs on the Fleet SQLite tenant `llm-api` in the
+  shared `metrum` EKS cluster (`us-east-1`). Public URLs:
+  `https://llm-api-engg.metrum.ai`, `https://llm-api.metrum.ai`, and
+  `https://llm-api.apps.metrum.ai`.
+- Lifecycle CLI: `metrum-genai-smartrouter-fleetctl customer` with protected SSM
+  profile and Secrets Manager runtime bundle refs.
+- Operator runbook: `docs/EKS_PRODUCTION_OPERATIONS.md`.
+- Docker Compose remains a **customer deployment option** only; do not use Compose
+  for Metrum production changes.
 
 Useful commands:
 
 ```bash
-rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@54.84.22.33 'cd /opt/smart-llmrouter/compose && sudo docker compose ps'
 rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
+metrum-genai-smartrouter-fleetctl customer status --customer-id llm-api
+metrum-genai-smartrouter-fleetctl customer smoke --customer-id llm-api
 ```
+
+The retained EC2 Compose host may remain stopped during the rollback window.
+Do not run EC2 and EKS as concurrent writers.
 
 ## EKS Delivery Boundaries
 
@@ -269,9 +278,8 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
   default; only the first disposable non-production E2E may attach RDS through
   a validated external admission. `metrum-smartrouterctl` is a one-release
   rename notice only.
-- `scripts/eks_delivery.py` and the `eks-*` Make targets are source-only,
-  target-policy-bound staging delivery controls. They are not a generic
-  customer CLI and must not be presented or packaged as the #555 provisioner.
+- Metrum production uses Fleet EKS (`docs/EKS_PRODUCTION_OPERATIONS.md`). Generic
+  tenant discovery helpers remain under `eks-discover` and related Make targets.
 - #555 is the sole implementation epic for one-command customer EKS deployment.
   Extend `metrum-genai-smartrouter-fleetctl`; do not create a second provisioner, registry,
   lifecycle, activation authority, or smoke framework. The public lifecycle is
@@ -308,114 +316,66 @@ rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
   an unreviewed rehearsal is forbidden. See
   `docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md` for the recorded self-review
   checklist.
-- Production cutover keeps #518's stricter protected gates. Self-review authorizes non-production customer-like targets only.
+- Production cutover to Fleet EKS for Metrum engineering completed 2026-09-01.
+  Further production changes use the Fleet lifecycle and
+  `docs/EKS_PRODUCTION_OPERATIONS.md`.
 
-### Current Metrum staging boundary
+### Current Metrum production boundary
 
-- `https://smartrouter.apps.metrum.ai` is a one-replica staging-only EKS deployment. It must not receive ordinary production traffic or become a production DNS target; the existing Compose deployment remains production authority during validation.
-- The staging caller token is in Secrets Manager at `smartrouter/staging/caller-token`; the browser-admin credential is separate at `smartrouter/staging/basic-admin`. Never print either. Only the bcrypt browser-admin hash belongs in the runtime Secret.
-- Staging uses the `smartrouter-gp3` state PVC, a dedicated caller, the configured license fingerprint, and a fresh private encrypted single-AZ `db.t4g.medium` RDS PostgreSQL 18.3 database. Do not copy EC2 usage or file-backed state into staging.
-- Runtime `config.yaml`, `env.json`, `license.json`, the RDS CA bundle, and `ROUTER_USAGE_DB_DSN` belong only in Kubernetes Secret `smartrouter-staging-runtime`; never commit, render, log, or paste their values.
-- The reviewed overlay is `deploy/kubernetes/overlays/metrum-staging`. Follow `docs/EKS_STAGING_MIGRATION.md`; verify namespace RBAC, `nginx` ingress, namespace-local wildcard TLS, the `smartrouter-gp3` StorageClass, RDS TLS, and exact trusted-proxy CIDRs. The current ingress pod range is `192.168.0.0/16`, never the legacy Compose-only `172.18.0.0/16`.
-- Do not scale staging horizontally while quota and license state are file-backed. Production EKS cutover requires separate approval, EC2 write freeze, logical PostgreSQL migration/reconciliation, DNS transition, client acceptance, and a rollback window.
+- Tenant `llm-api` in namespace `llm-api` on cluster `metrum` is the sole writer.
+- SQLite on the tenant PVC holds usage, quota, and license state; do not scale
+  horizontally while file-backed quota/license remain on SQLite.
+- Protected profile `environment: production` with `approved_alias_hostnames` for
+  `llm-api-engg.metrum.ai` and `llm-api.metrum.ai`.
+- Trusted ingress proxy CIDR: `192.168.0.0/16`, never the legacy Compose-only
+  `172.18.0.0/16`.
+- Dedicated Postgres for Metrum production is deferred; SQLite is authoritative.
 
 ## Production Config Update Process
 
-For config-only production changes:
+For Metrum Fleet production config changes:
 
-1. Update `config.example.yaml`.
-2. Update ignored `config.production.yaml` locally.
-3. Validate both with Python/YAML and confirm no forbidden references remain.
-4. Run `rtk go test ./...`.
-5. On the host, back up and patch `/opt/smart-llmrouter/compose/config/config.yaml` with a structured YAML script.
-6. Run:
-   - `sudo docker compose config >/dev/null`
-   - `sudo docker compose restart router`
-   - `sudo docker compose ps router`
-7. Verify:
-   - `curl -fsS https://llm-api-engg.metrum.ai/readyz`
-   - local `config.production.yaml` SHA-256 matches the remote config SHA-256
-   - an authenticated router smoke test hits the expected route/model when relevant
-8. Update `deployment.md` or docs if the deployed image, model groups, operational process, or validated targets changed.
-9. Search for stale deployment facts such as old image tags, removed models, and outdated route descriptions.
+1. Update `config.example.yaml` when the change affects reference config.
+2. Update the protected runtime bundle (`config.yaml` + `env.json`) in Secrets
+   Manager for tenant `llm-api`.
+3. Validate with structured YAML parsing and
+   `rtk python3 scripts/prepare_fleet_production_bundle.py`.
+4. Run `rtk go test ./cmd/... ./internal/...`.
+5. Deploy through a new signed immutable Fleet intent (`customer update-config`
+   or `customer deploy` per `docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md`).
+6. Verify `https://llm-api-engg.metrum.ai/readyz` and targeted authenticated smokes.
+7. Update `deployment.md`.
 
-Never edit production config without a timestamped backup:
-
-```text
-config/config.yaml.bak.<UTC timestamp>
-```
+Customer Docker Compose config updates remain documented in
+`docs/PRODUCTION_RUNBOOK.md` (Compose section) and `docs/DOCKER_DEPLOYMENT.md`.
 
 ## Production Package Deployment Process
 
-For code changes that affect runtime behavior or embedded hosted docs:
+For Metrum Fleet production image updates:
 
-0. If local production-impacting work has diverged from `origin/main`, reconcile it first on the deployment branch, resolve conflicts by preserving both intended feature sets, and run the full verification set after reconciliation. Do not package from an unmerged branch or a dirty worktree. Stash unrelated local edits before building and restore them only after deployment verification.
-1. Run relevant tests:
-   - Prefer `rtk go test ./cmd/... ./internal/...` for router code.
-   - `rtk go test ./...` may fail on generated Harbor/job artifact directories; if so, report that separately and do not treat it as a router package failure.
-   - For public docs examples, run the exact curl/Python commands against the intended endpoint using ignored local credentials.
+1. Reconcile with `origin/main`; run `rtk go test ./cmd/... ./internal/...`.
 2. Run `rtk make docs-build` when `docs-site/` changes.
-3. Commit source/docs changes before packaging so `VERSION=$(git describe --tags --always --dirty)` is a stable commit tag and not `-dirty`.
-4. Build both Docker package architectures:
-   - `rtk make package-docker`
-   Package targets copy Markdown only from `scripts/package_docs_allowlist.txt` and run package-content validation. Do not add private production runbooks, private host/IP markers, SSH usernames/key paths, live production compose config/env/token paths, raw router tokens, token hashes, or provider keys to release artifacts.
-5. Upgrade the live Compose install with the deterministic script. Do not hand-write a remote unpacker, do not `mv ${INNER}/*` or any glob move from `/`, do not stop or reboot the Compose EC2 instance, and do not use Fleet or EKS scripts for this host.
+3. Commit before building so `VERSION` is not `-dirty`.
+4. Build and push the immutable image to the Metrum ECR repository; update
+   `approved_release_digest` in the protected production profile.
+5. Deploy with a signed Fleet intent (`customer deploy`) per
+   `docs/EKS_PRODUCTION_OPERATIONS.md`.
+6. Verify `/readyz`, `/version`, hosted docs, authenticated API smokes, and
+   Codex/Claude Code CLI smokes when client compatibility changed.
+7. Update `deployment.md`.
 
-```bash
-rtk python3 scripts/compose_package_upgrade.py plan \
-  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
-  --install-root /opt/smart-llmrouter
-
-rtk python3 scripts/compose_package_upgrade.py apply \
-  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
-  --install-root /opt/smart-llmrouter \
-  --backup-suffix <purpose> \
-  --remote ubuntu@54.84.22.33 \
-  --ssh-identity ~/.ssh/chetan-jun-2026.pem
-```
-
-   The script unpacks with `tar --strip-components=1`, copies live `compose/config`, `compose/state`, `compose/logs`, `compose/.env`, and `compose/ROUTER_TOKEN*.txt` from the timestamped backup, restores UID/GID `65532` on those runtime dirs, pins `SMART_LLMROUTER_VERSION`, loads the image, and runs `docker compose up -d`. If `compose/.env` has `ROUTER_USAGE_DB_DSN`, it includes `docker-compose.postgres-localhost.yml`. Do not deploy a package that requires a usage-schema deployment-job onto this Postgres host unless `docs/DATA_MIGRATIONS.md` has been completed while the router is stopped. When the live Postgres usage schema cannot be adopted and historical usage may be discarded, do not hand-edit volumes over SSH; use `scripts/compose_clean_cutover.py` below. Docs-only hosted-docs refreshes must be packaged from the currently serving production commit plus the docs change, not from a later `main` that includes unrelated schema work.
-6. If the upgrade must be reversed, use the same script:
-
-```bash
-rtk python3 scripts/compose_package_upgrade.py rollback \
-  --backup /opt/smart-llmrouter.backup-<purpose>-<UTC timestamp> \
-  --install-root /opt/smart-llmrouter \
-  --remote ubuntu@54.84.22.33 \
-  --ssh-identity ~/.ssh/chetan-jun-2026.pem
-```
-
-6b. For a deliberate empty Compose usage store (keep callers, model groups, provider keys, license/quota state, and Caddy; discard usage/reports/ledger after restic), package only from a clean `origin/main` worktree, then:
-
-```bash
-rtk python3 scripts/compose_clean_cutover.py plan \
-  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
-  --install-root /opt/smart-llmrouter
-
-rtk python3 scripts/compose_clean_cutover.py apply \
-  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
-  --install-root /opt/smart-llmrouter \
-  --backup-suffix <purpose> \
-  --confirm-reset-usage reset-postgres-data \
-  --remote ubuntu@54.84.22.33 \
-  --ssh-identity ~/.ssh/chetan-jun-2026.pem
-```
-
-   The script `pg_dump`s the live usage DB and restic-archives it with stable tags, stops the router, applies the package with `--skip-compose`, removes only the Compose `postgres_data` volume, waits for a healthy empty Postgres, runs `docs/DATA_MIGRATIONS.md` (`plan` → `apply` → `resume` `historical-usage-validation-v1` until `validated` → `verify-serving` → `status`) with `--driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN`, then `docker compose up -d`. It never `docker compose down` with volumes, never removes Caddy volumes, never stops or reboots the EC2 instance, and never invokes Fleet or EKS. Restic restore of the dump is forensics; serving rollback is `compose_package_upgrade.py rollback` plus a new empty Postgres volume and a re-run of the empty-DB gate.
-7. Verify health, route behavior, and hosted docs when relevant:
-   - `curl -fsS https://llm-api-engg.metrum.ai/readyz`
-   - `curl -fsS https://llm-api-engg.metrum.ai/docs/...`
-   - authenticated `/v1/models` or completion smoke for API compatibility
-8. Clean up production deployment leftovers after verification: remove uploaded package/config files from the host, remove superseded temporary unpack directories, keep only intentional timestamped backups, and run `sudo docker system prune -f` when stale images/build cache/containers have accumulated and the current deployment is healthy.
-9. Update `deployment.md` with image/package tag, source commit, backup path when useful, cleanup performed, and validation results.
-10. Commit the deployment note after production verification.
+Customer Docker Compose package deployment remains in `docs/DOCKER_DEPLOYMENT.md`
+using `scripts/compose_package_upgrade.py` for self-hosted installs only.
 
 ## Router Smoke Tests
 
-Authenticated production chat smoke:
+Authenticated production chat smoke (use a deployment-defined caller token from the protected store):
 
 ```bash
-rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@54.84.22.33 'cd /opt/smart-llmrouter/compose && TOKEN=$(sudo cat ROUTER_TOKEN.txt) && curl -fsS https://llm-api-engg.metrum.ai/v1/chat/completions -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d "{\"model\":\"high\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply OK only.\"}],\"max_tokens\":16,\"stream\":false}"'
+rtk curl -fsS https://llm-api-engg.metrum.ai/v1/chat/completions \
+  -H "Authorization: Bearer ${ROUTER_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"high","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}'
 ```
 
 Use the current deployment's deterministic failover-first check group, for example `high` on the current Metrum-managed engineering deployment, and use repeated calls for weighted deployment-defined groups. When validating weighted groups that include reasoning-heavy OpenRouter targets, include a realistic `max_tokens` budget; a `max_tokens:16` smoke can produce false failures for GLM-style models that spend the completion budget on reasoning before emitting final content.
