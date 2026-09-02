@@ -37,6 +37,10 @@ BINARY_PACKAGE_FILES = {
     "config/enterprise-license-skus.json",
     "config/scripts/router.ts",
     "caddy/Caddyfile",
+    "LICENSE",
+    "NOTICE",
+    "THIRD_PARTY_NOTICES.md",
+    "MODEL_LICENSES.md",
 }
 DOCKER_PACKAGE_FILES = {
     "compose/docker-compose.yml",
@@ -47,6 +51,10 @@ DOCKER_PACKAGE_FILES = {
     "config/config.example.yaml",
     "config/env.example.json",
     "config/scripts/router.ts",
+    "LICENSE",
+    "NOTICE",
+    "THIRD_PARTY_NOTICES.md",
+    "MODEL_LICENSES.md",
 }
 PACKAGE_BINARIES = {
     "bin/router",

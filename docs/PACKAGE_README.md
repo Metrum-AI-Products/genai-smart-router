@@ -25,6 +25,10 @@ Binary packages include:
 - `config/enterprise-license-skus.json`
 - `config/scripts/router.ts`
 - `caddy/Caddyfile`
+- `LICENSE`
+- `NOTICE`
+- `THIRD_PARTY_NOTICES.md`
+- `MODEL_LICENSES.md`
 - `docs/`
 
 Docker Compose packages include:
@@ -39,6 +43,10 @@ Docker Compose packages include:
 - `config/scripts/router.ts`
 - `images/smart-llmrouter-<version>-linux-<arch>.tar`
 - `docs/`
+- `LICENSE`
+- `NOTICE`
+- `THIRD_PARTY_NOTICES.md`
+- `MODEL_LICENSES.md`
 
 The saved Docker image includes `/app/bin/router-migrate`, customer-local
 `/app/bin/metrum-genai-smartrouterctl`, and one-release `/app/bin/smartrouterctl`

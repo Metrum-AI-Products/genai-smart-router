@@ -155,6 +155,12 @@ def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> di
         f"{root}/config/scripts/router.ts": "export function route() {}\n",
         f"{root}/caddy/Caddyfile": ":80\n",
     }
+    files.update(
+        {
+            f"{root}/{name}": "license notice\n"
+            for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "MODEL_LICENSES.md")
+        }
+    )
     for doc in PACKAGE_DOCS:
         files[f"{root}/docs/{doc}"] = "package-safe docs\n"
     return files
@@ -209,6 +215,12 @@ def docker_package_files(root: str = "smart-llmrouter-v1.0.0-docker-linux-amd64"
         f"{root}/config/scripts/router.ts": "export function route() {}\n",
         f"{root}/images/smart-llmrouter-v1.0.0-linux-amd64.tar": docker_image_tar(),
     }
+    files.update(
+        {
+            f"{root}/{name}": "license notice\n"
+            for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "MODEL_LICENSES.md")
+        }
+    )
     for doc in PACKAGE_DOCS:
         files[f"{root}/docs/{doc}"] = "package-safe docs\n"
     return files

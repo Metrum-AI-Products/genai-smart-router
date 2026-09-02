@@ -28,6 +28,10 @@ FROM scratch
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 WORKDIR /app
 COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /src/LICENSE /LICENSE
+COPY --from=build /src/NOTICE /NOTICE
+COPY --from=build /src/THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
+COPY --from=build /src/MODEL_LICENSES.md /MODEL_LICENSES.md
 COPY --from=build /out/router /app/bin/router
 COPY --from=build /out/router-token-gen /app/bin/router-token-gen
 COPY --from=build /out/router-usage-report /app/bin/router-usage-report

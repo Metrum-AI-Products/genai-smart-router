@@ -439,7 +439,10 @@ package-one-no-docs: capability-smoke-unit
 	cp env.example.json "$${pkg_dir}/config/env.example.json"; \
 	cp docs/enterprise-license-skus.json "$${pkg_dir}/config/enterprise-license-skus.json"; \
 	cp scripts/router.ts "$${pkg_dir}/config/scripts/router.ts"; \
-	cp deploy/Caddyfile "$${pkg_dir}/caddy/Caddyfile"
+	cp deploy/Caddyfile "$${pkg_dir}/caddy/Caddyfile"; \
+	for legal in LICENSE NOTICE THIRD_PARTY_NOTICES.md MODEL_LICENSES.md; do \
+		cp "$$legal" "$${pkg_dir}/$$legal"; \
+	done; \
 	while IFS= read -r doc; do \
 		case "$$doc" in ""|\#*) continue ;; esac; \
 		cp "$$doc" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/docs/$$(basename "$$doc")"; \
@@ -479,7 +482,10 @@ package-docker-one-no-docs: capability-smoke-unit
 	sed "s/^SMART_LLMROUTER_VERSION=.*/SMART_LLMROUTER_VERSION=$${VERSION}-$${GOOS}-$${GOARCH}/" deploy/compose.env.example > "$${docker_pkg_dir}/compose/.env"; \
 	cp config.example.yaml "$${docker_pkg_dir}/config/config.example.yaml"; \
 	cp env.example.json "$${docker_pkg_dir}/config/env.example.json"; \
-	cp scripts/router.ts "$${docker_pkg_dir}/config/scripts/router.ts"
+	cp scripts/router.ts "$${docker_pkg_dir}/config/scripts/router.ts"; \
+	for legal in LICENSE NOTICE THIRD_PARTY_NOTICES.md MODEL_LICENSES.md; do \
+		cp "$$legal" "$${docker_pkg_dir}/$$legal"; \
+	done; \
 	while IFS= read -r doc; do \
 		case "$$doc" in ""|\#*) continue ;; esac; \
 		cp "$$doc" "$${DIST_DIR}/docker/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}/docs/$$(basename "$$doc")"; \

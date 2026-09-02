@@ -84,6 +84,10 @@ docs/KUBERNETES_INSTALL.md
 docs/PACKAGE_VALIDATION.md
 docs/solution-brief.md
 docs/LICENSE.md
+LICENSE
+NOTICE
+THIRD_PARTY_NOTICES.md
+MODEL_LICENSES.md
 caddy/Caddyfile
 ```
 `metrum-genai-smartrouter-fleetctl plan|deploy|status|delete|customer` is the
