@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Run or plan coding-agent compatibility matrix checks.
 
 The default mock mode is deterministic and does not call a router or external

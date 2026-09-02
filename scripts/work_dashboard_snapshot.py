@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Render the reconciled work-item registry as self-contained printable HTML."""
 
 from __future__ import annotations

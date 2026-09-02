@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import { Card, CardContent } from "@/components/ui/card";
 import { formatValue, titleize } from "@/lib/utils";
 import type { ReportSummary } from "@/lib/reports";

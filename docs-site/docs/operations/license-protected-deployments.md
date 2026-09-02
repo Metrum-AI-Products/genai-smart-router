@@ -5,6 +5,10 @@ doc_type: explanation
 
 # License-Protected Deployments
 
+All GenAI Smart Router first-party content is licensed under Apache-2.0. A
+signed `license.json` is operator runtime policy only: it is not a copyright
+license or commercial-use condition and does not narrow Apache-2.0 rights.
+
 Licensed deployments can enforce a Metrum-issued signed JSON license offline. The deployed router verifies the license with embedded Ed25519 public verification keys; private signing keys and signing-service credentials are not required at runtime and must never be copied into config, logs, reports, browser docs, tickets, images, packages, versioned deployment files, or shared support bundles.
 
 For the customer installation and renewal path, see [Choose a Deployment Path](../licensing/deployment-paths), [How Licensing Works](../licensing/), and [Renewal And Top-Up](../licensing/renewal).
@@ -40,9 +44,11 @@ The license is a signed JSON envelope issued for GenAI Smart Router. At startup 
 
 When a license blocks serving, `/readyz` fails and caller APIs return documented `license-*` errors without exposing license payloads, signatures, public-key material, private keys, or signing metadata. Safe license status may appear in logs, usage rows, metrics-admin gauges, and authorized admin status APIs as scalar fields such as status, reason, license ID, customer ID, SKU, key ID, expiry, and grace-active flag.
 
-## Commercial License Shapes
+## Runtime Policy Shapes
 
-Metrum issues a signed `license.json` for the commercial agreement. A license can combine capability, time, volume, and operational limits. Common templates include:
+An operator can issue a signed `license.json` that combines capability, time,
+volume, and operational limits. These are deployment policy templates, not
+software-license grants or restrictions. Common templates include:
 
 | Template | Typical use | Customer-visible behavior |
 |---|---|---|
@@ -136,8 +142,15 @@ curl -i -H "Authorization: Bearer $ROUTER_TOKEN" \
 
 License inspection and verification are support operations handled with approved Metrum tooling and public verification keys. Metrum operators use separate internal issuance systems to generate, renew, top up, or revoke licenses from approved entitlement records. Those issuance systems and signing keys are not part of the packaged Docker/runtime image. Deployed routers do not need private signing keys or a license-generation tool at runtime.
 
-## Commercial Model
+## Operator Policy And Commercial Services
 
-A signed `license.json` encodes the commercial entitlements for a deployment: SKU, capability gates, time bounds, volume / window / concurrency limits, and operational scope. Payment, invoicing, quotes, refunds, and contract terms are handled by Metrum commercial systems outside the router; the router only enforces what the license or online lease declares. License templates include time-bounded evaluation (`eval-72h`, `pilot-30d`), annual enterprise license (`enterprise-annual`), marketplace/private-offer licenses, and volume prepurchase (`credit-pack-*`) for top-up.
+A signed `license.json` can encode operator-selected deployment policy: SKU
+labels, capability gates, time bounds, volume / window / concurrency limits,
+and operational scope. It does not grant or restrict copyright or commercial
+use. Payment, invoicing, quotes, refunds, support, and other service terms are
+handled outside the router; the router enforces only the configured runtime
+policy. Templates include time-bounded evaluation (`eval-72h`, `pilot-30d`),
+annual deployment policy (`enterprise-annual`), marketplace/private-offer
+policy, and volume presets (`credit-pack-*`).
 
 For license issuance, renewal, volume top-up, or commercial plan changes, contact [contact@metrum.ai](mailto:contact@metrum.ai). See [Commercial Evaluation Path](../evaluation/commercial-evaluation) for evaluation access.

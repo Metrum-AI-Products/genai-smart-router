@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // metrum-genai-smartrouter-fleetctl is the sole #555 fleet lifecycle operator.
 // It uses typed AWS and Kubernetes clients and intentionally has no
 // command-shell fallback.

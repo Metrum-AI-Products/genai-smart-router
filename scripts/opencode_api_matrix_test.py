@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for opencode_api_matrix.py payload construction."""
 
 from __future__ import annotations

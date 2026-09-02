@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Offline, scrubbed provider-capability evidence contract.
 
 This deliberately contains no HTTP client, credential lookup, or environment

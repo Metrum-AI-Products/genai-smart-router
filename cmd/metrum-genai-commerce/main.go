@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // Command metrum-genai-commerce serves Stripe Checkout, webhooks, and entitlement status.
 package main
 

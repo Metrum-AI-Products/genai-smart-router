@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package router
 
 // This file contains the durable migration primitives shared by persistent

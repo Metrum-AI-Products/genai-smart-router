@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Contract tests for the opt-in Inspect evaluation wrapper."""
 from __future__ import annotations
 import importlib.util, json, os, subprocess, sys, tempfile

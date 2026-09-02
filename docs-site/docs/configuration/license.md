@@ -5,6 +5,11 @@ doc_type: reference
 
 # License
 
+All GenAI Smart Router first-party content is licensed under Apache-2.0. The
+`license.json` described here is an operator runtime-policy input, not a
+copyright license or commercial-use condition, and it does not limit
+Apache-2.0 rights.
+
 License configuration controls offline signed JSON license enforcement. Normal release builds verify a Metrum-issued license file with embedded public verification keys, periodically recheck it, and fail closed when the license is invalid outside any configured grace period.
 
 This example is a partial subset of `config.example.yaml`; the shipped sample config is the source of truth.

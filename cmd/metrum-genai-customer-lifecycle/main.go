@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // Command metrum-genai-customer-lifecycle orchestrates commerce pay + license SSM
 // publish + fleetctl customer bootstrap from a JSON intent. It composes existing
 // binaries and does not replace metrum-genai-smartrouter-fleetctl (#555).

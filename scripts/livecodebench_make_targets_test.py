@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Hermetic regression coverage for LiveCodeBench Make target path handling."""
 from __future__ import annotations
 

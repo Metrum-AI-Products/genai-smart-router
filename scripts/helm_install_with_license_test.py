@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Contract test for the license-backed Helm deployment wrapper."""
 
 from __future__ import annotations

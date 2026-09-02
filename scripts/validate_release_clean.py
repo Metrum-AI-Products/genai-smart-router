@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Gate release package builds on a clean git tree unless explicitly overridden."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 export type FilterField<Name extends string = string> = readonly [name: Name, label: string, defaultValue: string];
 
 export type GlobalFilterName =

@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // metrum-fleet-sign is a one-release compatibility notice for the renamed Fleet signing CLI.
 package main
 

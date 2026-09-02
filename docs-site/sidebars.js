@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /** @type {import('@docusaurus/plugin-content-docs').SidebarsConfig} */
 const sidebars = {
   routerSidebar: [
@@ -64,7 +67,6 @@ const sidebars = {
         "configuration/admin-authorization",
         "privacy",
         "legal/terms-of-use",
-        "legal/eula",
         "legal/dpa",
         "legal/subprocessors",
         "legal/transfer-schedule",

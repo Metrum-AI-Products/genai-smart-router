@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // metrum-smartrouterctl is a one-release compatibility notice for the renamed fleet CLI.
 package main
 

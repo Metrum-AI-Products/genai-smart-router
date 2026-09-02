@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # Offline CI-safe gate for the manual AMD Instinct local-serving profile.
 # It does not contact a cluster, pull models, or require credentials.
 set -euo pipefail

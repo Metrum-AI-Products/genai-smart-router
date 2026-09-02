@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Send real requests through a deployed outcome-calibrated router group.
 
 The deployed policy service must have an audit token and the group must use

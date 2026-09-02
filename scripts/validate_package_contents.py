@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Validate release package contents for package-safe docs and private markers."""
 
 from __future__ import annotations
@@ -34,6 +37,10 @@ BINARY_PACKAGE_FILES = {
     "config/enterprise-license-skus.json",
     "config/scripts/router.ts",
     "caddy/Caddyfile",
+    "LICENSE",
+    "NOTICE",
+    "THIRD_PARTY_NOTICES.md",
+    "MODEL_LICENSES.md",
 }
 DOCKER_PACKAGE_FILES = {
     "compose/docker-compose.yml",
@@ -44,6 +51,10 @@ DOCKER_PACKAGE_FILES = {
     "config/config.example.yaml",
     "config/env.example.json",
     "config/scripts/router.ts",
+    "LICENSE",
+    "NOTICE",
+    "THIRD_PARTY_NOTICES.md",
+    "MODEL_LICENSES.md",
 }
 PACKAGE_BINARIES = {
     "bin/router",

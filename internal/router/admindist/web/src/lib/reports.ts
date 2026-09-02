@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import type { TabFilterName } from "@/lib/filters";
 export { filterFields, globalFilterFields, tabFilterFields, validateFilterModel, type GlobalFilterName, type TabFilterName } from "@/lib/filters";
 

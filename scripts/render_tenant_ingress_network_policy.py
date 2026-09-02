@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Render a selected-ingress NetworkPolicy from verified EKS discovery."""
 
 from __future__ import annotations

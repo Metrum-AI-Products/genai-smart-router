@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # Operator-only gated live E2E for SQLite Fleet customer bootstrap.
 # Requires protected staging refs and operator IAM; skipped when unset.
 set -euo pipefail

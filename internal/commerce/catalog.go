@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package commerce implements Stripe catalog sync, purchase checkout, webhook
 // entitlement recording, and Fleet fulfillment hooks for epic #921.
 package commerce

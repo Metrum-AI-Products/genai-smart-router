@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import React, { useEffect, useRef, useState } from "react";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import "./SupportChatWidget.css";

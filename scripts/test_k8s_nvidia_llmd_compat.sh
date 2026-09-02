@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # Offline CI-safe gate for the nvidia-llmd-compat Kubernetes profile.
 # Does not contact Shadeform, install llm-d, or require cloud authentication.
 set -euo pipefail

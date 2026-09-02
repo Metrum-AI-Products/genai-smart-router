@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Generate and send a sanitized large OpenAI Chat payload.
 
 The fixture intentionally uses synthetic filler and generic tool schemas so it

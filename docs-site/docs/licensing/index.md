@@ -5,6 +5,11 @@ doc_type: explanation
 
 # Self-Managed Licensing
 
+All GenAI Smart Router first-party content is licensed under Apache-2.0. In this
+section, "license" refers only to an operator-created runtime policy file. It is
+not a copyright license or commercial-use condition and does not narrow the
+rights granted by Apache-2.0.
+
 GenAI Smart Router uses locally signed, self-managed licenses. The deployment wrapper creates an Ed25519 keypair on the operator host when one does not already exist, issues `license.json`, and mounts only the public key plus license into the router runtime.
 
 ## What Operators Keep

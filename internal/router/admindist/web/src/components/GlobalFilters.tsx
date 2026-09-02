@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import { useEffect, useId, useState } from "react";
 import type { FormEvent } from "react";
 import { ChevronDown, Menu } from "lucide-react";

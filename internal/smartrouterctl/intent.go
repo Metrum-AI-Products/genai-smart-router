@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package smartrouterctl implements customer-local file-owned operations and
 // Kubernetes architecture blueprint rendering for GenAI Smart Router.
 // It never calls AWS, EKS, RDS, Fleet, or the Kubernetes API.

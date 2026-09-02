@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // @ts-check
 
 const lightCodeTheme = require("prism-react-renderer").themes.github;
@@ -141,12 +144,11 @@ const config = {
             items: [
               { label: "Privacy", to: "/privacy" },
               { label: "Terms", to: "/terms" },
-              { label: "EULA", to: "/eula" },
               { label: "Data Processing", to: "/dpa" },
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} Metrum AI.`,
+        copyright: `Copyright © 2026 Metrum AI, Inc.`,
       },
       prism: {
         theme: lightCodeTheme,

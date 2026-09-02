@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { GlobalFilters } from "@/components/GlobalFilters";
 import { MobileNavDrawer } from "@/components/MobileNavDrawer";
