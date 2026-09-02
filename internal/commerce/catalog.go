@@ -11,8 +11,10 @@ import (
 )
 
 const (
-	PricingStatusPlaceholder = "placeholder_assumption"
+	PricingStatusPlaceholder   = "placeholder_assumption"
+	PricingStatusNotApplicable = "not-applicable"
 
+	BillingKindNone              = "none"
 	BillingKindPayment           = "payment"
 	BillingKindTopUp             = "top_up"
 	BillingKindSubscription      = "subscription"
@@ -144,9 +146,21 @@ func validateSKU(sku SKU, canonical map[string]struct{}) error {
 		return fmt.Errorf("%s: license_template %q must resolve to a canonical template SKU", name, sku.LicenseTemplate)
 	}
 	switch sku.BillingKind {
-	case BillingKindPayment, BillingKindTopUp, BillingKindSubscription, BillingKindSubscriptionAddon, BillingKindInvoiceOnly:
+	case BillingKindNone, BillingKindPayment, BillingKindTopUp, BillingKindSubscription, BillingKindSubscriptionAddon, BillingKindInvoiceOnly:
 	default:
 		return fmt.Errorf("%s: invalid billing_kind %q", name, sku.BillingKind)
+	}
+	if sku.BillingKind == BillingKindNone {
+		if sku.CommercialMotion != "self-managed" {
+			return fmt.Errorf("%s: billing_kind none requires commercial_motion self-managed", name)
+		}
+		if sku.StripeMode != "" || sku.SelfServeStripe || sku.AutoProvisionInstance || sku.Stripe != nil {
+			return fmt.Errorf("%s: billing_kind none must not declare commerce fulfillment fields", name)
+		}
+		if sku.PricingStatus != PricingStatusNotApplicable || sku.PricePlaceholder != (PricePlaceholder{}) {
+			return fmt.Errorf("%s: billing_kind none requires pricing_status not-applicable without price_placeholder", name)
+		}
+		return nil
 	}
 	switch sku.StripeMode {
 	case StripeModePayment, StripeModeSubscription, StripeModeNone:
