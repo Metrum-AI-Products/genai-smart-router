@@ -83,7 +83,7 @@ docs/DOCKER_COMPOSE_INSTALL.md
 docs/KUBERNETES_INSTALL.md
 docs/PACKAGE_VALIDATION.md
 docs/solution-brief.md
-docs/END_USER_LICENSE_AGREEMENT.md
+docs/LICENSE.md
 caddy/Caddyfile
 ```
 `metrum-genai-smartrouter-fleetctl plan|deploy|status|delete|customer` is the
@@ -179,6 +179,16 @@ If a variable is already set in the shell, the shell value wins over `env.json`.
 In a packaged deployment, put provider keys in `config/env.json` beside `config/config.yaml`. The same loading rule applies: shell environment values win over `env.json`.
 
 ## License Enforcement
+
+All GenAI Smart Router first-party content is licensed under the Apache License
+2.0. Copyright 2026 Metrum AI, Inc. The Apache license grants the rights to use,
+modify, and distribute those materials; no EULA acceptance or Metrum-issued
+runtime file is a condition of those rights.
+
+The signed `license.json` described below is an operator-selected runtime policy
+input. It can gate features or operational limits in a configured deployment,
+but it is not the software's copyright license and does not restrict the rights
+granted by Apache-2.0.
 
 Normal release builds enforce offline signed JSON licensing under `server.license`. The router verifies a Metrum-issued license envelope with embedded Ed25519 public keys at startup and on `recheck_interval`, so operators can renew or replace `license.json` without rebuilding the binary. Runtime YAML cannot disable licensing in release builds; deployments should mount the license file read-only and keep the license state file under the deployment state directory.
 

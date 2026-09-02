@@ -70,8 +70,8 @@ Use the quick-start document that matches the package:
 - `DOCKER_COMPOSE_INSTALL.md` for Docker Compose packages.
 - `KUBERNETES_INSTALL.md` for Kubernetes deployment planning.
 - `PACKAGE_VALIDATION.md` for package-content and runtime-health checks.
-- `END_USER_LICENSE_AGREEMENT.md` for the software license terms. Installing,
-  accessing, or using the Software accepts those terms.
+- `LICENSE.md` for the Apache License 2.0 terms covering all first-party
+  content. No separate EULA applies.
 
 After the router is reachable, open:
 
@@ -87,7 +87,9 @@ Prepare these deployment-owned files before first startup:
 
 - `config.yaml` copied from `config/config.example.yaml` and reviewed for the deployment.
 - `env.json` copied from `config/env.example.json` or equivalent environment variables from a secret manager.
-- A Metrum-issued `license.json` for release builds.
+- A Metrum-issued `license.json` for operator-selected runtime policy in release
+  builds. It is not a copyright or commercial-use license condition and does
+  not narrow the rights granted by Apache-2.0.
 - A durable state directory for license state, router state, logs, and usage data.
 - At least one caller token generated with `router-token-gen`.
 

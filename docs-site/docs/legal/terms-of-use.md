@@ -6,20 +6,19 @@ slug: /terms
 
 # Terms of Use
 
-Effective 2026-08-21
+Effective 2026-09-02
 
 These Terms of Use govern your access to and use of Metrum AI, Inc.'s hosted
 GenAI Smart Router documentation, optional support chat, and related public
 web resources (collectively, the **Site**). By accessing or using the Site, you
 agree to these terms. If you do not agree, do not use the Site.
 
-## Site purpose and commercial agreements
+## Site purpose
 
 The Site provides information about Metrum products and services. It is not a
-binding offer, implementation commitment, or professional advice. Commercial
-use of GenAI Smart Router requires a valid Metrum-issued license and, where
-applicable, a separately executed agreement. If a separately executed agreement
-conflicts with these terms, that agreement controls for its subject matter.
+binding offer, implementation commitment, or professional advice. These terms
+govern use of the Site; they are not a software license or an end user license
+agreement.
 
 ## Acceptable use
 
@@ -29,14 +28,29 @@ unauthorized access; probe, scan, or test Site security without authorization;
 introduce malicious code; interfere with Site operation; or use the Site to
 infringe another party's rights.
 
-## Intellectual property
+## Apache-licensed materials
 
-The Site and its content, including software, documentation, trademarks, and
-logos, are owned by Metrum or its licensors and are protected by applicable
-intellectual-property laws. These terms grant no ownership rights. You may use
-Site content for your internal evaluation of Metrum products, but may not copy,
-modify, distribute, or publicly display it except as permitted by law or with
-Metrum's written permission.
+All GenAI Smart Router first-party content made available through the Site is
+licensed under the Apache License 2.0. Nothing in these terms limits, replaces,
+or conditions the rights granted by Apache-2.0 for that content, including
+rights to use, reproduce, modify, distribute, sublicense, and use them
+commercially subject to that license. A deployment's `license.json` is operator
+runtime policy, not a copyright license or a commercial-use condition.
+
+Materials identified as third-party content remain subject to their applicable
+licenses and notices.
+
+## Trademarks and other Site materials
+
+Metrum AI, the Metrum name and logos, GenAI Smart Router branding, and related
+marks are trademarks or service marks of Metrum AI, Inc. Apache-2.0 does not
+grant permission to use Metrum trademarks except as required for reasonable and
+customary description of the origin of the software or documentation. Do not
+imply sponsorship, endorsement, or affiliation without written permission.
+
+Third-party Site materials are governed by their stated licenses or other
+applicable terms. These Site-use terms grant only the limited permission needed
+to access and use the Site itself for its intended purpose.
 
 ## Third-party services
 
@@ -65,7 +79,9 @@ THE 12 MONTHS BEFORE THE EVENT GIVING RISE TO LIABILITY.
 
 Metrum may modify, suspend, or discontinue the Site or these terms at any time.
 Updated terms apply when posted. Metrum may suspend or terminate Site access for
-a violation of these terms or to protect the Site, its users, or Metrum.
+a violation of these terms or to protect the Site, its users, or Metrum. A Site
+change, suspension, or termination does not terminate or narrow rights already
+granted under Apache-2.0.
 
 ## Governing law
 

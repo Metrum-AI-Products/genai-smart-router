@@ -40,7 +40,7 @@ docs/DOCKER_COMPOSE_INSTALL.md
 docs/KUBERNETES_INSTALL.md
 docs/PACKAGE_VALIDATION.md
 docs/solution-brief.md
-docs/END_USER_LICENSE_AGREEMENT.md
+docs/LICENSE.md
 caddy/Caddyfile
 ```
 
