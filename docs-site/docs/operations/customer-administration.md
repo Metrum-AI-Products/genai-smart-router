@@ -56,6 +56,11 @@ restart or reload the router through your normal process.
 scaffold under `operator/` that maps only to existing router config fields. The CLI does
 not install a controller into the router image or call the Kubernetes API.
 
+AMD Instinct local serving currently uses the separately maintained manual
+`k3s-amd-instinct-local-serving` overlay. Blueprint render does not emit that
+overlay; operators may reuse the generated accelerator-neutral router config
+and Helm chart while applying only the AMD vLLM/ROCm serving manifests.
+
 ```bash
 metrum-genai-smartrouterctl blueprint render \
   --intent deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml \

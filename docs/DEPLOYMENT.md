@@ -146,6 +146,14 @@ fallback) or `shadeform-nvidia-local-models-b200.example.yaml` (B200/H200).
 Offline gate: `make test-k8s-nvidia-local-serving`. Live Shadeform steps:
 `docs/SHADEFORM_NVIDIA_LOCAL_SERVING_E2E.md`.
 
+For operator-controlled k3s clusters on AMD Instinct, use the manual
+`deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/` vLLM/ROCm
+manifests. The router remains GPU-free and reaches only the in-cluster serving
+Services. Offline gate: `make test-k8s-amd-instinct-local-serving`. Live on-prem
+steps: `docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md`. The manual path is
+intentional until the blueprint CLI ships an AMD profile; do not relabel or
+apply the NVIDIA serving overlay on AMD nodes.
+
 Metrum engineering production runs on the Fleet tenant documented in
 `docs/EKS_PRODUCTION_OPERATIONS.md`. Generic Kubernetes samples remain under
 `deploy/kubernetes/base/` and `deploy/kubernetes/overlays/example/`. Historical

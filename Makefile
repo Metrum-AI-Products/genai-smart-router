@@ -97,7 +97,7 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help test test-k8s-nvidia-local-serving test-migration-operational-postgres test-migration-data-jobs-postgres test-migration-data-job-ownership-postgres test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-package-binaries build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all dist-backup package-dist-backup compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
+.PHONY: help test test-k8s-nvidia-local-serving test-k8s-amd-instinct-local-serving test-migration-operational-postgres test-migration-data-jobs-postgres test-migration-data-job-ownership-postgres test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-package-binaries build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all dist-backup package-dist-backup compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
 
 help:
 	@echo "GenAI Smart Router make targets. Metrum production: docs/EKS_PRODUCTION_OPERATIONS.md"
@@ -208,11 +208,17 @@ test-fleet-sqlite-customer-live:
 
 test-tenant-deploy-all: test-tenant-deploy-contract test-tenant-deploy-adapters test-tenant-deploy-security test-tenant-deploy-activation test-fleet-customer-cli
 
-.PHONY: test-k8s-nvidia-local-serving test-k8s-nvidia-llmd-compat
+.PHONY: test-k8s-nvidia-local-serving test-k8s-amd-instinct-local-serving test-k8s-nvidia-llmd-compat
 # Offline gate for nvidia-local-serving blueprint + Kustomize overlay.
 # Live Shadeform steps are documented in docs/SHADEFORM_NVIDIA_LOCAL_SERVING_E2E.md.
 test-k8s-nvidia-local-serving:
 	bash scripts/test_k8s_nvidia_local_serving.sh
+	python3 scripts/helm_install_with_license_test.py
+
+# Offline gate for the manual k3s AMD Instinct vLLM/ROCm serving overlay.
+# Live on-prem steps are documented in docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md.
+test-k8s-amd-instinct-local-serving:
+	bash scripts/test_k8s_amd_instinct_local_serving.sh
 	python3 scripts/helm_install_with_license_test.py
 
 # Offline gate for nvidia-llmd-compat blueprint (llm-d frontend + vLLM backend).
