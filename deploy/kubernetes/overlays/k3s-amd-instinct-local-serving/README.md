@@ -33,4 +33,6 @@ local-serving blueprint and points to the same `vllm-tiny`, `vllm-chat`, and
 NVIDIA GPU Operator values on AMD nodes.
 
 Run `make test-k8s-amd-instinct-local-serving` for the offline checks. Follow
-`docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md` for the live procedure.
+`docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md` for the live procedure. For Dell/AMD
+aligned architecture, routing policies, metrics, and OpenTelemetry design, see
+`docs/amd-instinct-local-serving-reference-architecture.md`.

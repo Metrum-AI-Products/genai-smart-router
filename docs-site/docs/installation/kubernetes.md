@@ -110,14 +110,16 @@ not. Upstreams remain in-cluster `*.svc.cluster.local` endpoints, and LMCache,
 Mooncake, llm-d, and cloud LLM APIs are outside this profile.
 
 Start with the one-GPU `local-tiny` milestone before applying the three-model
-matrix. Use AMD GPU Operator `v1.5.1` or later in either device-plugin or DRA
-mode, never both for the same device. The node image may own the working driver;
-do not let the operator replace it unless that driver lifecycle is intentional.
-The cluster CNI must enforce NetworkPolicy before relying on the checked-in
-traffic restrictions.
+matrix. The checked-in AMD GPU Operator values pin `v1.5.1` in device-plugin
+mode with host-owned drivers; do not enable DRA on the same DeviceConfig. The
+node image may own the working driver; do not let the operator replace it unless
+that driver lifecycle is intentional. The cluster CNI must enforce NetworkPolicy
+before relying on the checked-in traffic restrictions.
 
 Offline validation: `make test-k8s-amd-instinct-local-serving`. The internal
-operator runbook is `docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md`.
+operator runbook is `docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md`. The detailed
+internal architecture reference is
+`docs/amd-instinct-local-serving-reference-architecture.md`.
 
 For a fresh PVC, set the same immutable image in `sqlite-bootstrap/job.yaml` and `example/patch-image.yaml`, then run:
 
