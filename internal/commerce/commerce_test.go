@@ -59,6 +59,28 @@ func TestCatalogSchemaSelfServe(t *testing.T) {
 	}
 }
 
+func TestCatalogValidateSelfManagedNoBilling(t *testing.T) {
+	cat := &commerce.Catalog{
+		SchemaVersion: 1,
+		SKUs: []commerce.SKU{
+			{
+				SKU:              "oss-self-managed",
+				LicenseTemplate:  "oss-self-managed",
+				CommercialMotion: "self-managed",
+				BillingKind:      commerce.BillingKindNone,
+				PricingStatus:    commerce.PricingStatusNotApplicable,
+			},
+		},
+	}
+
+	if err := cat.Validate(); err != nil {
+		t.Fatalf("self-managed SKU without billing must be valid: %v", err)
+	}
+	if got := cat.SelfServeSKUs(); len(got) != 0 {
+		t.Fatalf("self-managed SKU must not be offered through Stripe: %+v", got)
+	}
+}
+
 func TestFakeStripePlanApplyIdempotentAndAmountChange(t *testing.T) {
 	cat := testCatalog(t)
 	client := commerce.NewFakeStripeClient()
