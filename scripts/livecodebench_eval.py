@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Sanitized, opt-in LiveCodeBench release_v6 evaluation contract.
 
 This module deliberately keeps benchmark prompts and model generations in

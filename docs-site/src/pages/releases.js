@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import React from "react";
 import Link from "@docusaurus/Link";
 import Layout from "@theme/Layout";

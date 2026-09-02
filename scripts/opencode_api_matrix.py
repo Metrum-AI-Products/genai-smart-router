@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Run opencode-style API capability probes.
 
 The probes use synthetic prompts, synthetic tool schemas, and a public receipt

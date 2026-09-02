@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package router
 
 // Phase one of the configuration control plane deliberately provides a small,

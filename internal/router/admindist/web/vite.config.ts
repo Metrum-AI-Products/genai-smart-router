@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import path from "node:path";

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Deterministic Compose usage-store reset for an existing install root.
 
 Archives the live Postgres usage database, replaces the packaged files, removes

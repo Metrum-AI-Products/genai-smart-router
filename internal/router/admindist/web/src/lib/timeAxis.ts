@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 export type TimeUnit = "minute" | "hour" | "day" | "week" | "month" | "year";
 
 export type TimeRange = {

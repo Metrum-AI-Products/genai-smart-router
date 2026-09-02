@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Validate and activate discovery-bound tenant network policies safely.
 
 The discovery workflow deliberately uses a temporary kubeconfig and the

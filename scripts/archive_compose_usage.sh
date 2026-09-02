@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # Archive the Compose Postgres usage database to restic before EKS cutover.
 # Forensics only; EKS production SQLite does not import this dump.
 set -euo pipefail

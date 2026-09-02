@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 set -euo pipefail
 
 # This rehearsal owns a fresh disposable database and intentionally never

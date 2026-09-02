@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import { ChevronDown } from "lucide-react";
 import { SidebarItem } from "@/components/SidebarItem";
 import type { NavGroup } from "@/lib/navGroups";

@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // metrum-fleetctl is a one-release compatibility notice for the renamed Fleet CLI.
 package main
 

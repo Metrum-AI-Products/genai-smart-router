@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Run and record the repeatable outcome-calibrated routing demonstration."""
 
 from __future__ import annotations

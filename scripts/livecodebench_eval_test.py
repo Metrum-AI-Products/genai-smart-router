@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Offline deterministic regression for the LiveCodeBench evaluator contract."""
 from __future__ import annotations
 import importlib.util

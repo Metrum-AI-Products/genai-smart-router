@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # Operator helper for Metrum EKS production cutover steps that require authenticated
 # AWS/Kubernetes/DigitalOcean sessions. Does not perform login.
 set -euo pipefail

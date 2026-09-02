@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 const GITHUB_REPOSITORY = "https://github.com/sysadmin-metrum-ai/genai-smart-router";
 const LINK_PATTERN = /(https?:\/\/[^\s]+|PR#\d+|#\d+)/gi;
 

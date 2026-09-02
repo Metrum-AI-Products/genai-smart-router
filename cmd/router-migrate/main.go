@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // router-migrate is intentionally non-serving. It exposes only safe migration
 // metadata until persistent scopes have checked-in conversion definitions.
 package main

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Outcome-calibrated external routing reference for GenAI Smart Router.
 
 The router calls ``serve`` before an upstream request. ``collect`` drives

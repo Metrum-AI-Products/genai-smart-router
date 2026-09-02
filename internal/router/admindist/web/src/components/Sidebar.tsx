@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import { BarChart3, Boxes, Gauge, LineChart, LockKeyhole, Network, SearchCheck, ShieldCheck, SlidersHorizontal, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";

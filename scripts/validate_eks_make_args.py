@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Validate explicit, non-secret inputs for the read-only EKS Make targets."""
 
 from __future__ import annotations

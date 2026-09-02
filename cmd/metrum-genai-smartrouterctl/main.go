@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // smartrouterctl is the customer-local Router operations CLI. It may write
 // local config.yaml and SQLite usage backups on file-owned installs. It has no
 // cloud, Fleet, Kubernetes API, remote activation, or license-signing authority.

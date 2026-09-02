@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package router
 
 // Resumable migration data jobs are intentionally small, scalar, and owned by

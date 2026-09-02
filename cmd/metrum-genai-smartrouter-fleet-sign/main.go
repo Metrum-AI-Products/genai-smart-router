@@ -1,3 +1,6 @@
+// Copyright 2026 Metrum AI, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 // metrum-fleet-sign issues protected Fleet documents (intent, admission, delete).
 // It is distributed only as a binary-package CLI for Metrum Fleet operators.
 // Customer Docker images must not include this binary.

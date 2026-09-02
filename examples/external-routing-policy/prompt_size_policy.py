@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Demo external routing policy service for GenAI Smart Router.
 
 The router POSTs a JSON policy request containing safe derived request context,

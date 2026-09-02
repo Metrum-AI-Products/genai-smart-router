@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Run and summarize bounded Inspect AI coding evaluations without exposing content.
 
 Raw Inspect logs stay in an ignored caller-selected directory. This program writes

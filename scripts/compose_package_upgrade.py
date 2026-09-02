@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Deterministic Docker Compose package upgrade for an existing install root.
 
 Upgrades copy live runtime forward from a timestamped backup. They never glob-move

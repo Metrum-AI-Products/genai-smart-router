@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Produce a redacted, read-only EKS bootstrap inventory.
 
 This intentionally does not implement the shared operator/CI command contract;

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Enroll an eligible IAM user in the fixed Fleet lifecycle-operator group.
 
 This is a platform-IaC administration helper. It accepts a runtime principal ARN,

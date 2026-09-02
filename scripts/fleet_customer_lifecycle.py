@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """fleet_customer_lifecycle.py was moved into the packaged Fleet CLI.
 
 One-release rename notice only. Use:

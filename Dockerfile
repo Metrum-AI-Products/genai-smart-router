@@ -25,6 +25,7 @@ FROM --platform=$BUILDPLATFORM alpine:3.22 AS certs
 RUN apk add --no-cache ca-certificates
 
 FROM scratch
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 WORKDIR /app
 COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/router /app/bin/router

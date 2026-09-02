@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Check public-facing docs for private markers and stale current-route claims."""
 
 from __future__ import annotations

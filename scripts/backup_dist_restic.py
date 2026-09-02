@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Backup release package tarballs from DIST_DIR to the Metrum CTO restic repo.
 
 Credentials come from ignored ops.env.json (preferred), env.json (legacy mixed),

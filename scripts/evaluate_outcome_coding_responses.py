@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Metrum AI, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 """Evaluate bounded, synthetic coding responses for the live routing reference.
 
 This verifier intentionally accepts only the three published synthetic task
