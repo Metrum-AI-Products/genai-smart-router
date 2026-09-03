@@ -522,6 +522,7 @@ Do not record tokens, hashes, or full configs in issues.
 
 ## Related pages
 
+- Detailed architecture (Dell/AMD alignment, policies, metrics, OTel): `docs/amd-instinct-local-serving-reference-architecture.md`
 - Overlay README: `deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/README.md`
 - NVIDIA analog (blueprint profile): `docs/SHADEFORM_NVIDIA_LOCAL_SERVING_E2E.md`
 - Public pointer: `docs-site/docs/installation/kubernetes.md` (AMD subsection)

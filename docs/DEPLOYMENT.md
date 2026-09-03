@@ -190,7 +190,9 @@ For operator-controlled k3s clusters on AMD Instinct, use the manual
 `deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/` vLLM/ROCm
 manifests. The router remains GPU-free and reaches only the in-cluster serving
 Services. Offline gate: `make test-k8s-amd-instinct-local-serving`. Live on-prem
-steps: `docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md`. The manual path is
+steps: `docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md`. Detailed Dell/AMD-aligned
+architecture, routing policy, and observability design:
+`docs/amd-instinct-local-serving-reference-architecture.md`. The manual path is
 intentional until the blueprint CLI ships an AMD profile; do not relabel or
 apply the NVIDIA serving overlay on AMD nodes.
 
