@@ -410,7 +410,7 @@ build-package-binaries:
 	@set -e; \
 	for bin in $(PACKAGE_BINARIES); do \
 		echo "building $$bin"; \
-		go build -ldflags "$(BUILD_LDFLAGS)" -o "$$bin" "./cmd/$$bin"; \
+		go build -buildvcs=false -ldflags "$(BUILD_LDFLAGS)" -o "$$bin" "./cmd/$$bin"; \
 	done
 
 build: docs-build admin-build capability-smoke-unit
@@ -428,7 +428,7 @@ build-all: docs-build admin-build capability-smoke-unit
 	for arch in amd64 arm64; do \
 		for bin in $(PACKAGE_BINARIES); do \
 			echo "building linux-$$arch/$$bin"; \
-			CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-$$arch/$$bin" "./cmd/$$bin"; \
+			CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -buildvcs=false -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-$$arch/$$bin" "./cmd/$$bin"; \
 		done; \
 	done
 
@@ -446,7 +446,7 @@ package-one-no-docs: capability-smoke-unit
 	set -e; \
 	for bin in $(PACKAGE_BINARIES); do \
 		echo "packaging $$bin for $${GOOS}/$${GOARCH}"; \
-		CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/$$bin" "./cmd/$$bin"; \
+		CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -buildvcs=false -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/$$bin" "./cmd/$$bin"; \
 	done; \
 	cp config.example.yaml "$${pkg_dir}/config/config.example.yaml"; \
 	cp env.example.json "$${pkg_dir}/config/env.example.json"; \
