@@ -119,6 +119,12 @@ traffic restrictions.
 Offline validation: `make test-k8s-amd-instinct-local-serving`. The internal
 operator runbook is `docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md`.
 
+This profile is an operator-supplied integration example, not a blanket AMD or
+ROCm compatibility commitment. The offline check validates manifests and
+security invariants only. Support for a particular Instinct SKU, driver, ROCm
+release, serving image, model, parser, or tool-call shape requires a successful
+hardware-backed direct-upstream and router smoke for that exact combination.
+
 For a fresh PVC, set the same immutable image in `sqlite-bootstrap/job.yaml` and `example/patch-image.yaml`, then run:
 
 ```bash
