@@ -430,10 +430,11 @@ build-all: docs-build admin-build capability-smoke-unit
 
 package: package-all
 
-package-one: docs-build admin-build capability-smoke-unit package-one-no-docs
+package-one: validate-release-clean docs-build admin-build capability-smoke-unit
+	RELEASE_CLEAN_VALIDATED=1 $(MAKE) package-one-no-docs
 
 package-one-no-docs: capability-smoke-unit
-	$(MAKE) validate-release-clean
+	@if [ "$${RELEASE_CLEAN_VALIDATED}" != "1" ]; then $(MAKE) validate-release-clean; fi
 	$(MAKE) validate-build-metadata
 	pkg_dir="$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}"; \
 	rm -rf "$${pkg_dir}"; \
@@ -460,9 +461,9 @@ package-one-no-docs: capability-smoke-unit
 	chmod 0755 $${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/*
 	$(TAR_ENV) tar --owner=0 --group=0 --numeric-owner -C "$${DIST_DIR}/pkg" -czf "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz" "$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}"
 	python3 scripts/validate_package_contents.py --allowlist "$(PACKAGE_DOC_ALLOWLIST)" "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz"
-package-all: docs-build admin-build capability-smoke-unit
-	GOOS=linux GOARCH=amd64 $(MAKE) package-one-no-docs
-	GOOS=linux GOARCH=arm64 $(MAKE) package-one-no-docs
+package-all: validate-release-clean docs-build admin-build capability-smoke-unit
+	RELEASE_CLEAN_VALIDATED=1 GOOS=linux GOARCH=amd64 $(MAKE) package-one-no-docs
+	RELEASE_CLEAN_VALIDATED=1 GOOS=linux GOARCH=arm64 $(MAKE) package-one-no-docs
 
 docker-image: docs-build admin-build capability-smoke-unit docker-image-no-docs
 
@@ -472,10 +473,11 @@ docker-image-no-docs: capability-smoke-unit
 
 package-docker: package-docker-all
 
-package-docker-one: docs-build admin-build capability-smoke-unit package-docker-one-no-docs
+package-docker-one: validate-release-clean docs-build admin-build capability-smoke-unit
+	RELEASE_CLEAN_VALIDATED=1 $(MAKE) package-docker-one-no-docs
 
 package-docker-one-no-docs: capability-smoke-unit
-	$(MAKE) validate-release-clean
+	@if [ "$${RELEASE_CLEAN_VALIDATED}" != "1" ]; then $(MAKE) validate-release-clean; fi
 	$(MAKE) validate-build-metadata
 	docker_pkg_dir="$${DIST_DIR}/docker/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}"; \
 	rm -rf "$${docker_pkg_dir}"; \
@@ -503,9 +505,9 @@ package-docker-one-no-docs: capability-smoke-unit
 	$(TAR_ENV) tar --owner=0 --group=0 --numeric-owner -C "$${DIST_DIR}/docker" -czf "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}.tar.gz" "$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}"
 	python3 scripts/validate_package_contents.py --allowlist "$(PACKAGE_DOC_ALLOWLIST)" "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}.tar.gz"
 
-package-docker-all: docs-build admin-build capability-smoke-unit
-	GOOS=linux GOARCH=amd64 $(MAKE) package-docker-one-no-docs
-	GOOS=linux GOARCH=arm64 $(MAKE) package-docker-one-no-docs
+package-docker-all: validate-release-clean docs-build admin-build capability-smoke-unit
+	RELEASE_CLEAN_VALIDATED=1 GOOS=linux GOARCH=amd64 $(MAKE) package-docker-one-no-docs
+	RELEASE_CLEAN_VALIDATED=1 GOOS=linux GOARCH=arm64 $(MAKE) package-docker-one-no-docs
 
 # Back up one complete release set from DIST_DIR to the Metrum CTO restic
 # repository using stable snapshot basenames (version stays in local filenames
