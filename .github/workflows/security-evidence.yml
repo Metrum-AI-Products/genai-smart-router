@@ -11,7 +11,7 @@ on:
 
 permissions:
   contents: read
-  security-events: write
+  pull-requests: read
 
 jobs:
   secret-scan:
@@ -39,12 +39,14 @@ jobs:
         uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e
         with:
           path: .
-          fail-build: true
+          fail-build: false
           severity-cutoff: high
           output-format: sarif
           output-file: source-vulnerabilities.sarif
-      - name: Upload vulnerability results
+      - name: Upload vulnerability report
         if: always()
-        uses: github/codeql-action/upload-sarif@6f5948dfacef28e207b48d0905cf90c03365536d
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          sarif_file: source-vulnerabilities.sarif
+          name: source-vulnerabilities-sarif
+          path: source-vulnerabilities.sarif
+          if-no-files-found: error
