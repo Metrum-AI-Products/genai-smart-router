@@ -8,6 +8,8 @@ Kubernetes deployments use the same packaged image tarballs after loading and pu
 
 The checked-in `Dockerfile` pins the Go builder image to a patched Go patch release. Keep that tag pinned when updating the toolchain so release images do not silently move onto an unreviewed compiler or standard-library patch level.
 
+The Docker build installs the docs and admin dependencies with `npm ci` in layers keyed by their checked-in package manifests and lockfiles, before copying the rest of the source. Keep those dependency layers ahead of target-architecture arguments and source copies: amd64 and arm64 release packages can then share the verified dependency layers while still rebuilding embedded docs with the requested version, commit, and build date. Do not replace `npm ci` with an unlocked install mode.
+
 ## Build Package
 
 From the development machine:
