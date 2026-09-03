@@ -1,0 +1,22 @@
+name: Usage question
+description: Ask a public installation, configuration, or usage question.
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the documentation and existing issues.
+          required: true
+        - label: I removed all secrets, tokens, prompts, customer data, private hostnames, and full production configuration.
+          required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Include the goal, router version, deployment type, and sanitized context.
+    validations:
+      required: true
+

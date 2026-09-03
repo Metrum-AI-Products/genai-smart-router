@@ -1,33 +1,42 @@
 # Security Policy
 
-## Supported versions
+## Reporting A Vulnerability
 
-Security fixes are provided for the latest published release of GenAI Smart
-Router. Older releases may be assessed when a report shows that they remain
-affected, but users should plan to upgrade to the latest fixed release.
+Do not open a public issue for a suspected vulnerability. Use GitHub's private
+vulnerability-reporting form for this repository:
 
-## Reporting a vulnerability
+https://github.com/sysadmin-metrum-ai/genai-smart-router/security/advisories/new
 
-Do not open a public issue for a suspected vulnerability. Report it privately
-through [GitHub private vulnerability reporting](https://github.com/sysadmin-metrum-ai/genai-smart-router/security/advisories/new)
-or email [security@metrum.ai](mailto:security@metrum.ai). Include the affected
-version, impact, reproduction steps, and any suggested mitigation. Do not send
-credentials, customer data, or production content; arrange a protected transfer
-with the security team if sensitive evidence is necessary.
+Include affected versions, impact, a minimal reproduction, and suggested
+mitigations when available. Do not include live credentials, customer data,
+private infrastructure details, or destructive proof-of-concept activity.
+Arrange a protected transfer with the security team if sensitive evidence is
+necessary.
 
-We aim to acknowledge a report within three business days, provide an initial
-assessment within seven business days, and send status updates at least every
-fourteen days until resolution. Timing may vary with severity and complexity.
+Maintainers aim to acknowledge a report within three business days, provide an
+initial assessment within seven business days, and send status updates at least
+every fourteen days until resolution. Timing may vary with severity and
+complexity.
 
-## Coordinated disclosure
+## Coordinated Disclosure
 
-We ask reporters to keep a vulnerability confidential while we investigate,
-prepare a fix, and coordinate releases and customer guidance. We will work with
-the reporter on a reasonable disclosure date, credit preferences, and any CVE
-coordination. We will not request indefinite nondisclosure. If active
-exploitation or material user harm changes the timeline, we may publish an
-accelerated advisory and mitigation guidance.
+Maintainers coordinate validation, disclosure, release timing, credit
+preferences, and CVE handling through the private advisory. Reporters are asked
+to keep a vulnerability confidential while a fix and user guidance are
+prepared. The project will not request indefinite nondisclosure. Active
+exploitation or material user harm may require an accelerated advisory and
+mitigation guidance.
 
-Reports are handled on a need-to-know basis. We preserve relevant evidence,
-avoid placing secrets in tickets or logs, and publish a security advisory when
-that is appropriate for affected users.
+## Supported Versions
+
+Security fixes are made on the current development line and released through
+the normal release process. Older releases are not guaranteed to receive
+backports. Operators should review release notes, validate upgrades in their
+environment, and retain a tested rollback artifact.
+
+## Deployment Boundary
+
+The router cannot secure provider accounts, networks, hosts, clusters, secret
+stores, databases, ingress, or clients that an operator configures around it.
+See the public security and deployment-readiness documentation for those
+self-managed responsibilities.

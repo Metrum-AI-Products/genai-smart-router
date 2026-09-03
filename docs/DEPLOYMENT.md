@@ -67,14 +67,6 @@ ALLOW_DIRTY_PACKAGE=1 make package-one-no-docs
 
 All package tar commands run with `COPYFILE_DISABLE=1` so macOS does not inject AppleDouble `._*` metadata. `scripts/validate_package_contents.py` rejects AppleDouble entries, unexpected files, missing allowlisted docs, internal runbooks, local secret/state filenames, private production markers, raw token/provider-key patterns, and binary-package ELF architecture mismatches. The validation step is part of each package target and must pass before publishing an artifact.
 
-Release package targets require a clean git tree and reject versions containing `-dirty`. Commit the intended code, generated embedded docs, and admin assets before building customer release artifacts. For a local development artifact that will not be shipped, set `ALLOW_DIRTY_PACKAGE=1` explicitly:
-
-```bash
-ALLOW_DIRTY_PACKAGE=1 make package-one-no-docs
-```
-
-All package tar commands run with `COPYFILE_DISABLE=1` so macOS does not inject AppleDouble `._*` metadata. `scripts/validate_package_contents.py` rejects AppleDouble entries, unexpected files, missing allowlisted docs, internal runbooks, local secret/state filenames, private production markers, raw token/provider-key patterns, and binary-package ELF architecture mismatches. The validation step is part of each package target and must pass before publishing an artifact.
-
 Release metadata is intentionally strict because package and Docker recipes use it in paths, tags, and linker flags. `VERSION`, `COMMIT`, `BUILD_DATE`, `GOOS`, `GOARCH`, `PKG_NAME`, `DIST_DIR`, `IMAGE_NAME`, and `IMAGE_TAG` must pass `scripts/validate_build_metadata.py` before package or image commands run. Versions may use ordinary `git describe` characters such as letters, digits, `.`, `_`, `+`, `/`, and `-`; shell metacharacters, empty values, absolute paths, and `..` path components are rejected.
 
 The config and routing script are packaged together so this command works after unpacking:
@@ -116,6 +108,29 @@ make package-all
 make package-docker-all
 python3 scripts/validate_package_contents.py --allowlist scripts/package_docs_allowlist.txt dist/smart-llmrouter-*.tar.gz
 ```
+
+Bind the complete four-artifact set to the approved version, full commit ID,
+and one UTC build timestamp before upload. This reruns package validation and
+writes deterministic `dist/SHA256SUMS` plus `dist/release-artifacts.json` with
+filename, byte size, SHA-256, package family, platform, validation result, and
+reproducible commands:
+
+```bash
+export VERSION=vX.Y.Z
+export COMMIT="$(git rev-parse HEAD)"
+export BUILD_DATE=YYYY-MM-DDTHH:MM:SSZ
+make package-all package-docker-all
+make release-artifact-inventory
+sha256sum --check dist/SHA256SUMS
+```
+
+Use the same three metadata values for both build commands. The inventory
+fails unless exactly one binary and one Docker package exist for each of
+`linux/amd64` and `linux/arm64`. Keep these local files as candidate evidence;
+publishing them, adding release URLs, signing a tag, and creating the public
+GitHub Release remain release-authority actions. After publication, download
+every asset into an empty directory, run `sha256sum --check SHA256SUMS`, and
+record the public URL and result in the release evidence.
 
 Metrum CTO release archival uses restic against the protected backup repository.
 `make package-all` produces the fleet-admin binary packages (includes
@@ -166,6 +181,12 @@ Services. Offline gate: `make test-k8s-amd-instinct-local-serving`. Live on-prem
 steps: `docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md`. The manual path is
 intentional until the blueprint CLI ships an AMD profile; do not relabel or
 apply the NVIDIA serving overlay on AMD nodes.
+
+The AMD overlay is an integration example, not evidence that every AMD SKU,
+driver, ROCm release, serving image, model, parser, or request shape is
+supported. Its offline gate checks manifest structure and security invariants;
+record hardware-backed direct-upstream and router smokes before making a
+deployment-specific compatibility claim.
 
 Metrum engineering production runs on the Fleet tenant documented in
 `docs/EKS_PRODUCTION_OPERATIONS.md`. Generic Kubernetes samples remain under

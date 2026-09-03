@@ -109,6 +109,7 @@ def main() -> int:
         ("build metadata validator", [sys.executable, "scripts/validate_build_metadata.py"]),
         ("release clean-tree validator", [sys.executable, "scripts/validate_release_clean_test.py"]),
         ("package content validator self-test", [sys.executable, "scripts/validate_package_contents_test.py"]),
+        ("release artifact inventory self-test", [sys.executable, "scripts/release_artifact_inventory_test.py"]),
         ("docker context validator", [sys.executable, "scripts/validate_docker_context.py"]),
         ("compose security validator", ["bash", "scripts/check_compose_security.sh"]),
     ]

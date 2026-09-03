@@ -166,7 +166,11 @@ def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> di
     return files
 
 
-def docker_image_tar(extra_layer_files: dict[str, str | bytes] | None = None) -> bytes:
+def docker_image_tar(
+    extra_layer_files: dict[str, str | bytes] | None = None,
+    *,
+    arch: str = "amd64",
+) -> bytes:
     layer_data = io.BytesIO()
     with tarfile.open(fileobj=layer_data, mode="w") as layer:
         for name in [
@@ -191,7 +195,7 @@ def docker_image_tar(extra_layer_files: dict[str, str | bytes] | None = None) ->
     image_data = io.BytesIO()
     with tarfile.open(fileobj=image_data, mode="w") as image:
         manifest = [{"Config": "config.json", "RepoTags": ["smart-llmrouter:v1.0.0-linux-amd64"], "Layers": ["layer.tar"]}]
-        config = {"architecture": "amd64", "os": "linux"}
+        config = {"architecture": arch, "os": "linux"}
         for name, content in {
             "manifest.json": json.dumps(manifest).encode("utf-8"),
             "config.json": json.dumps(config).encode("utf-8"),
@@ -255,6 +259,18 @@ def main() -> int:
         good_docker = root / "smart-llmrouter-v1.0.0-docker-linux-amd64.tar.gz"
         write_tar(good_docker, docker_package_files())
         expect_ok(good_docker, allowlist)
+
+        wrong_image_arch = root / "smart-llmrouter-v1.0.0-docker-linux-amd64.tar.gz"
+        wrong_image_arch_files = docker_package_files()
+        wrong_image_arch_files[
+            "smart-llmrouter-v1.0.0-docker-linux-amd64/images/smart-llmrouter-v1.0.0-linux-amd64.tar"
+        ] = docker_image_tar(arch="arm64")
+        write_tar(wrong_image_arch, wrong_image_arch_files)
+        expect_errors(wrong_image_arch, allowlist, ["image platform linux/arm64 does not match linux/amd64"])
+
+        wrong_root = root / "smart-llmrouter-v1.0.0-linux-amd64.tar.gz"
+        write_tar(wrong_root, binary_package_files("another-root"))
+        expect_errors(wrong_root, allowlist, ["top-level directory must be"])
 
         extra_image = root / "extra-image.tar.gz"
         extra_image_files = docker_package_files()

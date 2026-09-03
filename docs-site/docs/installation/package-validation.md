@@ -74,6 +74,14 @@ Run the release validation matrix before accepting or distributing artifacts. Th
 
 During artifact intake, include inspection against the package allowlist and denylist. Artifact inspection does not replace runtime smoke tests. For Docker Compose or Kubernetes deployments, still start the packaged router in the target environment and verify `/readyz`, `/docs/`, `/version`, `/v1/models`, one authenticated model request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens.
 
+An accepted release set contains one binary package and one Docker package for
+each of `linux/amd64` and `linux/arm64`. Its `SHA256SUMS` and
+`release-artifacts.json` must bind every filename to its byte size, SHA-256,
+platform, release version, source commit, and UTC build date. Download all
+published assets into an empty directory and verify the checksums there; a
+checksum generated only from the builder's local copy is not publication
+evidence.
+
 ## What Must Not Be Present
 
 Packages should not contain:
