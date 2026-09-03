@@ -167,6 +167,12 @@ steps: `docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md`. The manual path is
 intentional until the blueprint CLI ships an AMD profile; do not relabel or
 apply the NVIDIA serving overlay on AMD nodes.
 
+The AMD overlay is an integration example, not evidence that every AMD SKU,
+driver, ROCm release, serving image, model, parser, or request shape is
+supported. Its offline gate checks manifest structure and security invariants;
+record hardware-backed direct-upstream and router smokes before making a
+deployment-specific compatibility claim.
+
 Metrum engineering production runs on the Fleet tenant documented in
 `docs/EKS_PRODUCTION_OPERATIONS.md`. Generic Kubernetes samples remain under
 `deploy/kubernetes/base/` and `deploy/kubernetes/overlays/example/`. Historical
