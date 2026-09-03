@@ -327,6 +327,10 @@ outcome-calibrated-demo: outcome-calibrated-synthetic-demo
 outcome-calibrated-synthetic-demo:
 	python3 scripts/run_outcome_calibrated_demo.py --out-dir tmp/outcome-calibrated-demo
 
+.PHONY: dco-check-test
+dco-check-test:
+	python3 scripts/check_dco_test.py
+
 secret-check:
 	python3 scripts/check_env_example_secrets.py
 	python3 scripts/check_env_example_secrets_test.py
