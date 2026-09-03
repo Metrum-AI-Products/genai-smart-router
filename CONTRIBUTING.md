@@ -2,6 +2,11 @@
 
 Thank you for contributing.
 
+Please read the [Code of Conduct](CODE_OF_CONDUCT.md), project
+[governance](GOVERNANCE.md), and [support boundaries](SUPPORT.md) before
+participating. Vulnerabilities must use the private process in
+[SECURITY.md](SECURITY.md), not a public issue.
+
 ## License
 
 This project is licensed under the Apache License, Version 2.0. Unless a

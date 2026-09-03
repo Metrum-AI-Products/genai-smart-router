@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a reproducible defect in GenAI Smart Router.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, tokens, prompts, customer data, private hostnames, or full production configuration.
+  - type: input
+    id: version
+    attributes:
+      label: Router version
+      description: Copy the version from `/version` or the release artifact.
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment type
+      options: [Docker Compose, Kubernetes, Binary, From source, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Explain the expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Use placeholders and sanitized inputs only.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Include relevant status codes, safe error classes, and checks already run.
+
