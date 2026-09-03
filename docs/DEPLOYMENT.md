@@ -125,7 +125,7 @@ export COMMIT="$(git rev-parse HEAD)"
 export BUILD_DATE=YYYY-MM-DDTHH:MM:SSZ
 make package-all package-docker-all
 make release-artifact-inventory
-sha256sum --check dist/SHA256SUMS
+(cd dist && sha256sum --check SHA256SUMS)
 ```
 
 Use the same three metadata values for both build commands. The inventory
