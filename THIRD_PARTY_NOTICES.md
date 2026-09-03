@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-GenAI Smart Router includes, builds with, or refers to the dependencies below. The Apache-2.0 license in `LICENSE` applies only to first-party content. Metadata was audited on 2026-09-02 from pinned manifests and locks, fresh lockfile-preserving installations, installed package metadata, local Go module license files, and the completed ephemeral `go-licenses` scan. Package metadata is evidence, not a legal conclusion.
+GenAI Smart Router includes, builds with, or refers to the dependencies below. The Apache-2.0 license in `LICENSE` applies only to first-party content. Metadata was audited on 2026-09-02 from pinned manifests and locks, fresh lockfile-preserving installations, installed package metadata, local Go module license files, and the completed ephemeral `go-licenses` scan. The focused 2026-09-03 remediation below inspected exact registry source archives and local module license texts. Package metadata is evidence, not a legal conclusion.
 
 ## Inventory summary
 
@@ -97,7 +97,7 @@ GenAI Smart Router includes, builds with, or refers to the dependencies below. T
 | Go | k8s.io/kube-openapi | v0.0.0-20250910181357-589584f1c912 | Apache-2.0 | [project](https://pkg.go.dev/k8s.io/kube-openapi) | shipped binary; packages imported by repository Go builds |
 | Go | k8s.io/utils | v0.0.0-20251002143259-bc988d571ff4 | Apache-2.0 | [project](https://pkg.go.dev/k8s.io/utils) | shipped binary; packages imported by repository Go builds |
 | Go | modernc.org/libc | v1.72.3 | BSD-3-Clause | [project](https://pkg.go.dev/modernc.org/libc) | shipped binary; packages imported by repository Go builds |
-| Go | modernc.org/mathutil | v1.7.1 | **Unresolved** | [project](https://pkg.go.dev/modernc.org/mathutil) | shipped binary; packages imported by repository Go builds |
+| Go | modernc.org/mathutil | v1.7.1 | BSD-3-Clause | [project](https://pkg.go.dev/modernc.org/mathutil) | shipped binary; transitive dependency of `modernc.org/libc`, `modernc.org/memory`, and `modernc.org/sqlite`; required binary-redistribution attribution is in root `NOTICE` |
 | Go | modernc.org/memory | v1.11.0 | BSD-3-Clause | [project](https://pkg.go.dev/modernc.org/memory) | shipped binary; packages imported by repository Go builds |
 | Go | modernc.org/sqlite | v1.52.0 | BSD-3-Clause | [project](https://pkg.go.dev/modernc.org/sqlite) | shipped binary; packages imported by repository Go builds |
 | Go | sigs.k8s.io/json | v0.0.0-20250730193827-2d320260d730 | Apache-2.0 | [project](https://pkg.go.dev/sigs.k8s.io/json) | shipped binary; packages imported by repository Go builds |
@@ -885,7 +885,7 @@ GenAI Smart Router includes, builds with, or refers to the dependencies below. T
 | npm | esutils | 2.0.3 | BSD-2-Clause | [project](https://github.com/estools/esutils) | build input / potential shipped browser code; documentation web app |
 | npm | eta | 2.2.0 | MIT | [project](https://eta.js.org) | build input / potential shipped browser code; documentation web app |
 | npm | etag | 1.8.1 | MIT | [project](jshttp/etag) | build input / potential shipped browser code; documentation web app |
-| npm | eval | 0.1.8 | Unresolved | [project](http://github.com/pierrec/node-eval) | build input / potential shipped browser code; documentation web app |
+| npm | eval | 0.1.8 | MIT | [project](https://github.com/pierrec/node-eval) | build input / potential shipped browser code; Docusaurus dependency; exact npm archive includes the MIT license and Pierre Curto copyright notice |
 | npm | eventemitter3 | 4.0.7 | MIT | [project](https://github.com/primus/eventemitter3) | build input / potential shipped browser code; documentation web app |
 | npm | events | 3.3.0 | MIT | [project](https://github.com/Gozala/events) | build input / potential shipped browser code; documentation web app |
 | npm | execa | 5.1.1 | MIT | [project](sindresorhus/execa) | build input / potential shipped browser code; documentation web app |
@@ -912,7 +912,7 @@ GenAI Smart Router includes, builds with, or refers to the dependencies below. T
 | npm | flatbuffers | 24.12.23 | Apache-2.0 | [project](https://google.github.io/flatbuffers/) | development/operator tool; work dashboard |
 | npm | follow-redirects | 1.16.0 | MIT | [project](https://github.com/follow-redirects/follow-redirects) | build input / potential shipped browser code; documentation web app |
 | npm | form-data-encoder | 2.1.4 | MIT | [project](octet-stream/form-data-encoder) | build input / potential shipped browser code; documentation web app |
-| npm | format | 0.2.2 | Unresolved | [project](http://samhuri.net/proj/format) | build input / potential shipped browser code; documentation web app |
+| npm | format | 0.2.2 | MIT | [project](https://github.com/samsonjs/format) | build input / potential shipped browser code; transitive dependency through `fault`; exact npm archive declares MIT but contains no separate license file |
 | npm | forwarded | 0.2.0 | MIT | [project](jshttp/forwarded) | build input / potential shipped browser code; documentation web app |
 | npm | fraction.js | 5.3.4 | MIT | [project](https://raw.org/article/rational-numbers-in-javascript/) | build input / potential shipped browser code, build/dev only; documentation web app, embedded admin app |
 | npm | fresh | 0.5.2 | MIT | [project](jshttp/fresh) | build input / potential shipped browser code; documentation web app |
@@ -1042,7 +1042,7 @@ GenAI Smart Router includes, builds with, or refers to the dependencies below. T
 | npm | js-yaml | 3.14.2 | MIT | [project](https://github.com/nodeca/js-yaml) | build input / potential shipped browser code; documentation web app |
 | npm | js-yaml | 4.2.0 | MIT | [project](nodeca/js-yaml) | build input / potential shipped browser code; documentation web app |
 | npm | jsesc | 3.1.0 | MIT | [project](https://mths.be/jsesc) | build input / potential shipped browser code, shipped binary/web artifact; documentation web app, embedded admin app |
-| npm | json-bignum | 0.0.3 | Unresolved | [project](https://github.com/datalanche/json-bignum) | development/operator tool; work dashboard |
+| npm | json-bignum | 0.0.3 | MIT | [project](https://github.com/datalanche/json-bignum) | development/operator tool only; transitive dependency of `apache-arrow` in the work dashboard, which release recipes do not ship; exact npm archive includes the MIT license and Datalanche copyright notice |
 | npm | json-buffer | 3.0.1 | MIT | [project](https://github.com/dominictarr/json-buffer) | build input / potential shipped browser code; documentation web app |
 | npm | json-parse-even-better-errors | 2.3.1 | MIT | [project](https://github.com/npm/json-parse-even-better-errors) | build input / potential shipped browser code; documentation web app |
 | npm | json-schema-traverse | 0.4.1 | MIT | [project](https://github.com/epoberezkin/json-schema-traverse#readme) | build input / potential shipped browser code; documentation web app |
@@ -1051,7 +1051,7 @@ GenAI Smart Router includes, builds with, or refers to the dependencies below. T
 | npm | jsonfile | 6.2.1 | MIT | [project](https://github.com/jprichardson/node-jsonfile) | build input / potential shipped browser code; documentation web app |
 | npm | katex | 0.16.47 | MIT | [project](https://katex.org) | build input / potential shipped browser code; documentation web app |
 | npm | keyv | 4.5.4 | MIT | [project](https://github.com/jaredwray/keyv) | build input / potential shipped browser code; documentation web app |
-| npm | khroma | 2.1.0 | Unresolved | [project](github:fabiospampinato/khroma) | build input / potential shipped browser code; documentation web app |
+| npm | khroma | 2.1.0 | MIT | [project](https://github.com/fabiospampinato/khroma) | build input / potential shipped browser code; transitive dependency of Mermaid; exact npm archive includes the MIT license and Fabio Spampinato/Andrew Maney copyright notice |
 | npm | kind-of | 6.0.3 | MIT | [project](https://github.com/jonschlinkert/kind-of) | build input / potential shipped browser code; documentation web app |
 | npm | kleur | 3.0.3 | MIT | [project](lukeed/kleur) | build input / potential shipped browser code; documentation web app |
 | npm | latest-version | 7.0.0 | MIT | [project](sindresorhus/latest-version) | build input / potential shipped browser code; documentation web app |
@@ -1373,7 +1373,7 @@ GenAI Smart Router includes, builds with, or refers to the dependencies below. T
 | npm | remark-stringify | 11.0.0 | MIT | [project](https://remark.js.org) | build input / potential shipped browser code; documentation web app |
 | npm | renderkid | 3.0.0 | MIT | [project](https://github.com/AriaMinaei/RenderKid) | build input / potential shipped browser code; documentation web app |
 | npm | require-from-string | 2.0.2 | MIT | [project](floatdrop/require-from-string) | build input / potential shipped browser code; documentation web app |
-| npm | require-like | 0.1.2 | Unresolved | [project](https://github.com/felixge/node-require-like) | build input / potential shipped browser code; documentation web app |
+| npm | require-like | 0.1.2 | MIT | [project](https://github.com/felixge/node-require-like) | build input / potential shipped browser code; transitive dependency of `eval`; exact npm archive includes the MIT license and Felix Geisendörfer copyright notice |
 | npm | requires-port | 1.0.0 | MIT | [project](https://github.com/unshiftio/requires-port) | build input / potential shipped browser code; documentation web app |
 | npm | resolve-alpn | 1.2.1 | MIT | [project](https://github.com/szmarczak/resolve-alpn#readme) | build input / potential shipped browser code; documentation web app |
 | npm | resolve-from | 4.0.0 | MIT | [project](sindresorhus/resolve-from) | build input / potential shipped browser code; documentation web app |
@@ -1605,8 +1605,77 @@ GenAI Smart Router includes, builds with, or refers to the dependencies below. T
 | PyPI | urllib3 | 2.7.0 | MIT | [project](https://github.com/urllib3/urllib3/blob/main/CHANGES.rst) | test/evaluation; LiveCodeBench evaluator |
 | PyPI | xxhash | 4.0.1 | BSD-2-Clause | [project](https://github.com/ifduyue/python-xxhash) | test/evaluation; LiveCodeBench evaluator |
 | PyPI | yarl | 1.24.5 | Apache-2.0 | [project](https://github.com/aio-libs/yarl) | test/evaluation; LiveCodeBench evaluator |
-| vendored JS | @alexanderolsen/libsamplerate-js | 2.1.2 | Unresolved | [project](https://www.npmjs.com/package/@alexanderolsen/libsamplerate-js) | shipped web artifact; docs-site static vendor |
-| vendored JS | @elevenlabs/convai-widget-embed | 0.16.3 | Unresolved | [project](https://www.npmjs.com/package/@elevenlabs/convai-widget-embed) | shipped web artifact; docs-site static vendor |
+| vendored JS | @alexanderolsen/libsamplerate-js | 2.1.2 | MIT AND BSD-2-Clause | [project](https://github.com/aolsenjazz/libsamplerate-js) | shipped web artifact; local SHA-256 `ca6e162f194d3ee5a2d2cd3c3b49641d31e56845aeae507feca1cdf8aa8116cb` exactly matches `dist/libsamplerate.worklet.js` in the npm archive identified by integrity `sha512-pIXQDX/DZIgz6pKInUddDd6Tnq/s2E9g4ZITkKX60kxM/nAuZcxYa/z0y/jwJbjyp/oKe+8/qHLSqMzQ18xSiQ==`; root `NOTICE` preserves the bundled libsamplerate BSD-2-Clause attribution |
+| vendored JS | @elevenlabs/convai-widget-embed | 0.16.3 | MIT | [project](https://github.com/elevenlabs/packages/tree/main/packages/convai-widget-embed) | shipped web artifact; derived from exact npm archive integrity `sha512-8meSwmCIqBhkG4hnUHxXjSeG7u6CgzPvEjP3HEGbbek30+vEs1T8uoyX345LyVrKaWh+3A/M+pEeFkWjNZlYsw==`; local SHA-256 `7316d8d048a3a963ab7986c8163b5e4deda966d1f03254566bf07183066038fc`; byte comparison found one deliberate substitution of the upstream jsDelivr worklet URL with `/docs/vendor/elevenlabs/libsamplerate.worklet-2.1.2.js`, with the remainder byte-equivalent to archive `dist/index.js` |
+
+## Focused #957 dispositions and required preservation
+
+The exact npm source archives establish MIT terms for `eval@0.1.8`,
+`format@0.2.2`, `json-bignum@0.0.3`, `khroma@2.1.0`, and
+`require-like@0.1.2`. The first, third, fourth, and fifth archives include
+their MIT text; `format` declares MIT in its package metadata but omits a
+separate license file. These packages are build inputs or operator/test tools
+as classified above. MIT permission includes commercial redistribution, with
+the condition that the upstream copyright and permission notice accompany
+copies or substantial portions. Generated browser-bundle notice preservation
+must therefore remain part of release legal review.
+
+The following non-permissive or dual-license declarations are verified, but
+verification is not legal clearance:
+
+| Item | Distribution disposition |
+| --- | --- |
+| `elkjs@0.9.3` (EPL-2.0) | Docs build input whose code may enter the shipped browser bundle. Its exact npm archive contains EPL-2.0. Distribution remains subject to qualified legal review of EPL source-availability, license-copy, modification, and notices obligations; do not treat this inventory as clearance. |
+| `dompurify@3.4.11` (MPL-2.0 OR Apache-2.0) | Mermaid dependency whose code may enter the shipped browser bundle. Its exact npm archive contains both license texts. A release owner must deliberately select and comply with one offered license; Apache-2.0 is available, but this document does not make that legal election or claim clearance. |
+| `certifi@2026.7.22` (MPL-2.0) | Test/evaluation dependency only; not copied by normal binary or image recipes. Its exact source distribution says the bundled Mozilla CA certificate material is MPL-2.0. Any separate redistribution of the evaluator environment or certificate bundle requires MPL review and preservation. |
+| `tqdm@4.70.0` (MPL-2.0 AND MIT) | Test/evaluation dependency only; not copied by normal binary or image recipes. Its exact source distribution applies MPL-2.0 generally and records MIT-covered historical material. Any separate redistribution of that environment requires both notices and qualified legal review. |
+
+The installed `modernc.org/mathutil@v1.7.1` module contains BSD-3-Clause
+terms, resolving the earlier classifier miss. It is linked transitively into
+router builds through the modernc SQLite stack; the required binary-form
+copyright, conditions, and disclaimer are preserved in root `NOTICE`.
+`go-licenses` inability to inspect assembly in `golang.org/x/sys`,
+`modernc.org/libc`, and `github.com/cespare/xxhash/v2` is a scanner limitation,
+not evidence of additional dependencies or permission. Those modules retain
+their separately inventoried licenses; assembly-derived or generated-code
+provenance remains a release legal-review risk where the available module
+license texts do not establish it.
+
+The checked-in ElevenLabs widget is equivalent to the exact 0.16.3 npm
+artifact except for one recorded worklet-URL substitution, and the checked-in
+worklet exactly matches the 2.1.2 npm artifact. The exact archives establish
+MIT for the widget and MIT plus bundled libsamplerate BSD-2-Clause terms for
+the worklet. Preserve the ElevenLabs 2025 and Alexander Olsen 2021 MIT
+copyright and permission notices with distributed substantial copies, and
+preserve the libsamplerate BSD-2-Clause text in root `NOTICE`. Package licenses
+grant copyright permissions but do not grant rights in ElevenLabs, Metrum, or
+other trademarks.
+
+For distributed substantial copies of the two vendored artifacts, preserve
+the following archive-supplied MIT notices (the BSD-2-Clause component notice
+is in root `NOTICE`):
+
+> @elevenlabs/convai-widget-embed: Copyright (c) 2025 ElevenLabs.
+>
+> @alexanderolsen/libsamplerate-js: Copyright (c) 2021 Alexander Olsen.
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above applicable copyright notice and this permission notice shall be
+> included in all copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
 
 ## Prominent unresolved and higher-risk review queue
 
@@ -1614,7 +1683,6 @@ The following records require a qualified human decision before public or custom
 
 | Item | Practical risk / replacement availability |
 | --- | --- |
-| Go modernc.org/mathutil v1.7.1 — license: Unresolved; homepage: https://pkg.go.dev/modernc.org/mathutil | The completed Go classifier could not identify a known license; confirm governing terms or replace the SQLite dependency chain that introduces it. |
 | npm @esbuild/aix-ppc64 0.28.1 — license: MIT; homepage: Unresolved | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
 | npm @esbuild/android-arm 0.28.1 — license: MIT; homepage: Unresolved | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
 | npm @esbuild/android-arm64 0.28.1 — license: MIT; homepage: Unresolved | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
@@ -1687,29 +1755,43 @@ The following records require a qualified human decision before public or custom
 | npm @rollup/rollup-win32-x64-gnu 4.62.4 — license: MIT; homepage: Unresolved | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
 | npm @rollup/rollup-win32-x64-msvc 4.62.2 — license: MIT; homepage: Unresolved | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
 | npm @rollup/rollup-win32-x64-msvc 4.62.4 — license: MIT; homepage: Unresolved | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| npm dompurify 3.4.11 — license: (MPL-2.0 OR Apache-2.0); homepage: https://github.com/cure53/DOMPurify | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| npm elkjs 0.9.3 — license: EPL-2.0; homepage: https://github.com/kieler/elkjs | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| npm eval 0.1.8 — license: Unresolved; homepage: http://github.com/pierrec/node-eval | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| npm format 0.2.2 — license: Unresolved; homepage: http://samhuri.net/proj/format | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
 | npm fsevents 2.3.2 — license: MIT; homepage: Unresolved | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
 | npm fsevents 2.3.3 — license: MIT; homepage: Unresolved | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| npm json-bignum 0.0.3 — license: Unresolved; homepage: https://github.com/datalanche/json-bignum | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| npm khroma 2.1.0 — license: Unresolved; homepage: github:fabiospampinato/khroma | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| npm require-like 0.1.2 — license: Unresolved; homepage: https://github.com/felixge/node-require-like | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
 | npm robust-predicates 3.0.3 — license: Unlicense; homepage: https://github.com/mourner/robust-predicates | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
 | npm tailwindcss-animate 1.0.7 — license: MIT; homepage: Unresolved | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| PyPI certifi 2026.7.22 — license: MPL-2.0; homepage: https://github.com/certifi/python-certifi | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
 | PyPI pluggy 1.6.0 — license: MIT; homepage: Unresolved | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| PyPI tqdm 4.70.0 — license: MPL-2.0 AND MIT; homepage: https://tqdm.github.io | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| vendored JS @alexanderolsen/libsamplerate-js 2.1.2 — license: Unresolved; homepage: https://www.npmjs.com/package/@alexanderolsen/libsamplerate-js | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| vendored JS @elevenlabs/convai-widget-embed 0.16.3 — license: Unresolved; homepage: https://www.npmjs.com/package/@elevenlabs/convai-widget-embed | Confirm the exact governing terms, provenance, notice/source obligations, and compatibility. An equivalent permissively licensed replacement may reduce distribution risk, but availability was not established by this audit. |
-| Vendored fonts and images under `docs-site/static/fonts/`, `docs-site/static/img/`, and embedded admin static assets | Provenance and redistribution terms are not consistently recorded; replace with first-party or clearly licensed assets if ownership cannot be proven. |
-| Model and dataset references | No weights or datasets are bundled, but operators may trigger downloads with separate terms; exact revision and intended use require human review under `MODEL_LICENSES.md`. |
+| `elkjs@0.9.3`, `dompurify@3.4.11`, `certifi@2026.7.22`, and `tqdm@4.70.0` | Exact terms and scopes are recorded above. EPL/MPL compatibility and redistribution obligations still require a qualified legal disposition; no clearance is claimed. |
+| Poppins and Geist font files under docs/admin static assets | Family-level OFL-1.1 terms are verified, but the checked-in WOFF2 hashes are not tied to an authoritative upstream revision and it is unknown whether renaming/subsetting created modified versions. Establish byte provenance and preserve the applicable copyright plus complete OFL-1.1 text before distribution. |
+| Metrum logos and favicons under docs/admin static assets | Shipped assets lack a checked-in authorship or rights record. Confirm copyright ownership and separate trademark redistribution authority, or replace them; project history and filenames are not rights evidence. |
+| Chart.js and generated browser bundles | Chart.js 4.5.1 is MIT, but normal builds compile dependency code into shipped docs/admin assets. Confirm generated artifacts preserve the complete Chart.js and other required upstream notices. The checked-in `internal/router/admindist/static/chart.umd.js` is repository-specific first-party tooltip code despite its filename. |
+| Synthetic-looking outcome datasets | Not copied by release recipes, but authorship/source is not recorded. Confirm the exemplar text is original and not copied from a restricted benchmark before redistributing the source repository. |
+| Model and external dataset references | No weights or external datasets are bundled, but examples/evaluators may trigger downloads with separate terms; unpinned model revisions and ambiguous dataset licensing remain open under `MODEL_LICENSES.md`. |
 
 ## Audit boundary and commands
 
 The inventory covers modules owning packages reported by `go list -deps ./...` (cross-checked with ephemeral `go-licenses csv ./...`), every installed package from fresh `npm ci --ignore-scripts --no-audit --no-fund` runs for the three npm lockfiles, installed distributions from ephemeral frozen `uv sync` for API tests, and an ephemeral `uv pip install -r evaluators/livecodebench/requirements.txt`. The Harbor uv lock declares no external Python packages. The two checked-in vendored JavaScript files are separate records. npm records are classified by consuming surface: docs/admin dependencies are build inputs whose code may enter shipped browser bundles; the dashboard is an operator/development tool.
 
-The Go classifier reported `modernc.org/mathutil` unresolved and warned that assembly in `golang.org/x/sys`, `modernc.org/libc`, and `github.com/cespare/xxhash/v2` could not be inspected for further dependencies; those limitations remain in the review queue. Optional platform npm packages remain actual lock/install records and are included.
+The Go classifier originally reported `modernc.org/mathutil` unresolved; the focused inspection above supersedes that result. Its assembly warnings remain bounded scanner limitations as described above. Optional platform npm packages remain actual lock/install records and are included.
 
 No provider keys, router tokens, production configuration, prompts, model output, or other secrets were read or recorded. This document is not legal advice and does not replace preservation of required upstream license texts and notices in release artifacts.
+
+## Focused remediation sources
+
+Exact-version evidence was taken from the npm registry archives and their
+included `package.json`/license files for
+[`eval@0.1.8`](https://registry.npmjs.org/eval/-/eval-0.1.8.tgz),
+[`format@0.2.2`](https://registry.npmjs.org/format/-/format-0.2.2.tgz),
+[`json-bignum@0.0.3`](https://registry.npmjs.org/json-bignum/-/json-bignum-0.0.3.tgz),
+[`khroma@2.1.0`](https://registry.npmjs.org/khroma/-/khroma-2.1.0.tgz),
+[`require-like@0.1.2`](https://registry.npmjs.org/require-like/-/require-like-0.1.2.tgz),
+[`elkjs@0.9.3`](https://registry.npmjs.org/elkjs/-/elkjs-0.9.3.tgz),
+[`dompurify@3.4.11`](https://registry.npmjs.org/dompurify/-/dompurify-3.4.11.tgz),
+[`@elevenlabs/convai-widget-embed@0.16.3`](https://registry.npmjs.org/@elevenlabs/convai-widget-embed/-/convai-widget-embed-0.16.3.tgz),
+and
+[`@alexanderolsen/libsamplerate-js@2.1.2`](https://registry.npmjs.org/@alexanderolsen/libsamplerate-js/-/libsamplerate-js-2.1.2.tgz).
+Python evidence came from the exact PyPI source distributions for
+[`certifi@2026.7.22`](https://files.pythonhosted.org/packages/source/c/certifi/certifi-2026.7.22.tar.gz)
+and
+[`tqdm@4.70.0`](https://files.pythonhosted.org/packages/source/t/tqdm/tqdm-4.70.0.tar.gz).
+The `modernc.org/mathutil` disposition uses the `LICENSE` included in the local
+Go module cache for the version authenticated by `go.sum`.
