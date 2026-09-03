@@ -1,5 +1,8 @@
 # NVIDIA local-serving overlay
 #
+# llm-d is a separate integration. Use the nvidia-llmd-compat blueprint profile
+# when an operator-managed llm-d frontend should select serving replicas.
+#
 # Profile: nvidia-local-serving, L40S fallback matrix (three GPU-owning vLLM Pods).
 # KV cache (LMCache / Mooncake): intentionally omitted.
 #

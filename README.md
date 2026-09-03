@@ -1,6 +1,10 @@
-# Smart LLM Router
+# GenAI Smart Router
 
-Go implementation of the Smart LLM Router described in `LLM_Router_SRS_1.docx`.
+GenAI Smart Router is a self-managed Go reverse proxy for routing OpenAI Chat,
+OpenAI Responses, and Anthropic Messages traffic across deployment-configured
+providers and private OpenAI-compatible model servers. It centralizes caller
+access, provider credentials, model-group policy, usage accounting, and safe
+operational diagnostics.
 
 Community participation is governed by [CONTRIBUTING.md](CONTRIBUTING.md), the
 [Code of Conduct](CODE_OF_CONDUCT.md), and [GOVERNANCE.md](GOVERNANCE.md).
@@ -40,6 +44,32 @@ Current MVP capabilities:
 - Disk-persisted quota/key state.
 - JSONL request logs using the SRS schema.
 - Metrics-admin-only Prometheus-compatible `/metrics` with caller/user/project labels.
+
+## Quick Start From Source
+
+Prerequisites are Go as declared in `go.mod` and at least one upstream provider
+account for an end-to-end completion. Building, testing, starting the router,
+and browsing its health/docs surfaces require no private repository access.
+
+```bash
+git clone https://github.com/sysadmin-metrum-ai/genai-smart-router.git
+cd genai-smart-router
+cp config.example.yaml config.yaml
+cp env.example.json env.json
+go test ./...
+go run ./cmd/router --config config.yaml
+```
+
+Add credentials only for providers you intend to activate, then generate a
+caller token and configure its generated hash/identity records as described in
+[Run From Source](#run-from-source). Confirm the caller's allowed groups with
+`GET /v1/models` before sending a completion.
+
+For packaged installs, use the public [installation
+guide](docs-site/docs/installation/index.md). The documented deployment modes
+are Linux binary, Docker Compose, and Kubernetes. See [Architecture, Platforms,
+And Limitations](docs-site/docs/reference/architecture-limitations.md) for the
+operator-owned boundaries and explicit non-goals.
 
 ## Cache Behavior
 
@@ -114,9 +144,8 @@ caddy/Caddyfile
 binary-package-only Fleet lifecycle contract. `metrum-genai-smartrouter-fleet-sign`
 issues protected intent/admission/delete documents and ships only in binary
 packages (never in customer Docker images).
-`metrum-genai-smartrouter-license` issues signed `license.json` files for Metrum
-operators only and also ships only in binary packages (never in customer Docker
-images).
+`metrum-genai-smartrouter-license` issues signed runtime-policy `license.json`
+files and ships only in binary packages (never in runtime Docker images).
 `plan`, `deploy`, and `delete` consume one mode-`0600`,
 profile-key-signed, reference-only deployment intent; it contains the protected
 profile, runtime bundle, and license references without their resolved values.
@@ -141,7 +170,11 @@ The `router` binary embeds the Docusaurus build output. At runtime, browser acce
 
 ## Documentation Map
 
-Public product docs live under `docs-site/docs/` and are organized as a customer/operator journey: overview, getting started, installation, licensing, configuration, routing, providers and models, API compatibility, agents/tools/vision, usage and reports, security and governance, operations, troubleshooting, evaluation, commercial evaluation, competitive landscape, reference, and release/upgrade guidance. These pages must stay customer-safe: use placeholder endpoints, placeholder tokens, deployment-defined model-group examples, and no private hostnames, SSH details, raw secrets, token hashes, full configs, or internal production procedures.
+Public product docs live under `docs-site/docs/` and are organized as an
+operator journey: overview, getting started, installation, self-managed
+licensing, configuration, routing, providers and models, API compatibility,
+agents/tools/vision, usage and reports, security and governance, operations,
+troubleshooting, evaluation, reference, and release/upgrade guidance.
 
 Internal operator and maintainer docs live under `docs/`. Use [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md) to decide which internal runbook owns each public section and which verification commands to run. Behavior changes affecting routing, auth, models, CLI/API usage, telemetry, deployment, licensing, security, or production operations normally require both public Docusaurus updates and matching internal/operator doc updates.
 
@@ -202,19 +235,25 @@ If a variable is already set in the shell, the shell value wins over `env.json`.
 
 In a packaged deployment, put provider keys in `config/env.json` beside `config/config.yaml`. The same loading rule applies: shell environment values win over `env.json`.
 
-## License Enforcement
+## Runtime Policy License Enforcement
 
 All GenAI Smart Router first-party content is licensed under the Apache License
 2.0. Copyright 2006 Metrum AI. The Apache license grants the rights to use,
-modify, and distribute those materials; no EULA acceptance or Metrum-issued
-runtime file is a condition of those rights.
+modify, and distribute those materials; no EULA acceptance or runtime-policy
+file is a condition of those rights.
 
 The signed `license.json` described below is an operator-selected runtime policy
 input. It can gate features or operational limits in a configured deployment,
 but it is not the software's copyright license and does not restrict the rights
 granted by Apache-2.0.
 
-Normal release builds enforce offline signed JSON licensing under `server.license`. The router verifies a Metrum-issued license envelope with embedded Ed25519 public keys at startup and on `recheck_interval`, so operators can renew or replace `license.json` without rebuilding the binary. Runtime YAML cannot disable licensing in release builds; deployments should mount the license file read-only and keep the license state file under the deployment state directory.
+Normal release builds enforce offline signed JSON runtime policy under
+`server.license`. Operators generate an Ed25519 keypair, issue `license.json`,
+and configure the paired public key. The router verifies the envelope at
+startup and on `recheck_interval`, so operators can renew or replace the file
+without rebuilding the binary. Runtime YAML cannot disable enforcement in
+release builds; deployments should mount the license file read-only and keep
+the license state file under the deployment state directory.
 
 ```yaml
 server:
@@ -229,15 +268,21 @@ server:
 
 `/readyz` fails when a required license blocks serving. Caller endpoints return documented `license-*` errors without exposing license payloads, signatures, or keys. Feature gates cover routing, usage reporting, admin reports, security reports, dynamic scoring, TypeScript routing, external policy routing, model-group contracts, retention rollups, and governed content-capture maintenance. Metrics-admin `/metrics` includes safe license gauges, and authorized admin report readers can query `/admin/license/status` for a safe summary only.
 
-Set `instance_fingerprint` only when Metrum issues an instance-bound license for the deployment. It must match the licensed instance scope or startup/readiness will fail with `license-instance-limit-exceeded`.
+Set `instance_fingerprint` only when the operator issues an instance-bound
+license for the deployment. It must match the licensed instance scope or
+startup/readiness will fail with `license-instance-limit-exceeded`.
 
 Use `go run ./cmd/router-license safe-summary --license license.json` to inspect safe license metadata. `router-license verify --license license.json --public-key <public-key-file>` is for release/test validation with a supplied public key. Internal operators can use `router-license issue`, `renew`, and `top-up` with the SKU catalog and approved entitlement records. Private signing keys are not required at runtime and must never be copied into router config, logs, images, or source control.
 
-When Metrum provides a signed revocation bundle, configure `server.license.revocation.mode: file` and mount the bundle at `server.license.revocation.path`. Effective `revoked`, `suspended`, or `superseded` entries block serving without license grace; `router-license revocation validate` and `revocation safe-summary` provide operator-safe verification.
+When the operator maintains a signed revocation bundle, configure
+`server.license.revocation.mode: file` and mount it at
+`server.license.revocation.path`. Effective `revoked`, `suspended`, or
+`superseded` entries block serving without license grace; `router-license
+revocation validate` and `revocation safe-summary` provide safe verification.
 
-Metrum-side license issuance, renewal, replacement, volume top-up, offline customer support, commercial/control-plane boundaries, and acceptance checklists are documented in [docs/LICENSE_OPERATIONS.md](docs/LICENSE_OPERATIONS.md). That runbook is internal/operator guidance; #921 owns the commerce purchase/entitlement flow and #42 owns customer-facing commercial/package copy.
-
-Customer-facing commercial access paths are documented under `docs-site/docs/licensing/`: enterprise self-hosted, private managed deployment, evaluation/pilot access, renewal/top-up, and marketplace/private-offer procurement. Do not describe a purchase, portal, download, or renewal mechanism as shipped until #921 sandbox acceptance is complete and #42 has approved the customer-facing wording.
+Self-managed issuance, renewal, trust rotation, and recovery are documented in
+[Self-Managed Licensing](docs-site/docs/licensing/index.md). Keep private keys
+outside source control and outside runtime containers.
 
 Provider credential variables referenced by the current `config.example.yaml`:
 

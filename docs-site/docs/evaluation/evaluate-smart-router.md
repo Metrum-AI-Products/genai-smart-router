@@ -5,17 +5,20 @@ doc_type: explanation
 
 # Evaluate GenAI Smart Router
 
-Use this checklist to evaluate GenAI Smart Router with a real deployment or a Metrum-managed evaluation instance. The goal is to verify client compatibility, governance, routing behavior, cost evidence, and operational trust signals before rollout. If the first question is whether the product fits a common enterprise concern, start with [Enterprise FAQ](./enterprise-faq). If the first question is where the router should run, start with [Enterprise Deployment Patterns](../operations/deployment-patterns).
-
-<div class="contactBanner">
-  <p>Need an evaluation environment or help choosing proof points? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
-</div>
+Use this checklist to evaluate GenAI Smart Router in a self-managed deployment.
+The goal is to verify client compatibility, governance, routing behavior, cost
+evidence, and operational trust signals before rollout. For deployment shape,
+start with [Deployment Patterns](../operations/deployment-patterns).
 
 When the question is whether a routed group is as good as a fixed model or previous policy, use [Prove Router Quality](./prove-router-quality) to run an evidence-first comparison instead of relying on anecdotes.
 
 ## Protect Evaluation Inputs
 
-Treat caller tokens, private endpoints, and any protected usage settings as local operator inputs. Keep completed environment files in an owner-readable, package-local runtime location selected by the deployment, and load them into the evaluation shell without placing values on command lines, reports, or support tickets. Customer evaluation evidence should contain only sanitized aggregate outcomes; contact [contact@metrum.ai](mailto:contact@metrum.ai) for deployment-specific evaluation setup.
+Treat caller tokens, private endpoints, and protected usage settings as local
+operator inputs. Keep completed environment files in an owner-readable runtime
+location—specifically an owner-readable, package-local runtime location selected by the deployment—and load them without placing values on command
+lines, reports, or public issues. Evaluation evidence should contain only
+sanitized outcomes.
 
 ## What To Prove First
 
@@ -28,17 +31,14 @@ Treat caller tokens, private endpoints, and any protected usage settings as loca
 | Does the router explain spend and performance? | Generate or review a report with provider/model, tokens, cost, latency, throughput, cache, attempts, and fallback fields. |
 | Can model groups be tuned by outcome? | Run Harbor or another verifier and compare reward/pass status against cost and latency. |
 
-## Commercial Evaluation Flow
+## Self-Managed Evaluation Flow
 
-Commercial evaluations can run on a Metrum-managed hosted service, an enterprise/on-prem licensed package, or a private customer-cloud deployment. The commercial path is:
-
-1. request an evaluation through [contact@metrum.ai](mailto:contact@metrum.ai);
-2. receive a router endpoint and token, or a deployment package plus signed JSON license for customer-controlled infrastructure;
-3. validate production-like workloads and clients;
-4. inspect savings, performance, quota, provider mix, security access, and retention/rollup evidence;
-5. choose the commercial path that fits the deployment: enterprise self-hosted, private managed, marketplace/private-offer, renewal, top-up, or another contracted plan.
-
-Production access uses either a signed enterprise license for customer-operated deployments or a private managed plan for Metrum-operated customer deployments. Use the contact address above for evaluation setup, license delivery, and deployment-specific access details.
+1. Install an immutable release artifact in an isolated environment.
+2. Configure operator-owned provider credentials and a caller token.
+3. Validate production-like workloads and clients.
+4. Inspect performance, quota, provider mix, security access, and retention
+   evidence.
+5. Record explicit promotion and rollback criteria before production use.
 
 ## Thirty-Minute Evaluation Path
 

@@ -7,7 +7,9 @@ doc_type: howto
 
 Admin browser reports are an authenticated operational surface for usage, performance, cost, cache, fallback, and diagnostic drilldown. They are disabled by default and served separately from public `/docs/`. The browser dashboard uses Metrum branding, local embedded assets, a dark operational theme, and an admin-only build-version chip for authorized administrators.
 
-For commercial evaluations, this surface is a proof point as well as an operations tool. It lets evaluators inspect whether the router reduced cost, preserved workload outcomes, isolated access, explained upstream/provider model choices, and produced enough sanitized evidence for cost allocation, quota tuning, support triage, and security review.
+For evaluations, this surface lets operators inspect whether the router reduced
+cost, preserved workload outcomes, isolated access, explained upstream choices,
+and produced enough sanitized evidence for cost allocation and triage.
 
 For health checks, metrics, log dimensions, and alerting, see [Observability](./observability). For incident triage by request ID, see [Request Troubleshooting](../troubleshooting/requests).
 

@@ -5,154 +5,39 @@ doc_type: explanation
 
 # GenAI Smart Router Solution Brief
 
-Metrum GenAI Smart Router is a provider-neutral gateway for enterprises that need flexibility across LLMs, VLMs, tool-capable models, and AI agent clients without losing security, cost control, or operational visibility.
+GenAI Smart Router is a self-managed, provider-neutral gateway for teams that
+need stable client APIs with deployment-owned routing, access control, budgets,
+and operational evidence.
 
-<div class="contactBanner">
-  <p>Interested in deploying GenAI Smart Router? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
-</div>
+Clients use OpenAI-compatible or Anthropic-compatible APIs and request a model
+group rather than a raw upstream model. The router authenticates the caller,
+checks group access and request shape, selects an eligible configured target,
+injects the upstream credential, translates supported dialects, and records
+sanitized usage and performance fields.
 
-## Executive Summary
+## Operational Value
 
-Modern AI teams rarely standardize on one model forever. Different models fit coding, extraction, summarization, planning, vision, browser-control context, and latency-sensitive chat. Provider availability, rate limits, price, and entitlements also change over time.
+- provider optionality behind stable application configuration;
+- server-side key custody and scoped caller access;
+- weighted, failover, dynamic-score, TypeScript, and external-service policy;
+- text, tool, image, and agent request-shape eligibility;
+- caller budgets and upstream traffic shaping;
+- request-time cost, latency, throughput, attempt, fallback, and cache reports;
+- private vLLM/SGLang-style OpenAI-compatible upstream support;
+- objective workload validation before lower-cost targets are promoted.
 
-GenAI Smart Router centralizes that complexity. Clients speak OpenAI-compatible or Anthropic-compatible APIs. The router authenticates the caller, checks model-group authorization, selects an upstream target that satisfies the request's text, image, and tool requirements, injects the provider credential, normalizes the response, records usage, and returns the response in the caller's expected dialect.
+Different models are good at different jobs and to different degrees. The goal
+is the least expensive validated model or mix that still completes each
+workload. Teams can prove that with unit tests, extraction accuracy, OCR
+targets, tool-call assertions, browser tasks, golden datasets, product
+acceptance tests, or agent harnesses such as Harbor.
 
-The operational model is outcome-oriented: define what each model group must accomplish, validate that outcome with Harbor or another objective harness, and then tune the provider/model mix for cost, latency, and reliability. A simple extraction task, a routine coding edit, a screenshot/OCR task, and a complex agentic refactor do not need the same model economics.
+## Deployment Boundary
 
-When buyers ask how to know whether a routed group works for their workload, the answer is an evidence-first comparison against a fixed model or previous policy. See [Enterprise FAQ](/docs/evaluation/enterprise-faq) for common buyer scenarios and [Prove Router Quality](/docs/evaluation/prove-router-quality) for the public evaluation playbook.
+Operators run the router as a Linux binary, Docker Compose service, or
+Kubernetes workload. They own TLS, network controls, secrets, provider
+accounts, state storage, backups, upgrades, incident response, and the exact
+model-group quality contracts. See [Installation](/docs/installation/),
+[Architecture And Limitations](/docs/reference/architecture-limitations), and
+[Deployment Readiness](/docs/evaluation/deployment-readiness).
 
-```mermaid
-flowchart LR
-  App[Applications and AI agents] --> Router[GenAI Smart Router]
-  Router --> Auth[Auth, quotas, allow lists]
-  Router --> Policy[Routing policy]
-  Router --> Telemetry[Metrics and usage reports]
-  Policy --> P1[OpenRouter]
-  Policy --> P2[MiniMax]
-  Policy --> P3[Moonshot/Kimi]
-  Policy --> P4[Internal vLLM or SGLang]
-  Policy --> P5[Other compatible providers]
-```
-
-## Enterprise Value
-
-- Provider optionality: adopt new model providers centrally while applications keep stable model-group names.
-- Multimodal readiness: support text, image/VLM, OCR-style, browser-control, and tool-call requests through the same governed endpoint.
-- Enterprise model control: include internally hosted vLLM or SGLang services in the same routing policy as external providers.
-- Cost control: steer routine traffic to lower-cost routes, reserve heavier routes for approved keys, and report request-time cost by user, project, provider, model, and IP.
-- Capacity pooling: combine usable throughput from multiple separately rate-limited upstream providers, accounts, and private endpoints behind one caller-facing model group.
-- Security: keep provider keys server-side and issue revocable router tokens to callers.
-- Reliability: use weighted routing, fallback, and scripted policies to reduce provider-specific blast radius.
-- Developer productivity: support Codex CLI, Claude Code CLI, OpenAI-compatible clients, and Anthropic-compatible clients through one endpoint.
-- Outcome-oriented optimization: use agentic validation harnesses such as Harbor to tune model groups for successful task outcomes, latency, throughput, and cost.
-- Operational visibility: expose metrics-admin telemetry, request logs, cache behavior, latency, token throughput, and visible build version metadata.
-
-## Production Pain Points
-
-The strongest value appears when teams move beyond a single prototype integration.
-
-| Pain point | Why it matters | Router value |
-|---|---|---|
-| Provider rate limits | One upstream RPM/TPM ceiling can stop production traffic even when other providers could serve the same shape. | Pool compatible traffic across validated upstream providers and private endpoints, with caller limits and provider shaping as guardrails. |
-| Provider outage or degradation | A provider-specific incident can break apps, demos, agents, or batch jobs. | Keep fallback and route-around policy server-side, bounded to retryable failures and eligible targets. |
-| Noisy-neighbor workloads | One user, project, batch job, or coding agent can consume shared provider capacity. | Enforce per-key RPM, TPM, concurrency, daily/monthly quotas, lifetime budgets, and optional burst shaping before upstream calls. |
-| Surprise cost spikes | Agent loops, oversized context, or expensive fallback can turn into a finance problem quickly. | Store request-time token, image, provider/model, cost, fallback, cache, and client metadata for attribution and triage. |
-| SDK and provider drift | Teams do not want every app to chase provider-specific model IDs, auth styles, and SDK behavior. | Provide one governed OpenAI-compatible and Anthropic-compatible gateway while operators evolve provider mix centrally. |
-| Credential sprawl | Provider keys in apps, notebooks, CI, or developer machines increase security and rotation risk. | Keep provider credentials server-side; issue revocable router tokens scoped by user, project, environment, and allowed model groups. |
-| Unsafe debugging | Support tickets often need request evidence, but raw prompts, tool outputs, and secrets should not spread. | Use request IDs, sanitized upstream errors, safe diagnostics, and report drilldown without exposing raw content or credentials by default. |
-| Team autonomy vs platform control | Central rules can slow teams, while fully decentralized provider use loses governance. | Combine central access, quotas, reporting, and credential custody with deployment-defined team or workload model groups. |
-
-## Model Group Quality Contracts
-
-Each deployment should define success criteria for every exposed model group. The criteria should match the group's purpose, not a generic "best model" label.
-
-| Group Purpose | Example Quality Contract |
-|---|---|
-| Low-cost general work | completes short chat, extraction, summarization, and simple edit tasks inside a cost and latency target |
-| Balanced development | passes routine coding tests, supports required tool dialects, and handles occasional image context through VLM-capable targets |
-| Coding agents | passes Harbor or similar agentic tasks with file/tool assertions, acceptable fallback rate, and measured cost savings |
-| VLM workloads | reads images or screenshots accurately enough for the target task and records image token/cost fields |
-| Private upstreams | keeps model endpoints private while meeting direct upstream and router-level smoke criteria |
-
-This lets platform teams reserve expensive targets for workloads that need them while using lower-cost routes for work that still meets its objective.
-
-## Capacity Pooling
-
-Provider rate limits are usually account-, model-, or endpoint-specific. A single hard-coded provider integration inherits that one upstream limit. GenAI Smart Router lets a deployment put several validated providers or private endpoints behind one model group, so compatible traffic can use the combined capacity of that upstream pool.
-
-That capacity is policy-controlled rather than unbounded. Caller RPM, TPM, concurrency, daily/monthly quota, and lifetime budgets still run before upstream selection. Request-shape eligibility ensures that only targets validated for the requested API surface, tools, modalities, context window, reasoning controls, and output-cap behavior are considered. Provider traffic shaping and adaptive backoff protect shared upstream accounts when one provider starts returning `429`, quota, timeout, or 5xx signals.
-
-For operators, the proof is visible in usage and admin reports: selected provider/model mix, upstream rate-limit attempts, fallback transitions, route-around success, latency, throughput, and user impact. The router can keep production traffic moving through other eligible targets while preserving evidence that a provider needs a quota increase, lower weight, stricter shaping, or removal from that group.
-
-## Cost Governance
-
-Agentic AI can turn one user request into many model calls, tool calls, retries, and follow-up requests. Token cost management becomes a platform concern rather than a per-application detail.
-
-GenAI Smart Router addresses the controllable layer:
-
-- Enforce caller allow lists and budgets before provider calls.
-- Route workloads by cost, quality, latency, and tool compatibility.
-- Cache eligible deterministic responses.
-- Compare provider/model usage and stored request-time cost using durable reports.
-- Track usage by public token ID, project, environment, model group, provider, model, hour, IP, and USD cost.
-- Evaluate model groups with agentic harnesses so cost savings are measured against task outcomes, not only token price.
-
-The Harbor case study in these docs shows the same principle numerically: successful agentic coding runs can differ substantially in token volume, latency, fallback use, and output throughput even when final reward score is identical. Those tokenomics are the operational signal that turns model routing from guesswork into policy.
-
-## Routing And Governance
-
-```mermaid
-sequenceDiagram
-  participant Client
-  participant Router
-  participant Policy
-  participant Provider
-  participant Usage
-
-  Client->>Router: OpenAI or Anthropic request
-  Router->>Router: Validate caller token
-  Router->>Router: Enforce allow list and quotas
-  Router->>Policy: Choose target for model group
-  Policy-->>Router: Provider/model target
-  Router->>Provider: Provider request with server-side key
-  Provider-->>Router: Provider response
-  Router-->>Client: Caller-dialect response
-  Router->>Usage: Persist usage, latency, cache, throughput, cost
-```
-
-## Example Deployment Outcome
-
-A customer can expose one endpoint to internal developers:
-
-```bash
-https://<router-host>/v1
-```
-
-Developers use stable model groups defined by their deployment. Platform owners can change the underlying provider mix without client rewrites. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, and `vision` are examples used by one reference or hosted deployment, not product-required names.
-
-## Commercial Paths
-
-Metrum supports several buyer paths:
-
-- Evaluation or pilot access for teams validating workloads, reporting, security posture, and provider fit.
-- Enterprise self-hosted deployment for customers that need the router, usage database, provider access, and signed JSON license enforcement inside their own infrastructure.
-- Private managed deployment for customers that want a dedicated customer deployment operated for them.
-- Renewal, replacement, and prepaid volume top-up for existing licensed deployments.
-- Marketplace or private-offer procurement where available.
-
-The evaluation-to-purchase flow is request evaluation, receive endpoint/token or deployment package, validate workloads, inspect savings/performance/security evidence, then convert to the contracted path that fits the deployment: enterprise self-hosted, private managed, marketplace/private-offer, renewal, or volume-prepurchase. See [Choose a Deployment Path](/docs/licensing/deployment-paths) and [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation).
-
-## Deployment Planning Checklist
-
-- Which clients need OpenAI, Responses, or Anthropic compatibility?
-- Which model groups should be exposed, and what success criteria should each group satisfy?
-- Which provider models are approved and validated?
-- What token, quota, and budget rules are required?
-- Which reports and dashboards are needed for cost governance, security access review, cost allocation, and support triage?
-- Which workloads are cache-eligible?
-- What deployment and TLS model is preferred?
-- Is the deployment hosted, private-cloud, or enterprise/on-prem with signed license enforcement?
-
-For a fuller rollout workflow, see [Enterprise FAQ](/docs/evaluation/enterprise-faq), [Enterprise Deployment Patterns](/docs/operations/deployment-patterns), [Deployment Readiness](/docs/evaluation/deployment-readiness), [Prove Router Quality](/docs/evaluation/prove-router-quality), [Model Group Quality Criteria](/docs/evaluation/model-group-quality), [Product Capabilities](/docs/evaluation/product-capabilities), [Cost Governance](/docs/evaluation/cost-governance), and [Competitive Landscape](/docs/evaluation/competitive-landscape).
-
-For a deployment discussion, email [contact@metrum.ai](mailto:contact@metrum.ai).

@@ -7,13 +7,9 @@ Production promotion is a deliberate, evidence-gated operation. A deployment
 starts with an immutable release artifact, staging verification, workload and
 client acceptance evidence, a bounded canary, and a documented rollback path.
 
-The router does not provide a one-click production deploy. **Metrum-hosted**
-customer administrators activate signed config revisions with the packaged
-`customer` CLI as described in [Customer Administrator Guide](./customer-administration);
-they do not run EKS Make targets or `kubectl`. Operators of self-hosted
-clusters use their protected change-management workflow with objective
-automated promotion gates. Runtime credentials, router tokens, provider keys,
-customer content, and deployment configuration remain in the protected deployment
+The router does not provide a one-click production deploy. Operators use their
+protected change-management workflow with objective automated promotion gates.
+Runtime credentials, router tokens, provider keys, customer content, and deployment configuration remain in the protected deployment
 boundary. Promotion manifests record automated gate results and validity windows;
 they never substitute for objective evidence or protected execution controls.
 

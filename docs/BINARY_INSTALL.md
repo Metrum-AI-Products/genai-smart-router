@@ -8,7 +8,7 @@ This is the offline bootstrap path for a Linux binary package. After startup, us
 - A service supervisor such as systemd, runit, or an equivalent platform supervisor.
 - A TLS reverse proxy such as Caddy, nginx, or a managed load balancer.
 - Deployment-owned config, secret, state, log, and usage database locations.
-- A Metrum-issued `license.json`.
+- An operator-generated `license.json` and paired verification public key.
 
 ## Bootstrap
 

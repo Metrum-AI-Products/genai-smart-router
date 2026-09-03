@@ -55,4 +55,4 @@ Before deploying or redistributing a release:
 5. Manage `license.json` separately as protected runtime configuration.
 
 For questions about a delivered artifact or its notice set, contact
-[contact@metrum.ai](mailto:contact@metrum.ai).
+Use the repository's public issue forms for non-sensitive licensing questions.

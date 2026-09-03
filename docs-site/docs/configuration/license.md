@@ -10,7 +10,11 @@ All GenAI Smart Router first-party content is licensed under Apache-2.0. The
 copyright license or commercial-use condition, and it does not limit
 Apache-2.0 rights.
 
-License configuration controls offline signed JSON license enforcement. Normal release builds verify a Metrum-issued license file with embedded public verification keys, periodically recheck it, and fail closed when the license is invalid outside any configured grace period.
+License configuration controls offline signed JSON runtime-policy enforcement.
+Operators generate and retain their own Ed25519 signing key, issue
+`license.json`, configure the paired public key, and periodically recheck the
+file. Normal release builds fail closed when the file is invalid outside any
+configured grace period.
 
 This example is a partial subset of `config.example.yaml`; the shipped sample config is the source of truth.
 
@@ -35,7 +39,7 @@ server:
 
 ## Schema
 
-`server.license.path` points at the signed runtime license. `state_path` stores safe local license state. The instance-fingerprint fields are mutually exclusive inputs for deployments with instance-bound licenses. `revocation` stays disabled unless Metrum provides a signed revocation bundle.
+`server.license.path` points at the signed runtime license. `state_path` stores safe local license state. The instance-fingerprint fields are mutually exclusive inputs for deployments with instance-bound licenses. Leave revocation disabled unless the operator maintains a signed revocation bundle with the same trust boundary.
 
 When enforcement blocks serving, `/readyz` fails and caller APIs return documented `license-*` errors. Logs, metrics, reports, and admin status APIs may expose only safe scalar license metadata such as status, license ID, customer ID, SKU, key ID, expiry, and grace flag.
 
@@ -45,4 +49,4 @@ Runtime YAML cannot disable licensing in normal packaged deployments. To recover
 
 ## Related
 
-See [License-Protected Deployments](../operations/license-protected-deployments), [Commercial Access And Licensing](../licensing/), and [Router Configuration](./router-config).
+See [License-Protected Deployments](../operations/license-protected-deployments), [Self-Managed Licensing](../licensing/), and [Router Configuration](./router-config).

@@ -5,7 +5,7 @@ doc_type: reference
 
 # FAQ
 
-These short answers route integrators to the canonical documentation page. For buyer and procurement questions, see the [Enterprise FAQ](./evaluation/enterprise-faq).
+These short answers route integrators to the canonical documentation page.
 
 ## First Setup
 
@@ -21,7 +21,7 @@ Call `/v1/models` with your router token and use one returned model-group ID. Se
 
 It returns only model groups allowed for the caller token. See [Available Models And Access](./getting-started/available-models) and [Concepts](./concepts).
 
-### How do I choose Docker Compose, binary, Kubernetes, or managed deployment?
+### How do I choose Docker Compose, binary, or Kubernetes?
 
 Use the matrix in [Installation](./installation/) and the topology guidance in [Enterprise Deployment Patterns](./operations/deployment-patterns).
 
@@ -29,9 +29,11 @@ Use the matrix in [Installation](./installation/) and the topology guidance in [
 
 Use [Package Validation And Security Checks](./installation/package-validation).
 
-### How do I request evaluation or deployment access?
+### How do I evaluate a deployment?
 
-Contact [contact@metrum.ai](mailto:contact@metrum.ai). For the technical evaluation checklist, see [Evaluate GenAI Smart Router](./evaluation/evaluate-smart-router). For licensed and managed deployment options, see [Choose a Deployment Path](./licensing/deployment-paths).
+Follow [Evaluate GenAI Smart Router](./evaluation/evaluate-smart-router) with
+your own provider accounts and representative workloads, then use [Deployment
+Paths](./licensing/deployment-paths) for self-managed installation choices.
 
 ## Authentication And Access
 

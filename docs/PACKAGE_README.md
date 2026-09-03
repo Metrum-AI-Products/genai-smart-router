@@ -103,7 +103,7 @@ Prepare these deployment-owned files before first startup:
 
 - `config.yaml` copied from `config/config.example.yaml` and reviewed for the deployment.
 - `env.json` copied from `config/env.example.json` or equivalent environment variables from a secret manager.
-- A Metrum-issued `license.json` for operator-selected runtime policy in release
+- An operator-generated `license.json` for operator-selected runtime policy in release
   builds. It is not a copyright or commercial-use license condition and does
   not narrow the rights granted by Apache-2.0 or replace the package-root legal
   files.
@@ -112,4 +112,5 @@ Prepare these deployment-owned files before first startup:
 
 Do not store provider keys, raw router tokens, license payloads, token hashes, full production configs, or private host details in tickets, public docs, screenshots, or package notes.
 
-For help with package selection or rollout planning, contact `contact@metrum.ai`.
+For non-sensitive package questions, use the repository's public question issue
+form. Report vulnerabilities through the private path in `SECURITY.md`.

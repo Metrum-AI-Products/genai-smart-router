@@ -5,7 +5,9 @@ doc_type: explanation
 
 # Evaluation And Case Studies
 
-Start with [Enterprise FAQ](./enterprise-faq) when the evaluation is driven by practical buyer concerns such as provider keys, private models, team autonomy, savings evidence, auditability, rollout risk, or client compatibility.
+Start with [Product Capabilities](./product-capabilities) when the evaluation is
+driven by provider keys, private models, savings evidence, rollout risk, or
+client compatibility.
 
 Evaluate GenAI Smart Router by proving that each model group completes the intended workload while meeting cost, latency, governance, and operational evidence requirements. Do not treat one provider, one benchmark, or one historical model-group name as universally best.
 
@@ -32,7 +34,7 @@ For a commercial or production evaluation, collect:
 ## Related Pages
 
 - [Evaluate GenAI Smart Router](./evaluate-smart-router)
-- [Commercial Evaluation Path](./commercial-evaluation)
+- [Evaluate GenAI Smart Router](./evaluate-smart-router)
 - [Product Capabilities](./product-capabilities)
 - [Model Group Quality Criteria](./model-group-quality)
 - [Deployment Readiness](./deployment-readiness)

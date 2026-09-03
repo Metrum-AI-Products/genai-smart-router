@@ -13,10 +13,6 @@ Model group names are deployment-defined. Names such as `default`, `fast`, `smal
 
 For admin authentication, admin authorization, and PII filtering, see the canonical Security And Governance pages: [Admin Authentication](./admin-authentication), [Admin Authorization](./admin-authorization), and [PII Filtering](./pii-filtering).
 
-<div class="contactBanner">
-  <p>Metrum can help design a production routing policy. Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
-</div>
-
 ## File Layout
 
 The top-level config shape is:

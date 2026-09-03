@@ -7,7 +7,7 @@ This is the offline bootstrap path for a Docker Compose package. After startup, 
 - A Linux host matching the package architecture: `docker-linux-amd64` or `docker-linux-arm64`.
 - Docker Engine and the Docker Compose plugin.
 - A TLS reverse proxy or ingress in front of the router.
-- A Metrum-issued `license.json`.
+- An operator-generated `license.json` and paired verification public key.
 - A single router writer and private `state`/`logs` directories. New installs use SQLite; PostgreSQL is an explicit multi-replica or externally managed database choice.
 
 ## Bootstrap

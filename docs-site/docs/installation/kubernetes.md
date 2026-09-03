@@ -7,11 +7,10 @@ doc_type: howto
 
 Use Kubernetes when GenAI Smart Router needs to run inside a **customer-operated** cluster with cluster-native ingress, Secrets, and operational controls. The generic base defaults to a serialized single-writer SQLite deployment on its `/app/state` PVC; PostgreSQL is an explicit option for multi-replica or externally managed database designs. This is the canonical Kubernetes installation page for teams that operate their own cluster; post-deployment topology guidance lives in [Enterprise Deployment Patterns](../operations/deployment-patterns).
 
-**Metrum-hosted** production administrators should not use this page. They do not receive cluster access, ConfigMaps, Secrets, or image-push steps. Use the [Customer Administrator Guide](../operations/customer-administration) and the packaged `customer` CLI.
-
-Metrum maintains Kustomize-friendly manifests as a production-oriented starting point. Review them against your cluster's ingress controller, network policy engine, storage class, registry, and secret-management process before production rollout.
-
-For a managed Metrum-hosted hostname, skip this page and use the [Customer Administrator Guide](../operations/customer-administration).
+The project maintains Kustomize-friendly manifests as a production-oriented
+starting point. Review them against your cluster's ingress controller, network
+policy engine, storage class, registry, and secret-management process before
+production rollout.
 
 The base and example overlay are deployment-neutral. Choose your own hostname,
 ingress class, certificate workflow, registry, database topology, storage class,
@@ -24,7 +23,7 @@ not belong in public manifests or package documentation.
 - A Kubernetes cluster with an ingress controller and TLS automation or a separate TLS termination plan.
 - A private registry image tag such as `registry.example.com/smart-llmrouter:<version>-linux-amd64`.
 - A fresh `ReadWriteOnce` PVC for the default SQLite bootstrap, or an explicit PostgreSQL deployment design for multi-replica/external database use.
-- A Metrum-issued `license.json`.
+- An operator-generated `license.json` and paired verification public key.
 - Provider credentials stored in a Kubernetes Secret or external secret manager.
 - A router config reviewed for the deployment's model groups, callers, admin auth, and reporting settings.
 
@@ -100,6 +99,27 @@ kubectl apply -k deploy/kubernetes/overlays/nvidia-local-serving
 
 Offline CI dry-run: `make test-k8s-nvidia-local-serving`. Live GPU-node steps stay in
 operator runbooks; cloud/cluster login is a prerequisite, never a CLI workflow step.
+
+### NVIDIA llm-d compatibility profile
+
+Use `nvidia-llmd-compat` only when the cluster operator has separately chosen
+llm-d and Gateway API Inference Extension. Smart Router selects a model group
+and sends OpenAI-compatible traffic to `llm-d-local-epp:8081`; llm-d then
+selects a serving replica. Smart Router is not an llm-d controller and does not
+install cluster prerequisites.
+
+Render from
+`deploy/kubernetes/intents/shadeform-nvidia-llmd-compat.example.yaml`, review
+the generated chart, serving manifest, and llm-d values, then follow the
+operator runbook `docs/SHADEFORM_NVIDIA_LLMD_COMPAT_E2E.md`. Run the offline
+gate before cluster work:
+
+```bash
+make test-k8s-nvidia-llmd-compat
+```
+
+Validate the exact model ID, Chat requests, streaming, health behavior, network
+policy, and rollback in the target cluster before exposing the group.
 
 ### AMD Instinct local-serving profile
 

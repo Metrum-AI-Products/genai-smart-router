@@ -31,7 +31,7 @@ Fill this template with placeholders or approved customer-safe identifiers only.
 | Provider credentials | BYOK, managed keys, private upstream credentials, or mixed? | Custody summary without values |
 | Private upstreams | vLLM/SGLang/private GPU endpoints or hosted OpenAI-compatible services? | Direct and router-level smokes |
 | Telemetry | Usage DB, logs, metrics-admin subjects, browser reports, retention, rollups, and exports? | Report excerpt and retention summary |
-| License | Evaluation, pilot, annual enterprise, private managed, marketplace/private offer, renewal, or top-up? | Safe license status fields |
+| Runtime policy | Validity, features, limits, renewal, trust rotation, and recovery? | Safe license status fields |
 | Rollback | Restore previous package/config/license/state, or disable target/weight/group? | Rollback command path and smoke |
 
 ## Production Readiness Checklist
