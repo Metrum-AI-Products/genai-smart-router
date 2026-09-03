@@ -142,6 +142,7 @@ const config = {
           {
             title: "Legal",
             items: [
+              { label: "Software Licenses", to: "/legal/software-licenses" },
               { label: "Privacy", to: "/privacy" },
               { label: "Terms", to: "/terms" },
               { label: "Data Processing", to: "/dpa" },

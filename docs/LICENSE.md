@@ -10,6 +10,25 @@ A deployment's signed `license.json` is an operator runtime-policy input. It is
 not a copyright license or a condition on commercial use, and it does not limit
 the rights granted by Apache-2.0.
 
+## Which File Governs What
+
+Use the legal files at the root of the source checkout or delivered release
+artifact together:
+
+| File | Scope |
+| --- | --- |
+| `LICENSE` | Apache License 2.0 terms for GenAI Smart Router first-party content. |
+| `NOTICE` | Notices distributed with the first-party work and any attribution that confirmed source terms require there. |
+| `THIRD_PARTY_NOTICES.md` | Dependency and asset inventory, provenance evidence, distribution surface, and applicable third-party license information. It is not a blanket grant of rights. |
+| `MODEL_LICENSES.md` | Boundaries and recorded terms for model or dataset references and download surfaces. The project license does not grant rights to separately obtained model weights or datasets. |
+| `license.json` | Deployment-specific runtime policy consumed by the router. It is operational configuration, not a copyright license or third-party notice. |
+
+Redistributors must review the entries and unresolved dispositions recorded in
+`THIRD_PARTY_NOTICES.md` and `MODEL_LICENSES.md` for the exact artifact they
+ship. Do not infer a third-party license, commercial-use permission, model
+right, trademark permission, or notice obligation from the first-party
+Apache-2.0 license.
+
 ```text
 
                                  Apache License

@@ -21,32 +21,71 @@ Capability and evaluation material in `docs/`, `scripts/`, `examples/`,
 These are request, smoke-test, or benchmark references rather than downloads
 or grants of model rights.
 
-## Known download surfaces
+## Known model download surfaces
 
 The checked-in local-serving Kubernetes examples pass these repository IDs to
 vLLM with `--model`, which can cause the serving environment to obtain weights
 that are not included here:
 
-| Checked-in deployment surface | Referenced model repository ID |
-| --- | --- |
-| `deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/serving/vllm-chat-deployment.yaml` | `Qwen/Qwen3.5-4B` |
-| `deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/serving/vllm-coder-deployment.yaml` | `Qwen/Qwen3-8B` |
-| `deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/serving/vllm-tiny-deployment.yaml` | `Qwen/Qwen3-1.7B` |
-| `deploy/kubernetes/overlays/nvidia-local-serving/serving/vllm-chat-deployment.yaml` | `Qwen/Qwen3-4B-Instruct-2507` |
-| `deploy/kubernetes/overlays/nvidia-local-serving/serving/vllm-coder-deployment.yaml` | `Qwen/Qwen3-8B` |
-| `deploy/kubernetes/overlays/nvidia-local-serving/serving/vllm-tiny-deployment.yaml` | `Qwen/Qwen3-1.7B` |
+The authoritative Hugging Face metadata inspected on 2026-09-03 declared
+Apache-2.0 for each repository below and reported the shown then-current
+`main` revision. The checked-in manifests use repository IDs without revision
+pins, so these hashes are audit observations, not deployment locks.
+
+| Referenced model repository ID | 2026-09-03 observed revision | Checked-in use and disposition |
+| --- | --- | --- |
+| [`Qwen/Qwen3.5-4B`](https://huggingface.co/Qwen/Qwen3.5-4B) | `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a` | AMD local-serving manifest and NVIDIA B200 intent; external, unpinned download |
+| [`Qwen/Qwen3-8B`](https://huggingface.co/Qwen/Qwen3-8B) | `b968826d9c46dd6066d109eabc6255188de91218` | AMD/NVIDIA local-serving manifests and intents; external, unpinned download |
+| [`Qwen/Qwen3-1.7B`](https://huggingface.co/Qwen/Qwen3-1.7B) | `70d244cc86ccca08cf5af4e1e306ecf908b1ad5e` | AMD/NVIDIA local-serving manifests and intents; external, unpinned download |
+| [`Qwen/Qwen3-4B-Instruct-2507`](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) | `cdbee75f17c01a7cc42f958dc650907174af0554` | NVIDIA local-serving manifest and intent; external, unpinned download |
+| [`Qwen/Qwen3.8-27B`](https://huggingface.co/Qwen/Qwen3.8-27B) | `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0` | NVIDIA B200 intent; external, unpinned download |
+
+At the observed revisions these repositories were public and ungated. Their
+Apache-2.0 declarations generally permit commercial use and redistribution
+subject to the license conditions, but no weights are included in router
+artifacts and this inventory is not a legal clearance for later revisions.
+Before an operator downloads or redistributes weights, pin the exact revision
+and retain its model card, license, any NOTICE file, modification notices, and
+third-party component terms. Model names and owner names do not confer
+trademark endorsement rights.
 
 `docs/SELF_HOSTED_UPSTREAMS.md` additionally uses model IDs such as
 `qwen3-coder-tools` and `qwen-vl` as operator-supplied examples; it does not
 pin a model artifact or its terms.
 
-## Unknown terms and operator responsibility
+## Dataset and evaluator download surfaces
 
-No model card, model license, acceptable-use policy, gated-access condition,
-or provider service terms were fetched or verified for this inventory. The
-terms, restrictions, attribution requirements, and commercial-use permissions
-for every referenced model remain unresolved here and may differ by model
-version, repository revision, provider, geography, and use case.
+The LiveCodeBench evaluator contract pins source code revision
+`28fef95ea8c9f7a547c8329f2cd3d32b92c1fa24`. The authoritative license file at
+that revision is MIT, copyright 2024 LiveCodeBench. The contract separately
+requests Hugging Face dataset `livecodebench/code_generation_lite`, release
+`release_v6`, through `datasets==3.5.0`. The dataset's observed revision on
+2026-09-03 was `0fe84c3912ea0c4d4a78037083943e8f0c4dd505`, but the contract does not pin
+that repository revision and its dataset card declares only the ambiguous
+license value `cc`. The card says problems are collected from LeetCode,
+AtCoder, and Codeforces without identifying a specific Creative Commons
+license or resolving the source sites' redistribution terms.
+
+LiveCodeBench code and downloaded dataset content are test/evaluation inputs;
+normal router binary, archive, and OCI-image recipes do not ship them. The
+dataset license, individual problem provenance, and redistribution permission
+remain unresolved. Do not redistribute the dataset or treat the MIT code
+license as covering its problem content without authoritative terms.
+
+The two checked-in outcome-routing JSON datasets are repository examples, not
+release-package inputs. They appear synthetic, but no adjacent authorship or
+source record proves that conclusion. Confirm their origin and that exemplar
+text was not copied from a restricted benchmark before redistributing the
+source repository.
+
+## Remaining unknown terms and operator responsibility
+
+The exact Qwen and LiveCodeBench evidence above is limited to the named
+repositories and observed revisions. No complete terms set was fetched for
+the many provider/model identifiers used only as remote-service metadata in
+configuration, documentation, smokes, or benchmarks. Provider service terms,
+acceptable-use policies, geography restrictions, and later model revisions
+may differ and remain outside this inventory.
 
 Before downloading, deploying, fine-tuning, redistributing, or invoking a
 model, the operator must identify the exact artifact and revision, retrieve its

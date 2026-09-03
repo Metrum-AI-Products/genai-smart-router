@@ -66,6 +66,7 @@ const sidebars = {
         "configuration/admin-authentication",
         "configuration/admin-authorization",
         "privacy",
+        "legal/software-licenses",
         "legal/terms-of-use",
         "legal/dpa",
         "legal/subprocessors",

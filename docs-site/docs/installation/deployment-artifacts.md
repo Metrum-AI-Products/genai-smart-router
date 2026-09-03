@@ -27,6 +27,11 @@ Authenticated admin report assets, when enabled, are embedded separately and ser
 
 Release tarballs include a small package-safe Markdown bootstrap set under `docs/`. These files explain what is in the package, how to start it far enough to reach `/docs/`, validation commands, and support contact paths.
 
+The artifact root also carries `LICENSE`, `NOTICE`,
+`THIRD_PARTY_NOTICES.md`, and `MODEL_LICENSES.md`. Preserve and review all four
+when copying or redistributing an artifact. See [Software License And Third-Party Notices](../legal/software-licenses)
+for the scope of each file and the separate role of runtime `license.json`.
+
 Use the embedded `/docs/` site for the full product guide after the router starts. Keep deployment-specific credentials, host paths, and operational notes in the customer's approved private systems.
 
 ## Package Selection Checklist
