@@ -1,248 +1,56 @@
 ---
-title: Enterprise Deployment Patterns
+title: Deployment Patterns
 doc_type: explanation
 ---
 
-# Enterprise Deployment Patterns
+# Deployment Patterns
 
-GenAI Smart Router is deployment-owned infrastructure. Enterprises can run it as enterprise self-hosted infrastructure, a private managed dedicated deployment, or a hosted evaluation endpoint while they prove client compatibility and model-group quality.
+GenAI Smart Router is deployment-owned infrastructure. Choose boundaries that
+match provider-key custody, state ownership, network policy, reporting,
+retention, and release cadence.
 
-Model groups, provider credentials, private upstreams, caller access, telemetry retention, and routing strategy are deployment-defined. The product principle is that the customer or operating team owns its routing destiny. The router supplies the control surface, compatibility layer, evidence, and enforcement points so teams can evolve provider/model choices without rewriting every client.
+## Central Gateway
 
-From Operations, you might be looking for install paths: see [Docker Compose](../installation/docker-compose), [Kubernetes](../installation/kubernetes), or [Binary Installation](../installation/binary).
+One router per environment or network trust boundary gives applications a
+stable endpoint while a platform team owns provider credentials, model groups,
+caller access, budgets, and reports. Use PostgreSQL for a validated
+multi-replica design; keep SQLite to one writer.
 
-For installation mechanics and deployment-shape selection, see [Installation](../installation/). For licensing and commercial paths, see [Choose a Deployment Path](../licensing/deployment-paths).
+## Per-Environment Or Per-Team
 
-## Pattern A: Metrum-Managed Evaluation Endpoint
+Separate routers reduce blast radius when development, staging, production,
+regions, or teams need independent credentials, provider eligibility, state,
+retention, or release timing. Promote configuration only after the exact Chat,
+Responses, Messages, tool, image, and streaming shapes used by that environment
+pass.
 
-Use a Metrum-managed evaluation endpoint when the fastest proof is more valuable than standing up customer infrastructure first.
+## Federated Routers
 
-Best fit:
+A router can call another compatible router as an upstream, but every hop must
+have independent authentication, group access, timeout budgets, request-ID
+correlation, and failure testing. This is an API composition pattern, not a
+turnkey topology controller.
 
-- quick OpenAI Chat, OpenAI Responses, Codex CLI, Anthropic Messages, or Claude Code compatibility checks;
-- model-group quality proof against real workload samples;
-- spend, latency, provider/model mix, and fallback report evidence;
-- pilot handoff before a self-hosted or private managed production deployment.
+## Private Model Serving
 
-The evaluator receives a deployment-specific base URL, router token, and allowed model groups. Any example group names are hosted/reference examples only; `/v1/models` is the caller-facing source of truth for the groups allowed to that caller token.
+Private vLLM/SGLang-style services can be configured as OpenAI-compatible
+upstreams. Keep endpoints on protected networks and validate served model IDs,
+parser/chat templates, tools, streaming, and rollback directly and through the
+router before promotion.
 
-Acceptance evidence to request:
+## Selection Checklist
 
-- `/v1/models` output for the evaluation token;
-- one `/v1/chat/completions` smoke;
-- one OpenAI Responses or Codex CLI smoke;
-- one Anthropic Messages or Claude Code smoke when that client matters;
-- one report excerpt showing provider/model, latency, tokens, cost, status, attempts, and fallback behavior;
-- one security and retention summary covering provider-key handling, diagnostics redaction, metrics-admin isolation, and content-retention policy.
+- Who owns provider credentials and caller access?
+- Is one writer sufficient, or is validated PostgreSQL multi-replica operation
+  required?
+- Which clients, dialects, tools, modalities, and request sizes must pass?
+- What quality, latency, and cost contract does each model group have?
+- Which logs, reports, metrics, backups, and retention controls are required?
+- Can the operator restore the previous artifact, config, license inputs, and
+  database within the planned recovery window?
 
-This pattern is for hosted evaluation or a contracted private managed service. Customer access, retention, provider custody, and report boundaries are defined by that deployment agreement.
+See [Installation](../installation/), [Architecture And
+Limitations](../reference/architecture-limitations), [Deployment
+Readiness](../evaluation/deployment-readiness), and the [Upgrade
+Guide](../release-notes/upgrade-guide).
 
-## Pattern B: Enterprise Self-Hosted Central Gateway
-
-Use one central router deployment per enterprise environment, VPC, or network trust boundary when the platform team owns GenAI access for many applications.
-
-```mermaid
-flowchart TB
-  Apps[Applications and agent clients] --> Ingress[TLS ingress]
-  Ingress --> Router[Central GenAI Smart Router]
-  Router --> Usage[(Usage DB and reports)]
-  Router --> Metrics[Metrics admin surface]
-  Router --> Providers[Approved external providers]
-  Router --> Private[Private vLLM or SGLang upstreams]
-```
-
-Apps call the router instead of provider APIs. The central platform team owns provider credentials, caller tokens, model-group access, metrics-admin isolation, retention policy, and the license file. Teams request allowed groups, and the platform tunes targets, weights, fallbacks, and validation metadata behind those groups.
-
-This pattern works well when provider keys must stay server-side, private upstreams must remain on protected networks, and FinOps or platform operations need cost-allocation reports across teams.
-
-## Pattern C: Per-Environment Routers
-
-Use separate dev, staging, and production routers or configs when provider activation and weight changes need a promotion path.
-
-```mermaid
-flowchart LR
-  Dev[Dev router] --> Stage[Staging router]
-  Stage --> Prod[Production router]
-  Stage -. rollback evidence .-> Dev
-  Prod -. restore previous config .-> Stage
-```
-
-Keep test provider keys separate from production BYOK credentials where policy requires it. Use separate usage databases or state stores when the reporting, retention, or license envelope differs by environment. Validate new providers, model IDs, weights, tool metadata, image metadata, and routing scripts in staging before promotion.
-
-### Multi-environment operator contract
-
-In binary tarballs, `metrum-genai-smartrouter-fleetctl` is the sole #555 Fleet lifecycle
-authority. It owns deterministic `plan`, idempotent `deploy`, exact-job
-read-only `status`, approved `delete`, and packaged `customer` convenience
-verbs. `plan`, `deploy`, and `delete`
-consume one mode-`0600`, profile-key-signed, reference-only deployment intent;
-it binds the protected profile and immutable manifest without exposing resolved
-configuration. One-release rename notices (`metrum-fleetctl`,
-`metrum-smartrouterctl`, and related old names) only report the rename.
-Customer-local `metrum-genai-smartrouterctl` validates/diffs local config, may write
-file-owned local `config.yaml` (callers, providers, model groups), can render a
-Kubernetes architecture blueprint, backs up/restores SQLite usage with
-`--confirm-offline`, creates a caller token in a new mode-`0600` file, and
-reports safe local status; it has no cloud, Kubernetes API, or remote managed
-hostname activation authority. On a
-Fleet-managed SQLite customer instances, activating a new caller or config
-revision is a Fleet deploy of an approved `runtime_bundle_ref` (new
-`config_revision`), not an in-place `metrum-genai-smartrouterctl` mutation. See
-[User Key Generation](./key-generation#activation-boundary) and the
-[Customer Administrator Guide](./customer-administration) for customer-admin
-workflows. Packaged `customer` helpers are SQLite-only, require operator-supplied
-protected references, and refuse dedicated-RDS selection.
-After activation, `customer smoke` requires `--model` from the caller's
-authenticated `/v1/models` list and succeeds only on HTTP `200` with exact
-assistant content `OK`.
-protected runtime-secret binding, license binding, state PVC, one-replica
-single-container Router, activation, and hostname; it never provisions or
-binds RDS. An explicit approved `database_profile` manifest branch inserts
-dedicated private RDS after network policy and before runtime-secret/DSN-reference
-binding through **core** Fleet `deploy` with an external admission—not through
-`customer` convenience verbs. Hostname is not published until activation passes. A classified safe
-failure can retry from its exact stage. An unknown outcome for a PVC or
-dedicated-RDS action becomes `operator_required` rather than guessing whether
-creation should repeat.
-
-The signed intent manifest accepts one protected `runtime_bundle_ref`, never
-raw runtime configuration or credentials. Its resolved JSON payload is
-validated only in memory and contains exactly `config.yaml` and `env.json`; the
-owned `router-runtime` Secret exposes those two files read-only at
-`/app/config`. The license remains in a separate `router-license` Secret.
-Plans, status, and errors retain neither protected references nor bundle
-values. Dedicated-RDS is optional: the manifest must select the exact approved
-profile.
-Its plan retains only deterministic database ID/profile evidence—never a DSN,
-endpoint, credential, secret reference, or raw adapter response. The typed
-adapter enforces private/encrypted/no-proxy policy, ownership tags, and
-final-snapshot deletion, and stays unattached until an approved admission is supplied.
-
-The first disposable non-production E2E requires an external, expiring,
-mode-`0600` RDS admission file passed to the existing Fleet `deploy` command.
-The file is not a customer API input. Fleet validates its strict non-secret
-schema, signature against the approved profile key, and exact profile,
-job/intent, namespace, database-profile, and immutable-plan binding before it
-opens the registry or cloud clients; it never creates, updates, prints, or
-persists the file or signing material. The same short-lived admission is
-required with `delete` only when that E2E deletes its dedicated RDS.
-
-This first-E2E admission is not a second reviewer, an approval chain, or a
-production authorization. Once the E2E passes its failure/retry and cleanup
-checks, one qualified reviewer records the required security/operations
-evidence before a production-like non-production rehearsal; a
-single-maintainer team may self-review. Customer handoff, promotion, and
-production profiles remain blocked until their stated evidence and #518's
-separate production gates pass.
-
-The CLI is not included in the standard Docker or Docker Compose image.
-Docker-based operators run it from an extracted binary package on a separate
-trusted administration host. Stage and model-group names remain
-deployment-defined. Local lifecycle evidence is contract evidence, not proof
-that any cloud resource was created or reserved.
-
-Rollout and rollback flow:
-
-1. Update staging config and run `/readyz`, `/v1/models`, Chat, Responses, Messages, tool, image, report, and license smokes that match the change.
-2. Capture provider/model selection, status, latency, usage, and request IDs for the test window.
-3. Promote the reviewed config or package to production with a timestamped backup.
-4. Repeat the same post-promotion smokes.
-5. Roll back by restoring the previous package/config/license input and rerunning the failed smoke.
-
-## Pattern D: Per-Team Or Per-Business-Unit Routers
-
-Use separate router instances for teams that need independent provider keys, cost centers, retention policy, private upstreams, release cadence, or regional controls.
-
-Caller users, projects, environments, and caller tokens map to reporting and access. A single team router can expose multiple model groups for that team's workloads, and reports can still separate usage by caller, project, client, model group, provider/model, latency, cost, and status.
-
-Model group names are deployment-defined. Do not bake example names such as `default`, `fast`, `high`, `big-coder`, or `vision` into application logic as product constants. Clients should discover allowed groups with [`/v1/models`](../getting-started/available-models) for their token.
-
-## Pattern E: Hierarchical Or Federated Routers
-
-Hierarchical and federated topologies are supported conceptually through standard API boundaries, even when there is not one turnkey config that defines every enterprise variant. A team router can call a central enterprise router as an upstream OpenAI-compatible service, or multiple team routers can sit behind central ingress and governance.
-
-```mermaid
-flowchart LR
-  App[Application or agent] --> Team[Team router]
-  Team --> Enterprise[Enterprise router]
-  Enterprise --> Providers[External providers]
-  Enterprise --> Private[Private GPU upstreams]
-  Team --> TeamPrivate[Team-owned private upstream]
-```
-
-Useful cases:
-
-- central enterprise policy with team-local model-group strategy;
-- regional or data-residency routers that forward only eligible traffic;
-- a private GPU router exposed as an upstream to a central router;
-- migration from a Metrum-managed pilot to customer-owned production;
-- blue/green or canary router instances.
-
-Responsibility boundaries:
-
-- store upstream-router auth tokens only in the downstream router's protected environment or secret manager;
-- define model-group access at each hop, because the app's token and the downstream router's upstream token are separate trust decisions;
-- propagate or record request IDs so reports can be correlated across hops without storing prompts or responses;
-- budget timeouts across the full path so one hop does not consume all caller patience;
-- avoid prompt, image, response, or tool-output capture unless a governed content-capture policy explicitly enables it;
-- keep `/metrics` restricted to metrics-admin subjects and do not add tenant data labels to unauthenticated or ordinary-caller endpoints.
-
-For hierarchical production readiness, test authentication, model access, request ID correlation, timeout budgets, failure behavior, and reporting at every hop before shifting real traffic.
-
-## Pattern F: Private Managed Dedicated Deployment
-
-Use a private managed dedicated deployment when one customer wants a dedicated router instance operated for them instead of running the service themselves.
-
-One customer or contracted customer environment maps to one dedicated deployment. Provider-cost handling, BYOK scope, network isolation, reporting, retention, and acceptance tests are defined in the managed-service plan. Store private operational hostnames, SSH procedures, token files, and operating procedures in the customer's approved private operations system.
-
-See [Choose a Deployment Path](../licensing/deployment-paths), [Enterprise Private Managed](../licensing/enterprise-private-managed), and [License-Protected Deployments](./license-protected-deployments).
-
-## Pattern Selection Table
-
-| Concern | Recommended pattern | Proof to request | Operational owner |
-|---|---|---|---|
-| Data residency | Per-environment, per-region, or federated routers | Region-specific routing policy, provider/upstream inventory, report scope, and failure test | Platform plus regional compliance owner |
-| BYOK | Self-hosted central gateway or private managed dedicated deployment | Provider-key custody summary and one caller smoke that never exposes upstream keys | Customer platform or managed-service operator |
-| Private upstreams | Self-hosted central gateway, per-team router, or federated private GPU router | Direct upstream smoke, router-level smoke, network boundary summary, and rollback plan | Platform or owning ML infrastructure team |
-| Cost attribution | Central gateway or per-team routers | Usage/report excerpt grouped by caller, project, model group, provider/model, tokens, latency, and cost | Platform FinOps or team operations |
-| Evaluation speed | Metrum-managed evaluation endpoint | `/v1/models`, Chat, Responses/Codex, Messages/Claude Code, report excerpt, and retention summary | Metrum evaluation operator plus customer evaluator |
-| Central governance | Enterprise self-hosted central gateway | Caller allow-list test, metrics-admin isolation, report-admin authorization, and license status | Enterprise platform team |
-| Team autonomy | Per-team routers or hierarchical routers | Team-local model group config, team report excerpt, and central policy compatibility smoke | Team platform owner with central governance review |
-| DR/region | Per-environment or federated routers | Backup/restore, regional failover, timeout, and rollback tests | Platform SRE |
-| Compliance/audit | Self-hosted central gateway, per-environment routers, or private managed dedicated deployment | Security assessment, retention summary, admin/report authorization test, and sanitized diagnostics review | Security, compliance, and platform operations |
-| Heavy coding-agent workloads | Central, per-team, or hierarchical routers with validated agent groups | Codex/Claude Code file-edit smoke, tool-call evidence, model-group quality contract, latency/cost report | Developer platform or AI engineering team |
-
-## What To Test Before Production
-
-Run the smokes that match the selected pattern and the API shapes clients will actually use.
-
-Core production checklist:
-
-- `/readyz` and `/version`;
-- `/v1/models` with each caller class;
-- OpenAI Chat text request;
-- OpenAI Responses request and Codex CLI smoke when Responses clients are in scope;
-- Anthropic Messages request and Claude Code smoke when Messages clients are in scope;
-- OpenAI Chat, Responses, or Anthropic tool-call smoke for every claimed tool dialect;
-- image/VLM smoke for groups that accept image input;
-- usage/report excerpt for the test window;
-- license status and one licensed-feature smoke for licensed deployments;
-- backup/restore of config, state, license state, and usage DB according to the deployment policy;
-- rollback to the previous package or config and rerun of the failed smoke.
-
-For hierarchical deployments, also test:
-
-- request ID propagation or report-correlation fields across hops;
-- timeout budget across app, team router, enterprise router, and upstream provider;
-- authentication at both router hops;
-- model-group access at both hops;
-- failure behavior when the upstream router returns `401`, `403`, `429`, timeout, `no-eligible-target`, or provider failure.
-
-## Related Docs
-
-- [Deployment Readiness](../evaluation/deployment-readiness)
-- [Evaluate GenAI Smart Router](../evaluation/evaluate-smart-router)
-- [Model Group Quality Criteria](../evaluation/model-group-quality)
-- [Self-Hosted Upstreams](../configuration/self-hosted-upstreams)
-- [Usage Reporting](./usage-reporting)
-- [Admin Browser Reports](./admin-browser-reports)

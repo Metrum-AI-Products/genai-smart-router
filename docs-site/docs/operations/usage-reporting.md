@@ -11,10 +11,6 @@ GenAI Smart Router records durable usage data for cost management, auditability,
 
 For the broader health, metrics, logs, and request-ID workflow, see [Observability](./observability). For request triage, see [Troubleshooting](../troubleshooting/).
 
-<div class="contactBanner">
-  <p>For dashboards, reports, or validation design, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
-</div>
-
 ## Choose The Report Task
 
 | Task | Start here | Outcome |
@@ -120,13 +116,14 @@ router-usage-report \
 
 Use `--rollup-type hourly` for recent operational trend reporting, `daily` for customer/project/public-token/provider cost allocation, and `monthly` for customer cost allocation and optional enterprise contract true-up summaries. The command writes relational scalar rows to `usage_rollup_runs`, the selected aggregate table (`usage_rollup_hourly`, `usage_rollup_daily`, or `usage_rollup_monthly_billing`), `usage_rollup_decision_buckets`, and `usage_rollup_audit_events` for the selected UTC `[from,to)` window. Rollup runs preserve source row count, source min/max request timestamp, deterministic source checksum, aggregate row counts, router package version and runtime build metadata, and generation/finalization timestamps.
 
-These rollups support customer governance and optional commercial true-up reviews. Commercial billing is handled outside the router by the contracted commercial process; these tables are not a product billing ledger.
+These rollups support deployment governance and cost allocation. The tables are
+not a payment or invoicing ledger.
 
-Aggregate rows retain caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image-input, PII-filter, contract, validation-status, and optional baseline dimensions alongside request/success/error counts, input/output/total token, input image count, input image token, request-time cost, upstream-reported cost, optional baseline cost/savings, latency, throughput, cache, fallback, and attempt measures. To persist a savings baseline with a commercial rollup, pass `--baseline-id`, `--baseline-name`, `--baseline-version`, `--baseline-input-price-per-million-usd`, and `--baseline-output-price-per-million-usd`.
+Aggregate rows retain caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image-input, PII-filter, contract, validation-status, and optional baseline dimensions alongside request/success/error counts, input/output/total token, input image count, input image token, request-time cost, upstream-reported cost, optional baseline cost/savings, latency, throughput, cache, fallback, and attempt measures. To persist a savings baseline, pass `--baseline-id`, `--baseline-name`, `--baseline-version`, `--baseline-input-price-per-million-usd`, and `--baseline-output-price-per-million-usd`.
 
 Draft reruns replace the same draft run for that exact type/window. Use `--rollup-finalize` only after review; finalized rollup windows are immutable through the generator, and later rollup runs are rejected if they overlap an existing finalized window of the same type. Retention uses finalized daily rollup metadata to block or allow `usage_detail` delete eligibility and never mutates finalized rollup rows.
 
-## Commercial Retention
+## Retention
 
 `server.retention` is disabled by default and defaults to `dry_run: true`. Use status mode first from reviewed router config:
 
@@ -148,7 +145,7 @@ router-usage-report \
 
 With `dry_run: false`, the current implementation deletes at most one configured batch per table for `usage_diagnostics`, governed `content_capture` (including selected header children), and `usage_detail`. Other data classes are counted and recorded as blocked. `usage_detail` candidate rows remain blocked unless finalized daily rollups continuously cover the candidate window. Archive/export, scheduler support, browser write workflows, and generic purge execution for decision telemetry and security events are future slices.
 
-Use retention language carefully in commercial reviews:
+Use retention language carefully in operational reviews:
 
 - raw operational rows are request, attempt, trace, error, decision, security event, and optional governed content-capture records;
 - immutable billing/usage rollups are finalized daily aggregate rows generated from stored request-time facts;

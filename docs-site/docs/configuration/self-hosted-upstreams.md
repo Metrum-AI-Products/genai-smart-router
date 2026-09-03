@@ -5,11 +5,15 @@ doc_type: howto
 
 # Self-Hosted Upstreams
 
-GenAI Smart Router can sit inside an enterprise network and route to internally hosted inference services, including vLLM and SGLang deployments that expose OpenAI-compatible HTTP APIs. Applications continue to call one router endpoint and one set of governed model-group names, while platform teams keep GPU endpoints, model IDs, routing policy, caller allow lists, telemetry, and provider credentials server-side.
+Smart Router can complement llm-d: configure the llm-d OpenAI-compatible
+frontend as a private upstream, let Smart Router select the deployment-defined
+model group, and let llm-d select a serving replica. The two policy layers are
+independent; Smart Router does not install, configure, or control llm-d. The
+`nvidia-llmd-compat` blueprint profile uses the in-cluster frontend
+`llm-d-local-epp:8081` as a reference integration and must pass its own direct
+upstream and router-level smokes before use.
 
-<div class="contactBanner">
-  <p>For an enterprise deployment design with internal GPU clusters, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
-</div>
+GenAI Smart Router can sit inside an enterprise network and route to internally hosted inference services, including vLLM and SGLang deployments that expose OpenAI-compatible HTTP APIs. Applications continue to call one router endpoint and one set of governed model-group names, while platform teams keep GPU endpoints, model IDs, routing policy, caller allow lists, telemetry, and provider credentials server-side.
 
 ## Enterprise Shape
 

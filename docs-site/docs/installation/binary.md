@@ -143,7 +143,7 @@ The service process needs access to:
 
 - `config.yaml`;
 - the provider credential env file;
-- a Metrum-issued `license.json`;
+- an operator-generated `license.json` and paired verification public key;
 - durable license state;
 - the usage database DSN;
 - optional routing script files and helper dependencies already packaged on disk.

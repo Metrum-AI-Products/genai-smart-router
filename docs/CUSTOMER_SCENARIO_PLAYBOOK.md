@@ -42,7 +42,7 @@ Public counterpart: `docs-site/docs/evaluation/enterprise-faq.md`.
 | Needs customer infrastructure, private networking, or air-gapped operation | Enterprise self-hosted package with signed license. |
 | Wants dedicated customer environment operated for them | Private managed deployment. |
 | Has multiple autonomous platform or app teams | Per-team or hierarchical router design. |
-| Needs custom procurement or marketplace purchase | Commercial evaluation followed by quote, private offer, or contracted path. |
+| Needs deployment-specific legal or purchasing terms | Handle outside the OSS repository; do not imply an unshipped workflow. |
 
 ## What To Avoid Saying Publicly
 

@@ -25,7 +25,7 @@ If metrics are enabled for a metrics-admin subject, inspect safe license gauges 
 | Error | Meaning | Operator action |
 |---|---|---|
 | `license-missing` | The configured license file is not readable. | Mount the issued file at `server.license.path` and check permissions. |
-| `license-invalid` | The file is malformed, unverifiable, uses an unknown key, or has been edited. | Restore or replace it with a valid Metrum-issued file. |
+| `license-invalid` | The file is malformed, unverifiable, uses an unknown key, or has been edited. | Restore or replace it with a valid operator-issued file. |
 | `license-expired` | The valid license is past expiry. | Install a renewed license and restart or wait for recheck. |
 | `license-not-yet-valid` | The license start time is in the future. | Check system time and issued dates. |
 | `license-product-mismatch` | The license was not issued for GenAI Smart Router. | Install the correct product license. |
@@ -48,4 +48,5 @@ If metrics are enabled for a metrics-admin subject, inspect safe license gauges 
 
 Do not set `server.license.enabled: false` to recover a normal release deployment. Runtime YAML cannot disable licensing in normal release builds.
 
-For planned replacement, see [Renewal And Top-Up](../licensing/renewal).
+For planned replacement, see [Runtime Policy
+Licenses](../operations/license-protected-deployments).

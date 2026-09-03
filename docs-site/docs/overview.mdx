@@ -5,143 +5,59 @@ title: Overview
 slug: /overview
 ---
 
-import { DeploymentSpecificNote, RouterCodeBlock } from "@site/src/components/RouterEndpoint";
+# GenAI Smart Router
 
-# Metrum GenAI Smart Router
+GenAI Smart Router is a self-managed gateway for OpenAI Chat, OpenAI Responses,
+Anthropic Messages, VLM, and tool-capable agent traffic. Applications call one
+stable endpoint while deployment operators control provider credentials,
+model-group access, request-shape eligibility, quotas, routing policy, and
+usage accounting.
 
-Metrum GenAI Smart Router is the governed gateway layer for enterprise LLM, VLM, and AI agent traffic. Applications, developer tools, and coding agents call one stable OpenAI-compatible or Anthropic-compatible endpoint while provider credentials, model selection, routing policy, quotas, cache rules, telemetry, and request-time cost accounting stay server-side.
+## Why Use It
 
-The product is strongest when platform teams need to move quickly across model providers without asking every application or agent user to keep switching endpoints, raw model IDs, or provider keys. A deployment can route ordinary chat, coding-agent tool calls, image/VLM requests, private GPU endpoints, and cost-sensitive production traffic through the same control point.
+- Keep provider credentials server-side and give callers revocable scoped
+  router tokens.
+- Change validated provider/model mixes behind deployment-defined model groups
+  without rewriting every client.
+- Filter tool, image, dialect, context, and output-cap requests to targets
+  validated for those shapes.
+- Enforce RPM, TPM, concurrency, and token/cost budgets before upstream calls.
+- Preserve sanitized request IDs, attempts, latency, token, fallback, and
+  request-time cost evidence for operations.
+- Combine external providers with private OpenAI-compatible upstreams.
 
-<DeploymentSpecificNote />
-
-<div class="contactBanner">
-  <p>Interested in deploying GenAI Smart Router for your organization? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
-</div>
-
-## Why Teams Deploy It
-
-AI applications rarely standardize on one model forever. Model quality, latency, price, availability, context windows, tool behavior, image support, and account entitlements change over time. Hard-coding provider endpoints and provider keys into every client creates migration cost and weakens governance.
-
-GenAI Smart Router lets platform teams define deployment-owned model groups as quality and cost contracts. Each group has intended workloads, allowed clients, API shapes, modalities, success criteria, quotas, and an upstream/provider model mix that can evolve behind one stable caller-facing name.
-
-| Outcome | What changes |
-|---|---|
-| Keep clients stable while providers change | Apps, SDKs, Codex CLI, Claude Code, and agent frameworks keep calling one router endpoint and one allowed model group. |
-| Lower cost without losing task success | Route simple work to lower-cost targets and reserve stronger targets for requests that need them, using outcome evaluation instead of guesswork. |
-| Govern access centrally | Caller tokens enforce model-group allow lists, RPM/TPM limits, concurrency caps, traffic shaping, budgets, and metrics-admin separation before any provider call. |
-| Route by real request requirements | Tool-bearing, image-bearing, capped, and dialect-specific requests are filtered to targets validated for that shape. |
-| Pool upstream capacity | Compatible traffic can spread across several providers, so one caller-facing group can use the separately rate-limited capacity of multiple upstream accounts and models. |
-| Use private and hosted models together | vLLM, SGLang, Baseten-style, OpenRouter-style, and direct provider targets can participate in one deployment policy while private endpoints stay hidden. |
-| Make spend and performance explainable | Usage rows and reports preserve selected provider/model, token counts, image fields, cache behavior, latency, attempts, fallbacks, and request-time cost. |
-
-## How It Works
+## Request Flow
 
 ```mermaid
 flowchart LR
-  Client[App, SDK, Codex, Claude Code, or agent] --> Auth[Router token auth and allow list]
+  Client[Application or agent] --> Auth[Caller authentication and allow list]
   Auth --> Group[Deployment-defined model group]
-  Group --> Eligibility[Dialect, tool, image, cache, and cap eligibility]
-  Eligibility --> Policy[Weighted, failover, dynamic score, TypeScript, or external policy]
-  Policy --> Target[Selected provider/model target]
-  Target --> Provider[Hosted provider or private upstream]
-  Target --> Usage[Usage, cost, latency, fallback, and diagnostics rows]
+  Group --> Eligibility[Request-shape eligibility]
+  Eligibility --> Policy[Routing policy]
+  Policy --> Upstream[Provider or private model server]
+  Upstream --> Client
+  Policy --> Usage[(Usage and diagnostics)]
 ```
 
-The caller asks for a model group, not a raw provider model. The router checks the caller token, filters targets that cannot satisfy the request shape, selects an eligible target with the configured policy, injects the provider credential server-side, returns the response in the caller's expected API shape, and records usage for governance and triage.
+The router does not guarantee model quality or provider availability. Operators
+must validate each active provider/model/API combination and retain a rollback
+path. See [Architecture, Platforms, And
+Limitations](/docs/reference/architecture-limitations).
 
-Because each upstream provider, account, model, or private endpoint can have its own rate limits and quotas, a model group can also act as a capacity pool. Weighted, failover, dynamic-score, scripted, or external-policy routing can distribute compatible requests across eligible targets and route around retryable upstream `429`, quota, timeout, or 5xx failures when another validated target can satisfy the same request. This does not create unlimited throughput: caller-side RPM/TPM/concurrency/budget limits still run first, provider shaping can deliberately slow traffic to protect shared accounts, and only targets that match the request's API dialect, tools, modalities, context, reasoning, and max-token behavior contribute capacity for that request.
+## Start Here
 
-## Product Strengths
+1. Choose [Docker Compose, binary, or Kubernetes](/docs/installation/).
+2. Create deployment-owned configuration and protected provider credentials.
+3. Generate the self-managed runtime-policy license and caller token.
+4. Discover the caller's allowed groups through
+   [`/v1/models`](/docs/getting-started/available-models).
+5. Run the [quickstart](/docs/getting-started/hosted-quickstart) and the exact
+   Chat, Responses, Messages, tool, image, or streaming shapes your clients use.
+6. Review [security boundaries](/docs/security-governance/overview),
+   [observability](/docs/operations/observability), and the [upgrade
+   guide](/docs/release-notes/upgrade-guide) before production traffic.
 
-- Multi-dialect gateway: OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages surfaces for ordinary apps, Codex CLI, Claude Code, and compatible agent frameworks.
-- Model-group contracts: deployment-defined names encode workload, cost, quality, API shape, modality, and validation expectations.
-- Validated eligibility filtering: text, image/VLM, tool-call, dialect, and max-token-cap metadata prevent unsafe target selection.
-- Programmable policy: static, weighted, failover, dynamic-score, TypeScript-scripted, and external-policy routing patterns.
-- Capacity pooling: aggregate usable throughput across separately rate-limited providers and private upstreams while keeping caller access and provider safeguards centralized.
-- Cost governance: per-key access and budgets plus request-time price/cost storage, including image cost fields and upstream-reported billed cost when available.
-- Operational visibility: request logs, relational usage data, diagnostics child tables, optional governed content-capture tables, report examples, downstream and upstream latency/throughput views, and Prometheus telemetry restricted to metrics-admin tokens.
-- Private upstream control: internally hosted OpenAI-compatible inference services can sit behind the same caller API as external providers.
-- Outcome validation: Harbor or any workload-appropriate verifier can compare success, cost, token volume, latency, fallbacks, and provider mix before promotion.
+Questions and bugs use the repository's public issue forms. Suspected
+vulnerabilities must use GitHub private vulnerability reporting; do not place
+secrets or customer content in public issues.
 
-## Production Problems It Solves
-
-Direct provider integrations work well for prototypes. Production systems accumulate harder problems: provider outages, rate limits, noisy neighbors, surprise cost spikes, SDK drift, agent loops, and security reviews that ask where provider keys and prompts went. GenAI Smart Router turns those concerns into deployment-owned policy and evidence.
-
-| Production pain | Smart Router advantage |
-|---|---|
-| One provider rate-limits the app | Use a validated model group that pools capacity across several upstream providers or private endpoints. |
-| One provider is down, slow, or out of quota | Route around retryable upstream failures when another eligible target can satisfy the same request. |
-| One team or agent loop consumes shared capacity | Enforce per-caller budgets and provider traffic shaping before upstream calls overload shared accounts. |
-| Cost suddenly spikes | Attribute spend by user, project, public token ID, client, model group, provider/model, fallback, and request shape. |
-| Fallback silently changes quality or price | Keep fallback inside the requested model-group contract and record attempts, fallback reasons, selected target, latency, tokens, and cost. |
-| Provider keys are copied into apps and laptops | Keep upstream credentials server-side and issue revocable router tokens with scoped model-group access. |
-| Debugging requires pasting prompts or keys into tickets | Use request IDs, sanitized upstream errors, diagnostics, and evidence bundles. Keep credentials and customer content in approved private support channels. |
-| Every client has a different API style | Serve OpenAI Chat, OpenAI Responses, Anthropic Messages, `/v1/models`, and caller `/v1/usage` through one governed endpoint. |
-| Teams want autonomy without losing governance | Use caller users/projects, model-group allow lists, contracts, per-team groups, or separate routers while centralizing provider custody and reporting where needed. |
-
-## Model Groups
-
-Callers request stable model groups defined by the deployment. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision` appear in some examples because they are used by one reference or hosted deployment; GenAI Smart Router does not require those names.
-
-Not every task needs the most expensive model. A well-designed deployment uses objective evaluation to keep each model group successful for its intended workload while routing simpler work to lower-cost targets and reserving stronger targets for requests that need them.
-
-See [Concepts And Glossary](/docs/concepts) for the terms used throughout these docs, and [Model Group Quality Criteria](/docs/evaluation/model-group-quality) for the contract fields to define before rollout.
-
-## Evaluate The Product
-
-For a first evaluation, start with the [Enterprise FAQ](/docs/evaluation/enterprise-faq) and [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation), then choose whether the proof should run on a Metrum-managed hosted endpoint, an enterprise/on-prem licensed package, or a private customer-cloud deployment. Then run one path through the gateway and inspect both the caller result and the operator evidence:
-
-1. Call [`/v1/models`](/docs/getting-started/available-models) with the router token to discover allowed groups.
-2. Run an OpenAI-compatible chat request from the [Hosted Quickstart](/docs/getting-started/hosted-quickstart).
-3. Run the relevant agent workflow: [Codex CLI](/docs/getting-started/codex-cli), [Claude Code CLI](/docs/getting-started/claude-code-cli), or an OpenAI-compatible SDK.
-4. Exercise one request-shape control: tool call, image input, quota, or a deployment-specific model group.
-5. Review usage, latency, selected provider/model, fallback behavior, and cost using [Report Examples](/docs/operations/report-examples).
-
-[Evaluate GenAI Smart Router](/docs/evaluation/evaluate-smart-router) gives a complete technical checklist and proof points to request. For evaluation access, private managed deployments, and enterprise licensing, contact [contact@metrum.ai](mailto:contact@metrum.ai). See [Choose a Deployment Path](/docs/licensing/deployment-paths).
-
-The expected guarantee is concrete: a caller can discover the groups its token is allowed to use, send the same client request shape it will use in production, and receive either a compatible response from a validated target or a clear router error before an unsafe upstream call is attempted. Operators should be able to show which provider/model served the request, why fallback did or did not happen, and what cost and latency were recorded for that request window.
-
-## Proof Points
-
-The docs include an outcome-based Harbor coding-agent case study that compares Codex CLI and Claude Code CLI across router model groups. It records the task goal, verifier reward score, models used, tokenomics, cache behavior, latency, throughput, fallback behavior, and provider/model usage. The same pattern can be applied to extraction accuracy checks, OCR targets, unit tests, browser-control tasks, golden datasets, or product acceptance tests.
-
-- [Read the Harbor case study](/docs/evaluation/harbor-case-study)
-- [Review product capabilities](/docs/evaluation/product-capabilities)
-- [Review cost governance](/docs/evaluation/cost-governance)
-- [Review security and trust posture](/docs/evaluation/security-and-trust)
-- [Compare gateway fit](/docs/evaluation/competitive-landscape)
-
-## Where To Go Next
-
-| Role | Start here |
-|---|---|
-| Buyer or evaluator | [Enterprise FAQ](/docs/evaluation/enterprise-faq), [Evaluation And Case Studies](/docs/evaluation/overview), [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation), [Solution Brief](/docs/solution-brief), [Security And Trust](/docs/evaluation/security-and-trust) |
-| Application developer | [Hosted Quickstart](/docs/getting-started/hosted-quickstart), [API Compatibility](/docs/reference/api-compatibility), [Available Models And Access](/docs/getting-started/available-models), [Troubleshooting](/docs/troubleshooting/) |
-| Coding-agent user | [Agents, Tools, And Vision](/docs/agents-tools-vision/overview), [Codex CLI](/docs/getting-started/codex-cli), [Claude Code CLI](/docs/getting-started/claude-code-cli), [Structured Outputs](/docs/agents-tools-vision/structured-outputs) |
-| Platform administrator | [Installation](/docs/installation/), [Licensing](/docs/licensing/), [Router Configuration](/docs/configuration/router-config), [Routing](/docs/routing/overview), [Providers And Models](/docs/providers-models/overview), [Usage, Cost, And Reports](/docs/usage-cost-reports/overview) |
-
-## API Surfaces
-
-The router supports the common LLM API surfaces used by modern tools:
-
-| Surface | Typical clients |
-|---|---|
-| `/v1/chat/completions` | OpenAI-compatible chat clients |
-| `/v1/responses` | Codex CLI and Responses-compatible clients |
-| `/v1/messages` | Claude Code and Anthropic-compatible clients |
-| [`/v1/models`](/docs/getting-started/available-models) | Model discovery filtered by caller token allow list |
-| `/v1/usage` | Caller quota/usage lookup |
-| `/metrics` | Prometheus telemetry for caller subjects authorized for `metrics` `read` |
-
-## Endpoint Example
-
-<RouterCodeBlock>
-{`
-export ROUTER_BASE_URL="{{origin}}"
-export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
-export ROUTER_MODEL="<allowed-model-group>"
-`}
-</RouterCodeBlock>
-
-Router-issued tokens are customer-specific. For deployment access or an evaluation environment, contact [contact@metrum.ai](mailto:contact@metrum.ai).

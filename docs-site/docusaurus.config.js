@@ -109,7 +109,7 @@ const config = {
           { to: "/solution-brief", label: "Solution Brief", position: "left" },
           { to: "/evaluation/harbor-case-study", label: "Case Study", position: "left" },
           { to: "/privacy", label: "Privacy", position: "right" },
-          { href: "mailto:contact@metrum.ai", label: "Deploy with Metrum", position: "right" },
+          { href: "https://github.com/sysadmin-metrum-ai/genai-smart-router", label: "GitHub", position: "right" },
         ],
       },
       footer: {
@@ -129,14 +129,14 @@ const config = {
             ],
           },
           {
-            title: "Evaluate",
+            title: "Operate",
             items: [
               { label: "Evaluation Guide", to: "/evaluation/overview" },
               { label: "Routing Decision Tree", to: "/routing/strategy-decision-tree" },
               { label: "Security And Trust", to: "/evaluation/security-and-trust" },
               { label: "Solution Brief", to: "/solution-brief" },
               { label: "Harbor Case Study", to: "/evaluation/harbor-case-study" },
-              { label: "Contact Metrum", href: "mailto:contact@metrum.ai" },
+              { label: "Upgrade Guide", to: "/release-notes/upgrade-guide" },
             ],
           },
           {
@@ -144,8 +144,7 @@ const config = {
             items: [
               { label: "Software Licenses", to: "/legal/software-licenses" },
               { label: "Privacy", to: "/privacy" },
-              { label: "Terms", to: "/terms" },
-              { label: "Data Processing", to: "/dpa" },
+              { label: "Source License", href: "https://github.com/sysadmin-metrum-ai/genai-smart-router/blob/main/LICENSE" },
             ],
           },
         ],

@@ -11,10 +11,6 @@ Use TypeScript for compact local policy that should run inside the router proces
 
 For the canonical strategy comparison, start with [Routing Strategy Decision Tree](../routing/strategy-decision-tree). For the broader routing-policy ownership model, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
 
-<div class="contactBanner">
-  <p>Need help designing routing policy? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
-</div>
-
 ## Admin Setup
 
 Configure a model group with `strategy: script`, point `script` at a TypeScript file relative to the config file, and list the targets the script may choose from:

@@ -399,7 +399,7 @@ authorize a production cutover.
 4. Preserve the configured license fingerprint when preparing the staging
    config, then validate the existing signed license from the staging pod. If
    the license policy or commercial terms require a distinct staging binding,
-   obtain a replacement Metrum-issued license before exposing the endpoint.
+   issue a replacement operator-controlled runtime license before exposing the endpoint.
 5. Push an immutable router image only to the ECR repository named by the
    protected staging target policy, then replace
    `replace-with-immutable-image-tag` in the overlay through a local,

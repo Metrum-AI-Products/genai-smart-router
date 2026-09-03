@@ -9,10 +9,6 @@ Router caller tokens authenticate applications, users, or evaluation jobs to Gen
 
 `router-token-gen` is an Enterprise Edition administrative CLI for platform administrators. Run it from a secure server console, deployment host shell, or controlled administrator workstation, and distribute only the generated router tokens to approved callers.
 
-<div class="contactBanner">
-  <p>For production token design and rollout support, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
-</div>
-
 ## Generate A Token
 
 ```bash

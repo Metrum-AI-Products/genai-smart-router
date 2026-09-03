@@ -83,4 +83,5 @@ curl -fsS -H "Authorization: Bearer $ROUTER_TOKEN" \
 
 `/readyz` confirms required runtime checks such as license enforcement and configured dependencies. `/docs/` confirms the embedded Docusaurus admin docs are reachable. `/v1/models` confirms the caller token is valid and shows the deployment-defined model groups available to that caller.
 
-For package questions or support escalation, contact `contact@metrum.ai`.
+For non-sensitive package questions, use the repository's public question issue
+form. Report vulnerabilities through the private path in `SECURITY.md`.

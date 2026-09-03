@@ -89,7 +89,11 @@ For standalone policy services, prefer `strategy: external` with `external_polic
 
 For built-in adaptive routing, prefer `strategy: dynamic_score` before adding custom strategies. It scores only the requested model group's eligible targets, uses in-memory rolling observations instead of hot-path database reads, emits safe scalar `routing_decision` traces, and rolls back by switching the group to `weighted`. See `docs/DYNAMIC_SCORE_ROUTING.md`.
 
-Normal release builds require `server.license` enforcement. Mount the Metrum-issued signed JSON license file and durable license state path before startup; runtime YAML cannot disable licensing. `/readyz` reflects license readiness. Replace or renew the license file before expiry, then restart the router or wait for `recheck_interval`. License errors use `license-*` codes and expose only request IDs plus safe error types.
+Normal release builds require `server.license` enforcement. Mount the
+operator-generated signed JSON runtime-policy file, its configured verification
+public key, and durable license state path before startup; runtime YAML cannot
+disable enforcement. `/readyz` reflects license readiness. Replace or renew the
+file before expiry, then restart or wait for `recheck_interval`.
 
 Metrum operators should use `docs/LICENSE_OPERATIONS.md` for issuance, renewal, replacement, volume top-up, offline customer support, commercial/control-plane boundaries, and acceptance checklists. GitHub issue #921 owns the commerce purchase/entitlement flow and #42 owns customer-facing commercial/package copy. That source-tree runbook is not part of the public hosted docs and must not contain real licenses, signing keys, customer identifiers, router tokens, provider keys, or full production config.
 
@@ -173,6 +177,14 @@ For NVIDIA local-serving (in-cluster vLLM + router, KV cache off by default), us
 fallback) or `shadeform-nvidia-local-models-b200.example.yaml` (B200/H200).
 Offline gate: `make test-k8s-nvidia-local-serving`. Live Shadeform steps:
 `docs/SHADEFORM_NVIDIA_LOCAL_SERVING_E2E.md`.
+
+For an operator-selected llm-d frontend with a vLLM backend, use the separate
+`nvidia-llmd-compat` blueprint profile and
+`deploy/kubernetes/intents/shadeform-nvidia-llmd-compat.example.yaml`. Smart
+Router sends OpenAI-compatible traffic to `llm-d-local-epp:8081`; it does not
+control llm-d replica selection. Offline gate:
+`make test-k8s-nvidia-llmd-compat`. Live/operator procedure:
+`docs/SHADEFORM_NVIDIA_LLMD_COMPAT_E2E.md`.
 
 For operator-controlled k3s clusters on AMD Instinct, use the manual
 `deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/` vLLM/ROCm

@@ -77,7 +77,12 @@ Use the same Harbor-supported attempt and seed policy for both arms. Report the 
 
 ## Outcome Gate Artifact
 
-For production route changes, convert the run matrix and workload results into an explicit gate artifact before promotion. Use the deployment's approved validation workflow to summarize Harbor `results.tsv` files or equivalent JSON result rows and merge safe usage-report rows when available. Release binaries serve router traffic and reports; workload-gate generation belongs in the customer's validation environment or managed-service evidence process.
+For production route changes, convert the run matrix and workload results into
+an explicit gate artifact before promotion. Use the deployment's approved
+validation workflow to summarize Harbor `results.tsv` files or equivalent JSON
+result rows and merge safe usage-report rows when available. Release binaries
+serve router traffic and reports; workload-gate generation belongs in the
+operator's protected validation environment.
 
 The matrix should declare the task set, reward/verifier, clients, model groups, attempts/seeds, fixed-model or previous-policy controls, pass-rate and reward thresholds, p95 latency ceiling, cost-per-success ceiling, error and fallback ceilings, and rollback criteria. For local or CI environments where live Harbor is not installed, use a mock fixture self-test in the deployment's approved validation workflow.
 

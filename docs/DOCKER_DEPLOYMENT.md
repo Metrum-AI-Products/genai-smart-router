@@ -349,7 +349,12 @@ Inside the running container, `/app/bin/router --version`, `/app/bin/router-toke
 
 The router image also embeds authenticated admin report assets, including the Metrum-branded browser shell, local logo/font assets, JavaScript, and chart bundle. They are disabled by default and served only under `/admin/reports/` after `server.admin_reports.enabled: true`, Basic Auth, and Casbin `admin:reports` policy are configured. Optional security access reports require `server.admin_reports.security.enabled: true`, trusted proxy configuration under `server.client_ip`, and separate `admin:security_reports` policy. Public `/docs/` remains separate from report data.
 
-Normal Docker release builds require a Metrum-issued `license.json`. Mount it under `compose/config/`, set `server.license.enabled: true`, `server.license.path: /app/config/license.json`, and `server.license.state_path: /app/state/license-state.json`, then restart the router. Keep the license file readable by the container and restrict host permissions to the deployment operator. Do not place private signing keys in the compose tree. Renewal is a file replacement plus restart or waiting for `recheck_interval`; rollback is restoring the previous valid license file and restarting or waiting for the next recheck.
+Normal Docker release builds require an operator-generated `license.json` and
+configured verification public key. Mount runtime inputs under
+`compose/config/`, configure the license and state paths, and restart the
+router. Keep the private signing key outside the compose tree. Renewal is an
+atomic file replacement plus restart or recheck; rollback restores the previous
+valid license/public-key pair.
 
 For Metrum-side issuance, replacement, volume top-up, offline support, commercial/control-plane boundaries, and acceptance checklists, use the internal source-tree runbook `docs/LICENSE_OPERATIONS.md`. GitHub issue #545 owns the product flow and #42 owns customer-facing commercial/package copy. Customer-facing hosted docs cover license installation, renewal, status, commercial access paths, and error behavior without internal signing-key details or private deployment procedures.
 
