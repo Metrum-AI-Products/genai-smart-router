@@ -23,6 +23,11 @@ not resolve an item whose disposition is recorded as unknown or pending.
 Review the files from the exact release artifact before redistribution because
 the included components and recorded dispositions can change between releases.
 
+For source-browser readers, the current repository copy is
+[`LICENSE`](https://github.com/sysadmin-metrum-ai/genai-smart-router/blob/main/LICENSE).
+That link is not a substitute for the four legal files shipped with the exact
+release artifact.
+
 ## Runtime `license.json` Is Operator Policy
 
 A signed `license.json` is a deployment-specific runtime-policy input. The
