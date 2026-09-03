@@ -200,7 +200,7 @@ In a packaged deployment, put provider keys in `config/env.json` beside `config/
 ## License Enforcement
 
 All GenAI Smart Router first-party content is licensed under the Apache License
-2.0. Copyright 2026 Metrum AI, Inc. The Apache license grants the rights to use,
+2.0. Copyright 2006 Metrum AI. The Apache license grants the rights to use,
 modify, and distribute those materials; no EULA acceptance or Metrum-issued
 runtime file is a condition of those rights.
 
