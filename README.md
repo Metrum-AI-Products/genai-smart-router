@@ -2,6 +2,11 @@
 
 Go implementation of the Smart LLM Router described in `LLM_Router_SRS_1.docx`.
 
+Community participation is governed by [CONTRIBUTING.md](CONTRIBUTING.md), the
+[Code of Conduct](CODE_OF_CONDUCT.md), and [GOVERNANCE.md](GOVERNANCE.md).
+Questions and bugs follow [SUPPORT.md](SUPPORT.md); suspected vulnerabilities
+must use the private reporting path in [SECURITY.md](SECURITY.md).
+
 For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md). The customer-facing hosted documentation is built from `docs-site/` and embedded into release binaries under `/docs/`; browser requests to `/` redirect there. In source checkouts, internal documentation maintenance rules and the public/internal source-of-truth map live in [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md).
 
 ## Software License And Notices
