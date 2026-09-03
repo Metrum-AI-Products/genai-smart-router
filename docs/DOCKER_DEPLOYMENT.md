@@ -52,6 +52,15 @@ THIRD_PARTY_NOTICES.md
 MODEL_LICENSES.md
 ```
 
+Keep the four root legal files together during publication and redistribution.
+`LICENSE` covers first-party content under Apache-2.0; `NOTICE` carries
+distributed notices; `THIRD_PARTY_NOTICES.md` records dependency and asset
+terms and surfaces; and `MODEL_LICENSES.md` records model and dataset term
+boundaries. Review unresolved entries for the exact artifact rather than
+assuming the first-party license grants third-party rights. A deployment's
+`license.json` remains protected runtime policy and must not be added to the
+package legal set.
+
 Package docs are copied only from the Tier 2 bootstrap allowlist in `scripts/package_docs_allowlist.txt`. Package tar commands run with `COPYFILE_DISABLE=1` so macOS does not inject AppleDouble `._*` metadata. The package build validates the resulting tarball and fails if it contains AppleDouble entries, unexpected package files, missing allowlisted docs, private production runbooks, private host/IP markers, SSH key paths, live production compose config/env/token paths, local secret/state/license filenames, local DB/log artifacts, or raw token/provider-key patterns. The validator also checks that the package has exactly one image tar matching the package architecture and that the saved image layers include `/app/bin/router`, `/app/bin/router-token-gen`, and `/app/bin/router-usage-report`.
 
 Run the full local package validation before release handoff:

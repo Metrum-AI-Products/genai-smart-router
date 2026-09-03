@@ -30,6 +30,19 @@ bootstrap set, the package-safe solution brief, and `LICENSE.md`. The license
 document covers all first-party content under Apache-2.0;
 the package does not require EULA acceptance.
 
+The artifact root must also contain `LICENSE`, `NOTICE`,
+`THIRD_PARTY_NOTICES.md`, and `MODEL_LICENSES.md`. Treat them as one review set:
+the Apache license covers first-party content, while the notice and inventory
+files preserve the distinct obligations and boundaries for shipped
+third-party components, assets, models, and datasets. Confirm the files match
+the exact artifact being reviewed; an inventory entry is not by itself a grant
+of rights or evidence that an unresolved term has been cleared.
+
+Do not confuse these files with a deployment's `license.json`. The latter is a
+runtime-policy input and should be supplied through the deployment's protected
+configuration path, not added to a release package or treated as software
+license text.
+
 For a Docker package, load the saved image and version-check all operational binaries, including the non-serving migration runner:
 
 ```bash

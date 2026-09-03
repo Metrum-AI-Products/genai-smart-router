@@ -4,6 +4,21 @@ Go implementation of the Smart LLM Router described in `LLM_Router_SRS_1.docx`.
 
 For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md). The customer-facing hosted documentation is built from `docs-site/` and embedded into release binaries under `/docs/`; browser requests to `/` redirect there. In source checkouts, internal documentation maintenance rules and the public/internal source-of-truth map live in [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md).
 
+## Software License And Notices
+
+The repository-root [LICENSE](LICENSE) contains the Apache License 2.0 terms
+for GenAI Smart Router first-party content. Keep it together with
+[NOTICE](NOTICE), the dependency and asset inventory in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the model-term boundaries
+in [MODEL_LICENSES.md](MODEL_LICENSES.md) when copying or redistributing a
+release. Third-party components, assets, and models remain governed by their
+own applicable terms; the Apache-2.0 license does not replace them.
+
+The signed `license.json` used by a deployment is separate. It is an operator
+runtime-policy input for feature and operational enforcement, not the software
+copyright license and not a replacement for any of the files above. See
+[docs/LICENSE.md](docs/LICENSE.md) for the complete scope map and Apache terms.
+
 Current MVP capabilities:
 - Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses ingress.
 - Anthropic token-count estimate endpoint for Claude Code startup.

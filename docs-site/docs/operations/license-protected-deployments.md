@@ -8,6 +8,9 @@ doc_type: explanation
 All GenAI Smart Router first-party content is licensed under Apache-2.0. A
 signed `license.json` is operator runtime policy only: it is not a copyright
 license or commercial-use condition and does not narrow Apache-2.0 rights.
+The release artifact's `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, and
+`MODEL_LICENSES.md` have separate legal scopes and must remain with the
+artifact. See [Software License And Third-Party Notices](../legal/software-licenses).
 
 Licensed deployments can enforce a Metrum-issued signed JSON license offline. The deployed router verifies the license with embedded Ed25519 public verification keys; private signing keys and signing-service credentials are not required at runtime and must never be copied into config, logs, reports, browser docs, tickets, images, packages, versioned deployment files, or shared support bundles.
 

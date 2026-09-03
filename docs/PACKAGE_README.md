@@ -81,6 +81,14 @@ Use the quick-start document that matches the package:
 - `LICENSE.md` for the Apache License 2.0 terms covering all first-party
   content. No separate EULA applies.
 
+At the package root, retain `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, and
+`MODEL_LICENSES.md` together. `LICENSE` governs first-party content;
+`NOTICE` carries distributed notices; `THIRD_PARTY_NOTICES.md` records the
+dependency and asset terms and distribution surfaces; and `MODEL_LICENSES.md`
+records the boundaries for separately obtained models and datasets. The
+inventory files do not turn unresolved terms into permissions, so review them
+for the exact artifact and intended redistribution.
+
 After the router is reachable, open:
 
 ```text
@@ -97,7 +105,8 @@ Prepare these deployment-owned files before first startup:
 - `env.json` copied from `config/env.example.json` or equivalent environment variables from a secret manager.
 - A Metrum-issued `license.json` for operator-selected runtime policy in release
   builds. It is not a copyright or commercial-use license condition and does
-  not narrow the rights granted by Apache-2.0.
+  not narrow the rights granted by Apache-2.0 or replace the package-root legal
+  files.
 - A durable state directory for license state, router state, logs, and usage data.
 - At least one caller token generated with `router-token-gen`.
 

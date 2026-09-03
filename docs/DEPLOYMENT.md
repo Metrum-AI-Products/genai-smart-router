@@ -48,6 +48,15 @@ MODEL_LICENSES.md
 caddy/Caddyfile
 ```
 
+Keep the four root legal files together during publication and redistribution.
+`LICENSE` covers first-party content under Apache-2.0; `NOTICE` carries
+distributed notices; `THIRD_PARTY_NOTICES.md` records dependency and asset
+terms and surfaces; and `MODEL_LICENSES.md` records model and dataset term
+boundaries. Review unresolved entries for the exact artifact rather than
+assuming the first-party license grants third-party rights. A deployment's
+`license.json` remains protected runtime policy and must not be added to the
+package legal set.
+
 Package docs are an explicit Tier 2 bootstrap allowlist maintained in `scripts/package_docs_allowlist.txt`. Internal production runbooks, source-maintenance notes, and troubleshooting notes with private hostnames, SSH paths, live compose paths, router token files, or provider-key material must stay out of release packages. Full external admin guidance belongs in the embedded Docusaurus docs served under `/docs/`.
 
 Release package targets require a clean git tree and reject versions containing `-dirty`. Commit the intended code, generated embedded docs, and admin assets before building customer release artifacts. For a local development artifact that will not be shipped, set `ALLOW_DIRTY_PACKAGE=1` explicitly:
