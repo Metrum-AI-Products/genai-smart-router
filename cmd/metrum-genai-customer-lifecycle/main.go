@@ -1,4 +1,4 @@
-// Copyright 2026 Metrum AI, Inc.
+// Copyright 2006 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
 // Command metrum-genai-customer-lifecycle orchestrates commerce pay + license SSM

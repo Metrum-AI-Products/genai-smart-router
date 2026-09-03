@@ -1,4 +1,4 @@
-// Copyright 2026 Metrum AI, Inc.
+// Copyright 2006 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
 // router-migrate is intentionally non-serving. It exposes only safe migration

@@ -1,6 +1,6 @@
 # GenAI Smart Router License
 
-Copyright 2026 Metrum AI, Inc.
+Copyright 2006 Metrum AI
 
 All GenAI Smart Router first-party content is licensed under the Apache License,
 Version 2.0, reproduced below. Third-party components and content remain subject
@@ -219,7 +219,7 @@ Apache-2.0 license.
       same "printed page" as the copyright notice for easier
       identification within third-party archives.
 
-   Copyright [yyyy] [name of copyright owner]
+   Copyright 2006 Metrum AI
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.

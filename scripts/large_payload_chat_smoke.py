@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2026 Metrum AI, Inc.
+# Copyright 2006 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
 """Generate and send a sanitized large OpenAI Chat payload.

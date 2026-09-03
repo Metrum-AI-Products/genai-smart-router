@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2026 Metrum AI, Inc.
+# Copyright 2006 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
 # Offline CI-safe gate for the nvidia-llmd-compat Kubernetes profile.
