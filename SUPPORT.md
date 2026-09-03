@@ -24,3 +24,12 @@ Operators remain responsible for backups, upgrades, rollback, credentials,
 provider accounts, infrastructure, and incident response for self-managed
 installations.
 
+## Ownership And Contact
+
+Chetan Gadgil is the approved community and support owner. Public project
+questions use the GitHub issue forms linked above. Private commercial or
+deployment inquiries may use [contact@metrum.ai](mailto:contact@metrum.ai), and
+security reports must use the separate private path in
+[SECURITY.md](SECURITY.md). An owner assignment does not promise continuous
+availability or a response time; any time-bounded launch coverage must be
+explicitly confirmed in the applicable launch evidence record.

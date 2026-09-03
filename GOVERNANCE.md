@@ -1,8 +1,6 @@
 # Project Governance
 
-GenAI Smart Router uses a maintainer-led governance model. This document
-describes roles and decisions without assigning identities that the project has
-not publicly confirmed.
+GenAI Smart Router uses a maintainer-led governance model.
 
 ## Roles
 
@@ -12,9 +10,11 @@ not publicly confirmed.
 - Maintainers have repository write access and are accountable for review,
   merge, release, security, and community decisions.
 
-The current maintainer roster is the set of people with maintainer access in
-the public GitHub organization. A named roster will be added only after those
-people consent to publication.
+The current approved owner for launch leadership, release management, security,
+operations, and community management is Chetan Gadgil. This appointment records
+decision ownership; it does not by itself record a release approval, operational
+coverage, or a go/no-go decision. Repository access remains the source of truth
+for who can review and merge changes.
 
 ## Decisions
 
@@ -40,6 +40,11 @@ repository's release checks pass. Release notes describe caller and operator
 impact, validation, and rollback. No contributor should infer release authority
 from issue assignment, review participation, or package access.
 
+Launch decisions use the evidence record in
+[docs/OPEN_SOURCE_LAUNCH_GOVERNANCE.md](docs/OPEN_SOURCE_LAUNCH_GOVERNANCE.md).
+A GO requires every hard gate to have current evidence and owner attestation;
+an owner appointment is not a substitute for either requirement.
+
 ## Escalation
 
 - Bugs, proposals, and governance questions use the public issue templates.
@@ -51,4 +56,3 @@ from issue assignment, review participation, or package access.
 Repository ownership, maintainer appointments, and changes to this governance
 model are maintainer decisions and should be recorded in a public issue or pull
 request when privacy and security allow.
-
