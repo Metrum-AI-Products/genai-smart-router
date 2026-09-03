@@ -27,6 +27,7 @@ BINARY_PACKAGE_FILES = {
     "bin/metrum-genai-smartrouter-fleet-sign",
     "bin/metrum-genai-smartrouter-license",
     "bin/metrum-genai-customer-lifecycle",
+    "bin/metrum-genai-customer-lifecycle",
     "bin/smartrouterctl",
     "bin/metrum-fleetctl",
     "bin/metrum-smartrouterctl",
@@ -218,7 +219,7 @@ def validate_elf_arch(blob: bytes, arch: str) -> str | None:
     return None
 
 
-def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes) -> list[str]:
+def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes, expected_arch: str) -> list[str]:
     errors: list[str] = []
     required = {"/app/bin/router", "/app/bin/router-token-gen", "/app/bin/router-usage-report", "/app/bin/router-migrate", "/app/bin/metrum-genai-smartrouterctl", "/app/bin/smartrouterctl"}
     actual: set[str] = set()
@@ -226,6 +227,7 @@ def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes) -> lis
         with tarfile.open(fileobj=io.BytesIO(blob), mode="r:*") as image:
             image_members = {member.name: member for member in image.getmembers()}
             layer_names: list[str] = []
+            config_names: list[str] = []
             for image_member in image.getmembers():
                 if has_appledouble_component(image_member.name):
                     errors.append(f"{archive}: {image_rel} contains AppleDouble metadata entry: {image_member.name}")
@@ -238,10 +240,30 @@ def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes) -> lis
                                 layers = item.get("Layers") if isinstance(item, dict) else None
                                 if isinstance(layers, list):
                                     layer_names.extend(layer for layer in layers if isinstance(layer, str))
+                                config_name = item.get("Config") if isinstance(item, dict) else None
+                                if isinstance(config_name, str):
+                                    config_names.append(config_name)
                 elif image_member.isfile() and (
                     image_member.name == "layer.tar" or image_member.name.endswith("/layer.tar")
                 ):
                     layer_names.append(image_member.name)
+
+            for config_name in dict.fromkeys(config_names):
+                config_member = image_members.get(config_name)
+                if config_member is None or not config_member.isfile():
+                    errors.append(f"{archive}: {image_rel} manifest references missing config {config_name}")
+                    continue
+                config_file = image.extractfile(config_member)
+                if config_file is None:
+                    continue
+                config = json.loads(config_file.read().decode("utf-8"))
+                actual_arch = config.get("architecture") if isinstance(config, dict) else None
+                actual_os = config.get("os") if isinstance(config, dict) else None
+                if actual_os != "linux" or actual_arch != expected_arch:
+                    errors.append(
+                        f"{archive}: {image_rel} image platform {actual_os}/{actual_arch} "
+                        f"does not match linux/{expected_arch}"
+                    )
 
             for layer_name in dict.fromkeys(layer_names):
                 layer_member = image_members.get(layer_name)
@@ -310,7 +332,23 @@ def validate_archive(archive: Path, allowed_docs: set[str]) -> list[str]:
         return [f"{archive}: cannot read tar archive: {exc}"]
 
     with package:
-        for member in package.getmembers():
+        members = package.getmembers()
+        member_roots = {Path(member.name).parts[0] for member in members if Path(member.name).parts}
+        expected_root = archive.name.removesuffix(".tar.gz") if arch is not None else None
+        if len(member_roots) != 1:
+            errors.append(f"{archive}: archive must contain exactly one top-level directory")
+        elif expected_root is not None and member_roots != {expected_root}:
+            errors.append(f"{archive}: top-level directory must be {expected_root}")
+        for member in members:
+            parts = Path(member.name).parts
+            if (
+                not parts
+                or member.name.startswith("/")
+                or any(part in {"", ".", ".."} for part in parts)
+            ):
+                errors.append(f"{archive}: unsafe archive path: {member.name}")
+            if not (member.isfile() or member.isdir()):
+                errors.append(f"{archive}: links and special archive entries are forbidden: {member.name}")
             rel = package_relative_name(member.name)
             if has_appledouble_component(member.name):
                 errors.append(f"{archive}: AppleDouble metadata entry included: {rel}")
@@ -341,7 +379,8 @@ def validate_archive(archive: Path, allowed_docs: set[str]) -> list[str]:
                     errors.append(f"{archive}: {rel} {arch_error}")
 
             if DOCKER_IMAGE_RE.fullmatch(rel):
-                errors.extend(validate_docker_image_tar(archive, rel, blob))
+                image_arch = DOCKER_IMAGE_RE.fullmatch(rel).group(1)
+                errors.extend(validate_docker_image_tar(archive, rel, blob, arch or image_arch))
 
             if not should_scan_text(member.name, member.size):
                 continue
