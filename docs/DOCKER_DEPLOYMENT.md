@@ -67,6 +67,16 @@ Package docs are copied only from the Tier 2 bootstrap allowlist in `scripts/pac
 
 Run the full local package validation before release handoff:
 
+After generating the complete four-package inventory, generate CycloneDX SBOMs
+and Grype JSON reports bound to every exact archive. Install reviewed Syft and
+Grype versions outside the repository, then run `VERSION=<candidate-version>
+DIST_DIR=dist make release-security-evidence`. The command fails closed on an
+incomplete matrix, malformed evidence, scanner errors, or Critical findings by
+default; set `RELEASE_SECURITY_ARGS="--fail-on high"` when the approved release
+policy requires the stricter threshold. Retain the summary, all eight evidence
+files, scanner versions, database status, artifact hashes, and finding
+dispositions with the release record.
+
 ```bash
 make package-docker-all
 python3 scripts/validate_package_contents.py --allowlist scripts/package_docs_allowlist.txt dist/smart-llmrouter-*-docker-linux-amd64.tar.gz dist/smart-llmrouter-*-docker-linux-arm64.tar.gz
