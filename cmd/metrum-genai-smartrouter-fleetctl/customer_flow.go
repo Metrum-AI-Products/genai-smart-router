@@ -123,7 +123,7 @@ func foreignDefaultRefError(customerID, licenseRef string) error {
 // customer convenience path. It never emits database_profile; dedicated RDS
 // remains a core Fleet deploy choice with an external admission, not a
 // customer-verb input.
-func writeManifest(ws customerWorkspace, profileRef, runtimeBundle, licenseRef, revisionPrefix string) string {
+func writeManifest(ws customerWorkspace, profileRef, runtimeBundle, licenseRef, revisionPrefix, stage string) string {
 	profileRef = strings.TrimSpace(profileRef)
 	runtimeBundle = strings.TrimSpace(runtimeBundle)
 	licenseRef = strings.TrimSpace(licenseRef)
@@ -141,6 +141,8 @@ func writeManifest(ws customerWorkspace, profileRef, runtimeBundle, licenseRef, 
 	}
 	rejectForeignDefaultRefs(ws.CustomerID, profileRef, runtimeBundle, licenseRef)
 
+	stage = resolveCustomerManifestStage(ws, stage)
+
 	stamp := utcStamp()
 	if strings.TrimSpace(revisionPrefix) == "" {
 		revisionPrefix = "sqlite"
@@ -148,7 +150,7 @@ func writeManifest(ws customerWorkspace, profileRef, runtimeBundle, licenseRef, 
 	manifest := map[string]any{
 		"api_version":        "metrum.ai/smartrouter-deployment/v1",
 		"customer_id":        ws.CustomerID,
-		"stage":              "nonproduction",
+		"stage":              stage,
 		"release":            "latest-approved",
 		"resource_profile":   "small",
 		"state_profile":      "sqlite-rwo-small",
@@ -174,6 +176,7 @@ func writeManifest(ws customerWorkspace, profileRef, runtimeBundle, licenseRef, 
 		"license_ref":        licenseRef,
 		"intent_id":          intentID,
 		"manifest_path":      path,
+		"stage":              stage,
 		"awaiting_signature": true,
 	})
 	fmt.Println(mustJSON(map[string]any{
@@ -183,10 +186,40 @@ func writeManifest(ws customerWorkspace, profileRef, runtimeBundle, licenseRef, 
 		"awaiting_signature": true,
 		"next_step":          "obtain an externally issued signed intent for this manifest, then run customer create --intent <signed-intent>",
 		"signing_boundary":   "fleetctl customer never holds, copies, or accepts lifecycle private keys",
-		"stage":              "nonproduction",
+		"stage":              stage,
 		"state_profile":      "sqlite-rwo-small",
 	}))
 	return path
+}
+
+func resolveCustomerManifestStage(ws customerWorkspace, explicit string) string {
+	stage := strings.ToLower(strings.TrimSpace(explicit))
+	if stage == "" {
+		if fromState, _ := ws.loadState()["stage"].(string); strings.TrimSpace(fromState) != "" {
+			stage = strings.ToLower(strings.TrimSpace(fromState))
+		}
+	}
+	if stage == "" {
+		if plan := loadWorkspacePlan(ws); strings.TrimSpace(plan.Stage) != "" {
+			stage = strings.ToLower(strings.TrimSpace(plan.Stage))
+		}
+	}
+	if stage == "" {
+		stage = "nonproduction"
+	}
+	if !customerStageAllowed(stage) {
+		die("stage must be nonproduction, test, staging, or production")
+	}
+	return stage
+}
+
+func customerStageAllowed(stage string) bool {
+	switch stage {
+	case "nonproduction", "test", "staging", "production":
+		return true
+	default:
+		return false
+	}
 }
 
 func peekIntentEnvelope(intentPath string) intentEnvelope {
@@ -232,8 +265,8 @@ func validateIntentEnvelope(env intentEnvelope) error {
 		return fmt.Errorf("refusing customer convenience path: intent selects dedicated RDS; use core Fleet deploy with a validated admission")
 	}
 	stage := strings.ToLower(strings.TrimSpace(env.Manifest.Stage))
-	if stage != "" && stage != "nonproduction" && stage != "test" && stage != "staging" {
-		return fmt.Errorf("refusing customer convenience path: intent stage %q is not non-production", env.Manifest.Stage)
+	if stage != "" && !customerStageAllowed(stage) {
+		return fmt.Errorf("refusing customer convenience path: intent stage %q is not supported", env.Manifest.Stage)
 	}
 	return nil
 }
@@ -356,8 +389,11 @@ func planAndDeployIntent(ws customerWorkspace, fleetBin, intentPath string, flee
 		die("intent customer_id %q does not match workspace %q", plan.CustomerID, ws.CustomerID)
 	}
 	env := strings.ToLower(strings.TrimSpace(plan.Environment))
-	if env != "" && env != "nonproduction" && env != "test" && env != "staging" {
-		die("refusing deploy: plan environment %q is not non-production", plan.Environment)
+	if env != "" && env != "nonproduction" && env != "test" && env != "staging" && env != "production" {
+		die("refusing deploy: plan environment %q is not supported", plan.Environment)
+	}
+	if env == "production" && strings.ToLower(strings.TrimSpace(plan.Stage)) != "production" {
+		die("refusing deploy: production environment requires stage production")
 	}
 	planBytes, err := json.MarshalIndent(planRaw, "", "  ")
 	if err != nil {

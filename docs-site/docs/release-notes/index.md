@@ -64,8 +64,8 @@ condition. This entry does not imply that a tag or GitHub Release exists.
 - CLI packaging: confirm customer Docker images include `metrum-genai-smartrouterctl` and
   exclude `metrum-genai-smartrouter-fleetctl`. Fleet RDS mutation remains fail-closed pending
   recorded non-production evidence and a qualified reviewer's approval, which a
-  single-maintainer deployment may supply itself; production profiles remain
-  rejected until #518.
+  single-maintainer deployment may supply itself. Managed production profile
+  authority is operator-owned and is not granted by the customer package.
 
 ### Caller Impact
 

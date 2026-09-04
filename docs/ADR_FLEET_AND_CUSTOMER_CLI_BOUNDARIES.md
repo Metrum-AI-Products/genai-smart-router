@@ -92,8 +92,9 @@ the approved profile's `lifecycle_approval_public_key`, and bound to the exact
 profile, deterministic job/intent, namespace, database profile, and manifest
 digest. `metrum-genai-smartrouter-fleetctl` never creates, updates, emits, or persists that
 admission or signing material. Invalid, unsigned, stale, or out-of-scope
-records fail before registry or AWS/EKS clients are opened. Production profiles
-remain rejected until #518.
+records fail before registry or AWS/EKS clients are opened. Metrum engineering
+production on Fleet (`llm-api` / `metrum-production`) was authorized 2026-09-01;
+see [EKS production operations](EKS_PRODUCTION_OPERATIONS.md).
 
 ## Review authority
 
@@ -110,7 +111,8 @@ security and operations
 review](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review).
 Separate reviewers or additional scoped EKS roles may be used when more than
 one qualified person is available or a customer contract demands separation of
-duties. Production cutover authority remains #518's.
+duties. Metrum production operations authority is
+[EKS production operations](EKS_PRODUCTION_OPERATIONS.md).
 
 ## Consequences
 
@@ -120,5 +122,5 @@ duties. Production cutover authority remains #518's.
   plans, registries, statuses, or error output.
 - Packaged `customer` convenience verbs cannot select or attach dedicated RDS;
   that remains a core Fleet deploy branch with an external admission only.
-- Compose-to-EKS cutover remains an externally gated operation; this ADR grants
-  no production, DNS, secret, credential, or migration mutation authority.
+- This ADR grants no DNS, secret, credential, or migration mutation authority
+  outside the protected Fleet profile and signed-intent path.

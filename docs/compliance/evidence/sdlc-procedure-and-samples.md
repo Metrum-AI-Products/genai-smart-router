@@ -25,14 +25,13 @@ Collected 2026-09-03 from the following repository sources:
   that proves a change, distinguishes smoke compatibility evidence from broader
   outcome evaluation, specifies deterministic and live-smoke examples, and
   requires sanitized evidence fields for relevant validation.
-- `docs/PRODUCTION_PROMOTION_CONTRACT.md` — release-gate procedure requiring an
-  immutable image digest, recent hash-pinned staging, migration-rehearsal and
-  supply-chain validation results, a bounded canary, a known-good rollback
-  artifact, and a passed time-bounded automated promotion gate. A successful local
-  validation result remains `review_required_no_production_apply`.
-- `docs/PRODUCTION_RUNBOOK.md` — customer deployment procedure that calls for
-  targeted tests before package deployment, package build and upgrade planning,
-  a rollback command path, and post-change readiness and version verification.
+- `docs/PRODUCTION_PROMOTION_CONTRACT.md` — historical promotion-gate record;
+  after 2026-09-01 it points operators to `docs/EKS_PRODUCTION_OPERATIONS.md`
+  for Metrum Fleet production. The 2026-09-03 collection described the former
+  Make-target / hash-pinned promotion-manifest procedure.
+- `docs/PRODUCTION_RUNBOOK.md` — pointer to Metrum Fleet ops
+  (`EKS_PRODUCTION_OPERATIONS.md`) and customer Compose (`DOCKER_DEPLOYMENT.md`).
+  The 2026-09-03 collection described the former customer Compose procedure body.
 - Supplied Google tracker — anonymous access returned HTTP 401. No authenticated
   tracker content was collected or relied upon.
 

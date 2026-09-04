@@ -35,7 +35,7 @@ const (
 var tenantDeploymentProcessLock sync.Mutex
 
 var tenantDeploymentActionOrder = []string{
-	"namespace", "network_policy", "dedicated_rds", "runtime_secret_binding",
+	"ownership_transition", "namespace", "network_policy", "dedicated_rds", "runtime_secret_binding",
 	"license_binding", "state_pvc", "router", "activation", "hostname",
 }
 
@@ -43,45 +43,47 @@ var tenantDeploymentActionOrder = []string{
 // deploy and status. It intentionally omits endpoints other than the caller
 // hostname, credential references, error text, and provider configuration.
 type TenantDeploymentStatus struct {
-	Schema           string                          `json:"schema"`
-	Mode             string                          `json:"mode"`
-	JobID            string                          `json:"job_id"`
-	InstanceID       string                          `json:"instance_id"`
-	ProfileID        string                          `json:"profile_id"`
-	CustomerID       string                          `json:"customer_id"`
-	Stage            string                          `json:"stage"`
-	Environment      string                          `json:"environment"`
-	Region           string                          `json:"region"`
-	ClusterAlias     string                          `json:"cluster_alias"`
-	Namespace        string                          `json:"namespace"`
-	Hostname         string                          `json:"hostname,omitempty"`
-	AliasHostnames   []string                        `json:"alias_hostnames,omitempty"`
-	ReleaseDigest    string                          `json:"release_digest"`
-	ResourceProfile  string                          `json:"resource_profile,omitempty"`
-	StateProfile     string                          `json:"state_profile,omitempty"`
-	ComputeProfile   string                          `json:"compute_profile,omitempty"`
-	NodeClassAlias   string                          `json:"node_class_alias,omitempty"`
-	Architecture     string                          `json:"architecture,omitempty"`
-	CPURequest       string                          `json:"cpu_request,omitempty"`
-	CPULimit         string                          `json:"cpu_limit,omitempty"`
-	MemoryRequest    string                          `json:"memory_request,omitempty"`
-	MemoryLimit      string                          `json:"memory_limit,omitempty"`
-	ConfigRevision   string                          `json:"config_revision"`
-	State            string                          `json:"state"`
-	ObservedState    string                          `json:"observed_state,omitempty"`
-	CompletedAction  string                          `json:"completed_action,omitempty"`
-	NextAction       string                          `json:"next_action,omitempty"`
-	ErrorClass       string                          `json:"error_class,omitempty"`
-	Retryable        bool                            `json:"retryable"`
-	CreatedAt        time.Time                       `json:"created_at"`
-	UpdatedAt        time.Time                       `json:"updated_at"`
-	ActivationPassed bool                            `json:"activation_passed"`
-	DatabaseState    string                          `json:"database_state,omitempty"`
-	Workload         *TenantDeploymentWorkloadStatus `json:"workload,omitempty"`
-	PVC              *TenantDeploymentResourceStatus `json:"pvc,omitempty"`
-	Ingress          *TenantDeploymentResourceStatus `json:"ingress,omitempty"`
-	Service          *TenantDeploymentResourceStatus `json:"service,omitempty"`
-	Database         *TenantDeploymentDatabaseStatus `json:"database,omitempty"`
+	Schema                             string                          `json:"schema"`
+	Mode                               string                          `json:"mode"`
+	JobID                              string                          `json:"job_id"`
+	InstanceID                         string                          `json:"instance_id"`
+	ProfileID                          string                          `json:"profile_id"`
+	CustomerID                         string                          `json:"customer_id"`
+	Stage                              string                          `json:"stage"`
+	Environment                        string                          `json:"environment"`
+	Region                             string                          `json:"region"`
+	ClusterAlias                       string                          `json:"cluster_alias"`
+	Namespace                          string                          `json:"namespace"`
+	Hostname                           string                          `json:"hostname,omitempty"`
+	AliasHostnames                     []string                        `json:"alias_hostnames,omitempty"`
+	ReleaseDigest                      string                          `json:"release_digest"`
+	ResourceProfile                    string                          `json:"resource_profile,omitempty"`
+	StateProfile                       string                          `json:"state_profile,omitempty"`
+	ComputeProfile                     string                          `json:"compute_profile,omitempty"`
+	NodeClassAlias                     string                          `json:"node_class_alias,omitempty"`
+	Architecture                       string                          `json:"architecture,omitempty"`
+	CPURequest                         string                          `json:"cpu_request,omitempty"`
+	CPULimit                           string                          `json:"cpu_limit,omitempty"`
+	MemoryRequest                      string                          `json:"memory_request,omitempty"`
+	MemoryLimit                        string                          `json:"memory_limit,omitempty"`
+	ConfigRevision                     string                          `json:"config_revision"`
+	State                              string                          `json:"state"`
+	ObservedState                      string                          `json:"observed_state,omitempty"`
+	CompletedAction                    string                          `json:"completed_action,omitempty"`
+	NextAction                         string                          `json:"next_action,omitempty"`
+	ErrorClass                         string                          `json:"error_class,omitempty"`
+	Retryable                          bool                            `json:"retryable"`
+	CreatedAt                          time.Time                       `json:"created_at"`
+	UpdatedAt                          time.Time                       `json:"updated_at"`
+	ActivationPassed                   bool                            `json:"activation_passed"`
+	DatabaseState                      string                          `json:"database_state,omitempty"`
+	SourceInstanceID                   string                          `json:"source_instance_id,omitempty"`
+	OwnershipTransitionChangeReference string                          `json:"ownership_transition_change_reference,omitempty"`
+	Workload                           *TenantDeploymentWorkloadStatus `json:"workload,omitempty"`
+	PVC                                *TenantDeploymentResourceStatus `json:"pvc,omitempty"`
+	Ingress                            *TenantDeploymentResourceStatus `json:"ingress,omitempty"`
+	Service                            *TenantDeploymentResourceStatus `json:"service,omitempty"`
+	Database                           *TenantDeploymentDatabaseStatus `json:"database,omitempty"`
 }
 
 const (
@@ -122,32 +124,34 @@ type TenantDeploymentDatabaseStatus struct {
 }
 
 type tenantDeploymentJobRecord struct {
-	JobID              string    `gorm:"primaryKey;column:job_id;type:text"`
-	InstanceID         string    `gorm:"index;column:instance_id;type:text;not null"`
-	IdempotencyKey     string    `gorm:"uniqueIndex;column:idempotency_key;type:text;not null"`
-	ManifestSHA256     string    `gorm:"column:manifest_sha256;type:text;not null"`
-	ProfileID          string    `gorm:"column:profile_id;type:text;not null"`
-	CustomerID         string    `gorm:"column:customer_id;type:text;not null"`
-	Stage              string    `gorm:"column:stage;type:text;not null"`
-	Environment        string    `gorm:"column:environment;type:text;not null"`
-	Region             string    `gorm:"column:region;type:text;not null"`
-	ClusterAlias       string    `gorm:"column:cluster_alias;type:text;not null"`
-	Namespace          string    `gorm:"column:namespace;type:text;not null"`
-	Hostname           string    `gorm:"column:hostname;type:text;not null"`
-	AliasHostnamesJSON string    `gorm:"column:alias_hostnames_json;type:text;not null;default:''"`
-	ReleaseDigest      string    `gorm:"column:release_digest;type:text;not null"`
-	ResourceProfile    string    `gorm:"column:resource_profile;type:text;not null"`
-	StateProfile       string    `gorm:"column:state_profile;type:text;not null"`
-	ComputeProfile     string    `gorm:"column:compute_profile;type:text;not null"`
-	ConfigRevision     string    `gorm:"column:config_revision;type:text;not null"`
-	State              string    `gorm:"column:state;type:text;not null"`
-	CompletedAction    string    `gorm:"column:completed_action;type:text;not null"`
-	NextAction         string    `gorm:"column:next_action;type:text;not null"`
-	ErrorClass         string    `gorm:"column:error_class;type:text;not null"`
-	Retryable          bool      `gorm:"column:retryable;not null"`
-	ActivationPassed   bool      `gorm:"column:activation_passed;not null"`
-	CreatedAt          time.Time `gorm:"column:created_at;not null"`
-	UpdatedAt          time.Time `gorm:"column:updated_at;not null"`
+	JobID                              string    `gorm:"primaryKey;column:job_id;type:text"`
+	InstanceID                         string    `gorm:"index;column:instance_id;type:text;not null"`
+	IdempotencyKey                     string    `gorm:"uniqueIndex;column:idempotency_key;type:text;not null"`
+	ManifestSHA256                     string    `gorm:"column:manifest_sha256;type:text;not null"`
+	ProfileID                          string    `gorm:"column:profile_id;type:text;not null"`
+	CustomerID                         string    `gorm:"column:customer_id;type:text;not null"`
+	Stage                              string    `gorm:"column:stage;type:text;not null"`
+	Environment                        string    `gorm:"column:environment;type:text;not null"`
+	Region                             string    `gorm:"column:region;type:text;not null"`
+	ClusterAlias                       string    `gorm:"column:cluster_alias;type:text;not null"`
+	Namespace                          string    `gorm:"column:namespace;type:text;not null"`
+	Hostname                           string    `gorm:"column:hostname;type:text;not null"`
+	AliasHostnamesJSON                 string    `gorm:"column:alias_hostnames_json;type:text;not null;default:''"`
+	ReleaseDigest                      string    `gorm:"column:release_digest;type:text;not null"`
+	ResourceProfile                    string    `gorm:"column:resource_profile;type:text;not null"`
+	StateProfile                       string    `gorm:"column:state_profile;type:text;not null"`
+	ComputeProfile                     string    `gorm:"column:compute_profile;type:text;not null"`
+	ConfigRevision                     string    `gorm:"column:config_revision;type:text;not null"`
+	State                              string    `gorm:"column:state;type:text;not null"`
+	CompletedAction                    string    `gorm:"column:completed_action;type:text;not null"`
+	NextAction                         string    `gorm:"column:next_action;type:text;not null"`
+	ErrorClass                         string    `gorm:"column:error_class;type:text;not null"`
+	Retryable                          bool      `gorm:"column:retryable;not null"`
+	ActivationPassed                   bool      `gorm:"column:activation_passed;not null"`
+	SourceInstanceID                   string    `gorm:"column:source_instance_id;type:text;not null;default:''"`
+	OwnershipTransitionChangeReference string    `gorm:"column:ownership_transition_change_reference;type:text;not null;default:''"`
+	CreatedAt                          time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt                          time.Time `gorm:"column:updated_at;not null"`
 }
 
 func (tenantDeploymentJobRecord) TableName() string { return "tenant_deployment_jobs" }
@@ -264,6 +268,8 @@ func OpenTenantDeploymentStore(path string) (*TenantDeploymentStore, error) {
 	// Backward-compatible column for registries created before compute profiles.
 	_ = db.Exec(`ALTER TABLE tenant_deployment_jobs ADD COLUMN compute_profile TEXT NOT NULL DEFAULT ''`).Error
 	_ = db.Exec(`ALTER TABLE tenant_deployment_jobs ADD COLUMN alias_hostnames_json TEXT NOT NULL DEFAULT ''`).Error
+	_ = db.Exec(`ALTER TABLE tenant_deployment_jobs ADD COLUMN source_instance_id TEXT NOT NULL DEFAULT ''`).Error
+	_ = db.Exec(`ALTER TABLE tenant_deployment_jobs ADD COLUMN ownership_transition_change_reference TEXT NOT NULL DEFAULT ''`).Error
 	return store, nil
 }
 
@@ -316,6 +322,7 @@ func (s *TenantDeploymentStore) createOrLoad(ctx context.Context, plan TenantDep
 		AliasHostnamesJSON: aliasJSON,
 		ReleaseDigest:      plan.ReleaseDigest, ResourceProfile: plan.ResourceProfile, StateProfile: plan.StateProfile,
 		ComputeProfile: plan.ComputeProfile, ConfigRevision: plan.ConfigRevision, State: TenantDeploymentRequested, NextAction: plan.Actions[0],
+		SourceInstanceID: plan.SourceInstanceID, OwnershipTransitionChangeReference: plan.OwnershipTransitionChangeReference,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	result := s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&record)
@@ -375,7 +382,9 @@ func statusFromDeploymentRecord(record tenantDeploymentJobRecord) TenantDeployme
 		ComputeProfile: record.ComputeProfile, ConfigRevision: record.ConfigRevision, State: record.State,
 		CompletedAction: record.CompletedAction, NextAction: record.NextAction, ErrorClass: record.ErrorClass,
 		Retryable: record.Retryable, ActivationPassed: record.ActivationPassed,
-		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
+		SourceInstanceID:                   record.SourceInstanceID,
+		OwnershipTransitionChangeReference: record.OwnershipTransitionChangeReference,
+		CreatedAt:                          record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
 }
 
@@ -418,16 +427,23 @@ type TenantHostnameAdapter interface {
 	DisableHostname(context.Context, TenantDeploymentPlan, string) error
 }
 
+// TenantOwnershipTransitionAdapter relabels an exact predecessor Fleet owner onto
+// the plan's target instance without recreating durable PVC state.
+type TenantOwnershipTransitionAdapter interface {
+	TransitionOwnership(context.Context, TenantDeploymentPlan) (string, error)
+}
+
 type TenantDeploymentAdapters struct {
-	Namespace      TenantNamespaceAdapter
-	NetworkPolicy  TenantNetworkPolicyAdapter
-	SecretBinding  TenantSecretBindingAdapter
-	LicenseBinding TenantLicenseBindingAdapter
-	State          TenantStateAdapter
-	Database       TenantDatabaseAdapter
-	Router         TenantRouterAdapter
-	Activation     TenantActivationAdapter
-	Hostname       TenantHostnameAdapter
+	Namespace           TenantNamespaceAdapter
+	NetworkPolicy       TenantNetworkPolicyAdapter
+	SecretBinding       TenantSecretBindingAdapter
+	LicenseBinding      TenantLicenseBindingAdapter
+	State               TenantStateAdapter
+	Database            TenantDatabaseAdapter
+	Router              TenantRouterAdapter
+	Activation          TenantActivationAdapter
+	Hostname            TenantHostnameAdapter
+	OwnershipTransition TenantOwnershipTransitionAdapter
 }
 
 // TenantDeploymentEngine owns the single local lifecycle. Live implementations
@@ -438,7 +454,7 @@ type TenantDeploymentEngine struct {
 }
 
 func NewTenantDeploymentEngine(store *TenantDeploymentStore, adapters TenantDeploymentAdapters) (*TenantDeploymentEngine, error) {
-	if store == nil || adapters.Namespace == nil || adapters.NetworkPolicy == nil || adapters.SecretBinding == nil || adapters.LicenseBinding == nil || adapters.State == nil || adapters.Database == nil || adapters.Router == nil || adapters.Activation == nil || adapters.Hostname == nil {
+	if store == nil || adapters.Namespace == nil || adapters.NetworkPolicy == nil || adapters.SecretBinding == nil || adapters.LicenseBinding == nil || adapters.State == nil || adapters.Database == nil || adapters.Router == nil || adapters.Activation == nil || adapters.Hostname == nil || adapters.OwnershipTransition == nil {
 		return nil, errors.New("complete tenant deployment adapter set is required")
 	}
 	return &TenantDeploymentEngine{store: store, adapters: adapters}, nil
@@ -619,6 +635,8 @@ func tenantDeploymentErrorNeedsOperator(err error) bool {
 
 func (e *TenantDeploymentEngine) ensure(ctx context.Context, action string, plan TenantDeploymentPlan) (string, error) {
 	switch action {
+	case "ownership_transition":
+		return e.adapters.OwnershipTransition.TransitionOwnership(ctx, plan)
 	case "namespace":
 		return e.adapters.Namespace.EnsureNamespace(ctx, plan)
 	case "network_policy":
@@ -644,6 +662,9 @@ func (e *TenantDeploymentEngine) ensure(ctx context.Context, action string, plan
 
 func (e *TenantDeploymentEngine) deleteResource(ctx context.Context, kind string, plan TenantDeploymentPlan, ref string) error {
 	switch kind {
+	case "ownership_transition":
+		// Ownership transition is a one-time label rewrite, not a durable cluster object.
+		return nil
 	case "namespace":
 		return e.adapters.Namespace.DeleteNamespace(ctx, plan, ref)
 	case "network_policy":

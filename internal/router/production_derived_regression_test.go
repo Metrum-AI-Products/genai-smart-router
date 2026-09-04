@@ -105,6 +105,44 @@ type productionDerivedAnthropicImageFixture struct {
 	Request                            json.RawMessage `json:"request"`
 }
 
+func TestProductionDerivedFleetOwnershipTransitionFixture(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "smokes", "production-derived", "fleet-ownership-transition-llm-api.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Name                string   `json:"name"`
+		SourceIncidentIssue string   `json:"source_incident_issue"`
+		CustomerID          string   `json:"customer_id"`
+		SourceProfileID     string   `json:"source_profile_id"`
+		SourceStage         string   `json:"source_stage"`
+		SourceInstanceID    string   `json:"source_instance_id"`
+		TargetProfileID     string   `json:"target_profile_id"`
+		TargetStage         string   `json:"target_stage"`
+		TargetInstanceID    string   `json:"target_instance_id"`
+		RequiredFirstAction string   `json:"required_first_action"`
+		RequiredSafeFields  []string `json:"required_safe_fields"`
+		ForbiddenEvidence   []string `json:"forbidden_evidence"`
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.Name == "" || fixture.SourceIncidentIssue != "#1052" || fixture.RequiredFirstAction != "ownership_transition" {
+		t.Fatalf("invalid ownership transition fixture: %#v", fixture)
+	}
+	if got := TenantDeploymentInstanceID(fixture.SourceProfileID, fixture.CustomerID, fixture.SourceStage); got != fixture.SourceInstanceID {
+		t.Fatalf("source instance = %q want %q", got, fixture.SourceInstanceID)
+	}
+	if got := TenantDeploymentInstanceID(fixture.TargetProfileID, fixture.CustomerID, fixture.TargetStage); got != fixture.TargetInstanceID {
+		t.Fatalf("target instance = %q want %q", got, fixture.TargetInstanceID)
+	}
+	for _, field := range append(fixture.RequiredSafeFields, fixture.ForbiddenEvidence...) {
+		if strings.TrimSpace(field) == "" {
+			t.Fatal("fixture lists an empty evidence field")
+		}
+	}
+}
+
 func TestProductionDerivedAnthropicMessagesImageEligibility(t *testing.T) {
 	fixture := loadProductionDerivedAnthropicImageFixture(t, "anthropic-messages-image-eligibility.json")
 	if fixture.SourceIncidentIssue != "#660" || fixture.ObservedModelGroup != "big-coder" ||

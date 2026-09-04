@@ -162,8 +162,10 @@ separately signed, scoped external admission that Fleet never creates. After
 disposable-E2E evidence exists, one qualified maintainer may self-review before
 a production-like non-production rehearsal.
 `metrum-fleetctl`, `metrum-smartrouterctl`, `metrum-fleet-sign`, `router-license`,
-and `smartrouterctl` are one-release rename notices only. Production profiles
-remain rejected until #518. See [docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md](docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md).
+and `smartrouterctl` are one-release rename notices only. Metrum engineering
+production (`llm-api`) is authorized on Fleet EKS; see
+[docs/EKS_PRODUCTION_OPERATIONS.md](docs/EKS_PRODUCTION_OPERATIONS.md) and
+[docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md](docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md).
 
 
 Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. That allowlist is limited to package-safe offline bootstrap docs such as `docs/PACKAGE_README.md`, quick install notes, validation notes, and the package-safe solution brief. Full customer/admin docs are built from `docs-site/` and served by the router under `/docs/`. Internal source-checkout runbooks such as `docs/DOCS_MAINTENANCE.md`, production runbooks, private host procedures, source-maintenance notes, and security-review working notes are intentionally not packaged. Private production runbooks, private host details, SSH paths, live compose config paths, raw token/provider-key patterns, AppleDouble `._*` metadata, and unexpected source/local-state files are blocked by package validation.

@@ -105,6 +105,18 @@ type TenantDeploymentHostnameAlias struct {
 	TLSSecretName string `json:"tls_secret_name" yaml:"tls_secret_name"`
 }
 
+// TenantOwnershipTransition is a one-time, expiring authorization on a protected
+// production profile that allows Fleet to relabel an exact predecessor instance
+// onto the new profile-derived owner without recreating durable PVC state.
+type TenantOwnershipTransition struct {
+	CustomerID       string `json:"customer_id" yaml:"customer_id"`
+	SourceProfileID  string `json:"source_profile_id" yaml:"source_profile_id"`
+	SourceStage      string `json:"source_stage" yaml:"source_stage"`
+	SourceInstanceID string `json:"source_instance_id,omitempty" yaml:"source_instance_id,omitempty"`
+	ChangeReference  string `json:"change_reference" yaml:"change_reference"`
+	ExpiresAt        string `json:"expires_at" yaml:"expires_at"`
+}
+
 // TenantDeploymentIntent is the one sealed input to Fleet deployment commands.
 // It binds protected references to one immutable requested lifecycle operation.
 // The document may contain references, but never the values they resolve to.
@@ -153,43 +165,46 @@ type TenantDeploymentProfile struct {
 	RDSVPCSecurityGroup        string                          `json:"rds_vpc_security_group" yaml:"rds_vpc_security_group"`
 	RDSMasterUsername          string                          `json:"rds_master_username" yaml:"rds_master_username"`
 	RDSProxyDisabled           bool                            `json:"rds_proxy_disabled" yaml:"rds_proxy_disabled"`
+	OwnershipTransition        *TenantOwnershipTransition      `json:"ownership_transition,omitempty" yaml:"ownership_transition,omitempty"`
 }
 
 type TenantDeploymentPlan struct {
-	Schema               string                          `json:"schema"`
-	Mode                 string                          `json:"mode"`
-	JobID                string                          `json:"job_id"`
-	InstanceID           string                          `json:"instance_id"`
-	ProfileID            string                          `json:"profile_id"`
-	Environment          string                          `json:"environment"`
-	AccountAlias         string                          `json:"account_alias"`
-	Region               string                          `json:"region"`
-	ClusterAlias         string                          `json:"cluster_alias"`
-	CustomerID           string                          `json:"customer_id"`
-	Stage                string                          `json:"stage"`
-	Namespace            string                          `json:"namespace"`
-	Hostname             string                          `json:"hostname"`
-	AliasHostnames       []TenantDeploymentHostnameAlias `json:"alias_hostnames,omitempty"`
-	ReleaseDigest        string                          `json:"release_digest"`
-	ResourceProfile      string                          `json:"resource_profile"`
-	StateProfile         string                          `json:"state_profile"`
-	ComputeProfile       string                          `json:"compute_profile"`
-	NodeClassAlias       string                          `json:"node_class_alias,omitempty"`
-	Architecture         string                          `json:"architecture,omitempty"`
-	CPURequest           string                          `json:"cpu_request,omitempty"`
-	CPULimit             string                          `json:"cpu_limit,omitempty"`
-	MemoryRequest        string                          `json:"memory_request,omitempty"`
-	MemoryLimit          string                          `json:"memory_limit,omitempty"`
-	ConfigRevision       string                          `json:"config_revision"`
-	ManifestSHA256       string                          `json:"manifest_sha256"`
-	DatabaseProfile      string                          `json:"database_profile,omitempty"`
-	DatabaseID           string                          `json:"database_id,omitempty"`
-	LicenseValidityHours int                             `json:"license_validity_hours,omitempty"`
-	LicenseRefDigest     string                          `json:"license_ref_digest,omitempty"`
-	Actions              []string                        `json:"actions"`
-	runtimeBundleRef     string
-	licenseRequestRef    string
-	computePolicy        TenantComputeProfile
+	Schema                             string                          `json:"schema"`
+	Mode                               string                          `json:"mode"`
+	JobID                              string                          `json:"job_id"`
+	InstanceID                         string                          `json:"instance_id"`
+	ProfileID                          string                          `json:"profile_id"`
+	Environment                        string                          `json:"environment"`
+	AccountAlias                       string                          `json:"account_alias"`
+	Region                             string                          `json:"region"`
+	ClusterAlias                       string                          `json:"cluster_alias"`
+	CustomerID                         string                          `json:"customer_id"`
+	Stage                              string                          `json:"stage"`
+	Namespace                          string                          `json:"namespace"`
+	Hostname                           string                          `json:"hostname"`
+	AliasHostnames                     []TenantDeploymentHostnameAlias `json:"alias_hostnames,omitempty"`
+	ReleaseDigest                      string                          `json:"release_digest"`
+	ResourceProfile                    string                          `json:"resource_profile"`
+	StateProfile                       string                          `json:"state_profile"`
+	ComputeProfile                     string                          `json:"compute_profile"`
+	NodeClassAlias                     string                          `json:"node_class_alias,omitempty"`
+	Architecture                       string                          `json:"architecture,omitempty"`
+	CPURequest                         string                          `json:"cpu_request,omitempty"`
+	CPULimit                           string                          `json:"cpu_limit,omitempty"`
+	MemoryRequest                      string                          `json:"memory_request,omitempty"`
+	MemoryLimit                        string                          `json:"memory_limit,omitempty"`
+	ConfigRevision                     string                          `json:"config_revision"`
+	ManifestSHA256                     string                          `json:"manifest_sha256"`
+	DatabaseProfile                    string                          `json:"database_profile,omitempty"`
+	DatabaseID                         string                          `json:"database_id,omitempty"`
+	LicenseValidityHours               int                             `json:"license_validity_hours,omitempty"`
+	LicenseRefDigest                   string                          `json:"license_ref_digest,omitempty"`
+	SourceInstanceID                   string                          `json:"source_instance_id,omitempty"`
+	OwnershipTransitionChangeReference string                          `json:"ownership_transition_change_reference,omitempty"`
+	Actions                            []string                        `json:"actions"`
+	runtimeBundleRef                   string
+	licenseRequestRef                  string
+	computePolicy                      TenantComputeProfile
 }
 
 func LoadTenantDeploymentManifest(path string, stdin io.Reader) (TenantDeploymentManifest, error) {
@@ -324,7 +339,16 @@ func validateTenantDeploymentIntent(intent TenantDeploymentIntent, raw []byte, n
 }
 
 func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantDeploymentManifest, intentID string) (TenantDeploymentPlan, error) {
+	return BuildTenantDeploymentPlanAt(profile, manifest, intentID, time.Now().UTC())
+}
+
+// BuildTenantDeploymentPlanAt is the time-injectable plan builder used by tests
+// for ownership-transition expiry. Production callers use BuildTenantDeploymentPlan.
+func BuildTenantDeploymentPlanAt(profile TenantDeploymentProfile, manifest TenantDeploymentManifest, intentID string, now time.Time) (TenantDeploymentPlan, error) {
 	if err := validateDeploymentID("intent_id", intentID); err != nil {
+		return TenantDeploymentPlan{}, err
+	}
+	if err := validateManifestStageForProfile(profile.Environment, manifest.Stage); err != nil {
 		return TenantDeploymentPlan{}, err
 	}
 	if manifest.ResourceProfile != profile.ApprovedResourceProfile {
@@ -344,9 +368,8 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 	if dedicatedRDS && (profile.DatabaseMode != "dedicated-rds" || manifest.DatabaseProfile != profile.ApprovedDatabaseProfile) {
 		return TenantDeploymentPlan{}, errors.New("database_profile is not approved by the protected profile")
 	}
+	instanceID := TenantDeploymentInstanceID(profile.ProfileID, manifest.CustomerID, manifest.Stage)
 	instanceIdentity := strings.Join([]string{profile.ProfileID, manifest.CustomerID, manifest.Stage}, "\x00")
-	instanceSum := sha256.Sum256([]byte(instanceIdentity))
-	instanceSuffix := hex.EncodeToString(instanceSum[:])[:20]
 	jobSum := sha256.Sum256([]byte(instanceIdentity + "\x00" + intentID))
 	jobSuffix := hex.EncodeToString(jobSum[:])[:20]
 	// Namespace and public hostname are the deployment-defined customer_id so
@@ -368,15 +391,25 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 	manifestSum := sha256.Sum256(manifestBytes)
 	databaseID := ""
 	if dedicatedRDS {
-		databaseID = "rds-" + instanceSuffix
+		databaseID = "rds-" + strings.TrimPrefix(instanceID, "instance-")
 	}
 	validityHours, err := parseLicenseValidityHours(manifest.License.Validity)
 	if err != nil {
 		return TenantDeploymentPlan{}, err
 	}
+	sourceInstanceID := ""
+	changeRef := ""
+	actions := tenantDeploymentActions(dedicatedRDS)
+	if profile.OwnershipTransition != nil {
+		sourceInstanceID, changeRef, err = authorizeOwnershipTransition(profile, manifest, instanceID, now)
+		if err != nil {
+			return TenantDeploymentPlan{}, err
+		}
+		actions = append([]string{"ownership_transition"}, actions...)
+	}
 	return TenantDeploymentPlan{
 		Schema: "metrum.ai/smartrouter-deployment-plan/v1", Mode: "eks",
-		JobID: "job-" + jobSuffix, InstanceID: "instance-" + instanceSuffix,
+		JobID: "job-" + jobSuffix, InstanceID: instanceID,
 		ProfileID: profile.ProfileID, Environment: profile.Environment, AccountAlias: profile.AccountAlias,
 		Region: profile.Region, ClusterAlias: profile.ClusterAlias, CustomerID: manifest.CustomerID,
 		Stage: manifest.Stage, Namespace: namespace, Hostname: hostname, AliasHostnames: aliasHostnames,
@@ -388,13 +421,102 @@ func BuildTenantDeploymentPlan(profile TenantDeploymentProfile, manifest TenantD
 		ConfigRevision:   manifest.ConfigRevision,
 		ManifestSHA256:   hex.EncodeToString(manifestSum[:]),
 		runtimeBundleRef: manifest.RuntimeBundleRef, licenseRequestRef: manifest.License.RequestRef,
-		LicenseValidityHours: validityHours,
-		LicenseRefDigest:     digestProtectedRef(manifest.License.RequestRef),
-		DatabaseProfile:      manifest.DatabaseProfile,
-		DatabaseID:           databaseID,
-		Actions:              tenantDeploymentActions(dedicatedRDS),
-		computePolicy:        computePolicy,
+		LicenseValidityHours:               validityHours,
+		LicenseRefDigest:                   digestProtectedRef(manifest.License.RequestRef),
+		DatabaseProfile:                    manifest.DatabaseProfile,
+		DatabaseID:                         databaseID,
+		SourceInstanceID:                   sourceInstanceID,
+		OwnershipTransitionChangeReference: changeRef,
+		Actions:                            actions,
+		computePolicy:                      computePolicy,
 	}, nil
+}
+
+// TenantDeploymentInstanceID derives the Fleet ownership identity from the
+// protected profile id, customer id, and stage. It is stable across intent
+// revisions and must match live Kubernetes owner labels.
+func TenantDeploymentInstanceID(profileID, customerID, stage string) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{profileID, customerID, stage}, "\x00")))
+	return "instance-" + hex.EncodeToString(sum[:])[:20]
+}
+
+func validateManifestStageForProfile(environment, stage string) error {
+	stage = strings.TrimSpace(stage)
+	switch environment {
+	case "production":
+		if stage != "production" {
+			return errors.New("production profiles require manifest stage production")
+		}
+		return nil
+	case "nonproduction":
+		if stage == "nonproduction" || stage == "test" || stage == "staging" {
+			return nil
+		}
+		return errors.New("nonproduction profiles require stage nonproduction, test, or staging")
+	default:
+		return errors.New("environment must be nonproduction or production")
+	}
+}
+
+func authorizeOwnershipTransition(profile TenantDeploymentProfile, manifest TenantDeploymentManifest, targetInstanceID string, now time.Time) (string, string, error) {
+	tr := profile.OwnershipTransition
+	if tr == nil {
+		return "", "", nil
+	}
+	if profile.Environment != "production" {
+		return "", "", errors.New("ownership_transition is only allowed on production profiles")
+	}
+	if err := validateDeploymentID("ownership_transition.customer_id", tr.CustomerID); err != nil {
+		return "", "", err
+	}
+	if tr.CustomerID != manifest.CustomerID {
+		return "", "", errors.New("ownership_transition customer_id does not match the sealed manifest")
+	}
+	if err := validateDeploymentID("ownership_transition.source_profile_id", tr.SourceProfileID); err != nil {
+		return "", "", err
+	}
+	if err := validateDeploymentID("ownership_transition.source_stage", tr.SourceStage); err != nil {
+		return "", "", err
+	}
+	if tr.SourceProfileID == profile.ProfileID && tr.SourceStage == manifest.Stage {
+		return "", "", errors.New("ownership_transition source identity must differ from the target profile stage")
+	}
+	if err := validateOwnershipChangeReference(tr.ChangeReference); err != nil {
+		return "", "", err
+	}
+	expiresAt, err := time.Parse(time.RFC3339, strings.TrimSpace(tr.ExpiresAt))
+	if err != nil {
+		return "", "", errors.New("ownership_transition.expires_at must be RFC3339")
+	}
+	if !expiresAt.After(now) {
+		return "", "", errors.New("ownership_transition has expired")
+	}
+	sourceInstanceID := TenantDeploymentInstanceID(tr.SourceProfileID, tr.CustomerID, tr.SourceStage)
+	if explicit := strings.TrimSpace(tr.SourceInstanceID); explicit != "" && explicit != sourceInstanceID {
+		return "", "", errors.New("ownership_transition.source_instance_id does not match the derived source owner")
+	}
+	if sourceInstanceID == targetInstanceID {
+		return "", "", errors.New("ownership_transition source and target owners must differ")
+	}
+	return sourceInstanceID, tr.ChangeReference, nil
+}
+
+func validateOwnershipChangeReference(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 128 {
+		return errors.New("ownership_transition.change_reference is required")
+	}
+	lower := strings.ToLower(value)
+	if strings.Contains(lower, "secret") || strings.Contains(lower, "token") || strings.Contains(lower, "://") {
+		return errors.New("ownership_transition.change_reference must be a non-secret change identifier")
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune("#._/-", r) {
+			continue
+		}
+		return errors.New("ownership_transition.change_reference must be a non-secret change identifier")
+	}
+	return nil
 }
 
 // resolveTenantComputeProfile selects an approved compute profile. Empty
@@ -663,6 +785,33 @@ func validateTenantDeploymentProfile(profile TenantDeploymentProfile, raw []byte
 	}
 	if _, err := validateApprovedAliasHostnames(profile.ApprovedAliasHostnames, profile.HostnameSuffix); err != nil {
 		return err
+	}
+	if profile.OwnershipTransition != nil {
+		if profile.Environment != "production" {
+			return errors.New("ownership_transition is only allowed on production profiles")
+		}
+		tr := profile.OwnershipTransition
+		if err := validateDeploymentID("ownership_transition.customer_id", tr.CustomerID); err != nil {
+			return err
+		}
+		if err := validateDeploymentID("ownership_transition.source_profile_id", tr.SourceProfileID); err != nil {
+			return err
+		}
+		if err := validateDeploymentID("ownership_transition.source_stage", tr.SourceStage); err != nil {
+			return err
+		}
+		if err := validateOwnershipChangeReference(tr.ChangeReference); err != nil {
+			return err
+		}
+		if _, err := time.Parse(time.RFC3339, strings.TrimSpace(tr.ExpiresAt)); err != nil {
+			return errors.New("ownership_transition.expires_at must be RFC3339")
+		}
+		if explicit := strings.TrimSpace(tr.SourceInstanceID); explicit != "" {
+			derived := TenantDeploymentInstanceID(tr.SourceProfileID, tr.CustomerID, tr.SourceStage)
+			if explicit != derived {
+				return errors.New("ownership_transition.source_instance_id does not match the derived source owner")
+			}
+		}
 	}
 	return rejectSecretShapedDeploymentData(raw)
 }

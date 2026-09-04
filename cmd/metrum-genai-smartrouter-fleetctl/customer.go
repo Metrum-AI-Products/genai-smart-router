@@ -93,10 +93,11 @@ func customerWriteManifest(args []string) {
 	var common customerCommonFlags
 	addCustomerCommonFlags(fs, &common)
 	revisionPrefix := fs.String("revision-prefix", "sqlite", "config_revision prefix segment")
+	stage := fs.String("stage", "", "deployment stage (nonproduction|test|staging|production); defaults to workspace stage or nonproduction")
 	_ = fs.Parse(args)
 	ws := requireCustomerID(common)
 	requireExplicitRefs(common)
-	writeManifest(ws, common.ProfileRef, common.RuntimeBundleRef, common.LicenseRef, *revisionPrefix)
+	writeManifest(ws, common.ProfileRef, common.RuntimeBundleRef, common.LicenseRef, *revisionPrefix, *stage)
 }
 
 func customerCreate(args []string) {
@@ -349,7 +350,7 @@ func customerGrantCaller(args []string) {
 	if err != nil {
 		die("%v", err)
 	}
-	writeManifest(ws, common.ProfileRef, newRef, common.LicenseRef, "grant")
+	writeManifest(ws, common.ProfileRef, newRef, common.LicenseRef, "grant", "")
 	fmt.Println(mustJSON(map[string]any{
 		"granted_caller_id": callerRow["id"],
 		"token_file":        outPath,
@@ -399,7 +400,7 @@ func customerUpdateConfig(args []string) {
 	if err != nil {
 		die("%v", err)
 	}
-	writeManifest(ws, common.ProfileRef, newRef, common.LicenseRef, "cfg")
+	writeManifest(ws, common.ProfileRef, newRef, common.LicenseRef, "cfg", "")
 	fmt.Println(mustJSON(map[string]any{
 		"activation": "signed-intent-required",
 		"next_step":  "sign the workspace manifest externally, then: customer create --intent <signed-intent>",

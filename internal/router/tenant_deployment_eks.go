@@ -277,7 +277,7 @@ func newEKSTenantDeploymentAdapters(ctx context.Context, profile TenantDeploymen
 		}
 		a.database = database
 	}
-	return a, TenantDeploymentAdapters{Namespace: a, NetworkPolicy: a, SecretBinding: a, LicenseBinding: a, State: a, Database: a.database, Router: a, Activation: a, Hostname: a}, nil
+	return a, TenantDeploymentAdapters{Namespace: a, NetworkPolicy: a, SecretBinding: a, LicenseBinding: a, State: a, Database: a.database, Router: a, Activation: a, Hostname: a, OwnershipTransition: a}, nil
 }
 
 func eksAuthenticationToken(ctx context.Context, cfg aws.Config, cluster string) (string, error) {
@@ -860,6 +860,212 @@ func (a *EKSTenantDeploymentAdapters) DisableHostname(ctx context.Context, p Ten
 		return ownershipError()
 	}
 	return c.Delete(ctx, "router", metav1.DeleteOptions{})
+}
+
+// TransitionOwnership relabels exact Fleet-managed objects from a predecessor
+// owner onto the plan's target instance. Mixed source/target labels are allowed
+// only so a resumed transition can finish; foreign owners fail closed. The PVC
+// claim is never deleted or recreated.
+func (a *EKSTenantDeploymentAdapters) TransitionOwnership(ctx context.Context, p TenantDeploymentPlan) (string, error) {
+	source := strings.TrimSpace(p.SourceInstanceID)
+	if source == "" || source == p.InstanceID {
+		return "", &TenantDeploymentAdapterError{Class: "ownership_transition_invalid", Err: errors.New("ownership transition requires a distinct source instance")}
+	}
+	if strings.TrimSpace(p.OwnershipTransitionChangeReference) == "" {
+		return "", &TenantDeploymentAdapterError{Class: "ownership_transition_invalid", Err: errors.New("ownership transition requires a change reference")}
+	}
+	ns, err := a.kube.CoreV1().Namespaces().Get(ctx, p.Namespace, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	if err := a.transitionObjectLabels(ctx, "namespace", ns.GetName(), ns.Labels, nil, source, p, func(labels map[string]string) error {
+		ns.Labels = labels
+		_, err := a.kube.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+		return err
+	}); err != nil {
+		return "", err
+	}
+
+	if err := a.transitionNetworkPolicy(ctx, p, source); err != nil {
+		return "", err
+	}
+	for _, secretName := range []string{"router-runtime", "router-license"} {
+		if err := a.transitionSecret(ctx, p, secretName, source); err != nil {
+			return "", err
+		}
+	}
+	if err := a.transitionPVC(ctx, p, source); err != nil {
+		return "", err
+	}
+	if err := a.transitionDeployment(ctx, p, source); err != nil {
+		return "", err
+	}
+	if err := a.transitionService(ctx, p, source); err != nil {
+		return "", err
+	}
+	if err := a.transitionIngress(ctx, p, source); err != nil {
+		return "", err
+	}
+	return tenantDeploymentResourceRef(p.Namespace, "ownership-transition", p.InstanceID), nil
+}
+
+func fleetManaged(labels map[string]string) bool {
+	return labels != nil && labels["app.kubernetes.io/managed-by"] == "metrum-fleetctl"
+}
+
+func ownerOf(labels map[string]string) string {
+	if labels == nil {
+		return ""
+	}
+	return labels[tenantDeploymentOwnerLabel]
+}
+
+func (a *EKSTenantDeploymentAdapters) transitionObjectLabels(ctx context.Context, kind, name string, labels map[string]string, requiredShape func(map[string]string) error, source string, p TenantDeploymentPlan, update func(map[string]string) error) error {
+	_ = ctx
+	if !fleetManaged(labels) {
+		return ownershipError()
+	}
+	owner := ownerOf(labels)
+	switch owner {
+	case p.InstanceID:
+		if requiredShape != nil {
+			if err := requiredShape(labels); err != nil {
+				return err
+			}
+		}
+		return nil
+	case source:
+		next := a.labels(p)
+		if requiredShape != nil {
+			if err := requiredShape(next); err != nil {
+				return err
+			}
+		}
+		if err := update(next); err != nil {
+			return fmt.Errorf("transition %s/%s ownership", kind, name)
+		}
+		return nil
+	default:
+		return ownershipError()
+	}
+}
+
+func (a *EKSTenantDeploymentAdapters) transitionSecret(ctx context.Context, p TenantDeploymentPlan, name, source string) error {
+	c := a.kube.CoreV1().Secrets(p.Namespace)
+	o, err := c.Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return a.transitionObjectLabels(ctx, "secret", name, o.Labels, nil, source, p, func(labels map[string]string) error {
+		o.Labels = labels
+		_, err := c.Update(ctx, o, metav1.UpdateOptions{})
+		return err
+	})
+}
+
+func (a *EKSTenantDeploymentAdapters) transitionPVC(ctx context.Context, p TenantDeploymentPlan, source string) error {
+	c := a.kube.CoreV1().PersistentVolumeClaims(p.Namespace)
+	o, err := c.Get(ctx, "router-state", metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return ownershipError()
+	}
+	if err != nil {
+		return err
+	}
+	if len(o.Spec.AccessModes) != 1 || o.Spec.AccessModes[0] != corev1.ReadWriteOnce {
+		return ownershipError()
+	}
+	return a.transitionObjectLabels(ctx, "pvc", "router-state", o.Labels, nil, source, p, func(labels map[string]string) error {
+		o.Labels = labels
+		_, err := c.Update(ctx, o, metav1.UpdateOptions{})
+		return err
+	})
+}
+
+func (a *EKSTenantDeploymentAdapters) transitionNetworkPolicy(ctx context.Context, p TenantDeploymentPlan, source string) error {
+	c := a.kube.NetworkingV1().NetworkPolicies(p.Namespace)
+	o, err := c.Get(ctx, "router-ingress", metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return a.transitionObjectLabels(ctx, "networkpolicy", "router-ingress", o.Labels, nil, source, p, func(labels map[string]string) error {
+		o.Labels = labels
+		if o.Spec.PodSelector.MatchLabels == nil {
+			o.Spec.PodSelector.MatchLabels = map[string]string{}
+		}
+		o.Spec.PodSelector.MatchLabels[tenantDeploymentOwnerLabel] = p.InstanceID
+		_, err := c.Update(ctx, o, metav1.UpdateOptions{})
+		return err
+	})
+}
+
+func (a *EKSTenantDeploymentAdapters) transitionDeployment(ctx context.Context, p TenantDeploymentPlan, source string) error {
+	c := a.kube.AppsV1().Deployments(p.Namespace)
+	o, err := c.Get(ctx, "router", metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !fleetManaged(o.Labels) {
+		return ownershipError()
+	}
+	switch ownerOf(o.Labels) {
+	case p.InstanceID:
+		if o.Spec.Replicas == nil || *o.Spec.Replicas != 1 {
+			return ownershipError()
+		}
+		return nil
+	case source:
+		// Deployment selectors are immutable; delete the source-owned Deployment
+		// and let EnsureRouter recreate it under the target owner. PVC is retained.
+		return c.Delete(ctx, "router", metav1.DeleteOptions{})
+	default:
+		return ownershipError()
+	}
+}
+
+func (a *EKSTenantDeploymentAdapters) transitionService(ctx context.Context, p TenantDeploymentPlan, source string) error {
+	c := a.kube.CoreV1().Services(p.Namespace)
+	o, err := c.Get(ctx, "router", metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return a.transitionObjectLabels(ctx, "service", "router", o.Labels, nil, source, p, func(labels map[string]string) error {
+		o.Labels = labels
+		if o.Spec.Selector == nil {
+			o.Spec.Selector = map[string]string{}
+		}
+		o.Spec.Selector[tenantDeploymentOwnerLabel] = p.InstanceID
+		_, err := c.Update(ctx, o, metav1.UpdateOptions{})
+		return err
+	})
+}
+
+func (a *EKSTenantDeploymentAdapters) transitionIngress(ctx context.Context, p TenantDeploymentPlan, source string) error {
+	c := a.kube.NetworkingV1().Ingresses(p.Namespace)
+	o, err := c.Get(ctx, "router", metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return a.transitionObjectLabels(ctx, "ingress", "router", o.Labels, nil, source, p, func(labels map[string]string) error {
+		o.Labels = labels
+		_, err := c.Update(ctx, o, metav1.UpdateOptions{})
+		return err
+	})
 }
 
 // Compile-time guard: typed HPA API remains part of the adapter contract.

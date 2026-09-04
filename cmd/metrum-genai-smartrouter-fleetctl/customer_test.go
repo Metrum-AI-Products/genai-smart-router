@@ -161,6 +161,7 @@ func TestWriteManifestSQLiteOnlyNoDonorCopy(t *testing.T) {
 		"aws-secretsmanager:///smartrouter/fleet/customers/aditya-test1/runtime-bundle",
 		"aws-ssm:///tenants/aditya-test1/license-request",
 		"sqlite",
+		"",
 	)
 	raw, err := os.ReadFile(path)
 	if err != nil {
