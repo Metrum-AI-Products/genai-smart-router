@@ -162,6 +162,9 @@ func TestBYOKRequiredAndProductionSyncRejected(t *testing.T) {
 	if err := os.WriteFile(badMode, []byte(`{"OPENAI_API_KEY":"sk-test"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(badMode, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	intent.BYOKEnvFile = badMode
 	if _, err := ValidateIntent(intent); err == nil || !strings.Contains(err.Error(), "0600") {
 		t.Fatalf("expected mode rejection, got %v", err)
