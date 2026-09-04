@@ -270,6 +270,9 @@ func TestTenantDeploymentContractRejectsUnprotectedOrProductionProfile(t *testin
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := LoadTenantDeploymentProfile("file://" + path); err == nil || !strings.Contains(err.Error(), "permissions") {
 		t.Fatalf("unprotected local profile accepted: %v", err)
 	}

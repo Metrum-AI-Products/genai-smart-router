@@ -160,7 +160,7 @@ func TestEKSReferenceSecretUpdatesExistingData(t *testing.T) {
 	const licenseRef = "aws-ssm:///safe/license-request"
 	const first = `{"license_id":"first"}`
 	const second = `{"license_id":"second"}`
-	plan := TenantDeploymentPlan{InstanceID: "instance-a", Namespace: "tenant-a"}
+	plan := TenantDeploymentPlan{InstanceID: "instance-a", Namespace: "tenant-a", licenseRequestRef: licenseRef}
 	adapter := &EKSTenantDeploymentAdapters{
 		kube: k8sfake.NewSimpleClientset(),
 		resolveReference: func(_ context.Context, ref string) ([]byte, error) {
