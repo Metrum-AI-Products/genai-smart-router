@@ -72,6 +72,20 @@ def assert_offline_package_documentation_contract() -> None:
             raise AssertionError(f"docs/PACKAGE_README.md: missing Docker CLI guidance: {guidance}")
 
     dockerfile = (repository / "Dockerfile").read_text(encoding="utf-8")
+    docker_build_steps = (
+        "COPY docs-site/package.json docs-site/package-lock.json ./docs-site/",
+        "RUN npm ci --prefix docs-site --no-audit --no-fund",
+        "COPY . .",
+        "RUN DOCS_ROUTER_VERSION=$VERSION DOCS_ROUTER_COMMIT=$COMMIT "
+        "DOCS_ROUTER_BUILD_DATE=$BUILD_DATE npm run build --prefix docs-site",
+        "ARG TARGETARCH",
+    )
+    positions = [dockerfile.find(step) for step in docker_build_steps]
+    if -1 in positions or positions != sorted(positions):
+        raise AssertionError(
+            "Dockerfile: docs dependencies must be installed from the lockfile before "
+            "the source copy, and the docs build must remain architecture-independent"
+        )
     for runtime_binary in (
         "router",
         "router-token-gen",

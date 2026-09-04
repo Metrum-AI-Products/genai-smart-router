@@ -2,18 +2,22 @@ FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine AS build
 
 WORKDIR /src
 RUN apk add --no-cache nodejs npm
-ARG TARGETOS
-ARG TARGETARCH
+COPY docs-site/package.json docs-site/package-lock.json ./docs-site/
+RUN npm ci --prefix docs-site --no-audit --no-fund
+COPY internal/router/admindist/web/package.json internal/router/admindist/web/package-lock.json ./internal/router/admindist/web/
+RUN npm ci --prefix internal/router/admindist/web --no-audit --no-fund
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
 ARG GO_BUILD_TAGS=""
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN cd docs-site && npm ci && DOCS_ROUTER_VERSION=$VERSION DOCS_ROUTER_COMMIT=$COMMIT DOCS_ROUTER_BUILD_DATE=$BUILD_DATE npm run build
+RUN DOCS_ROUTER_VERSION=$VERSION DOCS_ROUTER_COMMIT=$COMMIT DOCS_ROUTER_BUILD_DATE=$BUILD_DATE npm run build --prefix docs-site
 RUN find internal/router/docsdist -mindepth 1 ! -name .keep -exec rm -rf {} + && cp -R docs-site/build/. internal/router/docsdist/
-RUN rm -rf internal/router/admindist/static/assets && npm ci --prefix internal/router/admindist/web && npm run build --prefix internal/router/admindist/web
+RUN rm -rf internal/router/admindist/static/assets && npm run build --prefix internal/router/admindist/web
+ARG TARGETOS
+ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags "$GO_BUILD_TAGS" -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router ./cmd/router
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags "$GO_BUILD_TAGS" -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router-token-gen ./cmd/router-token-gen
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags "$GO_BUILD_TAGS" -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router-usage-report ./cmd/router-usage-report
