@@ -8,6 +8,41 @@
 
 Last deployed: 2026-09-04
 
+## 2026-09-04 OPS-02 re-smoke after #1057 on main (live still `902e45b`)
+
+Launch gate #1020 (OPS-02) re-verified against live
+`https://llm-api-engg.metrum.ai` after #1057 (`transferPredecessorResources`)
+merged to `origin/main`. Live `/version` remains commit `902e45b` /
+`build_date=2026-09-04T03:58:14Z`; main tip includes #1057 and is **not** yet
+the live serving revision — do not claim main==live.
+
+Safe scalars only:
+
+| Check | Result |
+| --- | --- |
+| `/version` | HTTP 200, commit `902e45b` |
+| `/readyz` | HTTP 200, `ok=true`, commit `902e45b` |
+| Hosted `/docs/` | HTTP 200 |
+| Authenticated `/v1/models` | HTTP 200, `model_group_count=25` |
+| Authenticated Chat text (`default`) | HTTP 200, request ID `req_76dd934037d97e4e3ca7b016097c50b5`, OK-like content |
+| Authenticated Chat text (`big-coder`) | HTTP 200, request ID `req_b7e42033ce017f4db07a1d5dd8db0eb5`, OK-like content |
+| Authenticated Chat text (`high`) | HTTP 200, request ID `req_f1fcfd251e63a593e6b46f21f5363b88`, non-empty content |
+
+OPS-03 (#1021) capability spot-checks the same window (not a closeout):
+
+| Surface | Result |
+| --- | --- |
+| Chat streaming + usage (`high`) | HTTP 200, usage chunk present, request ID `req_9dedb45ab9cf25e2ad0603bed2570465` |
+| Chat tools (`big-coder`) | HTTP 200, `finish_reason=tool_calls`, request ID `req_28e8467237e49561818f96640ad5b984` |
+| Anthropic Messages (`big-coder`) | HTTP 200, request ID `req_40fa15541f44a742ee9d534073a4ffc6` |
+| Responses without `reasoning` (`big-coder`) | HTTP 200, `status=completed`, request ID `req_9444d1f692b65893a5c09462e6f2d253` |
+| Responses + `reasoning` (`big-coder`) | HTTP 502 `no-eligible-target`, request ID `req_3a76f1d365f1ee89d731265494b905c7` — blocked by open #1056 |
+
+Claude Code CLI text/tools and image/VLM matrix rows were not re-run in this
+window; prior #1052 ledger evidence remains the last recorded Claude Code pass.
+OPS-03 stays open until every launch-claimed surface passes, including Codex
+CLI Responses+reasoning (#1056).
+
 ## 2026-09-04 Production ownership transition (#1052) and EC2 decommission (#951)
 
 Promoted live tenant `llm-api` from staging-derived owner
