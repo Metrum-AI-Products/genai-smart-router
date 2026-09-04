@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -103,6 +104,30 @@ type productionDerivedAnthropicImageFixture struct {
 	ExpectedErrorWithoutEligibleTarget string          `json:"expected_error_without_eligible_target"`
 	ProductionSafePayload              string          `json:"production_smoke_safe_payload_template"`
 	Request                            json.RawMessage `json:"request"`
+}
+
+type productionDerivedCodexResponsesReasoningFixture struct {
+	Name                                         string         `json:"name"`
+	SourceIncidentIssue                          string         `json:"source_incident_issue"`
+	ObservedModelGroup                           string         `json:"observed_model_group"`
+	TestModelGroup                               string         `json:"test_model_group"`
+	ClientName                                   string         `json:"client_name"`
+	Surface                                      string         `json:"surface"`
+	Stream                                       bool           `json:"stream"`
+	MessageCount                                 int            `json:"message_count"`
+	ToolCount                                    int            `json:"tool_count"`
+	ImageCount                                   int            `json:"image_count"`
+	ReasoningControl                             string         `json:"reasoning_control"`
+	ReasoningEffort                              string         `json:"reasoning_effort"`
+	OutputCapField                               string         `json:"output_cap_field"`
+	OutputCapValue                               int            `json:"output_cap_value"`
+	RequiredCapabilities                         []string       `json:"required_capabilities"`
+	WithoutReasoningExpectedStatus               int            `json:"without_reasoning_expected_status"`
+	WithReasoningMissingMetadataExpectedError    string         `json:"with_reasoning_missing_metadata_expected_error"`
+	WithReasoningValidatedMetadataExpectedStatus int            `json:"with_reasoning_validated_metadata_expected_status"`
+	ProductionSafePayload                        string         `json:"production_smoke_safe_payload_template"`
+	RequestWithReasoning                         map[string]any `json:"request_with_reasoning"`
+	RequestWithoutReasoning                      map[string]any `json:"request_without_reasoning"`
 }
 
 func TestProductionDerivedFleetOwnershipTransitionFixture(t *testing.T) {
@@ -250,6 +275,143 @@ func TestProductionDerivedAnthropicMessagesImageEligibility(t *testing.T) {
 			t.Fatalf("upstream image source=%#v", source)
 		}
 		assertProductionDerivedArtifactsDoNotContain(t, svc, dir, "Read the synthetic receipt", "https://example.com/synthetic-receipt.png", "provider-key", testToken)
+	})
+}
+
+func TestProductionDerivedCodexResponsesReasoningEligibility(t *testing.T) {
+	fixture := loadProductionDerivedCodexResponsesReasoningFixture(t, "codex-responses-reasoning-eligibility.json")
+	if fixture.SourceIncidentIssue != "#1056" || fixture.ObservedModelGroup != "big-coder" ||
+		fixture.TestModelGroup != "codex-responses-reasoning-smoke" || fixture.ClientName != "Codex CLI" ||
+		fixture.Surface != "openai_responses" || fixture.ToolCount != 1 || fixture.ReasoningControl != "reasoning" ||
+		fixture.WithReasoningMissingMetadataExpectedError != "no-eligible-target" ||
+		fixture.WithReasoningValidatedMetadataExpectedStatus != http.StatusOK ||
+		fixture.WithoutReasoningExpectedStatus != http.StatusOK || fixture.ProductionSafePayload == "" {
+		t.Fatalf("invalid #1056 production-derived fixture: %#v", fixture)
+	}
+	for _, capability := range []string{"openai_responses", "tools", "openai-responses_tool_passthrough", "reasoning"} {
+		if !stringSliceContains(fixture.RequiredCapabilities, capability) {
+			t.Fatalf("fixture required_capabilities=%v missing %q", fixture.RequiredCapabilities, capability)
+		}
+	}
+	if len(fixture.RequestWithReasoning) == 0 || len(fixture.RequestWithoutReasoning) == 0 {
+		t.Fatal("fixture missing synthetic request bodies")
+	}
+
+	var upstreamHits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamHits.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "resp_codex_reasoning_fixture",
+			"object":      "response",
+			"status":      "completed",
+			"model":       "reasoning-responses",
+			"output_text": "OK",
+			"output":      []map[string]any{{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "OK"}}}},
+			"usage":       map[string]any{"input_tokens": 8, "output_tokens": 2, "total_tokens": 10},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Provider["responses_plain"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Provider["responses_reasoning"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	plainTarget := Target{Provider: "responses_plain", Model: "plain-responses", Weight: 50, ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}}
+	reasoningTarget := Target{
+		Provider:    "responses_reasoning",
+		Model:       "reasoning-responses",
+		Weight:      50,
+		ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}},
+		Reasoning:   ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum},
+	}
+	cfg.Models[fixture.TestModelGroup] = ModelGroup{Strategy: "static", Targets: []Target{plainTarget}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, fixture.TestModelGroup)
+
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	t.Run("without-reasoning-succeeds", func(t *testing.T) {
+		upstreamHits.Store(0)
+		body, err := json.Marshal(fixture.RequestWithoutReasoning)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(body)))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		req.Header.Set("Content-Type", "application/json")
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != fixture.WithoutReasoningExpectedStatus {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		if upstreamHits.Load() != 1 {
+			t.Fatalf("upstream hits=%d, want 1", upstreamHits.Load())
+		}
+	})
+
+	t.Run("with-reasoning-missing-metadata-no-eligible", func(t *testing.T) {
+		upstreamHits.Store(0)
+		body, err := json.Marshal(fixture.RequestWithReasoning)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(body)))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		req.Header.Set("Content-Type", "application/json")
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), fixture.WithReasoningMissingMetadataExpectedError) {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		if upstreamHits.Load() != 0 {
+			t.Fatalf("upstream hits=%d, want 0 before eligibility failure", upstreamHits.Load())
+		}
+		details := decodeProductionDerivedErrorDetails(t, rr.Body.Bytes(), "no-eligible-target")
+		requirements, _ := details["requirements"].([]any)
+		joined := fmt.Sprint(requirements)
+		for _, want := range []string{"tools", "openai-responses_tool_passthrough", "reasoning"} {
+			if !strings.Contains(joined, want) {
+				t.Fatalf("requirements=%v missing %q", requirements, want)
+			}
+		}
+	})
+
+	t.Run("with-reasoning-validated-metadata-succeeds", func(t *testing.T) {
+		dir2 := t.TempDir()
+		cfg2 := testConfig(t, upstream.URL, "provider-key", dir2)
+		cfg2.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir2, "usage.sqlite"))
+		cfg2.Server.DecisionTelemetry.Enabled = true
+		cfg2.Provider["responses_plain"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+		cfg2.Provider["responses_reasoning"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+		cfg2.Models[fixture.TestModelGroup] = ModelGroup{Strategy: "static", Targets: []Target{plainTarget, reasoningTarget}}
+		cfg2.Callers[0].Allow = append(cfg2.Callers[0].Allow, fixture.TestModelGroup)
+		svc2, err := New(cfg2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer svc2.Close()
+		upstreamHits.Store(0)
+		body, err := json.Marshal(fixture.RequestWithReasoning)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(body)))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		req.Header.Set("Content-Type", "application/json")
+		svc2.Handler().ServeHTTP(rr, req)
+		if rr.Code != fixture.WithReasoningValidatedMetadataExpectedStatus {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		if upstreamHits.Load() != 1 {
+			t.Fatalf("upstream hits=%d, want 1", upstreamHits.Load())
+		}
+		assertProductionDerivedArtifactsDoNotContain(t, svc2, dir2, "Reply OK only", "provider-key", testToken)
 	})
 }
 
@@ -1032,6 +1194,19 @@ func loadProductionDerivedAnthropicImageFixture(t *testing.T, name string) produ
 		t.Fatal(err)
 	}
 	var fixture productionDerivedAnthropicImageFixture
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	return fixture
+}
+
+func loadProductionDerivedCodexResponsesReasoningFixture(t *testing.T, name string) productionDerivedCodexResponsesReasoningFixture {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "smokes", "production-derived", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture productionDerivedCodexResponsesReasoningFixture
 	if err := json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatal(err)
 	}

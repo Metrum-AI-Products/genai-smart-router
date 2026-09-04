@@ -2076,8 +2076,8 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	if !chatReasoningCapable["fireworks:accounts/fireworks/models/gpt-oss-20b"] {
 		t.Fatalf("big-coder Chat reasoning targets=%#v, want Fireworks GPT OSS 20B", chatReasoningCapable)
 	}
-	if !responsesReasoningCapable["minimax_responses:MiniMax-M3"] {
-		t.Fatalf("big-coder Responses reasoning targets=%#v, want MiniMax Responses M3", responsesReasoningCapable)
+	if !responsesReasoningCapable["minimax_responses:MiniMax-M3"] || !responsesReasoningCapable["openai:gpt-5.4-nano"] {
+		t.Fatalf("big-coder Responses reasoning targets=%#v, want MiniMax Responses M3 and OpenAI gpt-5.4-nano (#1056 Codex Responses+reasoning coverage)", responsesReasoningCapable)
 	}
 	if len(gotToolOnly) != len(wantToolOnly) {
 		t.Fatalf("big-coder tool-only weights=%#v, want %#v", gotToolOnly, wantToolOnly)

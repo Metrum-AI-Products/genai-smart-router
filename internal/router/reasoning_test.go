@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestReasoningIntentDetection(t *testing.T) {
@@ -426,6 +429,152 @@ func TestDisabledDefaultThinkingDoesNotAdvertiseReasoning(t *testing.T) {
 	request := &IRRequest{Reasoning: ReasoningIntent{Requested: true, Kind: "token_budget", BudgetTokens: 512}}
 	if targetCanSatisfyReasoning(target, "anthropic", request) {
 		t.Fatalf("disabled default thinking must not satisfy an explicit reasoning request: %#v", target)
+	}
+}
+
+func TestCodexResponsesReasoningToolsEligibilityExampleGroups(t *testing.T) {
+	// #1056: Codex CLI sends OpenAI Responses with tools + reasoning. Groups used
+	// for coding-agent traffic must keep at least one native Responses target with
+	// both function tools and validated reasoning metadata.
+	raw, err := os.ReadFile(filepath.Join("..", "..", "config.example.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg Config
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{cfg: &cfg}
+	withReasoning := `{"model":"GROUP","input":"Reply OK only.","max_output_tokens":64,"reasoning":{"effort":"low"},"tools":[{"type":"function","name":"echo_marker","parameters":{"type":"object","properties":{"marker":{"type":"string"}},"required":["marker"]}}]}`
+	withoutReasoning := `{"model":"GROUP","input":"Reply OK only.","max_output_tokens":64,"tools":[{"type":"function","name":"echo_marker","parameters":{"type":"object","properties":{"marker":{"type":"string"}},"required":["marker"]}}]}`
+
+	for _, groupName := range []string{"big-coder", "high", "agent-tools-smoke"} {
+		t.Run(groupName, func(t *testing.T) {
+			group, ok := cfg.Models[groupName]
+			if !ok {
+				t.Fatalf("example config missing group %s", groupName)
+			}
+			targets := make([]Target, 0, len(group.Targets))
+			for _, target := range group.Targets {
+				resolved, err := cfg.resolveTarget(groupName, target)
+				if err != nil {
+					t.Fatal(err)
+				}
+				targets = append(targets, resolved)
+			}
+
+			reqWith, err := decodeRequest("openai-responses", []byte(strings.ReplaceAll(withReasoning, "GROUP", groupName)), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			eligibleWith := svc.targetsForRequest(nil, targets, reqWith, "openai-responses")
+			if len(eligibleWith) == 0 {
+				t.Fatalf("%s: Responses+tools+reasoning found no eligible target; requirements=%v", groupName, routingRequirements(reqWith, "openai-responses"))
+			}
+			for _, target := range eligibleWith {
+				if !target.Reasoning.Supported || target.Reasoning.Control != reasoningControlEffortEnum {
+					t.Fatalf("%s eligible target missing reasoning metadata: %#v", groupName, target)
+				}
+				if !supportsAnyCapability(target.ToolSupport.OpenAIResponses, "function") {
+					t.Fatalf("%s eligible target missing Responses function tools: %#v", groupName, target)
+				}
+			}
+
+			reqWithout, err := decodeRequest("openai-responses", []byte(strings.ReplaceAll(withoutReasoning, "GROUP", groupName)), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			eligibleWithout := svc.targetsForRequest(nil, targets, reqWithout, "openai-responses")
+			if len(eligibleWithout) == 0 {
+				t.Fatalf("%s: Responses+tools without reasoning found no eligible target", groupName)
+			}
+		})
+	}
+}
+
+func TestResponsesReasoningToolsFiltersTargetsWithoutReasoningMetadata(t *testing.T) {
+	// Reproduce #1056 filter behavior: Responses+tools without reasoning stays
+	// eligible, but adding reasoning removes targets that lack reasoning metadata.
+	cfg := Config{
+		Provider: map[string]ProviderConfig{
+			"responses_plain": {
+				BaseURL: "https://responses.example/v1",
+				Dialect: "openai-responses",
+				Models: map[string]ProviderModel{
+					"plain": {
+						Model:       "plain-responses",
+						ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}},
+					},
+				},
+			},
+			"responses_reasoning": {
+				BaseURL: "https://responses.example/v1",
+				Dialect: "openai-responses",
+				Models: map[string]ProviderModel{
+					"reasoning": {
+						Model:       "reasoning-responses",
+						ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}},
+						Reasoning: ReasoningSupport{
+							Supported: true,
+							Mode:      reasoningModeOptIn,
+							Control:   reasoningControlEffortEnum,
+						},
+					},
+				},
+			},
+		},
+		Models: map[string]ModelGroup{
+			"coding-group": {
+				Strategy: "weighted",
+				Targets: []Target{
+					{Provider: "responses_plain", ModelRef: "plain", Weight: 50},
+					{Provider: "responses_reasoning", ModelRef: "reasoning", Weight: 50},
+				},
+			},
+		},
+	}
+	targets := make([]Target, 0, 2)
+	for _, target := range cfg.Models["coding-group"].Targets {
+		resolved, err := cfg.resolveTarget("coding-group", target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		targets = append(targets, resolved)
+	}
+	svc := &Service{cfg: &cfg}
+
+	without, err := decodeRequest("openai-responses", []byte(`{"model":"coding-group","input":"x","max_output_tokens":64,"tools":[{"type":"function","name":"echo","parameters":{"type":"object"}}]}`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotWithout := svc.targetsForRequest(nil, targets, without, "openai-responses")
+	if len(gotWithout) != 2 {
+		t.Fatalf("without reasoning eligible=%d want 2: %#v", len(gotWithout), gotWithout)
+	}
+
+	with, err := decodeRequest("openai-responses", []byte(`{"model":"coding-group","input":"x","max_output_tokens":64,"reasoning":{"effort":"low"},"tools":[{"type":"function","name":"echo","parameters":{"type":"object"}}]}`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotWith := svc.targetsForRequest(nil, targets, with, "openai-responses")
+	if len(gotWith) != 1 || gotWith[0].Provider != "responses_reasoning" || gotWith[0].Model != "reasoning-responses" {
+		t.Fatalf("with reasoning eligible=%#v, want only responses_reasoning", gotWith)
+	}
+	if reason := reasoningFilterReason(targets[0], "openai-responses", with); reason != "reasoning-support" {
+		t.Fatalf("plain target filter reason=%q, want reasoning-support", reason)
+	}
+
+	// If every Responses+tools target lacks reasoning metadata, the caller gets
+	// no-eligible-target for the Codex default session shape.
+	plainOnly := []Target{targets[0]}
+	if got := svc.targetsForRequest(nil, plainOnly, with, "openai-responses"); len(got) != 0 {
+		t.Fatalf("plain-only group should reject Responses+tools+reasoning: %#v", got)
+	}
+	reqs := routingRequirements(with, "openai-responses")
+	for _, want := range []string{"tools", "openai-responses_tool_passthrough", "reasoning"} {
+		if !stringSliceContains(reqs, want) {
+			t.Fatalf("requirements=%v missing %q", reqs, want)
+		}
 	}
 }
 
