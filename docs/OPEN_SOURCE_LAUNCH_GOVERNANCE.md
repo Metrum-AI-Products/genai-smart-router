@@ -1,35 +1,52 @@
 # Open-Source Launch Governance Evidence
 
 This record covers governance and community gates for the planned 2026-09-07
-open-source launch. It records only evidence available on 2026-09-03. It is not
-a release announcement, release approval, final hard-gate review, or permission
-to make the repository public.
+open-source launch. It incorporates the final launch-authority facts recorded on
+2026-09-04. It is not a release announcement, a signed tag, a GitHub Release,
+permission to deploy, or permission to change repository visibility.
 
-## Current decision: NO-GO
+## Current decision: release notes approved; operational GO pending
 
-The current evidence supports **NO-GO**. The final LCH-02 review has not occurred,
-the release set required by LCH-03 has not been frozen, and the LCH-04 disposition
-of every blocked launch item has not been recorded. This is an interim evidence
-review, not the final hard-gate review. It must not be used to close a gate that
-requires a GO decision or completed release evidence.
+The release notes and launch-governance record are approved for **v1.0.0**. CEO
+Steen Graham gave the final governance **GO** on 2026-09-04 for the planned
+2026-09-07 open-source launch, including the time-bounded residual-risk
+acceptance below. The v1.0.0 release has **not been deployed or published**.
+Issue [#1052](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/1052)
+records a stale live revision and no resolvable production Fleet profile for the
+current release. Post-deploy verification is therefore the remaining operational
+GO condition. This record does not create or approve a tag, publish a GitHub
+Release, deploy the router, or authorize changing repository visibility.
+
+> **CEO approval — 2026-09-04:** Steen Graham, CEO, approved the GenAI Smart
+> Router v1.0.0 release notes and final launch-governance GO, including the
+> documented docs-build dependency residual risk through its 2026-10-04 recheck
+> deadline. Deployment, publication, and post-deploy verification are outside
+> this approval record.
+
+The semantic version is derived from repository release policy and history:
+there are no prior release tags, and the initial-release package and clean-build
+contracts consistently use `v1.0.0`. No tag or GitHub Release exists yet.
 
 ## Accountable owner
 
-Chetan Gadgil is the approved Launch Lead, Release Manager, Security owner,
+Chetan Gadgil is the approved Launch Lead, Release Manager, Security Owner,
 Operations owner, and Community owner. In those roles, Chetan holds launch stop
-and rollback authority. These appointments identify accountability but do not
-attest that a gate passed, that launch-day coverage is confirmed, or that a
-release may be published.
+and rollback authority. Chetan Gadgil (`chetan@metrum.ai`) also owns support
+coverage for launch day, 2026-09-07, and the first business day after launch,
+2026-09-08. Public support remains in GitHub issues, private inquiries use
+`contact@metrum.ai`, and vulnerabilities use the private security-reporting
+path.
 
 ## Gate evidence
 
 | Issue | Gate | Current evidence | State and exit condition |
 | --- | --- | --- | --- |
-| [#985](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/985) | LCH-02 | Owner and stop/rollback authority are named here. No completed meeting record, timestamp, attendee list, full hard-gate evidence set, or accepted-residual-risk record exists. | **NO-GO / open.** After every hard gate has an evidence link and owner attestation, conduct the final review and record its decision, timestamp, attendees, accepted residual risks, and stop/rollback authority. |
-| [#986](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/986) | LCH-03 | Release-management ownership is named. Merged preparation work does not establish one approved launch commit, version, signed tag, complete artifact SHA-256 set, final release URL, or approved announcement copy. | **NO-GO / open.** Freeze and record all acceptance fields together without publishing the release. |
-| [#987](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/987) | LCH-04 | Launch decision ownership is named. No complete register proves that every blocked gate is resolved or covered by an explicit, expiring exception with mitigating controls. | **NO-GO / open.** At the final review, link resolution evidence for every blocked item or record the owner's explicit exception, expiry, and mitigating controls. No unapproved blocked item may remain. |
-| [#988](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/988) | LCH-05 | Community ownership and privacy-safe response channels are documented. The intended coverage dates are 2026-09-07 and the first business day after launch, 2026-09-08. Availability and time-zone coverage have not been confirmed. | **Open.** Record the owner's confirmed availability windows and time zone for both dates. Use GitHub issues for public support, `contact@metrum.ai` for private inquiries, and the private security-reporting path for vulnerabilities. Do not publish personal contact details. |
-| [#1018](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/1018) | COM-04 | The 2026-09-03 GitHub review recorded a private repository, `main` as default, Apache-2.0 license detection, and empty description, homepage, and topics. Social-preview approval was not evidenced. | **Open.** Apply and verify only approved, public-doc-grounded metadata; separately approve/upload a social preview. Recheck for internal or customer information before any later visibility change. |
+| [#985](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/985) | LCH-02 | CEO Steen Graham approved the v1.0.0 release notes and final launch-governance GO on 2026-09-04. Chetan Gadgil retains stop/rollback authority. | **Governance GO / closed.** Deployment, publication, and operational verification remain separate gates. |
+| [#986](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/986) | LCH-03 | Release-management ownership and approved version v1.0.0 are recorded. A signed tag, complete artifact SHA-256 set, final release URL, and approved announcement copy are not recorded. | **Open.** Freeze and record all remaining acceptance fields together without publishing the release. |
+| [#987](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/987) | LCH-04 | The final GO includes the time-bounded docs-build dependency exception recorded below. Chetan Gadgil owns follow-up and recheck by 2026-10-04. | **Accepted / closed.** The exception has an owner, expiry, threshold, and mitigating controls. |
+| [#988](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/988) | LCH-05 | Chetan Gadgil owns support coverage for launch day, 2026-09-07 UTC, and the first business day after launch, 2026-09-08 UTC; privacy-safe response channels are documented. | **Confirmed / closed.** The named dates are the coverage windows in the launch record's UTC time zone. |
+| [#1018](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/1018) | COM-04 | GitHub and public-release access have been verified. The repository remains private by explicit instruction; `main` remains the default branch and GitHub detects Apache-2.0. | **Open.** Visibility must not be changed. Complete the remaining approved public-presentation metadata only when separately authorized. |
+| [#1052](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/1052) | Operational GO | Production is healthy but runs a stale revision; no production Fleet profile currently resolves the deployment path for v1.0.0. | **Open / remaining GO condition.** Deploy v1.0.0 through the documented production authority, then verify rollout identity, `/version`, readiness, authenticated model discovery, and the repository smoke before recording operational GO. |
 
 ## Repository metadata proposal
 
@@ -46,18 +63,41 @@ No social-preview asset is approved by this record. Discussions should remain
 unchanged unless a community owner separately approves the moderation and
 staffing commitment. Repository visibility must remain unchanged.
 
-## Final review record (unexecuted template)
+## Accepted residual dependency risk
 
-Complete this section only after all hard gates have evidence and attestations:
+CEO Steen Graham's 2026-09-04 final GO accepts the following residual risk for
+v1.0.0 through 2026-10-04. This is the decision authority; no separate Security
+Owner signature is asserted.
 
-- Decision: `GO` or `NO-GO`
-- Decision timestamp in UTC:
-- Attendees:
-- Launch commit, version, signed tag, artifact digests, and release URL:
-- Hard-gate evidence links and owner attestations:
-- Accepted residual risks, each with owner, expiry, and mitigating controls:
-- Stop/rollback authority: Chetan Gadgil, unless a later approved record changes it
-- Communications coverage windows and time zone:
+- Inventory: 18 High dependency-chain records in the locked docs build, all
+  rooted in `image-size@2.0.2` through `@docusaurus/mdx-loader@3.10.2`.
+- Advisories: GHSA-w3rx-r6r6-pgpr / CVE-2025-71330 and
+  GHSA-5p2g-fcmc-qvqq / CVE-2025-71329. No patched version was available in the
+  existing advisory evidence.
+- Reachability and threshold: accepted only as a docs build-time denial-of-service
+  risk from crafted ICNS, JXL, or HEIF inputs. It is not executable code in the
+  published browser bundle and is not accepted for the router or admin runtime.
+- Mitigating controls: build docs only from reviewed repository content; reject
+  untrusted image contributions before build; keep CI jobs time-bounded; retain
+  the generated static docs artifact as the serving boundary; and continue
+  clean locked installs, audits, and docs builds.
+- Accountable follow-up owner: Chetan Gadgil.
+- Expiry/recheck: 2026-10-04. At or before that date, recheck the aligned stable
+  Docusaurus dependency set and upstream replacement status, rerun the locked
+  audit and build, and either remediate or obtain a new explicit disposition.
 
-Leaving these fields blank is intentional and accurately represents the current
-NO-GO state.
+## Final review record
+
+- Decision: release notes and launch governance `GO`; operational `GO` pending post-deploy verification
+- Decision date: 2026-09-04
+- Approver and review participant: Steen Graham, CEO
+- Scope: GenAI Smart Router v1.0.0 release notes and launch governance for the planned 2026-09-07 launch
+- Release state: release-notes approved; not tagged, not published, and not deployed
+- Remaining GO condition: resolve #1052 by deploying the current approved release through the documented production authority and recording sanitized post-deploy identity, `/version`, readiness, authenticated `/v1/models`, and repository-smoke evidence
+- Repository state: GitHub/public-release access verified; visibility remains private and must not be changed
+- AMD validation: completed; the repository's AMD Instinct runbook and reference architecture remain the operational evidence locations
+- Accepted residual risks: the docs-build dependency inventory above is accepted through 2026-10-04 under the stated threshold and controls
+- Decision attribution: CEO Steen Graham; no separate Security Owner signature is asserted
+- Residual-risk follow-up owner: Chetan Gadgil
+- Stop/rollback authority: Chetan Gadgil
+- Support coverage owner: Chetan Gadgil for launch day 2026-09-07 UTC and the first business day 2026-09-08 UTC

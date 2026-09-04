@@ -14,7 +14,13 @@ this page. The version banner, `/docs/releases`, and `/version` are the
 authoritative sources for its exact router version and build timestamp; do not
 infer the running version from a date written in documentation.
 
-## Current Package
+## v1.0.0 - 2026-09-07
+
+Release notes approved on 2026-09-04 for the planned 2026-09-07 launch. The
+v1.0.0 release has not been deployed or published. Production still reports a
+stale live revision and the current production Fleet profile is not resolvable;
+post-deploy identity and runtime verification remain the final operational GO
+condition. This entry does not imply that a tag or GitHub Release exists.
 
 ### Highlights
 
@@ -32,6 +38,9 @@ infer the running version from a date written in documentation.
   authority moved to binary-package-only `metrum-genai-smartrouter-fleetctl`; the old
   `metrum-fleetctl` / `metrum-smartrouterctl` / `smartrouterctl` names are
   one-release rename notices.
+- Self-hosted serving: validated NVIDIA and AMD Instinct reference paths cover
+  private in-cluster OpenAI-compatible model servers while keeping the router
+  workload GPU-free.
 
 ### Operator Impact
 
@@ -69,8 +78,26 @@ infer the running version from a date written in documentation.
 - Client compatibility: run the actual Codex and Claude Code CLIs when routing,
   tools, images, auth, or model metadata changed.
 
+### Compatibility and Known Limitations
+
+- Model groups are deployment-defined; callers discover their allowed groups
+  through authenticated `/v1/models` rather than relying on fixed names.
+- Capability eligibility is request-shape-specific. A target is used only for
+  dialects, tools, modalities, bridges, and payload sizes validated for it.
+- AMD and NVIDIA local-serving support depends on the exact operator, driver,
+  serving image, model, parser, hardware, and request shape documented by the
+  deployment's validation evidence.
+- The docs build retains an unpatched build-time image metadata dependency risk.
+  It is not executable in the published browser bundle. The v1.0.0 launch
+  decision accepts this risk through 2026-10-04 with reviewed documentation
+  inputs, bounded build jobs, and static generated docs as the serving boundary;
+  the accountable owner must recheck or remediate it by that date.
+
 ### Validation
 
+- After deployment, require the promoted immutable image identity and `/version`
+  commit to match the approved release, then record sanitized evidence before
+  declaring operational GO.
 - Confirm the docs banner, `/docs/releases`, and `/version` agree on the
   expected version and build timestamp.
 - Run `/readyz`.
