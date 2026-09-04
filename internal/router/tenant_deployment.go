@@ -523,6 +523,15 @@ func (e *TenantDeploymentEngine) Deploy(ctx context.Context, plan TenantDeployme
 		if err := e.persistResource(ctx, record.JobID, action, resourceRef, plan); err != nil {
 			return TenantDeploymentStatus{}, err
 		}
+		if action == "ownership_transition" {
+			// Predecessor jobs still hold UNIQUE(resource_ref) rows for the same
+			// namespace objects. Reassign them so later actions can persist under
+			// the target instance without colliding, and clear desired_revision so
+			// Deploy re-ensures shapes that transition deleted (for example router).
+			if err := e.transferPredecessorResources(ctx, record.JobID, plan); err != nil {
+				return TenantDeploymentStatus{}, err
+			}
+		}
 		if err := e.finishAttempt(ctx, attempt.ID, "succeeded", ""); err != nil {
 			return TenantDeploymentStatus{}, err
 		}
@@ -600,6 +609,37 @@ func (e *TenantDeploymentEngine) persistResource(ctx context.Context, jobID, kin
 		Columns:   []clause.Column{{Name: "instance_id"}, {Name: "resource_kind"}},
 		DoUpdates: clause.Assignments(map[string]any{"job_id": jobID, "resource_ref": resourceRef, "desired_revision": plan.ManifestSHA256, "state": "ready", "updated_at": now}),
 	}).Create(&record).Error
+}
+
+// transferPredecessorResources moves registry rows for the same Kubernetes
+// resource_ref values from the authorized source instance onto the target after
+// a successful ownership_transition. Without this, UNIQUE(resource_ref) blocks
+// the first post-transition persist for namespace/pvc/router/etc.
+func (e *TenantDeploymentEngine) transferPredecessorResources(ctx context.Context, jobID string, plan TenantDeploymentPlan) error {
+	source := strings.TrimSpace(plan.SourceInstanceID)
+	if source == "" || source == plan.InstanceID {
+		return nil
+	}
+	now := time.Now().UTC()
+	var records []tenantDeploymentResourceRecord
+	if err := e.store.db.WithContext(ctx).Where("instance_id = ? AND resource_kind <> ?", source, "ownership_transition").Find(&records).Error; err != nil {
+		return err
+	}
+	for _, record := range records {
+		ownershipKey := plan.InstanceID + ":" + record.ResourceKind
+		updates := map[string]any{
+			"instance_id":      plan.InstanceID,
+			"job_id":           jobID,
+			"ownership_key":    ownershipKey,
+			"desired_revision": "",
+			"updated_at":       now,
+		}
+		if err := e.store.db.WithContext(ctx).Model(&tenantDeploymentResourceRecord{}).
+			Where("id = ?", record.ID).Updates(updates).Error; err != nil {
+			return fmt.Errorf("transfer predecessor registry resource %s: %w", record.ResourceKind, err)
+		}
+	}
+	return nil
 }
 
 func classifyTenantDeploymentError(err error) string {

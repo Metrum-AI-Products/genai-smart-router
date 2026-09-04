@@ -18,14 +18,14 @@ Customer self-hosted Docker Compose stays a supported **customer** option in
 | Primary hostname | `https://llm-api.apps.metrum.ai` |
 | Production aliases | `https://llm-api-engg.metrum.ai`, `https://llm-api.metrum.ai` |
 | DNS | Both aliases CNAME to `llm-api.apps.metrum.ai` → EKS ingress (cutover 2026-09-01) |
-| Live revision (as of cutover ledger) | `5b382c7` — deploying a newer digest is a separate change |
+| Live revision (post #1052) | `902e45b` / ECR digest `sha256:c5bf16215687013d24a5ecfc99f40b3337e944778fee792b940753e3fe6e4be7` |
+| Production owner | `instance-2278b384bf563c59df11` (`metrum-production` / `production`) |
 | Trusted proxy CIDR | `192.168.0.0/16` (never the legacy Compose-only `172.18.0.0/16`) |
 
 | Surface | Role |
 | --- | --- |
 | Fleet EKS tenant `llm-api` | Sole writer for production traffic |
-| Retained EC2 Compose host | Rollback window only (containers stood down); not a concurrent writer |
-| Compose Postgres archives | Forensics only; EKS SQLite did not inherit Compose usage history |
+| Compose Postgres / restic archives | Retained backups only; not a live writer after EC2 decommission (#951) |
 
 ## Protected production profile authority
 
@@ -50,6 +50,12 @@ Profile must include:
 Store the live profile in SSM only. Never commit secrets, runtime bundles,
 license payloads, or signing keys.
 
+Operator AWS identity is a prerequisite: export
+`AWS_PROFILE=genai-smart-router-eks-fleet-lifecycle` and clear conflicting
+`AWS_ACCESS_KEY_ID` / `AWS_SESSION_TOKEN` before `fleetctl` plan/deploy/status.
+Do not embed `aws_profile` inside the production SSM document when the operator
+session is already that role — nested `sts:AssumeRole` fails closed.
+
 Metrum production on Fleet was authorized 2026-09-01 (maintainer self-review
 record below). Disposable non-production customers continue to use the staging
 profile; they must not reuse the production profile ref.
@@ -61,6 +67,8 @@ Login is never part of numbered rollout steps. If identity checks fail, stop
 with a secret-free “authenticate first, then retry” message.
 
 ```bash
+export AWS_PROFILE=genai-smart-router-eks-fleet-lifecycle
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
 rtk aws sts get-caller-identity
 rtk kubectl config current-context   # must be metrum cluster
 ```
@@ -211,47 +219,26 @@ successful production changes.
 
 ## Rollback
 
-### While the EC2 Compose host is retained (current window)
+DNS remains on EKS. EC2 Compose DNS rollback was retired with #951
+decommission. Rollback is:
 
-DNS already points at EKS. Emergency hostname rollback to Compose remains
-available until EC2 decommission completes:
-
-1. Restore DigitalOcean A records for `llm-api-engg.metrum.ai` and
-   `llm-api.metrum.ai` to the retained EC2 public IP.
-2. `docker compose start router caddy` on that host.
-3. Do not run EC2 and EKS as concurrent writers for the same usage authority.
-
-Application/config rollback on EKS (preferred for digest/config mistakes while
-DNS stays on EKS): redeploy the previous known-good `approved_release_digest`
-and runtime-bundle revision via `write-manifest --stage production` + signed
-`create`.
-
-### After EC2 decommission
-
-DNS rollback to EC2 is retired. Rollback is:
-
-1. Prior Fleet `approved_release_digest` + matching signed intent, and/or
-2. SQLite recovery from an approved PVC/restic backup into a non-serving
+1. Prior Fleet `approved_release_digest` (for example the pre-transition
+   known-good `5b382c7` digest `sha256:56c5bd0b719a8e4729fcb8671e2bbe1ed842368d5ab78ac70ce1ae6ddd7bf88f`)
+   via `write-manifest --stage production` + signed `create`, and/or
+2. SQLite recovery from an approved PVC/EBS/restic backup into a non-serving
    recovery path, then a separately authorized serving cutover.
+
+After an ownership transition, keep production ownership and redeploy a known
+digest through the production profile; never revert labels to the staging owner.
 
 Do not treat `customer delete` as routine rollback; delete is separately
 approved tenant retirement.
 
-## Decommission criteria (EC2 Compose)
+## Decommissioned EC2 Compose path (#951)
 
-Decommission the retained Compose host only when all are true:
-
-1. Production aliases have served stably from EKS for the agreed rollback window.
-2. Ownership transition to `metrum-production` / `instance-2278b384bf563c59df11`
-   is complete and `ownership_transition` is removed from the profile.
-3. Compose usage archive and restic snapshot evidence are retained
-   (`scripts/archive_compose_usage.sh` already used at cutover).
-4. Operators have rehearsed Fleet digest rollback and SQLite backup restore.
-5. Change record authorizes instance stop/terminate; update this runbook and
-   `deployment.md` to drop DNS-to-EC2 rollback language.
-
-Until then: keep the EC2 instance available for emergency DNS rollback; keep
-Compose router/Caddy stopped so they are not concurrent writers.
+The retained Compose host was decommissioned after the #1052 ownership
+transition and `902e45b` verification. Keep restic/Postgres archives for their
+retention period. Do not recreate Compose as a Metrum production writer.
 
 ## TLS notes
 

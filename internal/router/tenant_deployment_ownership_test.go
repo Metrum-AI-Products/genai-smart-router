@@ -239,3 +239,50 @@ func loadTenantDeploymentFixture(t *testing.T) (TenantDeploymentProfile, TenantD
 	profile, manifest, _ := tenantDeploymentFixture(t)
 	return profile, manifest
 }
+
+func TestTransferPredecessorResourcesReassignsUniqueRefs(t *testing.T) {
+	store, err := OpenTenantDeploymentStore(filepath.Join(t.TempDir(), "registry.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Now().UTC()
+	source := "instance-source"
+	target := "instance-target"
+	if err := store.db.Create(&tenantDeploymentJobRecord{
+		JobID: "job-source", InstanceID: source, IdempotencyKey: "idem-s", ManifestSHA256: "old",
+		ProfileID: "p", CustomerID: "c", Stage: "nonproduction", Environment: "nonproduction",
+		Region: "us-east-1", ClusterAlias: "metrum", Namespace: "llm-api", Hostname: "llm-api.apps.metrum.ai",
+		ReleaseDigest: "d", ResourceProfile: "small", StateProfile: "sqlite-rwo-small", ConfigRevision: "old",
+		State: TenantDeploymentReady, CreatedAt: now, UpdatedAt: now,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Create(&tenantDeploymentJobRecord{
+		JobID: "job-target", InstanceID: target, IdempotencyKey: "idem-t", ManifestSHA256: "new",
+		ProfileID: "p2", CustomerID: "c", Stage: "production", Environment: "production",
+		Region: "us-east-1", ClusterAlias: "metrum", Namespace: "llm-api", Hostname: "llm-api.apps.metrum.ai",
+		ReleaseDigest: "d2", ResourceProfile: "small", StateProfile: "sqlite-rwo-small", ConfigRevision: "new",
+		State: TenantDeploymentProvisioning, SourceInstanceID: source, CreatedAt: now, UpdatedAt: now,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Create(&tenantDeploymentResourceRecord{
+		InstanceID: source, JobID: "job-source", ResourceKind: "namespace", ResourceRef: "namespace/llm-api",
+		OwnershipKey: source + ":namespace", DesiredRevision: "old", State: "ready", CreatedAt: now, UpdatedAt: now,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	engine := &TenantDeploymentEngine{store: store}
+	plan := TenantDeploymentPlan{InstanceID: target, SourceInstanceID: source, Namespace: "llm-api"}
+	if err := engine.transferPredecessorResources(context.Background(), "job-target", plan); err != nil {
+		t.Fatal(err)
+	}
+	var got tenantDeploymentResourceRecord
+	if err := store.db.Where("resource_ref = ?", "namespace/llm-api").First(&got).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.InstanceID != target || got.JobID != "job-target" || got.DesiredRevision != "" || got.OwnershipKey != target+":namespace" {
+		t.Fatalf("got=%+v", got)
+	}
+}

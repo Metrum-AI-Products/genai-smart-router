@@ -6,7 +6,48 @@
 > all Metrum production image, config, ownership, verification, rollback, and
 > decommission work. Do not treat older dated sections as executable procedures.
 
-Last deployed: 2026-09-01
+Last deployed: 2026-09-04
+
+## 2026-09-04 Production ownership transition (#1052) and EC2 decommission (#951)
+
+Promoted live tenant `llm-api` from staging-derived owner
+`instance-fdcca5e10ce3f145c4a7` (`staging-fleet-nonprod` / `nonproduction`) to
+production owner `instance-2278b384bf563c59df11` (`metrum-production` /
+`production`) without recreating the SQLite PVC, then deployed immutable image
+`902e45b` and terminated the retained Compose host.
+
+- Protected profile: `aws-ssm:///metrum/smartrouter/profiles/production`
+  (`profile_id=metrum-production`, `environment=production`). One-time
+  `ownership_transition` authorized for `#1052`, then removed after success
+  (SSM parameter version advanced; do not print profile contents).
+- Pre-mutation PVC backup: EBS snapshot `snap-08b2b5ed8a14dfff6` of
+  `vol-023e6b356dd2f889d` (`router-state`).
+- Fleet job `job-570c4df4e0ec5d105e35`: `ownership_transition` succeeded; resume
+  completed through `hostname` with `activation_passed=true` after local
+  registry resource_ref transfer from the predecessor owner (UNIQUE constraint
+  follow-up fixed in-tree via `transferPredecessorResources`).
+- Live image:
+  `121701826775.dkr.ecr.us-east-1.amazonaws.com/smart-llmrouter@sha256:c5bf16215687013d24a5ecfc99f40b3337e944778fee792b940753e3fe6e4be7`
+  (`/version` commit `902e45b`).
+- Known-good prior digest retained for Fleet rollback:
+  `sha256:56c5bd0b719a8e4729fcb8671e2bbe1ed842368d5ab78ac70ce1ae6ddd7bf88f`
+  (`5b382c7`).
+- Verification (safe scalars): `/readyz` 200 on engg/primary aliases; `/v1/models`
+  200; ordinary-caller `/metrics` 403 `metrics-forbidden`; Chat 200; Responses
+  (no reasoning) 200; Chat streaming+usage 200; Chat tools 200; Anthropic
+  Messages on `big-coder` 200; Claude Code CLI `big-coder` text smoke passed
+  (`result=OK`, `modelUsage` present).
+- Codex CLI Responses+`reasoning` returned `502 no-eligible-target` on coding
+  groups; tracked as #1056 (not an ownership rollback). Direct Responses+tools
+  without reasoning remained 200 on `big-coder`.
+- DNS unchanged: `llm-api-engg` / `llm-api` CNAME → `llm-api.apps.metrum.ai` →
+  EKS ingress only. No `legacy-staging-llm-api` rename. No staging Ingress.
+- EC2 Compose host `i-0b6c6608d97119832` (`llm-api-jun2026`, `54.84.22.33`):
+  `docker compose down` via SSM, then terminate after clearing
+  `disableApiStop`. Instance state `terminated`. Compose usage restic evidence
+  remains in the cutover ledger (`5fbc28c8` / `b6b2aa2d`).
+- Rollback policy after this date: prior Fleet digest + SQLite/EBS backup only.
+  DNS-to-EC2 rollback retired.
 
 ## 2026-09-01 Metrum production authority on Fleet EKS (alias hostnames)
 
@@ -20,9 +61,9 @@ tenant `llm-api` on cluster `metrum`. Production hostnames
 - Operator runbook: `docs/EKS_PRODUCTION_OPERATIONS.md`.
 - Staging overlay and `eks_delivery.py` removed; Fleet is the sole EKS path.
 - Compose usage archive: `scripts/archive_compose_usage.sh` before decommission.
-- Rollback (while EC2 retained): DigitalOcean A records + restart Compose
-  router/Caddy. After EC2 decommission: prior Fleet digest + SQLite backup
-  (see EKS production operations).
+- Historical rollback note (superseded 2026-09-04): while EC2 was retained,
+  DNS A records + Compose start were available; after #951 terminate, rollback
+  is prior Fleet digest + SQLite/EBS backup only.
 
 Pre-cutover probes (2026-09-01): `llm-api-engg.metrum.ai` → EC2 `54.84.22.33`;
 `llm-api.apps.metrum.ai` → EKS ingress ELB `/readyz` 200.
@@ -42,7 +83,8 @@ Post-cutover (2026-09-01 UTC):
   `purpose:compose-usage-archive`, `version:20260901T174939Z`).
 - Compose standdown on EC2 `54.84.22.33`: `docker compose stop router caddy`; postgres
   left running for rollback forensics.
-- Rollback: restore A records to `54.84.22.33`, `docker compose start router caddy`.
+- Rollback at cutover (historical): restore A records to `54.84.22.33`,
+  `docker compose start router caddy` — retired after #951.
 
 ## 2026-08-27 EKS llm-api image refresh to 5b382c7 (promotion gates + ambient AWS auth)
 
