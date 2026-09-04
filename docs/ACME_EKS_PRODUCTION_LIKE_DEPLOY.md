@@ -22,9 +22,10 @@ contract, including all 25 deployed model groups. It was bound only through a
 separate runtime Secret and protected `runtime_bundle_ref`; no values entered
 Git, NDJSON, command arguments, logs, or this record.
 
-`https://llm-api-engg.metrum.ai` remains the unchanged Compose production
-authority. This completed non-production rehearsal is not `#518` production
-authorization.
+`https://llm-api-engg.metrum.ai` was then still Compose production (unchanged by
+this ACME rehearsal). As of 2026-09-01, Metrum production is Fleet EKS; see
+[EKS production operations](EKS_PRODUCTION_OPERATIONS.md). This record is not
+authorization to repeat the ACME disposable path.
 
 ## Target shape
 
@@ -59,8 +60,8 @@ authorization.
 
 The sanitized execution outcome is recorded in
 [#869](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/869#issuecomment-5245520939).
-`#518` remains the sole authority for production-profile or Compose cutover
-work.
+Metrum production operations after the 2026-09-01 cutover:
+[EKS production operations](EKS_PRODUCTION_OPERATIONS.md).
 
 ## Placeholder artifacts (safe)
 
@@ -89,8 +90,8 @@ rtk ./bin/metrum-fleetctl deploy \
 
 ## Related
 
-- Issue `#869`, epic `#555`, preflight `#818`, cutover `#518` (out of scope)
+- Issue `#869`, epic `#555`, preflight `#818` (historical ACME disposable path)
 - PR `#868` scoped RDS admission
-- `task.customer_eks_deploy_cli`, `task.compose_to_eks_cutover_gates`
+- Current Metrum production: [EKS production operations](EKS_PRODUCTION_OPERATIONS.md)
 - [Customer instance operations runbook](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md)
 - [Fleet CLI contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md)

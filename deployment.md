@@ -1,5 +1,11 @@
 # Smart LLM Router Production Deployment
 
+> **Evidence ledger only.** After 2026-09-01, only the Fleet EKS topology below
+> is current. Operators must follow
+> [`docs/EKS_PRODUCTION_OPERATIONS.md`](docs/EKS_PRODUCTION_OPERATIONS.md) for
+> all Metrum production image, config, ownership, verification, rollback, and
+> decommission work. Do not treat older dated sections as executable procedures.
+
 Last deployed: 2026-09-01
 
 ## 2026-09-01 Metrum production authority on Fleet EKS (alias hostnames)
@@ -12,10 +18,11 @@ tenant `llm-api` on cluster `metrum`. Production hostnames
 
 - Code: Fleet multi-host Ingress, `environment: production` profile support.
 - Operator runbook: `docs/EKS_PRODUCTION_OPERATIONS.md`.
-- Discovery: `docs/EKS_PRODUCTION_DISCOVERY.md`.
 - Staging overlay and `eks_delivery.py` removed; Fleet is the sole EKS path.
 - Compose usage archive: `scripts/archive_compose_usage.sh` before decommission.
-- Rollback: restore DigitalOcean A records + restart Compose router/Caddy.
+- Rollback (while EC2 retained): DigitalOcean A records + restart Compose
+  router/Caddy. After EC2 decommission: prior Fleet digest + SQLite backup
+  (see EKS production operations).
 
 Pre-cutover probes (2026-09-01): `llm-api-engg.metrum.ai` → EC2 `54.84.22.33`;
 `llm-api.apps.metrum.ai` → EKS ingress ELB `/readyz` 200.
@@ -210,7 +217,8 @@ Rollback for the parallel instance: signed Fleet `customer delete` with
 [`docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md`](docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#metrum-operator-quick-reference-sqlite-fleet-customers).
 Does not roll back Compose production.
 
-See [`docs/LLM_API_EKS_SQLITE_PARALLEL.md`](docs/LLM_API_EKS_SQLITE_PARALLEL.md).
+See [`docs/LLM_API_EKS_SQLITE_PARALLEL.md`](docs/LLM_API_EKS_SQLITE_PARALLEL.md)
+(historical stub; current SoT is `docs/EKS_PRODUCTION_OPERATIONS.md`).
 
 ## 2026-08-19 Hosted support chat CSP correction
 
@@ -536,24 +544,22 @@ least-privilege RBAC remediation tracked in #794 and #795. Do not deploy the
 human-assumable role until the bootstrap owner has installed the fail-closed
 policy/binding, immutable version-2 runtime/image attestation, non-destructive
 RBAC, protected target boundary, and EKS access entry in the documented order.
-Then use an authorized federated operator profile for the complete repair,
-validation, evidence, rollback, and cleanup lifecycle in
-`docs/EKS_STAGING_MIGRATION.md`; do not use the ambient AWS profile or current
-kubeconfig as a substitute.
+Then use an authorized federated operator profile. Historical staging Make
+repair steps were retired; see stub `docs/EKS_STAGING_MIGRATION.md`. Current
+Metrum production: `docs/EKS_PRODUCTION_OPERATIONS.md`.
 
-The Docker Compose router at `https://llm-api-engg.metrum.ai` remains the
-production authority; no usage data or ordinary caller traffic has moved to
-EKS. A future production cutover still requires separately approved database
-reconciliation and DNS transition. See `docs/EKS_STAGING_MIGRATION.md`.
-
-The first cutover step is a parallel Fleet SQLite customer instance at
-`https://llm-api.apps.metrum.ai` (no dedicated RDS, no Postgres usage copy).
-See `docs/LLM_API_EKS_SQLITE_PARALLEL.md`. Compose Postgres and production DNS
-are unchanged until `#518` authorizes cutover.
+**Historical note (pre-2026-09-01):** Docker Compose at
+`https://llm-api-engg.metrum.ai` was then the production authority; the first
+Fleet step was a parallel SQLite instance at `https://llm-api.apps.metrum.ai`.
+Cutover completed 2026-09-01 (see the dated section at the top of this file).
+Current SoT: `docs/EKS_PRODUCTION_OPERATIONS.md`.
 
 ## Live Environment
 
-- Public URLs: `https://llm-api-engg.metrum.ai`, `https://llm-api.metrum.ai`
+> **Stale host inventory below was true for EC2 Compose production.** After
+> 2026-09-01, production traffic is Fleet EKS tenant `llm-api`. Do not use this
+> inventory for current operations; see
+> `docs/EKS_PRODUCTION_OPERATIONS.md`.
 - Public IPv4: `100.30.225.66`
 - AWS account: `121701826775`
 - AWS region/AZ: `us-east-1` / `us-east-1b`

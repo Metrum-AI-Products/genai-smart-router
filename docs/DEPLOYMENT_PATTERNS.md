@@ -121,9 +121,9 @@ Ask these when a customer says "not sure it will work for us":
 ## Cross-References
 
 - Public deployment patterns: `docs-site/docs/operations/deployment-patterns.md`
-- Public deployment: `docs-site/docs/operations/deployment.md`
 - Public deployment readiness: `docs-site/docs/evaluation/deployment-readiness.md`
 - Public licensing paths: `docs-site/docs/licensing/deployment-paths.md`
+- Metrum Fleet production: `docs/EKS_PRODUCTION_OPERATIONS.md`
 - Internal deployment: `docs/DEPLOYMENT.md`
 - Docker deployment: `docs/DOCKER_DEPLOYMENT.md`
 - Self-hosted upstreams: `docs/SELF_HOSTED_UPSTREAMS.md`

@@ -37,6 +37,7 @@ func NewFakeTenantDeploymentAdapters() (*FakeTenantDeploymentAdapters, TenantDep
 	return fake, TenantDeploymentAdapters{
 		Namespace: fake, NetworkPolicy: fake, SecretBinding: fake,
 		LicenseBinding: fake, State: fake, Database: fake, Router: fake, Activation: fake, Hostname: fake,
+		OwnershipTransition: fake,
 	}
 }
 
@@ -123,6 +124,12 @@ func (f *FakeTenantDeploymentAdapters) EnableHostname(_ context.Context, plan Te
 }
 func (f *FakeTenantDeploymentAdapters) DisableHostname(_ context.Context, _ TenantDeploymentPlan, _ string) error {
 	return f.remove("hostname")
+}
+func (f *FakeTenantDeploymentAdapters) TransitionOwnership(_ context.Context, plan TenantDeploymentPlan) (string, error) {
+	if strings.TrimSpace(plan.SourceInstanceID) == "" || plan.SourceInstanceID == plan.InstanceID {
+		return "", &TenantDeploymentAdapterError{Class: "ownership_transition_invalid", Err: errors.New("ownership transition requires a distinct source instance")}
+	}
+	return f.ensure("ownership_transition", plan)
 }
 
 func (f *FakeTenantDeploymentAdapters) SnapshotCalls() []string {

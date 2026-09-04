@@ -55,7 +55,7 @@ func customerBootstrap(args []string) {
 	if _, err := publishRuntimeBundleOperator(ctx, ws.CustomerID, bundle); err != nil {
 		die("publish runtime bundle: %v", err)
 	}
-	writeManifest(ws, common.ProfileRef, customerBundleRef(ws.CustomerID), common.LicenseRef, "bootstrap")
+	writeManifest(ws, common.ProfileRef, customerBundleRef(ws.CustomerID), common.LicenseRef, "bootstrap", "")
 	intentPath := signWorkspaceManifest(ws, *signWithKey)
 
 	fleetBin, err := resolveFleetctlBinary()

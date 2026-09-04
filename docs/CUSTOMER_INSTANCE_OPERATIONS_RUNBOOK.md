@@ -14,7 +14,7 @@ At launch, one customer router instance maps to one isolated runtime identity an
 | Commercial/control-plane owner | Verifies entitlement and creates the authorized provisioning intent. #921 owns verified purchase entitlement and fulfillment enqueue; Fleet provisioning remains #555. |
 | Platform operator | Uses the binary-package-only `metrum-genai-smartrouter-fleetctl` lifecycle when its non-production gates permit it. It resolves approved AWS/EKS policy, applies only instance-owned Kubernetes resources, and publishes ingress only after activation. |
 | Infra/Security approver | Approves account/region, network, KMS, IAM, durability, quota, DNS, and change-control policy before live execution. |
-| Release approver | Owns protected production-like rehearsal, change window, canary/cutover, and recovery authorization under #518. |
+| Release approver | Owns protected production-like rehearsal and recovery authorization for non-Metrum tenants; Metrum `llm-api` production follows [EKS production operations](EKS_PRODUCTION_OPERATIONS.md). |
 
 These are responsibilities, not headcount. A single-maintainer deployment may
 hold every non-production role, and the same person may implement and review the
@@ -22,8 +22,9 @@ change. The obligation that survives is the recorded evidence in [Recorded
 security and operations review](#recorded-security-and-operations-review), not a
 second signature. Split the roles across separate people and additional scoped
 EKS roles when more than one qualified person is available or a customer
-contract requires separation of duties. Production cutover authorization stays
-with #518 regardless of team size.
+contract requires separation of duties. Metrum engineering production (`llm-api`)
+is authorized on Fleet; see
+[EKS production operations](EKS_PRODUCTION_OPERATIONS.md).
 
 Human authorization is role-based rather than username-based. Any user whose
 organization-controlled federated identity is assigned the approved operator
@@ -38,7 +39,7 @@ separate approved bootstrap/recovery action. Removing the user's
 identity-provider assignment or the source role's exact `sts:AssumeRole` grant
 revokes access without changing the
 CLI or customer instance. See the credential-free profile and verification
-procedure in [EKS staging migration](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap).
+procedure in [EKS identity bootstrap](EKS_IDENTITY_BOOTSTRAP.md).
 
 Issue #555 has one strict signed reference-only deployment intent, one normalized GORM+SQLite deployment-job registry with tenant/license inventory tables, and typed AWS/EKS contracts in `metrum-genai-smartrouter-fleetctl`. It provides deterministic plan, idempotent ownership-safe create/resume, classified state, activation-before-hostname, bounded exact-job status, registry-local `tenants`/`licenses` inventory, explicit PVC/RDS retention, and exact-job deletion. Live `plan`, `deploy`, and `delete` load the mode-`0600` signed intent, whose protected `aws-ssm:///` profile reference is authenticated before cloud access; `file://` is limited to the local fake `plan` contract. Deployment `status` accepts an exact job plus protected profile reference. Customer-local `metrum-genai-smartrouterctl` has no Fleet, cloud, cross-customer, config-activation, key-rotation, or license-signing authority.
 
@@ -65,7 +66,7 @@ The following are mandatory fail-closed preflight conditions. An absent conditio
 | Capacity | Reservation and fresh recheck for the explicit account+region. Cross-region automated backups are disabled at launch; no DR-copy reservation, destination region, or copy KMS key is assumed. |
 | Network and crypto | Private-only RDS endpoint, approved subnets/security groups, regional KMS key reference, TLS-only DB access, least-privilege database/runtime roles, and secret-manager references only. |
 | Durability | Explicit same-region automated-backup/PITR or explicitly approved no-automated-backup policy; recovery-point class, retention, deletion/final-snapshot behavior, and restore expectations. |
-| Activation and promotion | Applicable #517 non-production evidence, #554 activation profile/evidence, and #518 approval for protected production-like promotion. |
+| Activation and promotion | Applicable #517 non-production evidence, #554 activation profile/evidence, and for Metrum production the [EKS production operations](EKS_PRODUCTION_OPERATIONS.md) path. |
 | Public/customer traffic | #13 security remediation and the approved public/customer release gate. |
 
 RDS Proxy is disabled at launch. Cross-region backup is never implicit: it is disabled at launch and requires a later approved destination account/region profile, destination-region KMS policy, copy grant, account-wide capacity reservation, retention, and recovery evidence. A future proxy or shared database placement also requires an approved ADR, policy, adapter tests, and a separate rollout decision.
@@ -122,7 +123,8 @@ The authorized sequence is: #818 repair and passing preflight; local suite
 evidence and deterministic plan; external scoped admission; disposable E2E
 including failure/retry and confirmed cleanup; then the recorded
 single-reviewer review; then the separately authorized production-like
-non-production rehearsal. #518 remains the sole production-cutover authority.
+non-production rehearsal. Metrum production operations are documented in
+[EKS production operations](EKS_PRODUCTION_OPERATIONS.md).
 
 ## Recorded security and operations review
 
@@ -150,30 +152,18 @@ Record these safe scalar values in the #555 durable provisioning job:
 Never record credentials, DSNs, kubeconfigs, raw router tokens, token hashes,
 license payloads, full Router configuration, prompts, or upstream response
 bodies in the review. Add a second reviewer only when another qualified person
-is available or a customer contract requires separation of duties. Production
-cutover requires #518's stricter protected gates in addition to this review.
+is available or a customer contract requires separation of duties. Metrum
+`llm-api` production changes follow
+[EKS production operations](EKS_PRODUCTION_OPERATIONS.md) in addition to this
+review.
 
 ## Existing EKS staging repair lifecycle
 
-The current Metrum staging deployment is an integration target, not a customer
-instance provisioned by the customer #555 CLI. Its canonical live repair
-procedure is [EKS staging migration runbook: Staging Repair And Validation
-Lifecycle](EKS_STAGING_MIGRATION.md#staging-repair-and-validation-lifecycle).
-Use that procedure in order: open a change record; establish the exact
-MFA/federated assumed role; capture the pre-repair baseline; run protected
-preflight and plan; classify the failure; reconcile only reviewed desired
-state; restore the selected ingress/Linkerd boundary; run authenticated API,
-CLI, metrics-isolation, and relational-usage smokes; sanitize and preserve
-asciinema evidence; review and announce; then roll back or clean up.
-
-Do not use a previously successful smoke as present readiness evidence. As of
-2026-08-07, the reviewed staging delivery role passed `make eks-preflight`, and
-the public readiness endpoint returned HTTP 200 with `ok=true`. This is
-staging-only repair evidence, not a disposable customer EKS proof for #555:
-customer handoff and production authorization remain gated on the approved
-customer profile, disposable E2E, and the complete activation record. Keep
-exact API-surface compatibility evidence current; #856, #857, and #858 track
-the outstanding Anthropic-text and Codex-tool eligibility/retry findings.
+Historical staging Make/`eks_delivery` repair steps are retired. See the stub
+[EKS staging migration](EKS_STAGING_MIGRATION.md). Disposable non-production
+Fleet customers use the staging profile block below. Metrum production
+(`llm-api`) uses
+[EKS production operations](EKS_PRODUCTION_OPERATIONS.md).
 
 ## Onboard a new customer router instance
 
@@ -278,12 +268,13 @@ top-level `state_path` under `/var/lib/smart-llmrouter` (not under `server:`)
 and `/etc/smart-llmrouter-license` license paths before publish. The block below remains the direct
 Fleet-only path when commerce/license are already satisfied.
 
-Copy-paste block for Metrum super-admin lifecycle on the shared Fleet SQLite
-registry (`~/.local/share/metrum-fleet/registry/tenant-deployments.sqlite`).
+#### Disposable non-production customers (staging profile)
+
+Copy-paste block for disposable or non-production SQLite Fleet customers on the
+shared registry (`~/.local/share/metrum-fleet/registry/tenant-deployments.sqlite`).
 Replace `<customer-id>` with your tenant (example **`acme`** →
-`acme.apps.metrum.ai`). The reference validation instance is **`llm-api`**
-(`https://llm-api.apps.metrum.ai`); see
-[`docs/LLM_API_EKS_SQLITE_PARALLEL.md`](LLM_API_EKS_SQLITE_PARALLEL.md).
+`acme.apps.metrum.ai`). Do **not** use this staging profile for Metrum
+production `llm-api`.
 
 ```bash
 export METRUM_FLEET_BIN_DIR=/path/to/release/bin
@@ -294,7 +285,7 @@ export FLEET_RUNTIME_BUNDLE_REF="aws-secretsmanager:///smartrouter/fleet/custome
 # List all customer instances (registry + local workspaces)
 metrum-genai-smartrouter-fleetctl customer list
 
-# Greenfield (validated on llm-api.apps.metrum.ai)
+# Greenfield nonproduction
 metrum-genai-smartrouter-fleetctl customer bootstrap \
   --customer-id acme \
   --profile-ref "$FLEET_PROFILE_REF" \
@@ -344,6 +335,21 @@ metrum-genai-smartrouter-fleetctl customer delete \
   --sign-with-key /protected/lifecycle_approval_private_key.b64
 ```
 
+#### Metrum production (`llm-api`)
+
+Production traffic for Metrum engineering is Fleet tenant `llm-api`. Use the
+protected **production** profile and `--stage production` only:
+
+```bash
+export FLEET_PROFILE_REF='aws-ssm:///metrum/smartrouter/profiles/production'
+export FLEET_RUNTIME_BUNDLE_REF='aws-secretsmanager:///smartrouter/fleet/customers/llm-api/runtime-bundle'
+export FLEET_LICENSE_REF='aws-ssm:///metrum/smartrouter/fleet/llm-api/license-request'
+```
+
+Full topology, ownership transition, routine deploy, verification, rollback,
+and decommission criteria:
+[`docs/EKS_PRODUCTION_OPERATIONS.md`](EKS_PRODUCTION_OPERATIONS.md).
+
 `customer list` uses the shared registry automatically (no `--registry` in CWD).
 `customer delete --sign-with-key` writes a mode-`0600` delete approval under the
 customer workspace, then runs Fleet delete. External `--confirm-file` remains
@@ -353,7 +359,7 @@ supported for out-of-band signing. Optional `--retain-database` and
 ### Greenfield bootstrap (preferred)
 
 Use the [quick reference](#metrum-operator-quick-reference-sqlite-fleet-customers)
-`customer bootstrap` command. Secrets Manager rejects runtime bundles above
+`customer bootstrap` command for disposable non-production customers. Secrets Manager rejects runtime bundles above
 **65536** bytes; run `customer prepare-runtime-bundle --trim-catalog-only` first
 when the source config is larger. `--rewrite-paths fleet-eks` rewrites
 `/app/state` and `/app/logs` to `/var/lib/smart-llmrouter` before publish.
@@ -365,10 +371,11 @@ and `--auto-smoke`. Use `customer repair` when a prior deploy left retryable
 
 For grant-caller, update-config, recreate-with-delete-first, or external signing
 workflows, follow the same env exports and flags as the
-[quick reference](#metrum-operator-quick-reference-sqlite-fleet-customers), then
+[disposable non-production quick reference](#disposable-non-production-customers-staging-profile), then
 chain `publish-runtime-bundle` → `write-manifest` → sign → `customer create`.
-See [`docs/LLM_API_EKS_SQLITE_PARALLEL.md`](LLM_API_EKS_SQLITE_PARALLEL.md) for
-a validated instance record. `ROUTER_MODEL` / `--model` must match a group from
+For Metrum production `llm-api`, use
+[`docs/EKS_PRODUCTION_OPERATIONS.md`](EKS_PRODUCTION_OPERATIONS.md) (`write-manifest
+--stage production`). `ROUTER_MODEL` / `--model` must match a group from
 the caller's `/v1/models`; smoke requires exact assistant content `OK`.
 
 `metrum-genai-smartrouterctl callers generate` remains the customer-local draft tool and
@@ -393,7 +400,8 @@ admission](#first-disposable-e2e-admission). The Fleet CLI consumes but never
 creates that document. Credential-binding, ownership, activation, disposable
 E2E, security, and operations evidence is then recorded through [Recorded
 security and operations review](#recorded-security-and-operations-review).
-Production profiles remain rejected until #518. See [the Fleet lifecycle
+Metrum production profile authority:
+[EKS production operations](EKS_PRODUCTION_OPERATIONS.md). See [the Fleet lifecycle
 contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md) and [CLI boundary
 ADR](ADR_FLEET_AND_CUSTOMER_CLI_BOUNDARIES.md).
 
@@ -433,7 +441,7 @@ The candidate then follows #507-compatible migration/compatibility checks, #7 co
 
 An eligible customer owner/admin may request or inspect a per-tenant recovery point through the control plane, subject to entitlement, configured on-demand limit, retention, cost, and audit policy. The portal never exposes AWS, Kubernetes, database, KMS, snapshot, endpoint, DSN, or credential access.
 
-An admin may request a restore, but the launch default is a non-serving recovery candidate. A customer request cannot self-cut over a serving instance. Final cutover follows the configured protected approval rule and #518 production authority. #555 owns the durable restore/recovery job, secret/config/license/namespace/ingress wiring, and compensation; #554 supplies the required revalidation evidence.
+An admin may request a restore, but the launch default is a non-serving recovery candidate. A customer request cannot self-cut over a serving instance. Final cutover follows the configured protected approval rule; for Metrum `llm-api` see [EKS production operations](EKS_PRODUCTION_OPERATIONS.md). #555 owns the durable restore/recovery job, secret/config/license/namespace/ingress wiring, and compensation; #554 supplies the required revalidation evidence.
 
 Store policy, requests, attempts, immutable artifact references, restore approvals, recovery targets, retention/hold/cleanup events, and audit evidence relationally with tenant, source instance, profile scope, actor, and policy-revision foreign keys. Status surfaces only safe scalar references, timestamps, state, and error class.
 
@@ -481,17 +489,12 @@ Treat application/config rollback and database/data recovery as separate operati
 
 ## Promotion and retirement boundary
 
-#581 preflights and records source-to-target manifest/evidence handoff. #518 alone authorizes protected production rehearsal, change windows, canary/cutover, and protected rollback. Routine customer onboarding does not grant production cutover authority.
+#581 preflights and records source-to-target manifest/evidence handoff. Metrum
+engineering production (`llm-api`) is operated through
+[EKS production operations](EKS_PRODUCTION_OPERATIONS.md). Routine customer
+onboarding does not grant production profile authority.
 
 Customer retirement or incident cleanup requires a separately confirmed plan covering customer notification, traffic disablement, retention, license/caller access, and RDS/snapshot disposition. Do not treat a normal failed provisioning attempt as authorization to delete durable resources.
-
-## Parallel production-equivalent rehearsal (SQLite)
-
-The Metrum engineering parallel instance at `llm-api.apps.metrum.ai` is a
-Fleet SQLite customer deployment, not a `#518` production profile or Compose
-cutover. Compose production remains on Postgres; the EKS instance uses PVC
-SQLite only. See
-[`docs/LLM_API_EKS_SQLITE_PARALLEL.md`](LLM_API_EKS_SQLITE_PARALLEL.md).
 
 ## Related records
 
@@ -499,6 +502,8 @@ SQLite only. See
 - [#555 customer provisioning orchestration](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/555)
 - [#507 forward-only migration framework](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/507)
 - [#592 tenant-admin protected RDS recovery requests](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/592)
+- [EKS production operations](EKS_PRODUCTION_OPERATIONS.md)
 - [License Operations Runbook](LICENSE_OPERATIONS.md)
 - [Deployment Runbook](DEPLOYMENT.md)
-- [Production Runbook](PRODUCTION_RUNBOOK.md)
+- [Customer Docker Compose](DOCKER_DEPLOYMENT.md)
+- [Production Runbook pointer](PRODUCTION_RUNBOOK.md)

@@ -153,7 +153,7 @@ func customerRevokeCaller(args []string) {
 	if err != nil {
 		die("%v", err)
 	}
-	writeManifest(ws, common.ProfileRef, newRef, common.LicenseRef, "revoke")
+	writeManifest(ws, common.ProfileRef, newRef, common.LicenseRef, "revoke", "")
 	fmt.Println(mustJSON(map[string]any{
 		"caller_id":  id,
 		"status":     st,
@@ -242,7 +242,7 @@ func customerUpdateQuota(args []string) {
 	if err != nil {
 		die("%v", err)
 	}
-	writeManifest(ws, common.ProfileRef, newRef, common.LicenseRef, "quota")
+	writeManifest(ws, common.ProfileRef, newRef, common.LicenseRef, "quota", "")
 	fmt.Println(mustJSON(map[string]any{
 		"caller_ids": ids,
 		"activation": "signed-intent-required",

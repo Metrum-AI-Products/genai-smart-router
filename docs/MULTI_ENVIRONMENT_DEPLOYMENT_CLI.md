@@ -221,8 +221,10 @@ production-like rehearsal or production. After its passing E2E evidence
 exists, one qualified reviewer records the security/operations review; the
 implementing maintainer may self-review. See [First disposable E2E
 admission](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#first-disposable-e2e-admission)
-for the full safe-field and ordering contract. Production profiles remain
-rejected until #518.
+for the full safe-field and ordering contract. Metrum engineering production
+(`llm-api`, `metrum-production`) is authorized on Fleet; see
+[EKS production operations](EKS_PRODUCTION_OPERATIONS.md). Dedicated-RDS
+production-like paths outside that authorized tenant remain separately gated.
 
 ```bash
 metrum-genai-smartrouter-fleetctl databases status --profile-ref aws-ssm:///approved/nonproduction/profile \

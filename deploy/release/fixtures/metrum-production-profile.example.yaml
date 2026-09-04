@@ -1,5 +1,15 @@
 # Example protected Fleet profile for Metrum production (llm-api tenant).
 # Store the live document in SSM; never commit secrets or runtime bundles.
+#
+# One-time ownership transitions from a predecessor nonproduction owner may set:
+# ownership_transition:
+#   customer_id: llm-api
+#   source_profile_id: staging-fleet-nonprod
+#   source_stage: nonproduction
+#   source_instance_id: instance-fdcca5e10ce3f145c4a7
+#   change_reference: "#1052"
+#   expires_at: 2026-09-10T00:00:00Z
+# Remove ownership_transition from the protected profile after the promotion succeeds.
 api_version: metrum.ai/smartrouter-profile/v1
 profile_id: metrum-production
 environment: production

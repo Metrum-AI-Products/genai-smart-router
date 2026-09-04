@@ -141,10 +141,10 @@ delivery/bootstrap/image-publisher access and all mutation must remain denied
 until their independently authorized gate. Enrolled operators must not use the
 platform-IaC role for Fleet deploy/delete.
 
-See [EKS staging migration: One-time authorization
-bootstrap](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap) for the
-credential-free profile shape, verification command, privileged
-attestation/admission/RBAC bootstrap order, and complete repair lifecycle.
+See this document for the credential-free profile shape and verification
+command. Metrum production operations:
+[EKS production operations](EKS_PRODUCTION_OPERATIONS.md). Historical staging
+Make delivery is a stub: [EKS staging migration](EKS_STAGING_MIGRATION.md).
 
 Run the canonical bootstrap target. Before it creates a one-time source key,
 it atomically reserves the mode-0600 recovery-record path. It then exchanges

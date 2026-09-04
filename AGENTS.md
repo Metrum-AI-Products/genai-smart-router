@@ -8,7 +8,7 @@ These instructions apply to the whole repository.
 - Main checked-in sample config is `config.example.yaml`.
 - Local real provider keys are in ignored `env.json`.
 - Local production snapshot is ignored `config.production.yaml`; keep it synced with the deployed config when production changes.
-- Deployment notes are in `deployment.md` and `docs/DOCKER_DEPLOYMENT.md`, but always verify live production state before acting.
+- Deployment notes: Metrum production ops in `docs/EKS_PRODUCTION_OPERATIONS.md`; dated evidence in `deployment.md`; customer Compose in `docs/DOCKER_DEPLOYMENT.md`. Always verify live production state before acting.
 
 ## Core Rules
 
@@ -297,8 +297,9 @@ Do not run EC2 and EKS as concurrent writers.
   time-bounded RDS admission exactly binds its non-production profile,
   deterministic job/intent, namespace, database profile, and manifest digest.
   `metrum-genai-smartrouter-fleetctl` may consume but MUST NOT create, update, emit, or persist
-  that admission. Production profiles remain rejected until #518 authorizes
-  them. #921 (commerce entitlement) and #586 supply approved customer/config/license intent for provisioning; #507
+  that admission. Metrum engineering production (`llm-api`, profile
+  `metrum-production`) is authorized on Fleet as of 2026-09-01; see
+  `docs/EKS_PRODUCTION_OPERATIONS.md`. #921 (commerce entitlement) and #586 supply approved customer/config/license intent for provisioning; #507
   supplies migration compatibility.
 - The #555 security/operations review requires one qualified reviewer, and a
   single-maintainer deployment may self-review. The reviewer may be the same
@@ -323,6 +324,8 @@ Do not run EC2 and EKS as concurrent writers.
 ### Current Metrum production boundary
 
 - Tenant `llm-api` in namespace `llm-api` on cluster `metrum` is the sole writer.
+- Protected profile: `aws-ssm:///metrum/smartrouter/profiles/production`
+  (`profile_id: metrum-production`, `environment: production`).
 - SQLite on the tenant PVC holds usage, quota, and license state; do not scale
   horizontally while file-backed quota/license remain on SQLite.
 - Protected profile `environment: production` with `approved_alias_hostnames` for
@@ -330,6 +333,7 @@ Do not run EC2 and EKS as concurrent writers.
 - Trusted ingress proxy CIDR: `192.168.0.0/16`, never the legacy Compose-only
   `172.18.0.0/16`.
 - Dedicated Postgres for Metrum production is deferred; SQLite is authoritative.
+- Operator runbook: `docs/EKS_PRODUCTION_OPERATIONS.md`.
 
 ## Production Config Update Process
 
@@ -341,13 +345,14 @@ For Metrum Fleet production config changes:
 3. Validate with structured YAML parsing and
    `rtk python3 scripts/prepare_fleet_production_bundle.py`.
 4. Run `rtk go test ./cmd/... ./internal/...`.
-5. Deploy through a new signed immutable Fleet intent (`customer update-config`
-   or `customer deploy` per `docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md`).
+5. Deploy through a new signed immutable Fleet intent
+   (`customer write-manifest --stage production` + signed `customer create`
+   per `docs/EKS_PRODUCTION_OPERATIONS.md`).
 6. Verify `https://llm-api-engg.metrum.ai/readyz` and targeted authenticated smokes.
-7. Update `deployment.md`.
+7. Update `deployment.md` (evidence ledger only).
 
 Customer Docker Compose config updates remain documented in
-`docs/PRODUCTION_RUNBOOK.md` (Compose section) and `docs/DOCKER_DEPLOYMENT.md`.
+`docs/DOCKER_DEPLOYMENT.md`.
 
 ## Production Package Deployment Process
 
@@ -358,11 +363,12 @@ For Metrum Fleet production image updates:
 3. Commit before building so `VERSION` is not `-dirty`.
 4. Build and push the immutable image to the Metrum ECR repository; update
    `approved_release_digest` in the protected production profile.
-5. Deploy with a signed Fleet intent (`customer deploy`) per
-   `docs/EKS_PRODUCTION_OPERATIONS.md`.
+5. Deploy with a signed Fleet intent
+   (`customer write-manifest --stage production` + signed `customer create`)
+   per `docs/EKS_PRODUCTION_OPERATIONS.md`.
 6. Verify `/readyz`, `/version`, hosted docs, authenticated API smokes, and
    Codex/Claude Code CLI smokes when client compatibility changed.
-7. Update `deployment.md`.
+7. Update `deployment.md` (evidence ledger only).
 
 Customer Docker Compose package deployment remains in `docs/DOCKER_DEPLOYMENT.md`
 using `scripts/compose_package_upgrade.py` for self-hosted installs only.
@@ -503,7 +509,8 @@ rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspee
   private, encrypted, RDS-Proxy-disabled instances with ownership-safe final
   snapshots. It MUST stay unattached unless a validated, time-bounded
   non-production admission is supplied; the shipped CLI MUST NOT create that
-  admission. Production profiles remain rejected until #518.
+  admission. Metrum production profile authority is documented in
+  `docs/EKS_PRODUCTION_OPERATIONS.md`.
 - Every `metrum-smartrouterctl` occurrence outside its compatibility command
   and package validation MUST explicitly say `one-release compatibility` or
   `one-release rename notice`; treat those occurrences as intentional until
