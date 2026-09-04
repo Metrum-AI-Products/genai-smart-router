@@ -36,12 +36,16 @@ OPS-03 (#1021) capability spot-checks the same window (not a closeout):
 | Chat tools (`big-coder`) | HTTP 200, `finish_reason=tool_calls`, request ID `req_28e8467237e49561818f96640ad5b984` |
 | Anthropic Messages (`big-coder`) | HTTP 200, request ID `req_40fa15541f44a742ee9d534073a4ffc6` |
 | Responses without `reasoning` (`big-coder`) | HTTP 200, `status=completed`, request ID `req_9444d1f692b65893a5c09462e6f2d253` |
-| Responses + `reasoning` (`big-coder`) | HTTP 502 `no-eligible-target`, request ID `req_3a76f1d365f1ee89d731265494b905c7` — blocked by open #1056 |
+| Responses + `reasoning` (`big-coder`) | HTTP 502 `no-eligible-target`, request ID `req_3a76f1d365f1ee89d731265494b905c7` — open #1056; in-repo regression/fixture + reference metadata lock landed on main tip after this ledger row; live remains blocked until production Responses reasoning catalog/group sync + smoke |
 
 Claude Code CLI text/tools and image/VLM matrix rows were not re-run in this
 window; prior #1052 ledger evidence remains the last recorded Claude Code pass.
 OPS-03 stays open until every launch-claimed surface passes, including Codex
-CLI Responses+reasoning (#1056).
+CLI Responses+reasoning (#1056). Live production config must keep at least one
+native OpenAI Responses target with validated `reasoning` plus function-tool
+metadata in each Codex-facing coding group (reference: MiniMax Responses and
+OpenAI `gpt-5.4-nano`); Chat skins or Chat+`dialect` overrides without
+Responses reasoning metadata are insufficient.
 
 ## 2026-09-04 Production ownership transition (#1052) and EC2 decommission (#951)
 

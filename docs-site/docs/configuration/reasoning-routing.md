@@ -93,6 +93,8 @@ In this example, `coding` is only a sample group name. Ordinary compatible reque
 
 If no compatible target remains, the router returns `502 no-eligible-target` before sending an upstream request. The response requirements include `reasoning`.
 
+Codex CLI sessions use OpenAI Responses and commonly send both function tools and a `reasoning` object. That request shape needs at least one **Responses** target in the requested group with both `tool_support.openai_responses` function tools and validated `reasoning` metadata (`supported: true` with a compatible control such as `effort_enum`). A Chat Completions target, or a Chat provider only labeled with `dialect: openai-responses` without Responses-catalog reasoning metadata, is not enough even when Responses+tools without reasoning still succeeds. Prefer a dedicated Responses provider skin for Codex rather than relying on dialect overrides. The reference config keeps MiniMax Responses and OpenAI `gpt-5.4-nano` as Responses reasoning-capable coding-group examples; deployments must keep equivalent metadata on the live coding groups they expose to Codex.
+
 Reasoning changes for coding-agent groups should be validated with a sanitized agent smoke matrix as well as tiny direct provider probes. The matrix should include OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, Anthropic Messages `thinking`, bridge positive cases, and negative cases such as previous-response state on stateless bridges, unsupported streaming bridge requests, image+tools+reasoning without a compatible target, and thinking budget/output-cap conflicts. Run it against a dedicated smoke group with a caller token explicitly allowed to that group.
 
 ## Caller Examples

@@ -1,0 +1,89 @@
+{
+  "name": "codex-responses-reasoning-eligibility",
+  "source_incident_issue": "#1056",
+  "observed_model_group": "big-coder",
+  "test_model_group": "codex-responses-reasoning-smoke",
+  "client_name": "Codex CLI",
+  "surface": "openai_responses",
+  "stream": false,
+  "message_count": 1,
+  "tool_count": 1,
+  "image_count": 0,
+  "reasoning_control": "reasoning",
+  "reasoning_effort": "low",
+  "output_cap_field": "max_output_tokens",
+  "output_cap_value": 64,
+  "request_bytes_bucket": "1kb-16kb",
+  "tool_schema_bytes_bucket": "1b-1kb",
+  "estimated_input_tokens_bucket": "small",
+  "required_capabilities": [
+    "openai_responses",
+    "tools",
+    "openai-responses_tool_passthrough",
+    "reasoning"
+  ],
+  "without_reasoning_expected_status": 200,
+  "with_reasoning_missing_metadata_expected_error": "no-eligible-target",
+  "with_reasoning_validated_metadata_expected_status": 200,
+  "production_smoke_safe_payload_template": "synthetic-responses-reasoning-tool-v1",
+  "telemetry_assertions": [
+    "request_id",
+    "inbound_dialect",
+    "selected_provider_model_dialect",
+    "request_shape_buckets",
+    "target_candidates",
+    "filter_reasons",
+    "sanitized_error_class"
+  ],
+  "forbidden_fixture_content": [
+    "raw_private_prompts",
+    "raw_customer_tool_schemas",
+    "raw_images",
+    "bearer_tokens",
+    "provider_keys",
+    "token_hashes",
+    "full_production_config"
+  ],
+  "production_access_note": "Grant a scoped smoke caller access to deployment-defined coding or smoke groups before production validation; do not edit broad production groups solely to run this fixture. Preserve only safe scalars.",
+  "request_with_reasoning": {
+    "model": "codex-responses-reasoning-smoke",
+    "input": "Reply OK only.",
+    "max_output_tokens": 64,
+    "reasoning": {"effort": "low"},
+    "tools": [
+      {
+        "type": "function",
+        "name": "echo_marker",
+        "description": "Echo a synthetic marker.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "marker": {"type": "string"}
+          },
+          "required": ["marker"],
+          "additionalProperties": false
+        }
+      }
+    ]
+  },
+  "request_without_reasoning": {
+    "model": "codex-responses-reasoning-smoke",
+    "input": "Reply OK only.",
+    "max_output_tokens": 64,
+    "tools": [
+      {
+        "type": "function",
+        "name": "echo_marker",
+        "description": "Echo a synthetic marker.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "marker": {"type": "string"}
+          },
+          "required": ["marker"],
+          "additionalProperties": false
+        }
+      }
+    ]
+  }
+}
