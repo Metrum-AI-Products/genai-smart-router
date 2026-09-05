@@ -16,11 +16,11 @@ infer the running version from a date written in documentation.
 
 ## v1.0.0 - 2026-09-07
 
-Release notes approved on 2026-09-04 for the planned 2026-09-07 launch. The
-v1.0.0 release has not been deployed or published. Production still reports a
-stale live revision and the current production Fleet profile is not resolvable;
-post-deploy identity and runtime verification remain the final operational GO
-condition. This entry does not imply that a tag or GitHub Release exists.
+Release notes approved on 2026-09-04 for the planned 2026-09-07 launch window.
+Freeze commit `a77be222e2c35c2ec839e4be09387a9cbc57365f` was deployed to Metrum
+Fleet production and published as annotated signed tag / private GitHub Release
+`v1.0.0` on 2026-09-05 UTC. Production `/version` reports `v1.0.0` for that
+freeze. Repository visibility remains private.
 
 ### Highlights
 

@@ -18,8 +18,9 @@ Customer self-hosted Docker Compose stays a supported **customer** option in
 | Primary hostname | `https://llm-api.apps.metrum.ai` |
 | Production aliases | `https://llm-api-engg.metrum.ai`, `https://llm-api.metrum.ai` |
 | DNS | Both aliases CNAME to `llm-api.apps.metrum.ai` → EKS ingress (cutover 2026-09-01) |
-| Live revision (post #1052) | `902e45b` / ECR digest `sha256:c5bf16215687013d24a5ecfc99f40b3337e944778fee792b940753e3fe6e4be7` |
+| Live revision (v1.0.0) | `a77be222e2c35c2ec839e4be09387a9cbc57365f` / ECR digest `sha256:20ecafe9dd6af1692f1ec4986e577d7e1302f3ccdb92fbaf8b0af522c608dbed` |
 | Production owner | `instance-2278b384bf563c59df11` (`metrum-production` / `production`) |
+| Rollback digest | `sha256:c5bf16215687013d24a5ecfc99f40b3337e944778fee792b940753e3fe6e4be7` (`902e45b`) |
 | Trusted proxy CIDR | `192.168.0.0/16` (never the legacy Compose-only `172.18.0.0/16`) |
 
 | Surface | Role |

@@ -6,7 +6,39 @@
 > all Metrum production image, config, ownership, verification, rollback, and
 > decommission work. Do not treat older dated sections as executable procedures.
 
-Last deployed: 2026-09-04
+Last deployed: 2026-09-05
+
+## 2026-09-05 v1.0.0 freeze deploy, signed tag, and launch gate closeout
+
+Deployed freeze commit `a77be222e2c35c2ec839e4be09387a9cbc57365f` to Fleet
+production tenant `llm-api`, published annotated SSH-signed tag and private
+GitHub Release `v1.0.0`, and formally closed remaining launch gates with dated
+owner dispositions (Chetan Gadgil; CEO Steen Graham 2026-09-04 approval cited
+for release notes / governance / docs-build residual only). Repository
+visibility unchanged (**private**).
+
+- Image: `121701826775.dkr.ecr.us-east-1.amazonaws.com/smart-llmrouter@sha256:20ecafe9dd6af1692f1ec4986e577d7e1302f3ccdb92fbaf8b0af522c608dbed`
+  (`VERSION=v1.0.0`, `build_date=2026-09-05T02:51:09Z`).
+- Production SSM profile `approved_release_digest` pinned (no
+  `ownership_transition`, no embedded `aws_profile`).
+- Runtime bundle: Responses catalog `reasoning` metadata synced for
+  `minimax_responses/m3`, `openai/gpt-5.4-nano`, `xai/grok-4-5`,
+  `fireworks/gpt-oss-20b`; SEC-01 caller rotation to
+  `llm-api-admin-llm-api-eks-production` (predecessor `rotated`; old token
+  rejected as `key-rotated`); license envelope re-signed to runtime issuer
+  `self-managed` matching the freeze binary; SSM license-request updated.
+- Release: https://github.com/sysadmin-metrum-ai/genai-smart-router/releases/tag/v1.0.0
+  (linux amd64/arm64 binary + Docker packages, `SHA256SUMS`,
+  `release-artifacts.json`; package-content validation passed; SBOM/Grype
+  Critical threshold pass).
+- Verification (safe scalars): `/readyz` 200 on engg/primary/apps;
+  `/version` commit `a77be22…` / `v1.0.0`; `/v1/models` 200 (25); metrics 403;
+  Chat 200; Anthropic Messages 200; Claude Code CLI OK; Responses+tools+reasoning
+  200; Codex CLI `wire_api=responses` OK.
+- Gate closeout: OPS-03/06/07, LCH-03/04, REL-01…09, LGL-02…05, SEC-01/03–06,
+  COM-04, DAY-01…06, and category parents formally closed with evidence comments.
+- Rollback: redeploy prior digest `sha256:c5bf162…` (`902e45b`) on the
+  production profile; never revert ownership labels to staging.
 
 ## 2026-09-04 OPS-02 re-smoke after #1057 on main (live still `902e45b`)
 
