@@ -142,9 +142,10 @@ until their independently authorized gate. Enrolled operators must not use the
 platform-IaC role for Fleet deploy/delete.
 
 See this document for the credential-free profile shape and verification
-command. Metrum production operations:
-[EKS production operations](EKS_PRODUCTION_OPERATIONS.md). Historical staging
-Make delivery is a stub: [EKS staging migration](EKS_STAGING_MIGRATION.md).
+command. Fleet customer and production-stage operations:
+[Customer instance operations](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md).
+Historical staging Make delivery is retired; do not revive those targets for
+live mutation.
 
 Run the canonical bootstrap target. Before it creates a one-time source key,
 it atomically reserves the mode-0600 recovery-record path. It then exchanges

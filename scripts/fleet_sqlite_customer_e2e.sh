@@ -50,7 +50,7 @@ echo "live SQLite customer E2E customer_id=${CUSTOMER_ID}"
   --token-out "$TOKEN_OUT" \
   --model "$MODEL"
 
-HOST="https://${CUSTOMER_ID}.apps.metrum.ai"
+HOST="https://${CUSTOMER_ID}.apps.example.test"
 curl -fsS "${HOST}/readyz" >/dev/null
 MODELS=$(curl -fsS -H "Authorization: Bearer $(tr -d '\n' <"$TOKEN_OUT")" "${HOST}/v1/models")
 echo "$MODELS" | grep -q '"data"'

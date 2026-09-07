@@ -25,12 +25,9 @@ Collected 2026-09-03 from the following repository sources:
   that proves a change, distinguishes smoke compatibility evidence from broader
   outcome evaluation, specifies deterministic and live-smoke examples, and
   requires sanitized evidence fields for relevant validation.
-- `docs/PRODUCTION_PROMOTION_CONTRACT.md` — historical promotion-gate record;
-  after 2026-09-01 it points operators to `docs/EKS_PRODUCTION_OPERATIONS.md`
-  for Metrum Fleet production. The 2026-09-03 collection described the former
-  Make-target / hash-pinned promotion-manifest procedure.
-- `docs/PRODUCTION_RUNBOOK.md` — pointer to Metrum Fleet ops
-  (`EKS_PRODUCTION_OPERATIONS.md`) and customer Compose (`DOCKER_DEPLOYMENT.md`).
+- `docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md` — Fleet customer instance
+  operations and recorded security/operations review checklist.
+- `docs/DOCKER_DEPLOYMENT.md` — customer Compose install and upgrade procedure.
   The 2026-09-03 collection described the former customer Compose procedure body.
 - Supplied Google tracker — anonymous access returned HTTP 401. No authenticated
   tracker content was collected or relied upon.

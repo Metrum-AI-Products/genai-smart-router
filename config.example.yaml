@@ -22,15 +22,15 @@ server:
     # Serving binaries do not apply application DDL. Run router-migrate as the
     # reviewed deployment job, then keep startup in deployment-job validation.
     migration_policy: deployment-job
-  # Offline signed JSON license enforcement. Normal builds always enforce a
-  # Metrum-issued license.json; runtime config cannot disable licensing.
+  # Offline signed JSON license enforcement. Normal builds always enforce an
+  # operator-issued license.json; runtime config cannot disable licensing.
   # Internal developers who need temporary no-license local testing must build
   # with the internal dev_no_license tag instead of changing YAML.
   license:
     enabled: true
     path: /app/config/license.json
     state_path: /app/state/license-state.json
-    # Set exactly one fingerprint source when Metrum issues an instance-bound
+    # Set exactly one fingerprint source when the operator issues an instance-bound
     # license for this deployment. The router hashes the effective fingerprint
     # before matching modern licenses and never exposes the raw value in status.
     instance_fingerprint: ""
@@ -38,8 +38,8 @@ server:
     instance_fingerprint_env: ""
     recheck_interval: 1h
     grace_period_on_validation_error: 24h
-    # Optional signed revocation-bundle enforcement. Keep mode off unless Metrum
-    # provides a signed revocations.json bundle for this deployment.
+    # Optional signed revocation-bundle enforcement. Keep mode off unless the
+    # operator maintains a signed revocations.json bundle for this deployment.
     revocation:
       mode: off
       path: /app/config/revocations.json
@@ -2441,8 +2441,8 @@ users:
   type: service_account
   status: active
 projects:
-- id: metrum-insights
-  name: Metrum Insights
+- id: example-project
+  name: Example Project
   status: active
 - id: observability
   name: Observability
@@ -2452,11 +2452,11 @@ projects:
   status: active
 project_memberships:
 - user_id: standard
-  project: metrum-insights
+  project: example-project
   role: developer
   status: active
 - user_id: coding
-  project: metrum-insights
+  project: example-project
   role: developer
   status: active
 - user_id: metrics-admin
@@ -2473,11 +2473,11 @@ callers:
 # name the caller ids without printing the hash value.
 - id: standard-dev
   owner_user: standard
-  project: metrum-insights
+  project: example-project
   environment: dev
   status: active
   token_sha256: REPLACE_WITH_SHA256_HEX_OF_STANDARD_ROUTER_TOKEN
-  token_id: rtr_metrum_standard_metrum-insights_dev_kreplace
+  token_id: rtr_metrum_standard_example-project_dev_kreplace
   metrics_admin: false
   content_admin: false
   allow:
@@ -2522,11 +2522,11 @@ callers:
     on_exhaust: disable
 - id: coding-dev
   owner_user: coding
-  project: metrum-insights
+  project: example-project
   environment: dev
   status: active
   token_sha256: REPLACE_WITH_SHA256_HEX_OF_CODING_ROUTER_TOKEN
-  token_id: rtr_metrum_coding_metrum-insights_dev_kreplace
+  token_id: rtr_metrum_coding_example-project_dev_kreplace
   metrics_admin: false
   content_admin: false
   allow:

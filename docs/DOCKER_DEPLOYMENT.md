@@ -297,8 +297,8 @@ Generate a caller token:
 
 ```bash
 docker run --rm --entrypoint /app/bin/router-token-gen smart-llmrouter:<version>-linux-amd64 generate \
-  --owner-user chetan \
-  --project metrum-insights \
+  --owner-user alice \
+  --project example-project \
   --env dev \
   --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
@@ -318,7 +318,7 @@ Review `compose/.env`:
 ```bash
 SMART_LLMROUTER_VERSION=<version>-linux-amd64
 ROUTER_HOSTNAME=your-router.example.com
-CADDY_EMAIL=chetan@metrum.ai
+CADDY_EMAIL=admin@example.com
 CADDY_HTTP_PORT=80
 CADDY_HTTPS_PORT=443
 POSTGRES_DB=llmrouter

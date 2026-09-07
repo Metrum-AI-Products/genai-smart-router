@@ -2,16 +2,16 @@
 # Copyright 2006 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
-"""Backup release package tarballs from DIST_DIR to the Metrum CTO restic repo.
+"""Backup release package tarballs from DIST_DIR to an operator-configured restic repo.
 
 Credentials come from ignored ops.env.json (preferred), env.json (legacy mixed),
 or the process environment:
   BACKUP_USER, BACKUP_PASS, RESTIC_PASSWORD
 
-Optional overrides:
-  RESTIC_REPOSITORY  full restic repo URL (rarely needed)
-  RESTIC_REPO_HOST   default backups.metrum.ai
-  RESTIC_REPO_PATH   default metrum-cto
+Repository (one of):
+  RESTIC_REPOSITORY  full restic repo URL
+  RESTIC_REPO_HOST + RESTIC_REPO_PATH  with BACKUP_USER/BACKUP_PASS
+    (no compiled-in host or path defaults; both host and path are required)
 
 Local dist/ artifacts keep the version/hash in their filenames. Before upload,
 this script stages one complete release set under stable basenames so restic
@@ -44,8 +44,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OPS_ENV_JSON = ROOT / "ops.env.json"
 DEFAULT_ENV_JSON = ROOT / "env.json"
-DEFAULT_HOST = "backups.metrum.ai"
-DEFAULT_PATH = "metrum-cto"
 # Fixed staging path so restic snapshot paths stay identical across uploads.
 # tmp/ is gitignored; local hashed dist/ filenames are left unchanged.
 STABLE_STAGE_DIR = ROOT / "tmp" / "restic-dist-upload"
@@ -300,8 +298,13 @@ def build_repository_url(creds: dict[str, str]) -> str:
         return explicit
     user = urllib.parse.quote(require_credential(creds, "BACKUP_USER"), safe="")
     password = urllib.parse.quote(require_credential(creds, "BACKUP_PASS"), safe="")
-    host = creds.get("RESTIC_REPO_HOST", DEFAULT_HOST).strip() or DEFAULT_HOST
-    path = creds.get("RESTIC_REPO_PATH", DEFAULT_PATH).strip().strip("/") or DEFAULT_PATH
+    host = require_credential(creds, "RESTIC_REPO_HOST")
+    path = require_credential(creds, "RESTIC_REPO_PATH").strip().strip("/")
+    if not path:
+        raise SystemExit(
+            "RESTIC_REPO_PATH is required in ignored ops.env.json (or legacy env.json) "
+            "or the process environment"
+        )
     return f"rest:https://{user}:{password}@{host}/{path}"
 
 
@@ -365,12 +368,14 @@ def backup_packages(
 
 def self_test() -> None:
     with_creds = {
-        "BACKUP_USER": "chetan",
+        "BACKUP_USER": "backup-user",
         "BACKUP_PASS": "example-pass",
         "RESTIC_PASSWORD": "example-restic",
+        "RESTIC_REPO_HOST": "example.com",
+        "RESTIC_REPO_PATH": "backups/smart-llmrouter",
     }
     url = build_repository_url(with_creds)
-    expected = "rest:https://chetan:example-pass@backups.metrum.ai/metrum-cto"
+    expected = "rest:https://backup-user:example-pass@example.com/backups/smart-llmrouter"
     if url != expected:
         raise AssertionError(f"repository URL mismatch: {url!r}")
 
@@ -379,10 +384,25 @@ def self_test() -> None:
             "BACKUP_USER": "u/n",
             "BACKUP_PASS": "p@ss:word",
             "RESTIC_PASSWORD": "x",
+            "RESTIC_REPO_HOST": "example.com",
+            "RESTIC_REPO_PATH": "backups/smart-llmrouter",
         }
     )
     if "u%2Fn" not in encoded or "p%40ss%3Aword" not in encoded:
         raise AssertionError(f"credentials were not URL-encoded: {encoded!r}")
+
+    try:
+        build_repository_url(
+            {
+                "BACKUP_USER": "backup-user",
+                "BACKUP_PASS": "example-pass",
+                "RESTIC_PASSWORD": "example-restic",
+            }
+        )
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("expected missing RESTIC_REPO_HOST/PATH to fail")
 
     explicit = build_repository_url({"RESTIC_REPOSITORY": "rest:https://example/repo"})
     if explicit != "rest:https://example/repo":

@@ -136,14 +136,18 @@ GitHub Release remain release-authority actions. After publication, download
 every asset into an empty directory, run `sha256sum --check SHA256SUMS`, and
 record the public URL and result in the release evidence.
 
-Metrum CTO release archival uses restic against the protected backup repository.
-`make package-all` produces the fleet-admin binary packages (includes
-`metrum-fleetctl` and related Fleet CLIs). `make package-docker-all` produces
-the shared customer Docker packages; customer license payloads are issued
-separately and are never packaged. After both families exist under `dist/`:
+Release archival uses restic against an operator-configured backup repository.
+Set `RESTIC_REPOSITORY` or `RESTIC_REPO_HOST` plus `RESTIC_REPO_PATH` (with
+`BACKUP_USER`/`BACKUP_PASS`) in ignored `ops.env.json`; there are no compiled-in
+host or path defaults. `make package-all` produces the fleet-admin binary
+packages (includes `metrum-fleetctl` and related Fleet CLIs).
+`make package-docker-all` produces the shared customer Docker packages; customer
+license payloads are issued separately and are never packaged. After both
+families exist under `dist/`:
 
 ```bash
-# Credentials in ignored env.json: BACKUP_USER, BACKUP_PASS, RESTIC_PASSWORD
+# Credentials in ignored ops.env.json: BACKUP_USER, BACKUP_PASS, RESTIC_PASSWORD,
+# and RESTIC_REPOSITORY or RESTIC_REPO_HOST + RESTIC_REPO_PATH
 make dist-backup
 ```
 
@@ -202,10 +206,11 @@ supported. Its offline gate checks manifest structure and security invariants;
 record hardware-backed direct-upstream and router smokes before making a
 deployment-specific compatibility claim.
 
-Metrum engineering production runs on the Fleet tenant documented in
-`docs/EKS_PRODUCTION_OPERATIONS.md`. Generic Kubernetes samples remain under
+Fleet customer and production-stage operations use
+`docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md`. Generic Kubernetes samples remain under
 `deploy/kubernetes/base/` and `deploy/kubernetes/overlays/example/`. Historical
-staging notes: `docs/EKS_STAGING_MIGRATION.md` (archived 2026-09-01).
+staging Make delivery notes are retired (archived 2026-09-01); do not revive
+those targets for live mutation.
 
 ## Example Deployment Host
 
@@ -280,8 +285,8 @@ Generate a caller token and append the generated caller block to `config.yaml`:
 
 ```bash
 /opt/smart-llmrouter/bin/router-token-gen generate \
-  --owner-user chetan \
-  --project metrum-insights \
+  --owner-user alice \
+  --project example-project \
   --env dev \
   --allow <allowed-model-group>[,<allowed-model-group>...]
 ```

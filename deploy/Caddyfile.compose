@@ -1,5 +1,5 @@
 {
-	email {$CADDY_EMAIL:chetan@metrum.ai}
+	email {$CADDY_EMAIL:admin@example.com}
 }
 
 {$ROUTER_HOSTNAME:router.example.com} {

@@ -63,10 +63,16 @@ When fixing incidents, check whether the downstream body tells the caller the ri
 
 ## Health And Version
 
+Replace `<router-host>` with the deployment under test. For Compose installs,
+inspect the operator host with the deployment owner's SSH identity and path—never
+commit private IPs, key paths, or production hostnames into this runbook.
+
 ```bash
-rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
-rtk curl -fsS https://llm-api-engg.metrum.ai/version
-rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@54.84.22.33 'cd /opt/smart-llmrouter/compose && sudo docker compose ps'
+rtk curl -fsS https://<router-host>/readyz
+rtk curl -fsS https://<router-host>/version
+# Compose example on the operator host (paths are deployment-owned):
+# ssh -i <operator-ssh-key> <user>@<operator-host> \
+#   'cd /opt/smart-llmrouter/compose && sudo docker compose ps'
 ```
 
 Production Compose package refreshes use `scripts/compose_package_upgrade.py` (`plan`, then `apply --remote`). A deliberate empty Compose Postgres usage store uses `scripts/compose_clean_cutover.py` (`plan`, then `apply --confirm-reset-usage reset-postgres-data --remote`). Do not invent a host unpacker or `docker compose down` with volumes. See `docs/DOCKER_DEPLOYMENT.md` and `docs/DATA_MIGRATIONS.md`.
@@ -100,7 +106,7 @@ For a single failed request, prefer the evidence bundle endpoint before writing 
 
 ```bash
 rtk curl -u admin:<password> \
-  "https://llm-api-engg.metrum.ai/admin/reports/api/request-evidence?request_id=<request_id>"
+  "https://<router-host>/admin/reports/api/request-evidence?request_id=<request_id>"
 ```
 
 The same data is available at `/admin/reports/api/request/<request_id>` for path-style drilldown links. Both endpoints require `admin:reports` `drilldown`, send `Cache-Control: no-store`, and return `403 reports-forbidden` to ordinary router caller tokens. Domain-scoped admins receive `404` for request IDs outside their Casbin domain.
@@ -169,7 +175,7 @@ For incident windows with many requests, page the admin request API instead of a
 
 ```bash
 rtk curl -u admin:<password> \
-  "https://llm-api-engg.metrum.ai/admin/reports/api/requests?since=24h&limit=50&client=codex-cli&sort=timeUtc&direction=desc"
+  "https://<router-host>/admin/reports/api/requests?since=24h&limit=50&client=codex-cli&sort=timeUtc&direction=desc"
 ```
 
 Use the returned `pagination.next_cursor` for the next page. The cursor is opaque and bound to the endpoint, sort, and direction; a malformed or stale cursor returns `400 invalid-report-filter`. Domain-scoped admins continue to see only their project/environment on every page. Aggregate tabs such as usage by key or provider/model are top-N summaries and should be used to identify dimensions before drilling into the cursor-paged request or security-event APIs.
@@ -245,7 +251,7 @@ Then run the repeatable proof:
 
 ```bash
 rtk python3 scripts/reasoning_smoke.py \
-  --base-url https://llm-api-engg.metrum.ai \
+  --base-url https://<router-host> \
   --token-file <router-token-file> \
   --model <group> \
   --postgres-dsn "$ROUTER_USAGE_DB_DSN"
@@ -428,10 +434,12 @@ ORDER BY events DESC;
 
 ## Logs
 
-Recent router logs:
+Recent router logs on a Compose operator host (replace identity and path with
+deployment-owned values):
 
 ```bash
-rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@54.84.22.33 'cd /opt/smart-llmrouter/compose && sudo docker compose logs --tail=200 router'
+# ssh -i <operator-ssh-key> <user>@<operator-host> \
+#   'cd /opt/smart-llmrouter/compose && sudo docker compose logs --tail=200 router'
 ```
 
 Prefer DB traces for request-level details because logs should remain sanitized and compact.

@@ -6,11 +6,24 @@ import styles from "./RouterEndpoint.module.css";
 
 const FALLBACK_ORIGIN = "https://<router-host>";
 
+function isLikelyEmbeddedRouterDocs() {
+  if (typeof window === "undefined" || !window.location) {
+    return false;
+  }
+  const { hostname, pathname } = window.location;
+  if (!hostname || hostname === "docs.metrum.ai") {
+    return false;
+  }
+  // Standalone Docusaurus hosts and GitHub Pages must keep the placeholder.
+  // Embedded router docs are served under /docs/ from the customer router origin.
+  return pathname === "/docs" || pathname.startsWith("/docs/");
+}
+
 function useRouterOrigin() {
   const [origin, setOrigin] = useState(FALLBACK_ORIGIN);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.location?.origin) {
+    if (isLikelyEmbeddedRouterDocs() && window.location?.origin) {
       setOrigin(window.location.origin);
     }
   }, []);
@@ -27,12 +40,24 @@ export function RouterApiBase() {
 }
 
 export function DeploymentSpecificNote() {
+  const origin = useRouterOrigin();
+  const embedded = origin !== FALLBACK_ORIGIN;
   return (
     <div className="contactBanner">
       <p>
-        These docs are built into the hosted GenAI Smart Router server delivered for your deployment. Examples that
-        show the router base URL use this browser origin, so on this deployment they render as <RouterOrigin /> and{" "}
-        <RouterApiBase />.
+        {embedded ? (
+          <>
+            These docs are built into the GenAI Smart Router server delivered for your
+            deployment. Examples that show the router base URL use this browser origin, so
+            on this deployment they render as <RouterOrigin /> and <RouterApiBase />.
+          </>
+        ) : (
+          <>
+            Replace <code>{FALLBACK_ORIGIN}</code> with your deployment URL. When these docs
+            are served from a live router under <code>/docs/</code>, examples automatically
+            use that router origin.
+          </>
+        )}
       </p>
     </div>
   );

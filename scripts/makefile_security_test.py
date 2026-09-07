@@ -111,8 +111,9 @@ def main() -> int:
     make_database = run_make("-pn", "help", environment={"PATH": no_uv_path})
     require(make_database.returncode == 0, f"Make database inspection failed:\n{make_database.stderr}")
     require(
-        "EKS_AWS_PROFILE = genai-smart-router-eks-discovery" in make_database.stdout,
-        "legacy discovery targets must retain their discovery profile default",
+        "EKS_AWS_PROFILE =" in make_database.stdout
+        and "EKS_AWS_PROFILE = genai-smart-router-eks-discovery" not in make_database.stdout,
+        "EKS_AWS_PROFILE must have an empty Make default (operator-supplied)",
     )
 
     # Keep the exact bare-Make inspection path independent of the bootstrap

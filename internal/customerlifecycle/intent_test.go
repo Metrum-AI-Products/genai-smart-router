@@ -52,7 +52,7 @@ models:
 	write0600(t, licenseKey, "dGVzdA==\n")
 	intent = Intent{
 		CustomerID:       "acme",
-		Hostname:         "acme.apps.metrum.ai",
+		Hostname:         "acme.apps.example.test",
 		SKU:              "eval-72h",
 		CustomerEmail:    "ops@example.com",
 		CustomerAlias:    "acme",
@@ -83,11 +83,11 @@ func TestValidateIntentHostnameContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateIntent: %v", err)
 	}
-	if got.Hostname != "acme.apps.metrum.ai" || got.CustomerID != "acme" {
+	if got.Hostname != "acme.apps.example.test" || got.CustomerID != "acme" {
 		t.Fatalf("unexpected normalize: %+v", got)
 	}
 
-	intent.Hostname = "wrong.apps.metrum.ai"
+	intent.Hostname = "wrong.apps.example.test"
 	if _, err := ValidateIntent(intent); err == nil || !strings.Contains(err.Error(), "hostname must be") {
 		t.Fatalf("expected hostname mismatch, got %v", err)
 	}
@@ -98,12 +98,12 @@ func TestValidateIntentHostnameContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Hostname != "acme.apps.metrum.ai" {
+	if got.Hostname != "acme.apps.example.test" {
 		t.Fatalf("expected derived hostname, got %q", got.Hostname)
 	}
 
 	intent.CustomerID = ""
-	intent.Hostname = "acme.apps.metrum.ai"
+	intent.Hostname = "acme.apps.example.test"
 	got, err = ValidateIntent(intent)
 	if err != nil {
 		t.Fatal(err)
@@ -395,7 +395,7 @@ func TestBuildInstanceEnvJSON(t *testing.T) {
 	if err := json.Unmarshal(raw, &env); err != nil {
 		t.Fatal(err)
 	}
-	if env["OPENAI_API_KEY"] == "" || env["ROUTER_HTTP_REFERER"] != "https://acme.apps.metrum.ai" {
+	if env["OPENAI_API_KEY"] == "" || env["ROUTER_HTTP_REFERER"] != "https://acme.apps.example.test" {
 		t.Fatalf("unexpected env: keys=%v referer=%q", len(env), env["ROUTER_HTTP_REFERER"])
 	}
 	if strings.Contains(string(raw), "STRIPE") {
@@ -417,7 +417,7 @@ func TestSSMNameFromRef(t *testing.T) {
 }
 
 func TestExpectedHostname(t *testing.T) {
-	if got := ExpectedHostname("Acme"); got != "acme.apps.metrum.ai" {
+	if got := ExpectedHostname("Acme"); got != "acme.apps.example.test" {
 		t.Fatalf("got %q", got)
 	}
 }

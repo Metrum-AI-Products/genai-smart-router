@@ -16,7 +16,7 @@ const (
 	fleetBinaryName     = "metrum-genai-smartrouter-fleetctl"
 	fleetSignBinaryName = "metrum-genai-smartrouter-fleet-sign"
 	tokenGenBinaryName  = "router-token-gen"
-	hostnameSuffix      = "apps.metrum.ai"
+	hostnameSuffix      = "apps.example.test"
 )
 
 var customerIDRE = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)

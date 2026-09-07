@@ -22,7 +22,7 @@ MODULE = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = MODULE
 spec.loader.exec_module(MODULE)
 
-ACCOUNT = "121701826775"
+ACCOUNT = "123456789012"
 PRINCIPAL = f"arn:aws:iam::{ACCOUNT}:user/smart-router-lifecycle/test-operator"
 PLATFORM_IAC_CALLER = (
     f"arn:aws:sts::{ACCOUNT}:assumed-role/{MODULE.PLATFORM_IAC_ROLE_NAME}/enrollment-session"

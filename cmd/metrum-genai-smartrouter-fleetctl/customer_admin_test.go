@@ -18,18 +18,18 @@ users:
   type: service_account
   status: active
 projects:
-- id: metrum-insights
-  name: Metrum Insights
+- id: example-project
+  name: Example Project
   status: active
 project_memberships:
 - user_id: coding
-  project: metrum-insights
+  project: example-project
   role: developer
   status: active
 callers:
 - id: coding-prod
   owner_user: coding
-  project: metrum-insights
+  project: example-project
   environment: prod
   status: active
   token_sha256: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
@@ -66,10 +66,10 @@ func TestListCallersFromConfigIncludesProjectAndOmitsHash(t *testing.T) {
 		t.Fatalf("rows=%d", len(rows))
 	}
 	row := rows[0]
-	if row.ID != "coding-prod" || row.OwnerUser != "coding" || row.Project != "metrum-insights" {
+	if row.ID != "coding-prod" || row.OwnerUser != "coding" || row.Project != "example-project" {
 		t.Fatalf("identity=%+v", row)
 	}
-	if row.ProjectName != "Metrum Insights" || row.UserName != "Coding Agent" {
+	if row.ProjectName != "Example Project" || row.UserName != "Coding Agent" {
 		t.Fatalf("joined names=%+v", row)
 	}
 	if row.MembershipRole != "developer" || row.TokenID != "rtr_coding_prod" {

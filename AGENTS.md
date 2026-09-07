@@ -2,13 +2,44 @@
 
 These instructions apply to the whole repository.
 
+## Open-Source Public Repository Contract
+
+This repository is **public, Apache-2.0 open-source software** and will remain
+maintained in the open. Treat every checked-in path as public by default:
+source, examples, configs, scripts, tests, `docs/`, `docs-site/`, workflows,
+and agent instructions.
+
+Agents must remember and enforce:
+
+- **Keep Metrum branding.** Product and binary names (`metrum-genai-*`),
+  copyright and legal notices, logos, `contact@metrum.ai`, the canonical docs
+  host, legitimate public GitHub/support links, `metrum.ai/smartrouter-*` API
+  identities, and the branded `rtr_metrum_` token-id prefix stay.
+- **Never reintroduce private Metrum operations material.** Do not add live
+  production hosts or tenants, AWS account IDs or ARNs, ECR/SSM/Secrets Manager
+  path literals for Metrum, backup hosts or buckets, public IPs, SSH key paths,
+  Google Chat/workspace IDs, real caller or token IDs, personal emails in
+  copy-paste examples, private release evidence, or operator-only topology.
+- **Runtime `license.json` is operator-issued.** Operators generate and retain
+  their own Ed25519 keypair, signed `license.json`, and verification public key.
+  Do not describe licenses as coming from a Metrum issuer unless documenting an
+  optional Metrum-managed deployment service as a clearly labeled commercial
+  option.
+- **Copy-paste defaults stay generic.** Use `example.com` / `example.test`,
+  empty secret placeholders, dummy AWS account `123456789012`, and
+  `admin@example.com`. Never default scripts or examples to live Metrum
+  services such as backup hosts or production DNS.
+- **Private operator evidence stays out of this tree.** Protected deployment
+  ledgers, live tenant runbooks, and similar material belong in a private ops
+  boundary, not in public examples or docs.
+
 ## Project Shape
 
 - Go router implementation lives under `internal/router` and CLI entrypoints live under `cmd/`.
 - Main checked-in sample config is `config.example.yaml`.
 - Local real provider keys are in ignored `env.json`.
-- Local production snapshot is ignored `config.production.yaml`; keep it synced with the deployed config when production changes.
-- Deployment notes: Metrum production ops in `docs/EKS_PRODUCTION_OPERATIONS.md`; dated evidence in `deployment.md`; customer Compose in `docs/DOCKER_DEPLOYMENT.md`. Always verify live production state before acting.
+- Local deployment snapshot is ignored `config.production.yaml` when an operator keeps one; never commit it.
+- Customer Compose install guidance lives in `docs/DOCKER_DEPLOYMENT.md`. Binary and package install docs live under `docs/` and `docs-site/docs/installation/`.
 
 ## Core Rules
 
@@ -39,14 +70,14 @@ These instructions apply to the whole repository.
 - Model-group `pii_filter` redacts configured text before target selection, cache-key generation, routing-policy inputs, and upstream calls. Keep placeholder mappings in memory only unless a separate governed content-capture feature explicitly enables durable storage. Usage/log metadata may record only safe scalar values such as applied flag, mode, replacement count, and matched-rule count; never persist raw matched values, regex captures, placeholder maps, raw prompts, raw images, raw tool outputs, bearer tokens, provider keys, or token hashes.
 - Do not activate unavailable or unvalidated provider models. Catalog-only is acceptable when a model exists but the current account is not entitled; active routes require current exact provider/model/dialect evidence and must match the deployment snapshot.
 - **Cloud and cluster authentication is a prerequisite, never a workflow step.** Delivery, packaging, restic, Fleet, Make, and agent procedures consume the currently authenticated AWS and Kubernetes session. Do not run `aws sso login`, MFA bootstrap, `aws configure`, credential copy, or profile-selection as part of a rollout command sequence. If `aws sts get-caller-identity` or equivalent cluster auth fails, stop with a secret-free “authenticate first, then retry” message. Never print access keys, SSO tokens, account-root secret material, or full ARNs in docs, tickets, logs, or evidence. Identity bootstrap docs may describe one-time setup; numbered apply/rollout steps must not include login.
-- Prefer structured YAML/JSON parsing for config changes. Avoid fragile text edits for production config.
-- Keep sample config, local production snapshot, production config, docs, and tests in sync for behavior changes.
+- Prefer structured YAML/JSON parsing for config changes. Avoid fragile text edits for deployment config.
+- Keep sample config, docs, and tests in sync for behavior changes.
 - Production incidents that affect routing, providers, request translation, quota or traffic shaping, diagnostics, or caller-visible errors require a sanitized production-derived regression fixture under `testdata/smokes/production-derived/` before closeout. Use synthetic payload templates only, and validate them with the local `ProductionDerived` tests plus staging/production smoke evidence when caller access and report access are available.
 - Watch the repository like a hawk for important behavior, config, deployment, provider/model, auth, telemetry, CLI, docs-site, and production changes. Before finishing work, inspect nearby code/docs and search for stale or conflicting facts so internal docs and external Docusaurus docs remain correct, complete, and aligned with the shipped behavior.
 - Maintain active API-compatibility evidence for caller-visible OpenAI Chat, OpenAI Responses, Anthropic Messages, streaming usage, and tool-call surfaces. When caller access is available, run bounded authenticated production probes for the exact deployment-defined group and request shape; preserve only safe scalar outcomes such as endpoint/dialect, group, HTTP status, stream-usage presence, tool-call shape, request ID, sanitized error class, latency bucket, and selected target metadata. Do not retain prompts, model output, raw tool payloads, authorization values, provider keys, token hashes, or full configuration. For any reproducible non-2xx response, required-field/schema mismatch, translation loss, malformed tool call, missing required usage chunk, or dialect discrepancy, create a detailed GitHub issue before closeout with expected versus actual behavior, a sanitized reproduction, affected request shape, mitigation/rollback notes, and explicit local plus production validation criteria; add a sanitized production-derived regression fixture when applicable.
 - No stale docs. Before finishing any task that changes behavior, config, deployment, models, auth, CLI usage, tests, or production, search the repo for old names/status and update every matching doc or fixture. If a doc cannot be made current, mark the exact section as historical with a date and reason.
-- Documentation updates must cover both customer-facing surfaces when a behavior affects routing, auth, models, CLI/API usage, telemetry, deployment, or production operations:
-  - Operator/deployment docs (`README.md`, `docs/`, `deployment.md`, scripts, and config comments) must explain configuration, validation, rollout, rollback, and operational impact.
+- Documentation updates must cover both customer-facing surfaces when a behavior affects routing, auth, models, CLI/API usage, telemetry, deployment, or operations:
+  - Operator/deployment docs (`README.md`, `docs/`, scripts, and config comments) must explain configuration, validation, rollout, rollback, and operational impact without private Metrum topology.
   - Product/API docs (`docs-site/`, embedded under `/docs/`) must explain what callers request, what behavior they can expect from the proxy, and any client-facing examples without private deployment details.
 - When a task reveals redundant, obsolete, misleading, or superseded docs/content, either delete or update it when clearly safe; otherwise explicitly flag it in the PR or final response with a recommendation to delete, merge, or mark historical. Do not leave duplicate public guidance that can drift from the current product behavior.
 - Customer-facing hosted docs live in `docs-site/` and are embedded into release binaries under `/docs/`. Keep these docs free of raw provider keys, real router tokens, private host paths, SSH details, and private deployment notes. Route interested readers to `mailto:contact@metrum.ai`.
@@ -69,11 +100,10 @@ These instructions apply to the whole repository.
 - Self-hosted upstream changes or examples require both admin and proxy-user docs. Cover enterprise-hosted vLLM/SGLang-style OpenAI-compatible services, private `/v1` base URLs, served model IDs, parser/chat-template requirements, tool-call behavior, caller-visible model groups, direct upstream smokes, router smokes, and rollback/operational notes. Verify current upstream documentation online before documenting vLLM, SGLang, or similar fast-moving serving frameworks.
 - Public API examples in `docs-site/` must be tested before deployment. For Python examples, use `uv` in an ignored temporary project under `tmp/`, run the exact documented dependency/install flow, and keep docs generic with placeholder router tokens.
 - Caller-token or model-group access behavior changes must keep the public Available Models And Access docs current. `/v1/models` is the caller-facing source of truth for allowed router model groups; examples that require a model value should link users there instead of assuming they already know an allowed group name.
-- Harbor benchmark traffic in production should use the reusable production caller
-  `harbor-reusable-prod` granted on the Fleet tenant with access to all deployed
-  model groups. Do not generate one caller token per `{agent, model_group}` for
-  routine Harbor runs; use the run matrix, client, model group, timestamps, and
-  usage-report filters to separate results.
+- Harbor benchmark traffic should use one reusable deployment-owned caller with
+  access to the model groups under test. Do not generate one caller token per
+  `{agent, model_group}` for routine Harbor runs; use the run matrix, client,
+  model group, timestamps, and usage-report filters to separate results.
 
 ## Local Work-Item Tracking And Dashboard
 
@@ -177,8 +207,8 @@ These instructions apply to the whole repository.
 7. For pricing/tool/modality metadata changes, verify current pricing/capability docs online, update `config.example.yaml`, ignored `config.production.yaml`, production config when requested, tests, and public/internal docs together.
 8. Update docs for any user-facing config, model, deployment, CLI, or operational change.
 9. Run a stale-doc search for changed concepts before final response. Examples:
-   - `rtk rg -n "old-model|old-provider|old-image-tag" README.md docs deployment.md config.example.yaml internal scripts`
-   - `rtk rg -n "MiniMax-Text-01|text-01|openrouter/pareto|moonshotai/kimi|qwen|glm|hy3|kat-coder|nemotron|mercury|ling-2\\.6|big-coder.*failover" README.md docs deployment.md internal scripts`
+   - `rtk rg -n "old-model|old-provider|old-image-tag" README.md docs config.example.yaml internal scripts`
+   - `rtk rg -n "MiniMax-Text-01|text-01|openrouter/pareto|moonshotai/kimi|qwen|glm|hy3|kat-coder|nemotron|mercury|ling-2\\.6|big-coder.*failover" README.md docs internal scripts`
    - `rtk rg -n "request_usage|request_attempts|request_trace_events|request_traffic_shape_events|request_upstream_shape_events|request_errors|diagnostics-schema" README.md docs docs-site internal scripts`
 10. When feature-branch work is complete and thoroughly tested, prepare a focused GitHub pull request with acceptance, QA/check, rollback, and safe demo evidence. Follow the repository's approval and branch-protection requirements; never force, bypass, or infer merge authority.
 11. For actionable post-review findings, first search open issues and their source review-comment URLs. Record a detailed linked follow-up issue unless the approved review workflow explicitly authorizes a fix in the current change. Do not create parallel implementation PRs for individual review comments: consolidate all open review-derived work under one labeled master issue, one active NDJSON task, one clean implementation branch/worktree, and one PR. Deduplicate already-merged behavior and overlapping acceptance criteria explicitly. The master must use native sub-issue links plus one hidden `<!-- review-followup-rollup:v1 children=<comma-separated issue numbers> -->` marker and the `review-followup-rollup` label. After the consolidated PR merges and evidence is recorded, closing the master invokes `.github/workflows/close-review-followups.yml` to comment on and close any still-open listed children. Route sensitive security findings through the approved private security path. After merge, remove only clean confirmed-merged worktrees/local branches.
@@ -206,7 +236,7 @@ These instructions apply to the whole repository.
   - Baseten publishes standard input/output pricing plus discounted cache-input pricing. Store standard `input_price_per_million_usd` and `output_price_per_million_usd` in catalog metadata; mention cache-input pricing in `pricing_notes` until the router has a separate cache-input price field for upstream-billed prompt-cache tokens.
   - Before active routing, run direct non-streaming chat, direct streaming chat with `stream_options.include_usage` and `continuous_usage_stats` if streaming behavior is documented, and direct OpenAI Chat tool-call smoke if `tool_support.openai_chat` will be claimed. Baseten Anthropic Messages support is configured as a separate `dialect: anthropic` provider with `base_url: https://inference.baseten.co` and bearer auth; add a Baseten model to Claude Code/Anthropic tool routes only after direct `/v1/messages` text and client-tool smokes pass for that exact model. Add Baseten only to OpenAI Chat and separately validated Anthropic skins unless a Responses skin is separately validated.
   - On 2026-06-17, `nvidia/Nemotron-120B-A12B` passed direct Baseten non-streaming chat, streaming chat with usage chunks, and OpenAI Chat function-call smoke with `tool_choice: "auto"`. It is text-only in router metadata and should not be added to `vision` or multimodal agent fallback routes unless a Baseten vision model passes direct plus router image smokes.
-  - On 2026-06-22, `openai/gpt-oss-120b` passed direct Baseten OpenAI Chat non-streaming text, streaming with usage chunks, auto tool calls, forced OpenAI Chat `tool_choice`, Anthropic Messages text, and Anthropic Messages client-tool smokes. Reference and production configs use Baseten GPT OSS 120B as the replacement for active OpenRouter Qwen/DeepSeek text routes; do not put OpenRouter Qwen or DeepSeek back into broad active groups without explicit fresh validation and a reason to prefer that upstream.
+  - On 2026-06-22, `openai/gpt-oss-120b` passed direct Baseten OpenAI Chat non-streaming text, streaming with usage chunks, auto tool calls, forced OpenAI Chat `tool_choice`, Anthropic Messages text, and Anthropic Messages client-tool smokes. Sample configs use Baseten GPT OSS 120B in place of former OpenRouter Qwen and DeepSeek text routes; do not restore those former OpenRouter routes into broad groups without explicit fresh validation and a reason to prefer that upstream.
 - xAI/Grok candidates:
   - Official Grok 4.3 docs checked on 2026-06-17 list `grok-4.3` with text+image input, text output, function calling, structured outputs, configurable reasoning, 1M context, and $1.25/M input plus $2.50/M output pricing.
   - Direct xAI `grok-4.3` smokes passed on 2026-06-17 after billing was funded: text returned `OK`, receipt-image OCR returned `Rite Aid`, and xAI usage reported image tokens. Local router-level text and image smokes also passed; the image request logged `input_image_tokens`, separated image cost, and no warnings after `image_input_price_per_million_tokens_usd: 1.25` was configured.
@@ -241,28 +271,26 @@ These instructions apply to the whole repository.
 - Codex CLI image smoke should use `codex exec --image <file>` against the router Responses provider config. Claude Code image support should be validated with the Anthropic Messages image payload shape and, where the installed CLI supports direct image attachment, with the actual CLI workflow.
 - If a direct provider smoke returns 403 or model-not-found, do not add that model to active route targets.
 
-## Production Host
+## Operator Deployment Host Guidance
 
-- Metrum engineering production runs on the Fleet SQLite tenant `llm-api` in the
-  shared `metrum` EKS cluster (`us-east-1`). Public URLs:
-  `https://llm-api-engg.metrum.ai`, `https://llm-api.metrum.ai`, and
-  `https://llm-api.apps.metrum.ai`.
-- Lifecycle CLI: `metrum-genai-smartrouter-fleetctl customer` with protected SSM
-  profile and Secrets Manager runtime bundle refs.
-- Operator runbook: `docs/EKS_PRODUCTION_OPERATIONS.md`.
-- Docker Compose remains a **customer deployment option** only; do not use Compose
-  for Metrum production changes.
+- Treat each customer or self-hosted deployment as deployment-owned infrastructure.
+  Do not hardcode Metrum engineering hosts, tenants, AWS accounts, SSM/Secrets
+  paths, or backup endpoints into public docs, examples, scripts, or agent notes.
+- Lifecycle CLI for packaged Fleet installs: `metrum-genai-smartrouter-fleetctl customer`
+  with operator-supplied protected profile and runtime-bundle references.
+- Docker Compose remains a supported customer deployment option documented in
+  `docs/DOCKER_DEPLOYMENT.md`.
 
-Useful commands:
+Useful local/operator smoke pattern (replace the base URL and token with the
+deployment under test):
 
 ```bash
-rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
-metrum-genai-smartrouter-fleetctl customer status --customer-id llm-api
-metrum-genai-smartrouter-fleetctl customer smoke --customer-id llm-api
+rtk curl -fsS https://<router-host>/readyz
+rtk curl -fsS https://<router-host>/v1/chat/completions \
+  -H "Authorization: Bearer ${ROUTER_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"<allowed-group>","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}'
 ```
-
-The retained EC2 Compose host may remain stopped during the rollback window.
-Do not run EC2 and EKS as concurrent writers.
 
 ## EKS Delivery Boundaries
 
@@ -278,8 +306,7 @@ Do not run EC2 and EKS as concurrent writers.
   default; only the first disposable non-production E2E may attach RDS through
   a validated external admission. `metrum-smartrouterctl` is a one-release
   rename notice only.
-- Metrum production uses Fleet EKS (`docs/EKS_PRODUCTION_OPERATIONS.md`). Generic
-  tenant discovery helpers remain under `eks-discover` and related Make targets.
+- Generic tenant discovery helpers remain under `eks-discover` and related Make targets.
 - #555 is the sole implementation epic for one-command customer EKS deployment.
   Extend `metrum-genai-smartrouter-fleetctl`; do not create a second provisioner, registry,
   lifecycle, activation authority, or smoke framework. The public lifecycle is
@@ -297,9 +324,7 @@ Do not run EC2 and EKS as concurrent writers.
   time-bounded RDS admission exactly binds its non-production profile,
   deterministic job/intent, namespace, database profile, and manifest digest.
   `metrum-genai-smartrouter-fleetctl` may consume but MUST NOT create, update, emit, or persist
-  that admission. Metrum engineering production (`llm-api`, profile
-  `metrum-production`) is authorized on Fleet as of 2026-09-01; see
-  `docs/EKS_PRODUCTION_OPERATIONS.md`. #921 (commerce entitlement) and #586 supply approved customer/config/license intent for provisioning; #507
+  that admission. #921 (commerce entitlement) and #586 supply approved customer/config/license intent for provisioning; #507
   supplies migration compatibility.
 - The #555 security/operations review requires one qualified reviewer, and a
   single-maintainer deployment may self-review. The reviewer may be the same
@@ -317,74 +342,43 @@ Do not run EC2 and EKS as concurrent writers.
   an unreviewed rehearsal is forbidden. See
   `docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md` for the recorded self-review
   checklist.
-- Production cutover to Fleet EKS for Metrum engineering completed 2026-09-01.
-  Further production changes use the Fleet lifecycle and
-  `docs/EKS_PRODUCTION_OPERATIONS.md`.
 
-### Current Metrum production boundary
+## Config And Package Update Process
 
-- Tenant `llm-api` in namespace `llm-api` on cluster `metrum` is the sole writer.
-- Protected profile: `aws-ssm:///metrum/smartrouter/profiles/production`
-  (`profile_id: metrum-production`, `environment: production`).
-- SQLite on the tenant PVC holds usage, quota, and license state; do not scale
-  horizontally while file-backed quota/license remain on SQLite.
-- Protected profile `environment: production` with `approved_alias_hostnames` for
-  `llm-api-engg.metrum.ai` and `llm-api.metrum.ai`.
-- Trusted ingress proxy CIDR: `192.168.0.0/16`, never the legacy Compose-only
-  `172.18.0.0/16`.
-- Dedicated Postgres for Metrum production is deferred; SQLite is authoritative.
-- Operator runbook: `docs/EKS_PRODUCTION_OPERATIONS.md`.
-
-## Production Config Update Process
-
-For Metrum Fleet production config changes:
+For a self-hosted or Fleet customer deployment:
 
 1. Update `config.example.yaml` when the change affects reference config.
-2. Update the protected runtime bundle (`config.yaml` + `env.json`) in Secrets
-   Manager for tenant `llm-api`.
-3. Validate with structured YAML parsing and
-   `rtk python3 scripts/prepare_fleet_production_bundle.py`.
+2. Update the deployment-owned runtime config and provider env through the
+   operator's protected secret store or local files (never commit secrets).
+3. Validate with structured YAML parsing.
 4. Run `rtk go test ./cmd/... ./internal/...`.
-5. Deploy through a new signed immutable Fleet intent
-   (`customer write-manifest --stage production` + signed `customer create`
-   per `docs/EKS_PRODUCTION_OPERATIONS.md`).
-6. Verify `https://llm-api-engg.metrum.ai/readyz` and targeted authenticated smokes.
-7. Update `deployment.md` (evidence ledger only).
+5. For Fleet installs, deploy through a new signed immutable Fleet intent using
+   operator-supplied profile and runtime-bundle references.
+6. Verify `/readyz`, `/version`, and targeted authenticated smokes against the
+   deployment under test.
+7. Keep private operator evidence outside this public repository.
 
-Customer Docker Compose config updates remain documented in
-`docs/DOCKER_DEPLOYMENT.md`.
-
-## Production Package Deployment Process
-
-For Metrum Fleet production image updates:
-
-1. Reconcile with `origin/main`; run `rtk go test ./cmd/... ./internal/...`.
-2. Run `rtk make docs-build` when `docs-site/` changes.
-3. Commit before building so `VERSION` is not `-dirty`.
-4. Build and push the immutable image to the Metrum ECR repository; update
-   `approved_release_digest` in the protected production profile.
-5. Deploy with a signed Fleet intent
-   (`customer write-manifest --stage production` + signed `customer create`)
-   per `docs/EKS_PRODUCTION_OPERATIONS.md`.
-6. Verify `/readyz`, `/version`, hosted docs, authenticated API smokes, and
-   Codex/Claude Code CLI smokes when client compatibility changed.
-7. Update `deployment.md` (evidence ledger only).
-
-Customer Docker Compose package deployment remains in `docs/DOCKER_DEPLOYMENT.md`
-using `scripts/compose_package_upgrade.py` for self-hosted installs only.
+Customer Docker Compose config and package updates remain documented in
+`docs/DOCKER_DEPLOYMENT.md` using `scripts/compose_package_upgrade.py` for
+self-hosted installs.
 
 ## Router Smoke Tests
 
-Authenticated production chat smoke (use a deployment-defined caller token from the protected store):
+Authenticated chat smoke against any deployment (use a deployment-defined caller
+token and an allowed model group):
 
 ```bash
-rtk curl -fsS https://llm-api-engg.metrum.ai/v1/chat/completions \
+rtk curl -fsS https://<router-host>/v1/chat/completions \
   -H "Authorization: Bearer ${ROUTER_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"model":"high","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}'
+  -d '{"model":"<allowed-group>","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}'
 ```
 
-Use the current deployment's deterministic failover-first check group, for example `high` on the current Metrum-managed engineering deployment, and use repeated calls for weighted deployment-defined groups. When validating weighted groups that include reasoning-heavy OpenRouter targets, include a realistic `max_tokens` budget; a `max_tokens:16` smoke can produce false failures for GLM-style models that spend the completion budget on reasoning before emitting final content.
+Use a deployment-defined failover-first check group when validating deterministic
+routes, and use repeated calls for weighted groups. When validating weighted
+groups that include reasoning-heavy targets, include a realistic `max_tokens`
+budget; a `max_tokens:16` smoke can produce false failures for GLM-style models
+that spend the completion budget on reasoning before emitting final content.
 
 ## Production Error And Timeout Triage
 
@@ -398,16 +392,16 @@ Use the current deployment's deterministic failover-first check group, for examp
 ## CLI E2E Expectations
 
 - Claude Code should use router bearer token settings:
-  - `ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai`
+  - `ANTHROPIC_BASE_URL=https://<router-host>`
   - `ANTHROPIC_AUTH_TOKEN=$ROUTER_TOKEN`
   - Do not set `ANTHROPIC_API_KEY` for router traffic.
   - In scripts, use `env -u ANTHROPIC_API_KEY ... claude ...` so a developer shell cannot accidentally force direct Anthropic `X-Api-Key` auth.
 - Codex CLI should use an OpenAI-compatible provider config pointing at:
-  - `https://llm-api-engg.metrum.ai/v1`
+  - `https://<router-host>/v1`
   - env key such as `METRUM_ROUTER_KEY`
   - `model_providers.<name>.wire_api="responses"`
-- After production package or config changes that affect routing, models, modalities, tools, auth, or client compatibility, always run real production CLI smokes with both Codex CLI and Claude Code CLI. Raw `/v1/responses` and `/v1/messages` API smokes are useful diagnostics, but they do not replace the actual CLIs because the CLIs add their own startup, model-list, tool, and auth behavior.
-- Production CLI smokes should use a deployment-defined coding-agent group, for example `big-coder` in the reference deployment. Run at least:
+- After package or config changes that affect routing, models, modalities, tools, auth, or client compatibility, run real CLI smokes with both Codex CLI and Claude Code CLI against the deployment under test. Raw `/v1/responses` and `/v1/messages` API smokes are useful diagnostics, but they do not replace the actual CLIs because the CLIs add their own startup, model-list, tool, and auth behavior.
+- CLI smokes should use a deployment-defined coding-agent group from the reference or customer config. Run at least:
   - Codex CLI text smoke through `wire_api="responses"`.
   - Codex CLI image smoke with `codex exec --image <file>` when model/modalities changed.
   - Claude Code text smoke with `env -u ANTHROPIC_API_KEY ANTHROPIC_BASE_URL=... ANTHROPIC_AUTH_TOKEN=... claude -p --model <group> --output-format json ...`; assert `.result` and `modelUsage` so a quiet text-output run cannot be mistaken for a pass.
@@ -431,7 +425,7 @@ Update docs whenever changing:
 - model catalogs or active model groups
 - caller token behavior or allowed groups
 - provider keys/env requirements
-- production deployment commands or image tags
+- deployment commands or image tags
 - Codex CLI or Claude Code usage examples
 - TypeScript routing script behavior, context fields, or model-group policy examples
 - self-hosted vLLM/SGLang/OpenAI-compatible upstream deployment, served model IDs, parser/chat-template flags, or tool-call validation behavior
@@ -443,20 +437,22 @@ Update docs whenever changing:
 - competitive positioning, product capability matrices, buyer evaluation docs, or public claims about other products
 
 Keep docs concrete and tested. Include working commands, but redact secrets.
+Never add private Metrum hosts, accounts, SSH details, or operator evidence to
+public docs.
 
-## Google Workspace Announcements
+## Team Announcements
 
-- Use Google Chat/Workspace announcements for production rollouts, new supported functionality, externally visible behavior changes, and important validation results when the user asks for team notification.
-- Treat Google Chat incoming webhook URLs as secrets. Do not commit them, add them to docs, echo them in final responses, or store them in tracked scripts. If the user provides a webhook URL in chat, use it only for the requested post.
-- Keep announcements concise and caller-focused. Include the feature or deployment outcome, production URL when appropriate, binary version or build timestamp when relevant, and high-signal validation results such as health checks, API smokes, and Codex/Claude Code CLI smokes.
-- Do not include provider API keys, router tokens, private SSH details, full production config contents, or sensitive internal host paths in Workspace messages.
-- After posting, it is acceptable to record only the non-secret message name/id and a short summary in the final response or deployment notes when useful. The 2026-06-17 multimodal agent routing announcement was posted successfully to Google Chat and returned message `spaces/AAAAuyaen6A/messages/khuaarPuWeo.khuaarPuWeo`.
+- Use team chat or email announcements for rollouts, new supported functionality, externally visible behavior changes, and important validation results when the user asks for team notification.
+- Treat incoming webhook URLs as secrets. Do not commit them, add them to docs, echo them in final responses, or store them in tracked scripts. If the user provides a webhook URL in chat, use it only for the requested post.
+- Keep announcements concise and caller-focused. Include the feature or deployment outcome, public URL when appropriate, binary version or build timestamp when relevant, and high-signal validation results such as health checks, API smokes, and Codex/Claude Code CLI smokes.
+- Do not include provider API keys, router tokens, private SSH details, full production config contents, or sensitive internal host paths in announcements.
 
 Before finalizing, check at minimum:
 
 ```bash
-rtk rg -n "MiniMax-Text-01|text-01|big-coder.*failover|failover route|does not yet have access|old image|openrouter/pareto|moonshotai/kimi|qwen|glm|hy3|kat-coder|nemotron|mercury|ling-2\\.6" README.md docs deployment.md internal scripts || true
-rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspeed" config.example.yaml README.md docs deployment.md scripts || true
+rtk rg -n "MiniMax-Text-01|text-01|big-coder.*failover|failover route|does not yet have access|old image|openrouter/pareto|moonshotai/kimi|qwen|glm|hy3|kat-coder|nemotron|mercury|ling-2\\.6" README.md docs internal scripts || true
+rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspeed" config.example.yaml README.md docs scripts || true
+rtk python3 scripts/check_docs_public_face.py
 ```
 
 ## Fleet And Customer CLI Boundary
@@ -509,8 +505,8 @@ rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspee
   private, encrypted, RDS-Proxy-disabled instances with ownership-safe final
   snapshots. It MUST stay unattached unless a validated, time-bounded
   non-production admission is supplied; the shipped CLI MUST NOT create that
-  admission. Metrum production profile authority is documented in
-  `docs/EKS_PRODUCTION_OPERATIONS.md`.
+  admission. Protected profile authority is deployment-owned and must not be
+  hardcoded as Metrum production paths in public examples.
 - Every `metrum-smartrouterctl` occurrence outside its compatibility command
   and package validation MUST explicitly say `one-release compatibility` or
   `one-release rename notice`; treat those occurrences as intentional until

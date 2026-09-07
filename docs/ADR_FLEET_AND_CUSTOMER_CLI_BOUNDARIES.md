@@ -92,9 +92,10 @@ the approved profile's `lifecycle_approval_public_key`, and bound to the exact
 profile, deterministic job/intent, namespace, database profile, and manifest
 digest. `metrum-genai-smartrouter-fleetctl` never creates, updates, emits, or persists that
 admission or signing material. Invalid, unsigned, stale, or out-of-scope
-records fail before registry or AWS/EKS clients are opened. Metrum engineering
-production on Fleet (`llm-api` / `metrum-production`) was authorized 2026-09-01;
-see [EKS production operations](EKS_PRODUCTION_OPERATIONS.md).
+records fail before registry or AWS/EKS clients are opened. Production-stage
+Fleet tenants use the same lifecycle authority with an operator-owned production
+profile, signed production-stage intent, and Release-approver authorization; see
+[Customer instance operations](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md).
 
 ## Review authority
 
@@ -111,8 +112,9 @@ security and operations
 review](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review).
 Separate reviewers or additional scoped EKS roles may be used when more than
 one qualified person is available or a customer contract demands separation of
-duties. Metrum production operations authority is
-[EKS production operations](EKS_PRODUCTION_OPERATIONS.md).
+duties. Production-stage operations authority remains the operator-owned
+protected profile plus the recorded security/operations review in
+[Customer instance operations](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review).
 
 ## Consequences
 

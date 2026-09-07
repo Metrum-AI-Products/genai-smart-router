@@ -11,7 +11,7 @@
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:sysadmin-metrum-ai/genai-smart-router:environment:staging"
+          "token.actions.githubusercontent.com:sub": "repo:<OWNER>/<REPOSITORY>:environment:staging"
         }
       }
     }

@@ -18,7 +18,10 @@ RELEASE_NOTES = DOCS_SITE / "docs" / "release-notes" / "index.md"
 FORBIDDEN_RELEASE_NOTE_PATTERNS = [
     ("raw token or token hash", re.compile(r"(?i)(bearer\s+[A-Za-z0-9._~+/=-]{16,}|router[_-]?token|token[_-]?hash)")),
     ("provider API key", re.compile(r"(?i)(api[_-]?key\s*[:=]|provider[_-]?key)")),
-    ("private host/IP", re.compile(r"\b(?:100\.30\.225\.66|llm-api-engg\.metrum\.ai)\b")),
+    ("private host/IP", re.compile(r"\b(?:100\.30\.225\.66|54\.84\.22\.33|llm-api-engg\.metrum\.ai|llm-api\.apps\.metrum\.ai|backups\.metrum\.ai)\b")),
+    ("private AWS account", re.compile(r"\b121701826775\b")),
+    ("private repository visibility claim", re.compile(r"(?i)repository visibility remains private")),
+    ("private freeze commit in customer notes", re.compile(r"\ba77be222e2c35c2ec839e4be09387a9cbc57365f\b")),
     ("private SSH detail", re.compile(r"(?:\bubuntu@[A-Za-z0-9_.-]+|~/.ssh/[^\s'\"`]+\.pem|\bssh\s+-i\s+[^\n]+\.pem)")),
     ("production config path", re.compile(r"/opt/smart-llmrouter/compose/[^\s'\"`]+")),
     ("private license material", re.compile(r"(?i)(private signing key|customer-specific license payload value|signing-service credentials)")),

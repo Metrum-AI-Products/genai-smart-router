@@ -42,7 +42,7 @@ Checked-in placeholder: [`examples/customer-lifecycle/onboard-acme.sandbox.examp
 
 Required fields:
 
-- `customer_id`, `hostname` (must be `{customer_id}.apps.metrum.ai`; either may be derived from the other)
+- `customer_id`, `hostname` (must be `{customer_id}.<approved-apps-domain>` per the protected profile domain policy; either may be derived from the other). Example: `acme.apps.example.test`
 - `sku`, `customer_email`, `customer_alias`, `owner_user`, `project`
 - `profile_ref` (`aws-ssm:///…`), `license_ref` (`aws-ssm:///…`), `runtime_bundle_ref` (`aws-ssm:///…` or `aws-secretsmanager:///…`)
 - `config_file`, `sign_key` (Fleet lifecycle approval), `license_key`, `license_key_id`

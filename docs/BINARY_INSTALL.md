@@ -54,8 +54,8 @@ one replica; it neither provisions nor binds RDS. Dedicated RDS requires an
 explicit approved `database_profile` manifest branch and a strictly scoped
 external admission file for its first disposable non-production E2E. Fleet
 consumes but never creates that file; the evidence review may be performed by
-the implementing maintainer. Metrum engineering production on Fleet is
-documented in `docs/EKS_PRODUCTION_OPERATIONS.md`. The hosted
+the implementing maintainer. Fleet customer and production-stage operations are
+documented in `docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md`. The hosted
 **Operations > Deployment Patterns** page defines the customer-facing input and
 approval contract.
 
