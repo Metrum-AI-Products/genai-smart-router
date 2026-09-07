@@ -22,8 +22,7 @@ import (
 )
 
 const (
-	defaultFleetLifecycleRoleARN = "arn:aws:iam::121701826775:role/genai-smart-router-eks-fleet-lifecycle"
-	secretsManagerPrefix         = "aws-secretsmanager:///"
+	secretsManagerPrefix = "aws-secretsmanager:///"
 )
 
 type runtimeBundle struct {
@@ -31,11 +30,11 @@ type runtimeBundle struct {
 	EnvJSON    string
 }
 
-func fleetLifecycleRoleARN() string {
+func fleetLifecycleRoleARN() (string, error) {
 	if v := strings.TrimSpace(os.Getenv("METRUM_FLEET_LIFECYCLE_ROLE_ARN")); v != "" {
-		return v
+		return v, nil
 	}
-	return defaultFleetLifecycleRoleARN
+	return "", fmt.Errorf("METRUM_FLEET_LIFECYCLE_ROLE_ARN is required")
 }
 
 func awsRegion() string {
@@ -62,7 +61,10 @@ func assumeFleetRole(ctx context.Context, ws customerWorkspace) (aws.Config, map
 		return aws.Config{}, nil, fmt.Errorf("load operator AWS config: %w", err)
 	}
 	client := sts.NewFromConfig(opCfg)
-	roleARN := fleetLifecycleRoleARN()
+	roleARN, err := fleetLifecycleRoleARN()
+	if err != nil {
+		return aws.Config{}, nil, err
+	}
 	sessionName := "metrum-fleetctl-" + ws.CustomerID
 	out, err := client.AssumeRole(ctx, &sts.AssumeRoleInput{
 		RoleArn:         aws.String(roleARN),
@@ -109,7 +111,10 @@ func assumeFleetRole(ctx context.Context, ws customerWorkspace) (aws.Config, map
 }
 
 func existingFleetRoleSession(ctx context.Context) (aws.Config, map[string]string, bool) {
-	roleARN := fleetLifecycleRoleARN()
+	roleARN, err := fleetLifecycleRoleARN()
+	if err != nil {
+		return aws.Config{}, nil, false
+	}
 	if strings.TrimSpace(os.Getenv("AWS_SESSION_TOKEN")) == "" {
 		return aws.Config{}, nil, false
 	}

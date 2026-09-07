@@ -43,7 +43,7 @@ Use this glossary for short canonical definitions. For the request flow and mode
 | request shape feature | A safe request property such as API skin, tools, image input, reasoning, output cap, prompt size, or structured-output request. | [Dynamic Score Routing](../configuration/dynamic-score-routing) |
 | reservation | A quota or traffic-shaping hold based on estimated input and requested output budget before upstream completion. | [Error Reference](../reference/errors) |
 | route strategy | The configured mechanism that selects a target: static, failover, weighted, dynamic score, script, external, or contract-backed. | [Routing Strategy Decision Tree](../routing/strategy-decision-tree) |
-| router endpoint | The deployment URL callers use instead of direct provider endpoints. | [Hosted Quickstart](../getting-started/hosted-quickstart) |
+| router endpoint | The deployment URL callers use instead of direct provider endpoints. | [API Quickstart](../getting-started/hosted-quickstart) |
 | routing policy | The deployment-owned rules and strategy that choose among eligible targets inside one requested model group. | [Customer-Controlled Routing](../routing/customer-controlled-routing) |
 | skin | A client compatibility surface, such as OpenAI Chat, OpenAI Responses, or Anthropic Messages. | [API Compatibility](../reference/api-compatibility) |
 | target | One configured upstream/provider model entry inside a model group. | [Concepts](../concepts) |

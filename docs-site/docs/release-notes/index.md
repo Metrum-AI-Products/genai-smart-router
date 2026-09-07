@@ -16,11 +16,9 @@ infer the running version from a date written in documentation.
 
 ## v1.0.0 - 2026-09-07
 
-Release notes approved on 2026-09-04 for the planned 2026-09-07 launch window.
-Freeze commit `a77be222e2c35c2ec839e4be09387a9cbc57365f` was deployed to Metrum
-Fleet production and published as annotated signed tag / private GitHub Release
-`v1.0.0` on 2026-09-05 UTC. Production `/version` reports `v1.0.0` for that
-freeze. Repository visibility remains private.
+GenAI Smart Router v1.0.0 is the first public open-source release package.
+Use the docs banner, `/docs/releases`, and `/version` for the exact router
+version and build timestamp of the package that embeds this page.
 
 ### Highlights
 
@@ -95,11 +93,8 @@ freeze. Repository visibility remains private.
 
 ### Validation
 
-- After deployment, require the promoted immutable image identity and `/version`
-  commit to match the approved release, then record sanitized evidence before
-  declaring operational GO.
 - Confirm the docs banner, `/docs/releases`, and `/version` agree on the
-  expected version and build timestamp.
+  expected version and build timestamp for the deployed package.
 - Run `/readyz`.
 - Run authenticated `/v1/models` with each affected caller class.
 - Run representative Chat, Responses, Messages, streaming, tool, image, and

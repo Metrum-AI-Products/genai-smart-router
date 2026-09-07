@@ -11,7 +11,7 @@ These short answers route integrators to the canonical documentation page.
 
 ### Which base URL should my client use?
 
-Use the router deployment URL, not a direct provider URL. Start with [Hosted Quickstart](./getting-started/hosted-quickstart) and [API Compatibility](./reference/api-compatibility).
+Use the router deployment URL, not a direct provider URL. Start with [API Quickstart](./getting-started/hosted-quickstart) and [API Compatibility](./reference/api-compatibility).
 
 ### Which `model` value should I send?
 

@@ -10,8 +10,10 @@ Community participation is governed by [CONTRIBUTING.md](CONTRIBUTING.md), the
 [Code of Conduct](CODE_OF_CONDUCT.md), and [GOVERNANCE.md](GOVERNANCE.md).
 Questions and bugs follow [SUPPORT.md](SUPPORT.md); suspected vulnerabilities
 must use the private reporting path in [SECURITY.md](SECURITY.md).
-The current open-source launch decision and gate exit criteria are recorded in
-[docs/OPEN_SOURCE_LAUNCH_GOVERNANCE.md](docs/OPEN_SOURCE_LAUNCH_GOVERNANCE.md).
+
+This repository is public Apache-2.0 open-source software maintained in the
+open. Metrum branding, copyright, and support contacts remain; private Metrum
+production topology and operator evidence do not belong in this tree.
 
 For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md). The customer-facing hosted documentation is built from `docs-site/` and embedded into release binaries under `/docs/`; browser requests to `/` redirect there. In source checkouts, internal documentation maintenance rules and the public/internal source-of-truth map live in [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md).
 
@@ -162,10 +164,10 @@ separately signed, scoped external admission that Fleet never creates. After
 disposable-E2E evidence exists, one qualified maintainer may self-review before
 a production-like non-production rehearsal.
 `metrum-fleetctl`, `metrum-smartrouterctl`, `metrum-fleet-sign`, `router-license`,
-and `smartrouterctl` are one-release rename notices only. Metrum engineering
-production (`llm-api`) is authorized on Fleet EKS; see
-[docs/EKS_PRODUCTION_OPERATIONS.md](docs/EKS_PRODUCTION_OPERATIONS.md) and
-[docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md](docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md).
+and `smartrouterctl` are one-release rename notices only. Fleet and multi-environment
+customer CLI guidance lives in
+[docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md](docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md)
+and [docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md](docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md).
 
 
 Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. That allowlist is limited to package-safe offline bootstrap docs such as `docs/PACKAGE_README.md`, quick install notes, validation notes, and the package-safe solution brief. Full customer/admin docs are built from `docs-site/` and served by the router under `/docs/`. Internal source-checkout runbooks such as `docs/DOCS_MAINTENANCE.md`, production runbooks, private host procedures, source-maintenance notes, and security-review working notes are intentionally not packaged. Private production runbooks, private host details, SSH paths, live compose config paths, raw token/provider-key patterns, AppleDouble `._*` metadata, and unexpected source/local-state files are blocked by package validation.
@@ -219,8 +221,8 @@ Create a config from the example:
 ```bash
 cp config.example.yaml config.yaml
 go run ./cmd/router-token-gen generate \
-  --owner-user chetan \
-  --project metrum-insights \
+  --owner-user alice \
+  --project example-project \
   --env dev \
   --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
@@ -229,7 +231,7 @@ Save the printed `token` value as the caller's bearer token, add the owner to `u
 
 Provider keys are read from `env.json` in this project before `${VAR}` references in `config.yaml` are expanded. Real `env.json` is gitignored; use `env.example.json` as the placeholder-only template. Do not paste production or personal provider keys into tracked examples; store real values in ignored `env.json`, the shell environment, or your deployment secret manager. Run `make secret-check` before publishing changes that touch tracked env examples.
 
-Stripe, commerce admin, and Fleet bootstrap secrets belong in ignored `commerce.env.json` (see `commerce.env.example.json` and `docs/COMMERCE_STRIPE.md`). Restic/backup and the work-dashboard port belong in ignored `ops.env.json` (see `ops.env.example.json`). Do not mix those into instance `env.json`; Metrum’s own router instance uses the same provider-only shape as any customer. Copy the example files locally (`cp commerce.env.example.json commerce.env.json`, same for ops) and fill values; never commit the ignored runtime files.
+Stripe, commerce admin, and Fleet bootstrap secrets belong in ignored `commerce.env.json` (see `commerce.env.example.json` and `docs/COMMERCE_STRIPE.md`). Restic/backup and the work-dashboard port belong in ignored `ops.env.json` (see `ops.env.example.json`). Do not mix those into instance `env.json`; every deployment uses the same provider-only shape for instance secrets. Copy the example files locally (`cp commerce.env.example.json commerce.env.json`, same for ops) and fill values; never commit the ignored runtime files.
 
 ```bash
 go run ./cmd/router --config config.yaml
@@ -276,7 +278,7 @@ Set `instance_fingerprint` only when the operator issues an instance-bound
 license for the deployment. It must match the licensed instance scope or
 startup/readiness will fail with `license-instance-limit-exceeded`.
 
-Use `go run ./cmd/router-license safe-summary --license license.json` to inspect safe license metadata. `router-license verify --license license.json --public-key <public-key-file>` is for release/test validation with a supplied public key. Internal operators can use `router-license issue`, `renew`, and `top-up` with the SKU catalog and approved entitlement records. Private signing keys are not required at runtime and must never be copied into router config, logs, images, or source control.
+Use `go run ./cmd/metrum-genai-smartrouter-license safe-summary --license license.json` to inspect safe license metadata. `metrum-genai-smartrouter-license verify --license license.json --public-key <public-key-file>` is for release/test validation with a supplied public key. Operators use `issue`, `renew`, and `top-up` with a local signing key and the SKU catalog as needed for their deployment. Private signing keys are not required at runtime and must never be copied into router config, logs, images, or source control.
 
 When the operator maintains a signed revocation bundle, configure
 `server.license.revocation.mode: file` and mount it at
@@ -739,8 +741,8 @@ Caller metadata enables owner-, project-, environment-, or key-class routing wit
 ```ts
 export function route(ctx) {
   if (
-    /^chetan$/.test(ctx.caller?.ownerUser || ctx.caller?.username || "") &&
-    /^metrum-insights$/.test(ctx.caller?.project || "")
+    /^alice$/.test(ctx.caller?.ownerUser || ctx.caller?.username || "") &&
+    /^example-project$/.test(ctx.caller?.project || "")
   ) {
     const heavyIndex = ctx.targets.findIndex((target) =>
       target.tier === "heavy" &&
@@ -760,7 +762,7 @@ export function route(ctx) {
 }
 ```
 
-`ctx.caller.ownerUser` and `ctx.caller.project` come from validated config references. `ctx.caller.tokenId` is the generated public token id without the secret suffix, for example `rtr_metrum_chetan_metrum-insights_prod_key1`; use it for traceable key classes, not identity. Do not route on raw token secrets; the router never passes them to scripts.
+`ctx.caller.ownerUser` and `ctx.caller.project` come from validated config references. `ctx.caller.tokenId` is the generated public token id without the secret suffix, for example `rtr_metrum_alice_example-project_prod_key1`; use it for traceable key classes, not identity. Do not route on raw token secrets; the router never passes them to scripts.
 
 Check which names are present without printing secret values:
 
@@ -994,7 +996,7 @@ mkdir -p "$WORK"
 
 ./router-token-gen generate \
   --owner-user readme \
-  --project metrum-insights \
+  --project example-project \
   --env dev \
   --allow cli-smoke \
   --format json > "$WORK/token.json"
@@ -1035,18 +1037,18 @@ users:
     type: service_account
     status: active
 projects:
-  - id: metrum-insights
-    name: Metrum Insights
+  - id: example-project
+    name: Example Project
     status: active
 project_memberships:
   - user_id: readme
-    project: metrum-insights
+    project: example-project
     role: developer
     status: active
 callers:
-  - id: readme-metrum-insights-dev
+  - id: readme-example-project-dev
     owner_user: readme
-    project: metrum-insights
+    project: example-project
     environment: dev
     status: active
     token_sha256: "{generated['token_sha256']}"

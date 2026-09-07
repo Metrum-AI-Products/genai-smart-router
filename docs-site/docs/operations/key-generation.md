@@ -7,7 +7,7 @@ doc_type: howto
 
 Router caller tokens authenticate applications, users, or evaluation jobs to GenAI Smart Router. Tokens use a readable prefix for traceability plus a random secret suffix. The router stores only token hashes.
 
-`router-token-gen` is an Enterprise Edition administrative CLI for platform administrators. Run it from a secure server console, deployment host shell, or controlled administrator workstation, and distribute only the generated router tokens to approved callers.
+`router-token-gen` is an administrative CLI shipped in the release package for platform administrators. Run it from a secure server console, deployment host shell, or controlled administrator workstation, and distribute only the generated router tokens to approved callers.
 
 ## Generate A Token
 

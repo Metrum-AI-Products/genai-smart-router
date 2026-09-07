@@ -54,5 +54,6 @@ Before deploying or redistributing a release:
    copies, based on the applicable terms recorded for the exact contents.
 5. Manage `license.json` separately as protected runtime configuration.
 
-For questions about a delivered artifact or its notice set, contact
-Use the repository's public issue forms for non-sensitive licensing questions.
+For questions about a delivered artifact or its notice set, use the
+repository's public issue forms for non-sensitive licensing questions, or
+email [contact@metrum.ai](mailto:contact@metrum.ai) for commercial inquiries.

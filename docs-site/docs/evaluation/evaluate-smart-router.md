@@ -44,7 +44,7 @@ sanitized outcomes.
 
 1. Receive a router base URL, a caller token, and one or more allowed model groups.
 2. Run [`/v1/models`](../getting-started/available-models) and verify only allowed groups appear.
-3. Run an OpenAI-compatible chat smoke from the [Hosted Quickstart](../getting-started/hosted-quickstart).
+3. Run an OpenAI-compatible chat smoke from the [API Quickstart](../getting-started/hosted-quickstart).
 4. Run the client that matters most: [Codex CLI](../getting-started/codex-cli), [Claude Code CLI](../getting-started/claude-code-cli), or an OpenAI-compatible SDK.
 5. Run one request-shape test: image input, tool call, quota/rate-limit behavior, or a deployment-specific policy route.
 6. Ask the administrator for the usage/report excerpt for the evaluation window.

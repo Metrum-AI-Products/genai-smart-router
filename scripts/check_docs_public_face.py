@@ -16,12 +16,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 PUBLIC_DOC_PATHS = [
     ROOT / "README.md",
+    ROOT / "AGENTS.md",
+    ROOT / "GOVERNANCE.md",
+    ROOT / "SUPPORT.md",
+    ROOT / "SECURITY.md",
     ROOT / "docs-site" / "docs",
+    ROOT / "docs-site" / "src",
     ROOT / "docs" / "DOCKER_DEPLOYMENT.md",
     ROOT / "docs" / "DEPLOYMENT.md",
     ROOT / "docs" / "solution-brief.md",
     ROOT / "docs" / "PRODUCT_CAPABILITY_MATRIX.md",
     ROOT / "docs" / "SMOKE_TEST_MATRIX.md",
+    ROOT / "docs" / "CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md",
+    ROOT / "docs" / "TROUBLESHOOTING_RUNBOOK.md",
+    ROOT / "docs" / "LICENSE_OPERATIONS.md",
+    ROOT / "ops.env.example.json",
+    ROOT / "config.example.yaml",
+    ROOT / "deploy" / "Caddyfile.compose",
+    ROOT / "examples" / "customer-lifecycle" / "onboard-acme.sandbox.example.json",
 ]
 
 HISTORICAL_FILES = {
@@ -33,7 +45,24 @@ DOC_TYPE_VALUES = {"tutorial", "howto", "reference", "explanation"}
 DOCS_SITE_DOCS = ROOT / "docs-site" / "docs"
 
 PRIVATE_PATTERNS = [
-    ("private production host/IP", re.compile(r"\b(?:100\.30\.225\.66|llm-api-engg\.metrum\.ai)\b")),
+    (
+        "private production host/IP",
+        re.compile(
+            r"\b(?:"
+            r"100\.30\.225\.66|54\.84\.22\.33|52\.3\.128\.72|"
+            r"llm-api-engg\.metrum\.ai|llm-api\.metrum\.ai|llm-api\.apps\.metrum\.ai|"
+            r"backups\.metrum\.ai"
+            r")\b"
+        ),
+    ),
+    ("private AWS account", re.compile(r"\b121701826775\b")),
+    ("private backup bucket", re.compile(r"metrum-backups/smart-llmrouter|RESTIC_REPO_PATH.:\s*[\"']metrum-cto")),
+    ("stale Metrum-issued license wording", re.compile(r"Metrum-issued")),
+    (
+        "private personal copy-paste email",
+        re.compile(r"(?:CADDY_EMAIL=|email\s+\{?\$\{?CADDY_EMAIL:)chetan@metrum\.ai"),
+    ),
+    ("private real caller-id prefix", re.compile(r"rtr_metrum_chetan_metrum-insights_")),
     ("private SSH detail", re.compile(r"(?:\bubuntu@[A-Za-z0-9_.-]+|~/.ssh/[^\s'\"`]+\.pem|\bssh\s+-i\s+[^\n]+\.pem)")),
     (
         "live production compose/config path",
@@ -66,7 +95,13 @@ STALE_CURRENT_ROUTE_PATTERNS = [
 def iter_public_files() -> Iterable[Path]:
     for path in PUBLIC_DOC_PATHS:
         if path.is_dir():
-            yield from sorted(p for p in path.rglob("*") if p.is_file() and p.suffix in {".md", ".mdx"})
+            yield from sorted(
+                p
+                for p in path.rglob("*")
+                if p.is_file()
+                and p.suffix in {".md", ".mdx", ".js", ".jsx", ".ts", ".tsx", ".json", ".yaml", ".yml"}
+                and "node_modules" not in p.parts
+            )
         elif path.exists():
             yield path
 

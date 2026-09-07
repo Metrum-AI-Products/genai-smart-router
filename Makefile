@@ -67,7 +67,7 @@ IMAGE_TAG ?= $(VERSION)-$(GOOS)-$(GOARCH)
 DOCS_SITE_DIR ?= docs-site
 DOCS_EMBED_DIR ?= internal/router/docsdist
 PACKAGE_DOC_ALLOWLIST ?= scripts/package_docs_allowlist.txt
-EKS_AWS_PROFILE ?= genai-smart-router-eks-discovery
+EKS_AWS_PROFILE ?=
 EKS_ACCOUNT_ID ?=
 EKS_REGION ?=
 EKS_NAMESPACE ?=
@@ -100,7 +100,7 @@ BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X sma
 .PHONY: help test test-k8s-nvidia-local-serving test-k8s-amd-instinct-local-serving test-migration-operational-postgres test-migration-data-jobs-postgres test-migration-data-job-ownership-postgres test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-artifact-inventory release-security-evidence launch-operational-readiness release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-package-binaries build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all dist-backup package-dist-backup compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
 
 help:
-	@echo "GenAI Smart Router make targets. Metrum production: docs/EKS_PRODUCTION_OPERATIONS.md"
+	@echo "GenAI Smart Router make targets. Fleet ops: docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md"
 	@echo "  test                   run default test suite"
 	@echo "  test-tenant-deploy-all Fleet offline contract tests"
 	@echo "  package-docker         build customer Docker packages"

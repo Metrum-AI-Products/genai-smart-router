@@ -9,7 +9,7 @@ import clsx from "clsx";
 import styles from "./index.module.css";
 
 const docsLinks = [
-  ["Hosted Quickstart", "/getting-started/hosted-quickstart"],
+  ["API Quickstart", "/getting-started/hosted-quickstart"],
   ["Installation", "/installation/"],
   ["Available Models And Access", "/getting-started/available-models"],
   ["Error Reference", "/reference/errors"],

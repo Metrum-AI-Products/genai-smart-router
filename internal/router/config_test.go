@@ -647,10 +647,10 @@ func TestRetentionConfigValidation(t *testing.T) {
 func TestExplicitAccountsValidateCallerOwnership(t *testing.T) {
 	cfg := minimalConfig(t)
 	cfg.Users = []UserConfig{{ID: "Alice", Name: "Alice Example"}}
-	cfg.Projects = []ProjectConfig{{ID: "Metrum Insights", Name: "Metrum Insights"}}
-	cfg.ProjectMemberships = []ProjectMembershipConfig{{UserID: "Alice", Project: "Metrum Insights", Role: "admin"}}
+	cfg.Projects = []ProjectConfig{{ID: "Example Project", Name: "Example Project"}}
+	cfg.ProjectMemberships = []ProjectMembershipConfig{{UserID: "Alice", Project: "Example Project", Role: "admin"}}
 	cfg.Callers[0].OwnerUser = "Alice"
-	cfg.Callers[0].Project = "Metrum Insights"
+	cfg.Callers[0].Project = "Example Project"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() explicit account directory: %v", err)
 	}

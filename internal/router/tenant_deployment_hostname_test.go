@@ -13,19 +13,19 @@ import (
 func TestValidateApprovedAliasHostnames(t *testing.T) {
 	t.Parallel()
 	aliases := []TenantDeploymentHostnameAlias{
-		{Hostname: "llm-api-engg.metrum.ai", TLSSecretName: "llm-api-metrum-ai-tls"},
-		{Hostname: "llm-api.metrum.ai", TLSSecretName: "llm-api-metrum-ai-tls"},
+		{Hostname: "engg.example.com", TLSSecretName: "example-alias-tls"},
+		{Hostname: "router.example.com", TLSSecretName: "example-alias-tls"},
 	}
-	got, err := validateApprovedAliasHostnames(aliases, "apps.metrum.ai")
+	got, err := validateApprovedAliasHostnames(aliases, "apps.example.test")
 	if err != nil {
 		t.Fatalf("validateApprovedAliasHostnames: %v", err)
 	}
-	if len(got) != 2 || got[0].Hostname != "llm-api-engg.metrum.ai" {
+	if len(got) != 2 || got[0].Hostname != "engg.example.com" {
 		t.Fatalf("normalized aliases = %+v", got)
 	}
 	if _, err := validateApprovedAliasHostnames([]TenantDeploymentHostnameAlias{
-		{Hostname: "llm-api.apps.metrum.ai", TLSSecretName: "wildcard-tls"},
-	}, "apps.metrum.ai"); err == nil || !strings.Contains(err.Error(), "hostname suffix") {
+		{Hostname: "llm-api.apps.example.test", TLSSecretName: "wildcard-tls"},
+	}, "apps.example.test"); err == nil || !strings.Contains(err.Error(), "hostname suffix") {
 		t.Fatalf("suffix alias accepted: %v", err)
 	}
 }
@@ -34,13 +34,13 @@ func TestBuildTenantDeploymentPlanIncludesAliasHostnames(t *testing.T) {
 	t.Parallel()
 	profile, manifest, _ := tenantDeploymentFixture(t)
 	profile.ApprovedAliasHostnames = []TenantDeploymentHostnameAlias{
-		{Hostname: "llm-api-engg.metrum.ai", TLSSecretName: "llm-api-metrum-ai-tls"},
+		{Hostname: "engg.example.com", TLSSecretName: "example-alias-tls"},
 	}
 	plan, err := BuildTenantDeploymentPlan(profile, manifest, "intent-alias")
 	if err != nil {
 		t.Fatalf("BuildTenantDeploymentPlan: %v", err)
 	}
-	if len(plan.AliasHostnames) != 1 || plan.AliasHostnames[0].Hostname != "llm-api-engg.metrum.ai" {
+	if len(plan.AliasHostnames) != 1 || plan.AliasHostnames[0].Hostname != "engg.example.com" {
 		t.Fatalf("plan aliases = %+v", plan.AliasHostnames)
 	}
 }
@@ -48,9 +48,9 @@ func TestBuildTenantDeploymentPlanIncludesAliasHostnames(t *testing.T) {
 func TestTenantDeploymentIngressSpecGroupsTLSBySecret(t *testing.T) {
 	t.Parallel()
 	spec := tenantDeploymentIngressSpec("nginx", []TenantDeploymentHostnameAlias{
-		{Hostname: "llm-api.apps.metrum.ai", TLSSecretName: "apps-metrum-ai-wildcard-tls"},
-		{Hostname: "llm-api-engg.metrum.ai", TLSSecretName: "llm-api-metrum-ai-tls"},
-		{Hostname: "llm-api.metrum.ai", TLSSecretName: "llm-api-metrum-ai-tls"},
+		{Hostname: "llm-api.apps.example.test", TLSSecretName: "apps-example-wildcard-tls"},
+		{Hostname: "engg.example.com", TLSSecretName: "example-alias-tls"},
+		{Hostname: "router.example.com", TLSSecretName: "example-alias-tls"},
 	}, "router")
 	if len(spec.Rules) != 3 {
 		t.Fatalf("rules = %d", len(spec.Rules))
@@ -61,9 +61,9 @@ func TestTenantDeploymentIngressSpecGroupsTLSBySecret(t *testing.T) {
 	var wildcard, exact *networkingv1.IngressTLS
 	for i := range spec.TLS {
 		switch spec.TLS[i].SecretName {
-		case "apps-metrum-ai-wildcard-tls":
+		case "apps-example-wildcard-tls":
 			wildcard = &spec.TLS[i]
-		case "llm-api-metrum-ai-tls":
+		case "example-alias-tls":
 			exact = &spec.TLS[i]
 		}
 	}

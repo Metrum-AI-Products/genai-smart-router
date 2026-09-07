@@ -1,8 +1,8 @@
 # Placeholder only. Replace every REPLACE_* value in a protected mode-0600 file.
 # Never commit credentials, DSNs, tokens, or license payloads.
 # Hostname is derived by the plan as <namespace>.<profile.hostname_suffix>
-# (for ACME: expect acme.apps.metrum.ai once the protected profile suffix is apps.metrum.ai
-# and the namespace is derived from customer_id/stage/profile policy).
+# (for ACME: expect acme.<hostname_suffix> once the protected profile sets that
+# suffix and the namespace is derived from customer_id/stage/profile policy).
 # compute_profile is optional; when omitted Fleet selects default t3a.medium from the
 # protected profile approved_compute_profiles allowlist.
 api_version: metrum.ai/smartrouter-deployment/v1

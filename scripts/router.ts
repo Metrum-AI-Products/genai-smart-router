@@ -57,15 +57,15 @@ type RouteContext = {
 
 const keyRules: KeyRule[] = [
   {
-    name: "metrum-prod-heavy",
-    tokenId: /^rtr_metrum_chetan_metrum-insights_prod_/,
-    project: /^metrum-insights$/,
+    name: "example-prod-heavy",
+    tokenId: /^rtr_metrum_alice_example-project_prod_/,
+    project: /^example-project$/,
     environment: /^prod$/,
     tier: /^heavy$/,
   },
   {
-    name: "readme-dev-openrouter",
-    tokenId: /^rtr_metrum_readme_metrum-insights_dev_/,
+    name: "example-dev-openrouter",
+    tokenId: /^rtr_metrum_alice_example-project_dev_/,
     provider: /^openrouter/,
     apiKeyEnv: /^OPENROUTER_API_KEY$/,
   },

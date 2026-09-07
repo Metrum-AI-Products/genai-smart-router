@@ -32,7 +32,7 @@ func TestNormalizeCustomerID(t *testing.T) {
 }
 
 func TestStableCustomerNaming(t *testing.T) {
-	if got := customerHostname("acme4"); got != "acme4.apps.metrum.ai" {
+	if got := customerHostname("acme4"); got != "acme4.apps.example.test" {
 		t.Fatalf("hostname=%q", got)
 	}
 	want := "aws-secretsmanager:///smartrouter/fleet/customers/acme4/runtime-bundle"
@@ -288,7 +288,7 @@ func TestCustomerListFromWorkspacePlan(t *testing.T) {
 	if err := os.MkdirAll(wsHome, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	plan := planPayload{JobID: "job-workspace-gamma3", Hostname: "gamma3.apps.metrum.ai", State: "ready"}
+	plan := planPayload{JobID: "job-workspace-gamma3", Hostname: "gamma3.apps.example.test", State: "ready"}
 	raw, err := json.Marshal(plan)
 	if err != nil {
 		t.Fatal(err)
@@ -314,7 +314,7 @@ func TestCustomerListFromWorkspacePlan(t *testing.T) {
 	if row["customer_id"] != "gamma3" || row["job_id"] != "job-workspace-gamma3" {
 		t.Fatalf("row=%v", row)
 	}
-	if row["hostname"] != "gamma3.apps.metrum.ai" {
+	if row["hostname"] != "gamma3.apps.example.test" {
 		t.Fatalf("hostname=%v", row["hostname"])
 	}
 }
@@ -493,14 +493,27 @@ func TestPublishRuntimeBundleOperatorClearsFleetSession(t *testing.T) {
 	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAFLEET")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
 	t.Setenv("AWS_SESSION_TOKEN", "session")
-	roleARN := fleetLifecycleRoleARN()
-	t.Setenv("METRUM_FLEET_LIFECYCLE_ROLE_ARN", roleARN)
+	t.Setenv("METRUM_FLEET_LIFECYCLE_ROLE_ARN", "arn:aws:iam::123456789012:role/example-fleet-lifecycle")
+	roleARN, err := fleetLifecycleRoleARN()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roleARN != "arn:aws:iam::123456789012:role/example-fleet-lifecycle" {
+		t.Fatalf("role ARN=%q", roleARN)
+	}
 	if _, _, ok := existingFleetRoleSession(context.Background()); ok {
 		t.Fatal("expected no fleet session without matching caller identity")
 	}
 	clearFleetSessionCredentials()
 	if os.Getenv("AWS_SESSION_TOKEN") != "" {
 		t.Fatal("session token not cleared")
+	}
+}
+
+func TestFleetLifecycleRoleARNRequiresEnv(t *testing.T) {
+	t.Setenv("METRUM_FLEET_LIFECYCLE_ROLE_ARN", "")
+	if _, err := fleetLifecycleRoleARN(); err == nil || !strings.Contains(err.Error(), "METRUM_FLEET_LIFECYCLE_ROLE_ARN") {
+		t.Fatalf("expected required-env error, got %v", err)
 	}
 }
 

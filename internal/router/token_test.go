@@ -13,8 +13,8 @@ import (
 
 func TestGenerateCallerTokenStructuredMetrumPrefix(t *testing.T) {
 	generated, err := GenerateCallerToken(TokenGenerateOptions{
-		OwnerUser:   "Chetan",
-		Project:     "Metrum Insights",
+		OwnerUser:   "Alice",
+		Project:     "Example Project",
 		Environment: "Dev",
 		KeySlug:     "Key 1",
 		Allow:       []string{"default", "fast"},
@@ -24,10 +24,10 @@ func TestGenerateCallerTokenStructuredMetrumPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(generated.Token, "rtr_metrum_chetan_metrum-insights_dev_key-1_") {
+	if !strings.HasPrefix(generated.Token, "rtr_metrum_alice_example-project_dev_key-1_") {
 		t.Fatalf("unexpected token prefix: %s", generated.Token)
 	}
-	if generated.TokenID != "rtr_metrum_chetan_metrum-insights_dev_key-1" {
+	if generated.TokenID != "rtr_metrum_alice_example-project_dev_key-1" {
 		t.Fatalf("token id=%q", generated.TokenID)
 	}
 	if strings.Contains(generated.TokenID, generated.Token[strings.LastIndex(generated.Token, "_")+1:]) {
@@ -37,7 +37,7 @@ func TestGenerateCallerTokenStructuredMetrumPrefix(t *testing.T) {
 	if generated.TokenSHA256 != hex.EncodeToString(sum[:]) || generated.Caller.TokenSHA256 != generated.TokenSHA256 {
 		t.Fatalf("hash mismatch: %#v", generated)
 	}
-	if generated.Caller.ID != "chetan-metrum-insights-dev" || generated.Caller.OwnerUser != "chetan" || generated.Caller.Project != "metrum-insights" || generated.Caller.Environment != "dev" {
+	if generated.Caller.ID != "alice-example-project-dev" || generated.Caller.OwnerUser != "alice" || generated.Caller.Project != "example-project" || generated.Caller.Environment != "dev" {
 		t.Fatalf("caller metadata not normalized: %#v", generated.Caller)
 	}
 	if len(generated.Caller.Allow) != 2 || generated.Caller.Allow[0] != "default" || generated.Caller.Allow[1] != "fast" {
@@ -48,7 +48,7 @@ func TestGenerateCallerTokenStructuredMetrumPrefix(t *testing.T) {
 func TestGenerateCallerTokenRequiresAllow(t *testing.T) {
 	_, err := GenerateCallerToken(TokenGenerateOptions{
 		User:    "alice",
-		Project: "metrum-insights",
+		Project: "example-project",
 		Reader:  strings.NewReader(strings.Repeat("b", 64)),
 		Now:     time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
 	})
@@ -60,7 +60,7 @@ func TestGenerateCallerTokenRequiresAllow(t *testing.T) {
 func TestGenerateCallerTokenDefaultsMetadata(t *testing.T) {
 	generated, err := GenerateCallerToken(TokenGenerateOptions{
 		OwnerUser: "alice",
-		Project:   "metrum-insights",
+		Project:   "example-project",
 		Allow:     []string{"example-basic"},
 		Reader:    strings.NewReader(strings.Repeat("b", 64)),
 		Now:       time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
@@ -68,7 +68,7 @@ func TestGenerateCallerTokenDefaultsMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if generated.TokenID != "rtr_metrum_alice_metrum-insights_dev_k20260613" {
+	if generated.TokenID != "rtr_metrum_alice_example-project_dev_k20260613" {
 		t.Fatalf("default token id=%q", generated.TokenID)
 	}
 	if len(generated.Caller.Allow) != 1 || generated.Caller.Allow[0] != "example-basic" {
@@ -79,7 +79,7 @@ func TestGenerateCallerTokenDefaultsMetadata(t *testing.T) {
 func TestGenerateCallerTokenPreservesAllowedModelGroups(t *testing.T) {
 	generated, err := GenerateCallerToken(TokenGenerateOptions{
 		OwnerUser: "coder",
-		Project:   "metrum-insights",
+		Project:   "example-project",
 		Allow:     []string{"default", "big-coder", "high"},
 		Reader:    strings.NewReader(strings.Repeat("c", 64)),
 		Now:       time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
@@ -95,7 +95,7 @@ func TestGenerateCallerTokenPreservesAllowedModelGroups(t *testing.T) {
 func TestGenerateCallerTokenAcceptsLegacyUserAlias(t *testing.T) {
 	generated, err := GenerateCallerToken(TokenGenerateOptions{
 		User:    "legacy user",
-		Project: "metrum-insights",
+		Project: "example-project",
 		Allow:   []string{"default"},
 		Reader:  strings.NewReader(strings.Repeat("d", 64)),
 		Now:     time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
@@ -109,11 +109,11 @@ func TestGenerateCallerTokenAcceptsLegacyUserAlias(t *testing.T) {
 }
 
 func TestPublicTokenIDStripsSecretSuffix(t *testing.T) {
-	full := "rtr_metrum_sudarshan_metrum-insights_prod_k20260614_SYNTHETIC_PUBLIC_FIXTURE_PART_SYNTHETIC_SECRET_SUFFIX"
-	if got, want := publicTokenID(full), "rtr_metrum_sudarshan_metrum-insights_prod_k20260614"; got != want {
+	full := "rtr_metrum_alice_example-project_prod_k20260614_SYNTHETIC_PUBLIC_FIXTURE_PART_SYNTHETIC_SECRET_SUFFIX"
+	if got, want := publicTokenID(full), "rtr_metrum_alice_example-project_prod_k20260614"; got != want {
 		t.Fatalf("public token id=%q want %q", got, want)
 	}
-	clean := "rtr_metrum_clay_metrum-insights_prod_k20260614"
+	clean := "rtr_metrum_alice_example-project_prod_k20260614"
 	if got := publicTokenID(clean); got != clean {
 		t.Fatalf("clean token id changed: %q", got)
 	}

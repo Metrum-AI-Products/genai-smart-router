@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const hostnameSuffix = "apps.metrum.ai"
+const hostnameSuffix = "apps.example.test"
 
 var customerIDRE = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
 
@@ -217,7 +217,7 @@ func customerIDFromHostname(host string) (string, error) {
 	return id, nil
 }
 
-// ExpectedHostname returns customer_id.apps.metrum.ai.
+// ExpectedHostname returns customer_id.apps.example.test.
 func ExpectedHostname(customerID string) string {
 	return strings.ToLower(strings.TrimSpace(customerID)) + "." + hostnameSuffix
 }

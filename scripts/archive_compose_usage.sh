@@ -76,9 +76,13 @@ PY
 )"
   export RESTIC_PASSWORD
   restic -r "$(python3 - <<'PY'
-import json, pathlib
+import json, pathlib, sys
 cfg=json.loads(pathlib.Path("env.json").read_text())
-print(cfg.get("RESTIC_REPOSITORY","s3:https://nyc3.digitaloceanspaces.com/metrum-backups/smart-llmrouter"))
+repo=str(cfg.get("RESTIC_REPOSITORY","")).strip()
+if not repo:
+    print("RESTIC_REPOSITORY is required in env.json", file=sys.stderr)
+    sys.exit(2)
+print(repo)
 PY
 )" backup "${DUMP_PATH}" "${ARCHIVE_DIR}/MANIFEST-${VERSION_TAG}.txt" \
     --tag "purpose:compose-usage-archive" --tag "version:${VERSION_TAG}"

@@ -131,8 +131,9 @@ image. Dedicated RDS plans contain only safe scalar identifiers. The first
 disposable non-production E2E may use a strictly scoped external admission
 file; after its evidence exists, one qualified reviewer records the required
 review before a production-like non-production rehearsal. A single-operator
-team may self-review. Managed Fleet production for Metrum engineering uses a
-protected production profile; customer packages do not grant that authority.
+team may self-review. Customer packages do not grant authority over any
+Metrum-managed production profile; operators supply their own protected
+profile references.
 
 `metrum-fleetctl`, `metrum-smartrouterctl`, `smartrouterctl`, `metrum-fleet-sign`,
 and `router-license` are one-release compatibility commands that only report

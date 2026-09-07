@@ -252,7 +252,7 @@ func TestTransferPredecessorResourcesReassignsUniqueRefs(t *testing.T) {
 	if err := store.db.Create(&tenantDeploymentJobRecord{
 		JobID: "job-source", InstanceID: source, IdempotencyKey: "idem-s", ManifestSHA256: "old",
 		ProfileID: "p", CustomerID: "c", Stage: "nonproduction", Environment: "nonproduction",
-		Region: "us-east-1", ClusterAlias: "metrum", Namespace: "llm-api", Hostname: "llm-api.apps.metrum.ai",
+		Region: "us-east-1", ClusterAlias: "metrum", Namespace: "llm-api", Hostname: "llm-api.apps.example.test",
 		ReleaseDigest: "d", ResourceProfile: "small", StateProfile: "sqlite-rwo-small", ConfigRevision: "old",
 		State: TenantDeploymentReady, CreatedAt: now, UpdatedAt: now,
 	}).Error; err != nil {
@@ -261,7 +261,7 @@ func TestTransferPredecessorResourcesReassignsUniqueRefs(t *testing.T) {
 	if err := store.db.Create(&tenantDeploymentJobRecord{
 		JobID: "job-target", InstanceID: target, IdempotencyKey: "idem-t", ManifestSHA256: "new",
 		ProfileID: "p2", CustomerID: "c", Stage: "production", Environment: "production",
-		Region: "us-east-1", ClusterAlias: "metrum", Namespace: "llm-api", Hostname: "llm-api.apps.metrum.ai",
+		Region: "us-east-1", ClusterAlias: "metrum", Namespace: "llm-api", Hostname: "llm-api.apps.example.test",
 		ReleaseDigest: "d2", ResourceProfile: "small", StateProfile: "sqlite-rwo-small", ConfigRevision: "new",
 		State: TenantDeploymentProvisioning, SourceInstanceID: source, CreatedAt: now, UpdatedAt: now,
 	}).Error; err != nil {

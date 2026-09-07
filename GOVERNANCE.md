@@ -40,10 +40,9 @@ repository's release checks pass. Release notes describe caller and operator
 impact, validation, and rollback. No contributor should infer release authority
 from issue assignment, review participation, or package access.
 
-Launch decisions use the evidence record in
-[docs/OPEN_SOURCE_LAUNCH_GOVERNANCE.md](docs/OPEN_SOURCE_LAUNCH_GOVERNANCE.md).
-A GO requires every hard gate to have current evidence and owner attestation;
-an owner appointment is not a substitute for either requirement.
+This project is maintained as public open-source software. Release decisions
+use public issues, pull requests, and release notes with current validation
+evidence; an owner appointment is not a substitute for that evidence.
 
 ## Escalation
 

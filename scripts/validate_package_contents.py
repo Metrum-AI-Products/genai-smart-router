@@ -125,8 +125,17 @@ FORBIDDEN_NAME_RE = re.compile(
 FORBIDDEN_TEXT_PATTERNS = [
     (
         "private production host marker",
-        re.compile(r"\b(?:100\.30\.225\.66|llm-api-engg\.metrum\.ai)\b"),
+        re.compile(
+            r"\b(?:"
+            r"100\.30\.225\.66|54\.84\.22\.33|52\.3\.128\.72|"
+            r"llm-api-engg\.metrum\.ai|llm-api\.metrum\.ai|llm-api\.apps\.metrum\.ai|"
+            r"backups\.metrum\.ai"
+            r")\b"
+        ),
     ),
+    ("private AWS account", re.compile(r"\b121701826775\b")),
+    ("stale Metrum-issued license wording", re.compile(r"Metrum-issued")),
+    ("private personal Caddy email default", re.compile(r"CADDY_EMAIL:chetan@metrum\.ai|chetan@metrum\.ai\}")),
     (
         "private SSH user or key path",
         re.compile(r"(?:\bubuntu@[A-Za-z0-9_.-]+|~/.ssh/[^\s'\"`]+\.pem|\bssh\s+-i\s+[^\n]+\.pem)"),
