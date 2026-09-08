@@ -35,21 +35,27 @@ Agents must remember and enforce:
 
 ## GitHub homes
 
-This working tree's `origin` remains
-`https://github.com/sysadmin-metrum-ai/genai-smart-router`. Issues, pull
-requests, and release assets for current operator work stay there until an
-explicit ops cutover.
-
-The public Apache-2.0 home is the standalone repository
+The sole day-to-day product home is the public Apache-2.0 repository
 [`https://github.com/Metrum-AI-Products/genai-smart-router`](https://github.com/Metrum-AI-Products/genai-smart-router)
-(not a fork). On 2026-09-08 it was created as a **public** repo and only
-`main` was published. Do not assume other branches, tags, issues, pull
-requests, or GitHub release assets exist there. Customer-facing clone URLs,
-docs GitHub links, SECURITY advisory paths, and issue-template support links
-point at `Metrum-AI-Products`. Historical issue and PR links that already
-point at `sysadmin-metrum-ai` stay (those numbers were not copied). The
-work-dashboard default repository stays on `sysadmin-metrum-ai` so `#N` /
-`PR#N` resolution still hits the private issue/PR graph.
+(not a fork). Developer `origin` should point there for new branches, PRs,
+tags, and Releases. Customer-facing clone URLs, docs GitHub links, SECURITY
+advisory paths, and issue-template support links already use
+`Metrum-AI-Products`.
+
+`https://github.com/sysadmin-metrum-ai/genai-smart-router` is a **read-only
+historical archive** for pre-cutover issues, pull requests, and older release
+assets. Do not open new product work there. Historical `#N` / `PR#N` links that
+already point at `sysadmin-metrum-ai` stay (those numbers were not copied to
+the public home). The work-dashboard default repository stays on
+`sysadmin-metrum-ai` so short `#N` / `PR#N` resolution still hits that archive
+until a later dual-link migration.
+
+Metrum hosted production operations (Fleet/EKS profiles, runtime-bundle refs,
+smoke runbooks, operator evidence pointers) live in the private ops umbrella
+[`https://github.com/sysadmin-metrum-ai/metrum-internal-infra-admin`](https://github.com/sysadmin-metrum-ai/metrum-internal-infra-admin)
+under `genai-smart-router-ops/`, which pins this public product as a git
+submodule. Live configs, licenses, and secrets stay in SSM/Secrets Manager or
+local gitignored files—never in the public product tree.
 
 ## Project Shape
 
