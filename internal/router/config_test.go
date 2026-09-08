@@ -2298,14 +2298,26 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 	if !codexToolTarget || !codexOpenRouterMiniMaxToolTarget || (name == "big-coder" && !codexFireworksToolTarget) || !claudeMiniMaxToolTarget || !claudeBasetenToolTarget || !claudeKimiToolTarget || !claudeOpenRouterMiniMaxToolTarget || !claudeGemmaToolTarget {
 		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter_minimax=%v codex_fireworks=%v minimax=%v baseten=%v kimi=%v claude_openrouter_minimax=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterMiniMaxToolTarget, codexFireworksToolTarget, claudeMiniMaxToolTarget, claudeBasetenToolTarget, claudeKimiToolTarget, claudeOpenRouterMiniMaxToolTarget, claudeGemmaToolTarget)
 	}
+	if name != "big-coder" {
+		anthropicText := false
+		for _, target := range group.Targets {
+			if !target.ToolOnly && target.Provider == "minimax_anthropic" && target.Model == "MiniMax-M3" {
+				anthropicText = true
+				break
+			}
+		}
+		if !anthropicText {
+			t.Fatalf("example config group %s has no plain-text Anthropic MiniMax M3 target; Anthropic Messages without tools would return no-eligible-target", name)
+		}
+	}
 	want := map[string]struct {
 		gptOSS, m3, gemma, kimi, openAI, basetenNemotron, basetenGLM, crusoeGemma, crusoeGLM, crusoeNemotron, fireworksGPTOSS20B, fireworksGLM52, fireworksKimi, fireworksDeepSeek, fireworksQwen, xaiGrok45, targets int
 	}{
-		"default":   {51, 27, 2, 6, 1, 3, 5, 0, 5, 0, 0, 0, 0, 0, 0, 0, 8},
-		"fast":      {56, 26, 2, 5, 1, 3, 5, 0, 2, 0, 0, 0, 0, 0, 0, 0, 8},
-		"small":     {58, 28, 2, 4, 1, 3, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 8},
-		"medium":    {51, 25, 2, 8, 1, 3, 5, 0, 5, 0, 0, 0, 0, 0, 0, 0, 8},
-		"high":      {45, 26, 2, 10, 1, 3, 6, 0, 7, 0, 0, 0, 0, 0, 0, 0, 8},
+		"default":   {51, 24, 2, 6, 1, 3, 5, 0, 5, 0, 0, 0, 0, 0, 0, 0, 9},
+		"fast":      {56, 23, 2, 5, 1, 3, 5, 0, 2, 0, 0, 0, 0, 0, 0, 0, 9},
+		"small":     {58, 25, 2, 4, 1, 3, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 9},
+		"medium":    {51, 22, 2, 8, 1, 3, 5, 0, 5, 0, 0, 0, 0, 0, 0, 0, 9},
+		"high":      {45, 23, 2, 10, 1, 3, 6, 0, 7, 0, 0, 0, 0, 0, 0, 0, 9},
 		"big-coder": {0, 20, 0, 15, 10, 0, 0, 0, 15, 0, 0, 0, 0, 25, 0, 15, 6},
 	}
 	expect, ok := want[name]

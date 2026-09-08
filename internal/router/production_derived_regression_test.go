@@ -266,6 +266,90 @@ func TestProductionDerivedAdminReportsForwardedHTTPSTrust(t *testing.T) {
 	}
 }
 
+// TestProductionDerivedAnthropicPlainTextToolOnly replays the 2026-09-08
+// production smoke in which a plain-text Anthropic Messages request to a broad
+// group returned 502 no-eligible-target because every Anthropic-dialect target
+// was tool_only, while the same group served a tool-bearing request.
+func TestProductionDerivedAnthropicPlainTextToolOnly(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "smokes", "production-derived", "anthropic-plain-text-tool-only.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Name                string `json:"name"`
+		SourceIncidentIssue string `json:"source_incident_issue"`
+		Surface             string `json:"surface"`
+		Path                string `json:"path"`
+		PlainTextStatus     int    `json:"plain_text_status"`
+		PlainTextErrorType  string `json:"plain_text_error_type"`
+		ToolRequestStatus   int    `json:"tool_request_status"`
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.Surface != "anthropic_messages" || fixture.PlainTextStatus != http.StatusBadGateway || fixture.PlainTextErrorType != "no-eligible-target" {
+		t.Fatalf("invalid Anthropic plain-text tool_only fixture: %#v", fixture)
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "msg_plain",
+			"type":        "message",
+			"role":        "assistant",
+			"model":       "native-messages",
+			"content":     []map[string]any{{"type": "text", "text": "OK"}},
+			"stop_reason": "end_turn",
+			"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1},
+		})
+	}))
+	defer upstream.Close()
+
+	newSvc := func(t *testing.T, toolOnly bool) *Service {
+		t.Helper()
+		cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+		cfg.Provider["anthropic_native"] = ProviderConfig{BaseURL: upstream.URL, Dialect: "anthropic", APIKey: "provider-key"}
+		cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{
+			Provider:    "anthropic_native",
+			Model:       "native-messages",
+			ToolOnly:    toolOnly,
+			ToolSupport: ToolSupport{AnthropicMessages: []string{"client_tools"}},
+		}}}
+		svc, err := New(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return svc
+	}
+
+	post := func(svc *Service, withTools bool) int {
+		t.Helper()
+		body := `{"model":"default","max_tokens":32,"messages":[{"role":"user","content":"Reply OK only."}]}`
+		if withTools {
+			body = `{"model":"default","max_tokens":32,"messages":[{"role":"user","content":"Reply OK only."}],"tools":[{"name":"echo","input_schema":{"type":"object","properties":{}}}]}`
+		}
+		req := httptest.NewRequest(http.MethodPost, fixture.Path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		return rr.Code
+	}
+
+	toolOnly := newSvc(t, true)
+	defer toolOnly.Close()
+	if got := post(toolOnly, false); got != fixture.PlainTextStatus {
+		t.Fatalf("plain-text against tool_only-only group status=%d want %d", got, fixture.PlainTextStatus)
+	}
+	if got := post(toolOnly, true); got != fixture.ToolRequestStatus {
+		t.Fatalf("tool request against tool_only group status=%d want %d", got, fixture.ToolRequestStatus)
+	}
+
+	textCapable := newSvc(t, false)
+	defer textCapable.Close()
+	if got := post(textCapable, false); got != http.StatusOK {
+		t.Fatalf("plain-text against non-tool_only Anthropic target status=%d want 200", got)
+	}
+}
+
 func TestProductionDerivedAnthropicMessagesImageEligibility(t *testing.T) {
 	fixture := loadProductionDerivedAnthropicImageFixture(t, "anthropic-messages-image-eligibility.json")
 	if fixture.SourceIncidentIssue != "#660" || fixture.ObservedModelGroup != "big-coder" ||
