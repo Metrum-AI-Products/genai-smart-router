@@ -35,20 +35,21 @@ Agents must remember and enforce:
 
 ## GitHub homes
 
-This working tree's `origin` is still
+This working tree's `origin` remains
 `https://github.com/sysadmin-metrum-ai/genai-smart-router`. Issues, pull
-requests, and release assets for current operator work remain there until an
-explicit cutover.
+requests, and release assets for current operator work stay there until an
+explicit ops cutover.
 
-The public Apache-2.0 home will be
-[`https://github.com/Metrum-AI-Products/genai-smart-router`](https://github.com/Metrum-AI-Products/genai-smart-router).
-On 2026-09-08 that repository was created as a GitHub fork. **Only `main`
-was copied.** Do not assume other branches, tags, issues, pull requests, or
-release assets exist on the fork. The fork is not yet public; do not retarget
-clone URLs, docs GitHub links, issue templates, or the work-dashboard default
-repository until that publication cutover is authorized. Historical issue and
-PR links that already point at `sysadmin-metrum-ai` stay unless GitHub copies
-them or a later task rewrites them.
+The public Apache-2.0 home is the standalone repository
+[`https://github.com/Metrum-AI-Products/genai-smart-router`](https://github.com/Metrum-AI-Products/genai-smart-router)
+(not a fork). On 2026-09-08 it was created as a **public** repo and only
+`main` was published. Do not assume other branches, tags, issues, pull
+requests, or GitHub release assets exist there. Customer-facing clone URLs,
+docs GitHub links, SECURITY advisory paths, and issue-template support links
+point at `Metrum-AI-Products`. Historical issue and PR links that already
+point at `sysadmin-metrum-ai` stay (those numbers were not copied). The
+work-dashboard default repository stays on `sysadmin-metrum-ai` so `#N` /
+`PR#N` resolution still hits the private issue/PR graph.
 
 ## Project Shape
 
