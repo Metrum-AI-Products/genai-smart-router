@@ -31,7 +31,11 @@ def valid_config() -> dict:
         "server": {
             "client_ip": {"trusted_proxy_cidrs": ["192.168.0.0/16"]},
             "admin_auth": {
-                "basic": {"enabled": True},
+                "basic": {
+                    "enabled": True,
+                    "allow_insecure_http": False,
+                    "trusted_proxy_cidrs": ["192.168.0.0/16"],
+                },
                 "authorization": {"enabled": True},
             },
             "admin_reports": {
@@ -64,6 +68,26 @@ def main() -> int:
     failed = run_check(wrong_path)
     assert failed.returncode == 1
     assert "path_prefix must be /admin/reports" in failed.stderr
+
+    # 2026-09-08 production incident: a kind/Docker reverse-proxy range left the
+    # cluster ingress untrusted, so correct passwords were challenged with 401.
+    untrusted_proxy = valid_config()
+    untrusted_proxy["server"]["admin_auth"]["basic"]["trusted_proxy_cidrs"] = ["172.18.0.0/16"]
+    failed = run_check(untrusted_proxy)
+    assert failed.returncode == 1
+    assert "admin_auth.basic.trusted_proxy_cidrs" in failed.stderr
+
+    no_proxy = valid_config()
+    del no_proxy["server"]["admin_auth"]["basic"]["trusted_proxy_cidrs"]
+    failed = run_check(no_proxy)
+    assert failed.returncode == 1
+    assert "admin_auth.basic.trusted_proxy_cidrs" in failed.stderr
+
+    # allow_insecure_http bypasses the forwarded-HTTPS gate, so the reverse
+    # proxy range is not a precondition for reaching the password check.
+    insecure = valid_config()
+    insecure["server"]["admin_auth"]["basic"] = {"enabled": True, "allow_insecure_http": True}
+    assert run_check(insecure).returncode == 0
 
     print("production bundle admin reports contract test passed")
     return 0

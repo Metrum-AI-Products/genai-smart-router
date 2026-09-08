@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -414,7 +415,7 @@ func (a *EKSTenantDeploymentAdapters) ensureRuntimeBundleSecret(ctx context.Cont
 		return "", err
 	}
 	if p.requireAdminReports {
-		if err := validateRequiredAdminReports(bundle.ConfigYAML); err != nil {
+		if err := validateRequiredAdminReports(bundle.ConfigYAML, p.adminReportsProxyCIDRs); err != nil {
 			return "", err
 		}
 	}
@@ -468,12 +469,14 @@ func (a *EKSTenantDeploymentAdapters) ensureRuntimeBundleSecret(ctx context.Cont
 	return tenantDeploymentResourceRef(p.Namespace, "secret", "router-runtime"), nil
 }
 
-func validateRequiredAdminReports(configYAML string) error {
+func validateRequiredAdminReports(configYAML string, proxyCIDRs []string) error {
 	var cfg struct {
 		Server struct {
 			AdminAuth struct {
 				Basic struct {
-					Enabled bool `yaml:"enabled"`
+					Enabled           bool     `yaml:"enabled"`
+					AllowInsecureHTTP bool     `yaml:"allow_insecure_http"`
+					TrustedProxyCIDRs []string `yaml:"trusted_proxy_cidrs"`
 				} `yaml:"basic"`
 				OIDC struct {
 					Enabled bool `yaml:"enabled"`
@@ -497,7 +500,48 @@ func validateRequiredAdminReports(configYAML string) error {
 		!cfg.Server.AdminAuth.Authorization.Enabled {
 		return &TenantDeploymentAdapterError{Class: "runtime_bundle_policy_failed", Err: errors.New("required admin reports configuration is missing")}
 	}
+	basic := cfg.Server.AdminAuth.Basic
+	if !basic.Enabled || basic.AllowInsecureHTTP || len(proxyCIDRs) == 0 {
+		return nil
+	}
+	// Basic Auth evaluates the forwarded-HTTPS check before comparing the
+	// password, so a bundle that does not trust the deployment reverse proxy
+	// answers every admin request with a challenge that is indistinguishable
+	// from a wrong password.
+	trusted := make([]*net.IPNet, 0, len(basic.TrustedProxyCIDRs))
+	for _, raw := range basic.TrustedProxyCIDRs {
+		_, network, err := net.ParseCIDR(strings.TrimSpace(raw))
+		if err != nil {
+			return &TenantDeploymentAdapterError{Class: "runtime_bundle_policy_failed", Err: errors.New("required admin reports trusted proxy range is invalid")}
+		}
+		trusted = append(trusted, network)
+	}
+	for _, raw := range proxyCIDRs {
+		_, proxy, err := net.ParseCIDR(strings.TrimSpace(raw))
+		if err != nil {
+			return &TenantDeploymentAdapterError{Class: "runtime_bundle_policy_failed", Err: errors.New("approved admin reports proxy range is invalid")}
+		}
+		if !anyCIDRCovers(trusted, proxy) {
+			return &TenantDeploymentAdapterError{Class: "runtime_bundle_policy_failed", Err: errors.New("required admin reports configuration does not trust the deployment reverse proxy network")}
+		}
+	}
 	return nil
+}
+
+// anyCIDRCovers reports whether one of the trusted networks fully contains the
+// proxy network, so every address the reverse proxy can present is trusted.
+func anyCIDRCovers(trusted []*net.IPNet, proxy *net.IPNet) bool {
+	proxyOnes, proxyBits := proxy.Mask.Size()
+	for _, network := range trusted {
+		ones, bits := network.Mask.Size()
+		if bits != proxyBits || ones > proxyOnes {
+			continue
+		}
+		if network.Contains(proxy.IP) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *EKSTenantDeploymentAdapters) ensureReferenceSecret(ctx context.Context, p TenantDeploymentPlan, name, key, ref string) (string, error) {

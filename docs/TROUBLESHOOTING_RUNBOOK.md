@@ -2,6 +2,22 @@
 
 Use this runbook for production issues reported by users or monitoring.
 
+## Deployment Shape
+
+The Metrum production deployment runs on **Amazon EKS**, not Docker Compose.
+Production changes are applied by publishing a new runtime bundle and activating
+a signed immutable Fleet intent through `metrum-genai-smartrouter-fleetctl`; the
+cluster then rolls the `router` Deployment. Never edit a live Kubernetes secret,
+ConfigMap, or Deployment by hand to change production behavior, because the next
+Fleet reconciliation replaces it and the change leaves no signed record. See
+[Customer instance operations runbook](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md)
+and [Multi-environment deployment CLI](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md).
+
+Docker Compose remains a supported **self-hosted customer** option documented in
+[Docker deployment](DOCKER_DEPLOYMENT.md). Compose-specific steps in this runbook
+apply only to those installs. When triaging the Metrum production deployment, use
+the Kubernetes and Fleet procedures.
+
 For startup blocked by an incompatible, pending, running, or failed migration state, use the canonical [Data migration framework](DATA_MIGRATIONS.md). Inspect the metrics-admin migration summary and authenticated read-only **Operations / Data migrations** report; do not use the serving router to apply, retry, or reverse work. Ledger `failed` or `running` state takes precedence over a bound data-job projection. Recovery follows the recorded backup/restore and deployment-job procedure.
 
 ## First Checks
@@ -63,19 +79,36 @@ When fixing incidents, check whether the downstream body tells the caller the ri
 
 ## Health And Version
 
-Replace `<router-host>` with the deployment under test. For Compose installs,
-inspect the operator host with the deployment owner's SSH identity and path—never
-commit private IPs, key paths, or production hostnames into this runbook.
+Replace `<router-host>` with the deployment under test.
 
 ```bash
 rtk curl -fsS https://<router-host>/readyz
 rtk curl -fsS https://<router-host>/version
+```
+
+On the EKS production deployment, inspect workload state with the currently
+authenticated cluster session and the deployment-owned namespace:
+
+```bash
+rtk kubectl get pods -n <namespace> -o wide
+rtk kubectl rollout status deploy/router -n <namespace>
+rtk kubectl logs deploy/router -n <namespace> --tail=200
+```
+
+Release and configuration changes go through a new signed Fleet intent, never a
+manual edit. See [Customer instance operations runbook](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md).
+
+For self-hosted Compose installs, inspect the operator host with the deployment
+owner's SSH identity and path—never commit private IPs, key paths, or production
+hostnames into this runbook:
+
+```bash
 # Compose example on the operator host (paths are deployment-owned):
 # ssh -i <operator-ssh-key> <user>@<operator-host> \
 #   'cd /opt/smart-llmrouter/compose && sudo docker compose ps'
 ```
 
-Production Compose package refreshes use `scripts/compose_package_upgrade.py` (`plan`, then `apply --remote`). A deliberate empty Compose Postgres usage store uses `scripts/compose_clean_cutover.py` (`plan`, then `apply --confirm-reset-usage reset-postgres-data --remote`). Do not invent a host unpacker or `docker compose down` with volumes. See `docs/DOCKER_DEPLOYMENT.md` and `docs/DATA_MIGRATIONS.md`.
+Self-hosted Compose package refreshes use `scripts/compose_package_upgrade.py` (`plan`, then `apply --remote`). A deliberate empty Compose Postgres usage store uses `scripts/compose_clean_cutover.py` (`plan`, then `apply --confirm-reset-usage reset-postgres-data --remote`). Do not invent a host unpacker or `docker compose down` with volumes. See `docs/DOCKER_DEPLOYMENT.md` and `docs/DATA_MIGRATIONS.md`.
 
 ## Request ID Investigation
 

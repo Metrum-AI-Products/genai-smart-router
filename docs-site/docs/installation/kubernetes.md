@@ -309,6 +309,19 @@ deployment requirement. Such a profile rejects a runtime bundle before Secret
 mutation unless `/admin/reports`, Basic or OIDC admin authentication, and admin
 authorization are all enabled.
 
+Pair it with `admin_reports_proxy_cidrs`, set to the reverse-proxy networks that
+front the router. Admin Basic Auth checks forwarded HTTPS before it compares the
+password, so a `trusted_proxy_cidrs` list that does not cover the ingress
+controller network returns `401` for correct credentials. With
+`admin_reports_proxy_cidrs` set, Fleet rejects that bundle rather than deploying
+it. In a cloud Kubernetes cluster the ingress controller pod address comes from
+the cluster pod network, which is normally different from a local kind or Docker
+bridge range:
+
+```bash
+kubectl get pods -n <ingress-namespace> -o wide
+```
+
 ## Upgrade And Rollback
 
 Use immutable image tags and reviewed config changes. Before rollout:

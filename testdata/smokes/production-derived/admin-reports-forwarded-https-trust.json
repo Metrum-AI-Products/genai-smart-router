@@ -1,0 +1,37 @@
+{
+  "name": "admin-reports-forwarded-https-trust",
+  "source_incident_issue": "#1063",
+  "replayable": true,
+  "replay_notes": "Sanitized from the 2026-09-08 production incident in which /admin/reports returned 401 for every request, including credentials that verified against the configured bcrypt hash. The runtime bundle trusted a local kind/Docker reverse-proxy range while the cluster ingress controller pod address came from the cluster pod network, so the forwarded-HTTPS check failed before the password comparison. Values below are synthetic: the password, hash, and addresses are test-only and no production credential, token, or hash is reproduced here.",
+  "surface": "admin_basic_auth",
+  "path": "/admin/reports",
+  "forwarded_proto_header": "X-Forwarded-Proto",
+  "forwarded_proto_value": "https",
+  "allow_insecure_http": false,
+  "untrusted_proxy_cidr": "172.18.0.0/16",
+  "trusted_proxy_cidr": "192.168.0.0/16",
+  "proxy_remote_addr": "192.168.121.131:41234",
+  "admin_username": "admin",
+  "admin_password": "production-derived-test-password",
+  "admin_password_bcrypt": "$2a$04$9uFEW1Jl9PnjWThLScRdEOBYaMYPc6S0.E2ahxKZ/Tq7TzvnMUm66",
+  "expected_untrusted_status": 401,
+  "expected_untrusted_challenge_header": "WWW-Authenticate",
+  "expected_trusted_status_not": 401,
+  "required_safe_fields": [
+    "request_id",
+    "http_status",
+    "admin_subject",
+    "authz_object",
+    "authz_action"
+  ],
+  "forbidden_evidence": [
+    "admin_password",
+    "admin_password_hash",
+    "authorization_header",
+    "provider_keys",
+    "router_tokens",
+    "token_hashes",
+    "runtime_bundle_contents",
+    "raw_prompts"
+  ]
+}

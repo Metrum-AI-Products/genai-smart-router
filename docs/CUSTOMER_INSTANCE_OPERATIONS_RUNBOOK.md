@@ -208,6 +208,18 @@ admin authorization. Also run
 `scripts/prepare_fleet_production_bundle.py <protected-config-path>` before
 signing a production config revision.
 
+Set `admin_reports_proxy_cidrs` in the same profile to the reverse-proxy
+networks in front of the router, normally the cluster pod network used by the
+ingress controller. Basic Auth checks forwarded HTTPS before comparing the
+password, so a bundle whose `server.admin_auth.basic.trusted_proxy_cidrs` omits
+that network returns `401` for correct credentials. Fleet fails such a bundle
+with `runtime_bundle_policy_failed` instead of shipping it. Confirm the ingress
+address with the currently authenticated cluster session:
+
+```bash
+rtk kubectl get pods -n <ingress-namespace> -o wide
+```
+
 For repeatable non-production SQLite customer instances (`acme3`, `acme4`, …)
 use `metrum-genai-smartrouter-fleetctl customer` from a release binary package
 `bin/` directory on `PATH` (or set `METRUM_FLEET_BIN_DIR`). Sibling binary

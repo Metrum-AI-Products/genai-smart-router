@@ -38,10 +38,22 @@ def main() -> int:
     if args.require_trusted_proxy not in cidrs:
         errors.append(f"missing trusted_proxy_cidrs entry {args.require_trusted_proxy}")
     admin_auth = server.get("admin_auth") or {}
-    basic_enabled = bool((admin_auth.get("basic") or {}).get("enabled"))
+    basic = admin_auth.get("basic") or {}
+    basic_enabled = bool(basic.get("enabled"))
     oidc_enabled = bool((admin_auth.get("oidc") or {}).get("enabled"))
     if not basic_enabled and not oidc_enabled:
         errors.append("production admin reports require Basic or OIDC admin authentication")
+    # Basic Auth evaluates the forwarded-HTTPS check before comparing the
+    # password, so an admin_auth trusted range that excludes the reverse proxy
+    # challenges every request whether or not the credentials are correct.
+    if basic_enabled and not bool(basic.get("allow_insecure_http")):
+        admin_cidrs = basic.get("trusted_proxy_cidrs") or []
+        if args.require_trusted_proxy not in admin_cidrs:
+            errors.append(
+                "missing admin_auth.basic.trusted_proxy_cidrs entry "
+                f"{args.require_trusted_proxy}; admin Basic Auth returns 401 for correct "
+                "passwords when the reverse proxy network is not trusted"
+            )
     if not bool((admin_auth.get("authorization") or {}).get("enabled")):
         errors.append("production admin reports require admin authorization")
     admin_reports = server.get("admin_reports") or {}
