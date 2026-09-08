@@ -56,7 +56,7 @@ account for an end-to-end completion. Building, testing, starting the router,
 and browsing its health/docs surfaces require no private repository access.
 
 ```bash
-git clone https://github.com/sysadmin-metrum-ai/genai-smart-router.git
+git clone https://github.com/Metrum-AI-Products/genai-smart-router.git
 cd genai-smart-router
 cp config.example.yaml config.yaml
 cp env.example.json env.json

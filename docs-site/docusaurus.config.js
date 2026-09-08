@@ -109,7 +109,7 @@ const config = {
           { to: "/solution-brief", label: "Solution Brief", position: "left" },
           { to: "/evaluation/harbor-case-study", label: "Case Study", position: "left" },
           { to: "/privacy", label: "Privacy", position: "right" },
-          { href: "https://github.com/sysadmin-metrum-ai/genai-smart-router", label: "GitHub", position: "right" },
+          { href: "https://github.com/Metrum-AI-Products/genai-smart-router", label: "GitHub", position: "right" },
         ],
       },
       footer: {
@@ -144,7 +144,7 @@ const config = {
             items: [
               { label: "Software Licenses", to: "/legal/software-licenses" },
               { label: "Privacy", to: "/privacy" },
-              { label: "Source License", href: "https://github.com/sysadmin-metrum-ai/genai-smart-router/blob/main/LICENSE" },
+              { label: "Source License", href: "https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/LICENSE" },
             ],
           },
         ],
