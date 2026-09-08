@@ -14,6 +14,46 @@ this page. The version banner, `/docs/releases`, and `/version` are the
 authoritative sources for its exact router version and build timestamp; do not
 infer the running version from a date written in documentation.
 
+## v1.0.2 - 2026-09-08
+
+GenAI Smart Router v1.0.2 is a documentation packaging release. Caller-facing
+routing, model groups, and API behavior are unchanged from v1.0.1.
+
+### Highlights
+
+- Embedded Docusaurus docs now link the navbar GitHub control and Source License
+  footer entry to the public Apache-2.0 home at
+  `https://github.com/Metrum-AI-Products/genai-smart-router`.
+- The legal software-licenses page uses the same public repository LICENSE URL.
+
+### Operator Impact
+
+- Config: unchanged.
+- Database: no schema or data migration is introduced by this release.
+- License: unchanged.
+- Metrics and reports: unchanged.
+
+### Caller Impact
+
+- API behavior: unchanged.
+- Model groups: unchanged.
+- Errors: unchanged.
+- Docs: `/docs/` GitHub and LICENSE links point at the public repository.
+
+### Validation
+
+- `/readyz` and `/version`: confirm `v1.0.2` and the new build timestamp.
+- `/docs/`: confirm navbar and footer GitHub hrefs use
+  `github.com/Metrum-AI-Products/genai-smart-router` and do not use
+  `sysadmin-metrum-ai`.
+- Completion smoke: run one request for an actively used model group.
+
+### Rollback
+
+- Restore the previous router package (`v1.0.1`) and the previous reviewed
+  config.
+- No reverse migration is required; preserve the usage database.
+
 ## v1.0.1 - 2026-09-08
 
 GenAI Smart Router v1.0.1 is a maintenance release focused on admin browser
