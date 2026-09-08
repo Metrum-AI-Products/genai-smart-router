@@ -231,6 +231,17 @@ For Codex CLI (`wire_api=responses`) regressions that return `502 no-eligible-ta
 
 For Anthropic endpoint split regressions, classify the request by path first. `/anthropic/v1/messages` and legacy `/v1/messages` are Anthropic Messages inbound traffic even when the selected upstream would be OpenAI Chat or Responses. Plain Messages text can use a non-native target only when the active target has `request_shape_support.supported_inbound_dialects` including `anthropic`; otherwise the stricter eligibility filter should return `502 no-eligible-target` before upstream. Native Anthropic Messages provider skins are eligible by dialect, but Claude Code tools still require `tool_support.anthropic_messages` or an explicitly validated Messages bridge. Safe evidence should show the request ID, inbound dialect, requested group, candidate target dialects, filter reasons, selected target when any, attempts count, and terminal error class. Do not copy the full production config, raw tokens, token hashes, provider keys, prompts, images, or tool schemas into an issue.
 
+For Anthropic Messages requests that return `502 no-eligible-target` with
+requirements such as `text` and `max_tokens` while the same group serves a
+tool-bearing Claude Code request, inspect `tool_only` on every Anthropic-dialect
+target. `tool_only: true` is eligible only when the request includes tools, so a
+group whose Anthropic skins are all tool-only cannot serve a plain text turn.
+Keep at least one validated non-`tool_only` native Anthropic target in broad
+developer-facing groups, or route plain-text Messages clients to a smoke group
+that already has that target. Safe evidence: request ID, inbound dialect
+`anthropic`, requested group, `tool_only` on candidate targets, filter reasons,
+and zero upstream attempts.
+
 If a production config migration causes ordinary Claude Code or Messages text to fail, roll back locally in the requested group: restore the prior target list, remove an invalid Anthropic inbound opt-in, add or restore a native Messages target, or temporarily move affected callers to a previously validated group they are already allowed to use. Verify recovery with authenticated `/v1/models`, `/anthropic/v1/messages`, `/anthropic/v1/messages/count_tokens` when supported, a legacy `/v1/messages` compatibility smoke if that path is still used, and a negative `no-eligible-target` smoke against a group with no compatible target.
 
 ### Reasoning And Bridge Decision Tree

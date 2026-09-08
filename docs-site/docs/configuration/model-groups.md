@@ -19,12 +19,14 @@ models:
         weight: 51
       - provider: minimax
         model_ref: m3
-        weight: 27
+        weight: 24
 ```
 
 ## Schema
 
 Weights are local to each model group. A target with weight `60` in one group has no relationship to a target with weight `60` in another group. Targets reference `providers.<name>.models.<ref>` and can override safe metadata such as `dialect`, `tool_only`, `input_modalities`, per-attempt timeout, traffic shaping, and validation fields.
+
+`tool_only: true` keeps a target eligible only for requests that include tools. Broad developer-facing groups that accept Anthropic Messages should also keep at least one validated native Anthropic target without `tool_only`, so a plain-text Messages turn is not answered with `502 no-eligible-target`.
 
 Groups can use `static`, `failover`, `weighted`, `dynamic_score`, `script`, or `external` strategies. Contracts, request-shape filters, modalities, tools, structured outputs, reasoning metadata, and max-token safety all filter the target list before strategy selection.
 

@@ -1825,7 +1825,7 @@ models:
       weight: 51
     - provider: minimax
       model_ref: m3
-      weight: 27
+      weight: 24
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
@@ -1865,6 +1865,12 @@ models:
       model_ref: m3
       weight: 3
       tool_only: true
+    # Plain-text Anthropic Messages (no tools) is not served by tool_only
+    # skins. Keep this validated MiniMax M3 target eligible for text so a
+    # Claude-compatible client can send an ordinary turn without 502.
+    - provider: minimax_anthropic
+      model_ref: m3
+      weight: 3
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
@@ -1924,7 +1930,7 @@ models:
       weight: 56
     - provider: minimax
       model_ref: m3
-      weight: 26
+      weight: 23
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
@@ -1958,6 +1964,9 @@ models:
       model_ref: m3
       weight: 3
       tool_only: true
+    - provider: minimax_anthropic
+      model_ref: m3
+      weight: 3
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
@@ -1998,7 +2007,7 @@ models:
       weight: 58
     - provider: minimax
       model_ref: m3
-      weight: 28
+      weight: 25
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
@@ -2032,6 +2041,9 @@ models:
       model_ref: m3
       weight: 3
       tool_only: true
+    - provider: minimax_anthropic
+      model_ref: m3
+      weight: 3
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
@@ -2073,7 +2085,7 @@ models:
       weight: 51
     - provider: minimax
       model_ref: m3
-      weight: 25
+      weight: 22
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
@@ -2107,6 +2119,9 @@ models:
       model_ref: m3
       weight: 3
       tool_only: true
+    - provider: minimax_anthropic
+      model_ref: m3
+      weight: 3
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
@@ -2152,7 +2167,7 @@ models:
         max_request_bytes: 1048576
     - provider: minimax
       model_ref: m3
-      weight: 26
+      weight: 23
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
@@ -2198,6 +2213,9 @@ models:
       model_ref: m3
       weight: 3
       tool_only: true
+    - provider: minimax_anthropic
+      model_ref: m3
+      weight: 3
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2

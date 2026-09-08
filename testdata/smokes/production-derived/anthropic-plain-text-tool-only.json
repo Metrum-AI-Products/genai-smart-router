@@ -1,0 +1,29 @@
+{
+  "name": "anthropic-plain-text-tool-only",
+  "source_incident_issue": "#1065",
+  "replayable": true,
+  "replay_notes": "Sanitized from the 2026-09-08 production smoke in which a plain-text Anthropic Messages request to a broad group returned 502 no-eligible-target because every Anthropic-dialect target set tool_only. The same group served a tool-bearing Anthropic request. Values below are synthetic.",
+  "surface": "anthropic_messages",
+  "path": "/v1/messages",
+  "group": "default",
+  "plain_text_status": 502,
+  "plain_text_error_type": "no-eligible-target",
+  "tool_request_status": 200,
+  "fix": "keep a validated non-tool_only Anthropic MiniMax M3 target in broad developer-facing groups while retaining the tool_only skins for Claude Code",
+  "required_safe_fields": [
+    "request_id",
+    "http_status",
+    "error_type",
+    "inbound_dialect",
+    "model_group",
+    "requirements"
+  ],
+  "forbidden_evidence": [
+    "provider_keys",
+    "router_tokens",
+    "token_hashes",
+    "raw_prompts",
+    "raw_tool_payloads",
+    "runtime_bundle_contents"
+  ]
+}
