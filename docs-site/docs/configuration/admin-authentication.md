@@ -240,9 +240,29 @@ server:
         - 172.18.0.0/16
 ```
 
-Use the actual reverse-proxy subnet for the deployment. Do not add broad networks unless the router is isolated from direct client traffic on those networks.
+Use the actual reverse-proxy subnet for the deployment. Do not add broad networks unless the router is isolated from direct client traffic on those networks. The values above are placeholders: `172.18.0.0/16` is a common local kind or Docker bridge range and is normally wrong for a cloud Kubernetes cluster, whose ingress controller pods take addresses from the cluster pod network.
 
 Use `allow_insecure_http: true` only for local development and loopback smoke tests.
+
+### Troubleshooting: Correct Credentials Return 401
+
+The forwarded-HTTPS check runs before the password comparison. When the reverse
+proxy's source address falls outside `trusted_proxy_cidrs`, the router treats the
+request as plaintext HTTP and answers with the Basic challenge, so a valid password
+looks identical to an invalid one.
+
+Symptom: every `/admin/*` request returns `401` with `WWW-Authenticate: Basic ...`,
+even with credentials that match the configured bcrypt hash.
+
+Confirm the address the router receives, then widen or correct the configured range
+to cover it. For a Kubernetes ingress, compare `trusted_proxy_cidrs` against the
+ingress controller pod IP:
+
+```bash
+kubectl get pods -n <ingress-namespace> -o wide
+```
+
+Rotating the admin password does not affect this failure.
 
 ## Authorization Boundary
 

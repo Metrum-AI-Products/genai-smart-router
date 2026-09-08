@@ -113,6 +113,30 @@ server:
 
 Use `allow_insecure_http: true` only for local loopback testing. Production deployments should terminate TLS at the reverse proxy and pass `X-Forwarded-Proto: https` to the router. Set `trusted_proxy_cidrs` to the reverse proxy network only; do not trust forwarded headers from arbitrary clients.
 
+### Correct Credentials Returning 401
+
+When `allow_insecure_http: false`, the router evaluates the forwarded-HTTPS check
+*before* it compares the password. If the reverse proxy's source address is not
+inside `trusted_proxy_cidrs`, the router treats the request as plaintext HTTP and
+returns the Basic challenge, so a correct password is indistinguishable from a
+wrong one.
+
+Symptom: every `/admin/*` request returns `401` with `WWW-Authenticate: Basic ...`,
+including requests whose password verifies against the configured bcrypt hash.
+
+Check the proxy address the router actually sees against the configured range.
+For a Kubernetes ingress, that is the ingress controller pod IP, which comes from
+the cluster's pod network and is usually not the CIDR used by a local kind or
+Docker Compose deployment:
+
+```bash
+kubectl get pods -n <ingress-namespace> -o wide
+```
+
+Set `trusted_proxy_cidrs` to the range that contains that address. A mismatch here
+is a configuration error, not a credential error; rotating the password will not
+change the result.
+
 ## Smoke Test
 
 Missing credentials should challenge:

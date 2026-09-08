@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -22,6 +23,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"gopkg.in/yaml.v3"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -412,6 +414,11 @@ func (a *EKSTenantDeploymentAdapters) ensureRuntimeBundleSecret(ctx context.Cont
 	if err != nil {
 		return "", err
 	}
+	if p.requireAdminReports {
+		if err := validateRequiredAdminReports(bundle.ConfigYAML, p.adminReportsProxyCIDRs); err != nil {
+			return "", err
+		}
+	}
 	configYAML := bundle.ConfigYAML
 	envJSON := bundle.EnvJSON
 	if p.DatabaseID != "" {
@@ -460,6 +467,81 @@ func (a *EKSTenantDeploymentAdapters) ensureRuntimeBundleSecret(ctx context.Cont
 		return "", errors.New("write protected runtime bundle")
 	}
 	return tenantDeploymentResourceRef(p.Namespace, "secret", "router-runtime"), nil
+}
+
+func validateRequiredAdminReports(configYAML string, proxyCIDRs []string) error {
+	var cfg struct {
+		Server struct {
+			AdminAuth struct {
+				Basic struct {
+					Enabled           bool     `yaml:"enabled"`
+					AllowInsecureHTTP bool     `yaml:"allow_insecure_http"`
+					TrustedProxyCIDRs []string `yaml:"trusted_proxy_cidrs"`
+				} `yaml:"basic"`
+				OIDC struct {
+					Enabled bool `yaml:"enabled"`
+				} `yaml:"oidc"`
+				Authorization struct {
+					Enabled bool `yaml:"enabled"`
+				} `yaml:"authorization"`
+			} `yaml:"admin_auth"`
+			AdminReports struct {
+				Enabled    bool   `yaml:"enabled"`
+				PathPrefix string `yaml:"path_prefix"`
+			} `yaml:"admin_reports"`
+		} `yaml:"server"`
+	}
+	if err := yaml.Unmarshal([]byte(configYAML), &cfg); err != nil {
+		return &TenantDeploymentAdapterError{Class: "runtime_bundle_policy_failed", Err: errors.New("required admin reports configuration is invalid")}
+	}
+	if !cfg.Server.AdminReports.Enabled ||
+		cleanAdminReportsPrefix(cfg.Server.AdminReports.PathPrefix) != "/admin/reports" ||
+		(!cfg.Server.AdminAuth.Basic.Enabled && !cfg.Server.AdminAuth.OIDC.Enabled) ||
+		!cfg.Server.AdminAuth.Authorization.Enabled {
+		return &TenantDeploymentAdapterError{Class: "runtime_bundle_policy_failed", Err: errors.New("required admin reports configuration is missing")}
+	}
+	basic := cfg.Server.AdminAuth.Basic
+	if !basic.Enabled || basic.AllowInsecureHTTP || len(proxyCIDRs) == 0 {
+		return nil
+	}
+	// Basic Auth evaluates the forwarded-HTTPS check before comparing the
+	// password, so a bundle that does not trust the deployment reverse proxy
+	// answers every admin request with a challenge that is indistinguishable
+	// from a wrong password.
+	trusted := make([]*net.IPNet, 0, len(basic.TrustedProxyCIDRs))
+	for _, raw := range basic.TrustedProxyCIDRs {
+		_, network, err := net.ParseCIDR(strings.TrimSpace(raw))
+		if err != nil {
+			return &TenantDeploymentAdapterError{Class: "runtime_bundle_policy_failed", Err: errors.New("required admin reports trusted proxy range is invalid")}
+		}
+		trusted = append(trusted, network)
+	}
+	for _, raw := range proxyCIDRs {
+		_, proxy, err := net.ParseCIDR(strings.TrimSpace(raw))
+		if err != nil {
+			return &TenantDeploymentAdapterError{Class: "runtime_bundle_policy_failed", Err: errors.New("approved admin reports proxy range is invalid")}
+		}
+		if !anyCIDRCovers(trusted, proxy) {
+			return &TenantDeploymentAdapterError{Class: "runtime_bundle_policy_failed", Err: errors.New("required admin reports configuration does not trust the deployment reverse proxy network")}
+		}
+	}
+	return nil
+}
+
+// anyCIDRCovers reports whether one of the trusted networks fully contains the
+// proxy network, so every address the reverse proxy can present is trusted.
+func anyCIDRCovers(trusted []*net.IPNet, proxy *net.IPNet) bool {
+	proxyOnes, proxyBits := proxy.Mask.Size()
+	for _, network := range trusted {
+		ones, bits := network.Mask.Size()
+		if bits != proxyBits || ones > proxyOnes {
+			continue
+		}
+		if network.Contains(proxy.IP) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *EKSTenantDeploymentAdapters) ensureReferenceSecret(ctx context.Context, p TenantDeploymentPlan, name, key, ref string) (string, error) {

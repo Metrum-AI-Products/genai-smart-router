@@ -53,6 +53,31 @@ func tenantDeploymentFixture(t *testing.T) (TenantDeploymentProfile, TenantDeplo
 	return profile, manifest, plan
 }
 
+func TestTenantDeploymentPlanCarriesPrivateAdminReportsRequirement(t *testing.T) {
+	profile, manifest, _ := tenantDeploymentFixture(t)
+	profile.RequireAdminReports = true
+	profile.AdminReportsProxyCIDRs = []string{"192.168.0.0/16"}
+	plan, err := BuildTenantDeploymentPlan(profile, manifest, "intent-admin-reports")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.requireAdminReports {
+		t.Fatal("required admin reports profile policy was not carried into the deployment plan")
+	}
+	if len(plan.adminReportsProxyCIDRs) != 1 || plan.adminReportsProxyCIDRs[0] != "192.168.0.0/16" {
+		t.Fatalf("approved reverse proxy network was not carried into the deployment plan: %v", plan.adminReportsProxyCIDRs)
+	}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leaked := range []string{"require_admin_reports", "admin_reports_proxy_cidrs", "192.168.0.0/16"} {
+		if strings.Contains(string(raw), leaked) {
+			t.Fatalf("private runtime policy %q leaked into public plan: %s", leaked, raw)
+		}
+	}
+}
+
 func testLifecycleApprovalPrivateKey(t *testing.T) ed25519.PrivateKey {
 	t.Helper()
 	seed, err := base64.StdEncoding.DecodeString("nWGxne/9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A=")

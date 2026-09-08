@@ -78,6 +78,31 @@ memory. The payload has exactly `config.yaml` (a YAML mapping) and `env.json`
 echoing protected data. The adapter writes an owned `router-runtime` Secret
 with those two exact keys and mounts it read-only at `/app/config`.
 `metrum-genai-smartrouter-license` continues to be a separate `license.json` Secret and mount.
+
+Profiles for deployments that require continuous browser-report availability
+set `require_admin_reports: true`. Fleet then rejects the runtime bundle before
+writing the Secret unless `/admin/reports` is enabled, Basic or OIDC admin
+authentication is enabled, and admin authorization is enabled. Keep the flag
+unset for deployments that deliberately do not expose browser reports.
+
+Such profiles should also set `admin_reports_proxy_cidrs` to the reverse-proxy
+networks that front the router, for example the cluster pod network that the
+ingress controller draws from:
+
+```json
+"require_admin_reports": true,
+"admin_reports_proxy_cidrs": ["192.168.0.0/16"]
+```
+
+Basic Auth evaluates the forwarded-HTTPS check before it compares the password,
+so a bundle whose `server.admin_auth.basic.trusted_proxy_cidrs` does not cover
+the reverse proxy answers every admin request with a `401` challenge even when
+the credentials are correct. When `admin_reports_proxy_cidrs` is set and the
+bundle does not set `allow_insecure_http: true`, Fleet fails the deployment with
+`runtime_bundle_policy_failed` unless each approved proxy network is fully
+contained by a configured trusted range. Leave the field empty to skip the
+check.
+
 The control plane writes this file outside the repository and signs the
 canonical fields with the profile approval key:
 

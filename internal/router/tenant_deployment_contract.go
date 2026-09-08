@@ -156,6 +156,8 @@ type TenantDeploymentProfile struct {
 	IngressNamespace           string                          `json:"ingress_namespace" yaml:"ingress_namespace"`
 	TLSSecretName              string                          `json:"tls_secret_name" yaml:"tls_secret_name"`
 	ApprovedAliasHostnames     []TenantDeploymentHostnameAlias `json:"approved_alias_hostnames,omitempty" yaml:"approved_alias_hostnames,omitempty"`
+	RequireAdminReports        bool                            `json:"require_admin_reports,omitempty" yaml:"require_admin_reports,omitempty"`
+	AdminReportsProxyCIDRs     []string                        `json:"admin_reports_proxy_cidrs,omitempty" yaml:"admin_reports_proxy_cidrs,omitempty"`
 	DatabaseMode               string                          `json:"database_mode" yaml:"database_mode"`
 	ApprovedDatabaseProfile    string                          `json:"approved_database_profile" yaml:"approved_database_profile"`
 	RDSInstanceClass           string                          `json:"rds_instance_class" yaml:"rds_instance_class"`
@@ -205,6 +207,8 @@ type TenantDeploymentPlan struct {
 	runtimeBundleRef                   string
 	licenseRequestRef                  string
 	computePolicy                      TenantComputeProfile
+	requireAdminReports                bool
+	adminReportsProxyCIDRs             []string
 }
 
 func LoadTenantDeploymentManifest(path string, stdin io.Reader) (TenantDeploymentManifest, error) {
@@ -429,6 +433,8 @@ func BuildTenantDeploymentPlanAt(profile TenantDeploymentProfile, manifest Tenan
 		OwnershipTransitionChangeReference: changeRef,
 		Actions:                            actions,
 		computePolicy:                      computePolicy,
+		requireAdminReports:                profile.RequireAdminReports,
+		adminReportsProxyCIDRs:             append([]string(nil), profile.AdminReportsProxyCIDRs...),
 	}, nil
 }
 

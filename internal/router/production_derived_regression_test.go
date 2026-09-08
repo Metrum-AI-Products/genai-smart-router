@@ -168,6 +168,104 @@ func TestProductionDerivedFleetOwnershipTransitionFixture(t *testing.T) {
 	}
 }
 
+// TestProductionDerivedAdminReportsForwardedHTTPSTrust replays the 2026-09-08
+// production incident in which /admin/reports answered every request with a
+// Basic challenge, including a password that verified against the configured
+// bcrypt hash, because the bundle trusted a reverse-proxy range that did not
+// contain the cluster ingress controller address. It pins both the router
+// behavior and the Fleet bundle guard that now rejects such a bundle.
+func TestProductionDerivedAdminReportsForwardedHTTPSTrust(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "smokes", "production-derived", "admin-reports-forwarded-https-trust.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Name                     string `json:"name"`
+		SourceIncidentIssue      string `json:"source_incident_issue"`
+		Surface                  string `json:"surface"`
+		Path                     string `json:"path"`
+		ForwardedProtoHeader     string `json:"forwarded_proto_header"`
+		ForwardedProtoValue      string `json:"forwarded_proto_value"`
+		AllowInsecureHTTP        bool   `json:"allow_insecure_http"`
+		UntrustedProxyCIDR       string `json:"untrusted_proxy_cidr"`
+		TrustedProxyCIDR         string `json:"trusted_proxy_cidr"`
+		ProxyRemoteAddr          string `json:"proxy_remote_addr"`
+		AdminUsername            string `json:"admin_username"`
+		AdminPassword            string `json:"admin_password"`
+		AdminPasswordBcrypt      string `json:"admin_password_bcrypt"`
+		ExpectedUntrustedStatus  int    `json:"expected_untrusted_status"`
+		ExpectedChallengeHeader  string `json:"expected_untrusted_challenge_header"`
+		ExpectedTrustedStatusNot int    `json:"expected_trusted_status_not"`
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.Surface != "admin_basic_auth" || fixture.AllowInsecureHTTP || fixture.ExpectedUntrustedStatus != http.StatusUnauthorized {
+		t.Fatalf("invalid forwarded-HTTPS trust fixture: %#v", fixture)
+	}
+
+	statusFor := func(t *testing.T, trustedCIDR string) int {
+		t.Helper()
+		t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", fixture.AdminPasswordBcrypt)
+		dir := t.TempDir()
+		cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+		cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
+		cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
+			Enabled:           true,
+			AllowInsecureHTTP: fixture.AllowInsecureHTTP,
+			TrustedProxyCIDRs: []string{trustedCIDR},
+			Users: []AdminBasicAuthUser{{
+				Username:        fixture.AdminUsername,
+				PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+				Subject:         "basic:admin",
+				Domain:          "local/test",
+			}},
+		}
+		cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
+			Enabled: true,
+			Policy:  []string{"p, basic:admin, local/test, admin:reports, read|export|drilldown"},
+		}
+		cfg.Server.AdminReports = AdminReportsConfig{Enabled: true, DefaultSince: "24h", MaxRange: "31d", MaxRows: 100}
+		svc, err := New(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer svc.Close()
+
+		req := httptest.NewRequest(http.MethodGet, fixture.Path, nil)
+		req.RemoteAddr = fixture.ProxyRemoteAddr
+		req.Header.Set(fixture.ForwardedProtoHeader, fixture.ForwardedProtoValue)
+		req.SetBasicAuth(fixture.AdminUsername, fixture.AdminPassword)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code == http.StatusUnauthorized && rr.Header().Get(fixture.ExpectedChallengeHeader) == "" {
+			t.Fatalf("401 without %s challenge", fixture.ExpectedChallengeHeader)
+		}
+		return rr.Code
+	}
+
+	if got := statusFor(t, fixture.UntrustedProxyCIDR); got != fixture.ExpectedUntrustedStatus {
+		t.Fatalf("untrusted reverse proxy status = %d want %d", got, fixture.ExpectedUntrustedStatus)
+	}
+	if got := statusFor(t, fixture.TrustedProxyCIDR); got == fixture.ExpectedTrustedStatusNot {
+		t.Fatalf("trusted reverse proxy still challenged with a valid password: status = %d", got)
+	}
+
+	// The Fleet guard must reject the same bundle before it ever reaches a
+	// cluster, so the incident cannot recur through a signed config revision.
+	bundleConfig := func(trustedCIDR string) string {
+		return "server:\n  admin_auth:\n    basic:\n      enabled: true\n      allow_insecure_http: false\n      trusted_proxy_cidrs:\n        - " + trustedCIDR +
+			"\n    authorization:\n      enabled: true\n  admin_reports:\n    enabled: true\n    path_prefix: /admin/reports\n"
+	}
+	approved := []string{fixture.TrustedProxyCIDR}
+	if err := validateRequiredAdminReports(bundleConfig(fixture.UntrustedProxyCIDR), approved); err == nil {
+		t.Fatal("Fleet guard accepted a bundle that does not trust the deployment reverse proxy")
+	}
+	if err := validateRequiredAdminReports(bundleConfig(fixture.TrustedProxyCIDR), approved); err != nil {
+		t.Fatalf("Fleet guard rejected a correctly trusted bundle: %v", err)
+	}
+}
+
 func TestProductionDerivedAnthropicMessagesImageEligibility(t *testing.T) {
 	fixture := loadProductionDerivedAnthropicImageFixture(t, "anthropic-messages-image-eligibility.json")
 	if fixture.SourceIncidentIssue != "#660" || fixture.ObservedModelGroup != "big-coder" ||

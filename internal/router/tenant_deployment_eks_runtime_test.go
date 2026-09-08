@@ -75,6 +75,130 @@ func TestEKSRuntimeBindingRejectsInvalidBundleWithoutCreatingSecret(t *testing.T
 	}
 }
 
+func TestEKSRuntimeBindingEnforcesProfileRequiredAdminReports(t *testing.T) {
+	const runtimeRef = "aws-secretsmanager:///safe/runtime-bundle"
+	plan := TenantDeploymentPlan{
+		InstanceID:          "instance-a",
+		Namespace:           "tenant-a",
+		runtimeBundleRef:    runtimeRef,
+		requireAdminReports: true,
+	}
+	adapter := &EKSTenantDeploymentAdapters{
+		kube: k8sfake.NewSimpleClientset(),
+		resolveReference: func(context.Context, string) ([]byte, error) {
+			return protectedRuntimeBundle(t, "server:\n  listen: :8080\n", "{}"), nil
+		},
+	}
+	_, err := adapter.EnsureSecretBinding(context.Background(), plan)
+	var adapterErr *TenantDeploymentAdapterError
+	if !errors.As(err, &adapterErr) || adapterErr.Class != "runtime_bundle_policy_failed" {
+		t.Fatalf("missing required admin reports err=%v", err)
+	}
+	secrets, listErr := adapter.kube.CoreV1().Secrets(plan.Namespace).List(context.Background(), metav1.ListOptions{})
+	if listErr != nil || len(secrets.Items) != 0 {
+		t.Fatalf("policy failure created runtime secret: items=%d err=%v", len(secrets.Items), listErr)
+	}
+
+	const enabledConfig = `server:
+  admin_auth:
+    basic:
+      enabled: true
+    authorization:
+      enabled: true
+  admin_reports:
+    enabled: true
+    path_prefix: /admin/reports
+`
+	adapter.resolveReference = func(context.Context, string) ([]byte, error) {
+		return protectedRuntimeBundle(t, enabledConfig, "{}"), nil
+	}
+	if _, err := adapter.EnsureSecretBinding(context.Background(), plan); err != nil {
+		t.Fatalf("valid required admin reports config rejected: %v", err)
+	}
+}
+
+// TestEKSRuntimeBindingEnforcesProfileAdminReportsProxyCIDRs reproduces the
+// 2026-09-08 production defect: admin reports and Basic Auth were enabled, but
+// the bundle trusted a local kind/Docker range instead of the cluster ingress
+// network, so every admin request was answered with a Basic challenge whether
+// or not the password was correct.
+func TestEKSRuntimeBindingEnforcesProfileAdminReportsProxyCIDRs(t *testing.T) {
+	const runtimeRef = "aws-secretsmanager:///safe/runtime-bundle"
+	adminConfig := func(trusted string) string {
+		return `server:
+  admin_auth:
+    basic:
+      enabled: true
+      allow_insecure_http: false
+      trusted_proxy_cidrs:
+        - ` + trusted + `
+    authorization:
+      enabled: true
+  admin_reports:
+    enabled: true
+    path_prefix: /admin/reports
+`
+	}
+	plan := TenantDeploymentPlan{
+		InstanceID:             "instance-a",
+		Namespace:              "tenant-a",
+		runtimeBundleRef:       runtimeRef,
+		requireAdminReports:    true,
+		adminReportsProxyCIDRs: []string{"192.168.0.0/16"},
+	}
+	adapter := &EKSTenantDeploymentAdapters{
+		kube: k8sfake.NewSimpleClientset(),
+		resolveReference: func(context.Context, string) ([]byte, error) {
+			return protectedRuntimeBundle(t, adminConfig("172.18.0.0/16"), "{}"), nil
+		},
+	}
+	_, err := adapter.EnsureSecretBinding(context.Background(), plan)
+	var adapterErr *TenantDeploymentAdapterError
+	if !errors.As(err, &adapterErr) || adapterErr.Class != "runtime_bundle_policy_failed" {
+		t.Fatalf("untrusted reverse proxy network accepted: err=%v", err)
+	}
+	secrets, listErr := adapter.kube.CoreV1().Secrets(plan.Namespace).List(context.Background(), metav1.ListOptions{})
+	if listErr != nil || len(secrets.Items) != 0 {
+		t.Fatalf("policy failure created runtime secret: items=%d err=%v", len(secrets.Items), listErr)
+	}
+
+	// A narrower trusted range than the approved proxy network still leaves
+	// part of the ingress fleet untrusted.
+	adapter.resolveReference = func(context.Context, string) ([]byte, error) {
+		return protectedRuntimeBundle(t, adminConfig("192.168.121.0/24"), "{}"), nil
+	}
+	if _, err := adapter.EnsureSecretBinding(context.Background(), plan); !errors.As(err, &adapterErr) || adapterErr.Class != "runtime_bundle_policy_failed" {
+		t.Fatalf("partially trusted reverse proxy network accepted: err=%v", err)
+	}
+
+	adapter.resolveReference = func(context.Context, string) ([]byte, error) {
+		return protectedRuntimeBundle(t, adminConfig("192.168.0.0/16"), "{}"), nil
+	}
+	if _, err := adapter.EnsureSecretBinding(context.Background(), plan); err != nil {
+		t.Fatalf("trusted reverse proxy network rejected: %v", err)
+	}
+
+	// allow_insecure_http bypasses the forwarded-HTTPS gate entirely, so the
+	// proxy range is not a precondition for reaching the password check.
+	insecure := `server:
+  admin_auth:
+    basic:
+      enabled: true
+      allow_insecure_http: true
+    authorization:
+      enabled: true
+  admin_reports:
+    enabled: true
+    path_prefix: /admin/reports
+`
+	adapter.resolveReference = func(context.Context, string) ([]byte, error) {
+		return protectedRuntimeBundle(t, insecure, "{}"), nil
+	}
+	if _, err := adapter.EnsureSecretBinding(context.Background(), plan); err != nil {
+		t.Fatalf("allow_insecure_http config rejected: %v", err)
+	}
+}
+
 func TestEKSRuntimeBindingSanitizesResolverErrors(t *testing.T) {
 	const canary = "synthetic-runtime-secret-must-not-escape"
 	adapter := &EKSTenantDeploymentAdapters{
