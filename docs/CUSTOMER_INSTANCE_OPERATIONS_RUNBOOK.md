@@ -200,6 +200,14 @@ scalars for Fleet-labelled objects only
 Cleanup of disposable customers uses signed `metrum-genai-smartrouter-fleetctl delete`
 with a fresh job-bound approval—never direct kubectl.
 
+For deployments where browser reports are an operational requirement, set
+`require_admin_reports: true` in the protected profile. Before changing the
+runtime Secret, Fleet then requires `server.admin_reports.enabled: true` at
+`/admin/reports`, an enabled Basic or OIDC admin identity path, and enabled
+admin authorization. Also run
+`scripts/prepare_fleet_production_bundle.py <protected-config-path>` before
+signing a production config revision.
+
 For repeatable non-production SQLite customer instances (`acme3`, `acme4`, …)
 use `metrum-genai-smartrouter-fleetctl customer` from a release binary package
 `bin/` directory on `PATH` (or set `METRUM_FLEET_BIN_DIR`). Sibling binary
@@ -413,7 +421,7 @@ Each proposed change is one instance-scoped, explicit operation. The release man
 
 1. Create a reviewed draft configuration using protected secret references. Validate YAML/contract shape and caller/model access; keep new provider/model/API-skin combinations in a smoke or staging group until exact request-shape validation passes.
 2. Render and plan against the named profile/environment/instance. Confirm the target identity, manifest diff, configuration fingerprint, migration class, rollback classification, and expected caller-visible impact.
-3. Run exact-surface staging checks: readiness, allowed `/v1/models`, applicable Chat/Responses/Messages, streaming, tools, image behavior, quota/license behavior, report/admin authorization, and ordinary-caller `/metrics` `403`.
+3. Run exact-surface staging checks: readiness, allowed `/v1/models`, applicable Chat/Responses/Messages, streaming, tools, image behavior, quota/license behavior, report/admin authorization, and ordinary-caller `/metrics` `403`. When reports are required, unauthenticated `/admin/reports/` and `/admin/auth/check` must challenge with `401` rather than return `404`, and an authorized browser-admin probe must load the report shell plus a SQL-backed summary.
 4. Promote only through the approved source-to-target manifest/evidence handoff. A config or application rollback returns to a known-good manifest; it never implies a database/data rollback.
 5. Record sanitized outcome, release/config/migration versions, safe error class, and next action. Keep raw request bodies, provider keys, router tokens, token hashes, customer content, and full config out of evidence.
 

@@ -302,7 +302,12 @@ Run one small request through each client API shape that callers use:
 - Anthropic Messages or Claude Code when enabled;
 - tool-call and image smokes for groups that advertise those capabilities.
 
-When admin reports are enabled, verify browser-admin authentication and authorization separately. Ordinary caller tokens must not access `/admin/reports/` or `/metrics`.
+When admin reports are enabled, verify browser-admin authentication and authorization separately. An unauthenticated `/admin/reports/` request should return a `401` challenge, not `404`; an authorized browser-admin request should load the report shell and a SQL-backed summary. Ordinary caller tokens must not access `/admin/reports/` or `/metrics`.
+
+Fleet profiles can set `require_admin_reports: true` when browser reports are a
+deployment requirement. Such a profile rejects a runtime bundle before Secret
+mutation unless `/admin/reports`, Basic or OIDC admin authentication, and admin
+authorization are all enabled.
 
 ## Upgrade And Rollback
 

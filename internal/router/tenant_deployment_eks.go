@@ -22,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"gopkg.in/yaml.v3"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -412,6 +413,11 @@ func (a *EKSTenantDeploymentAdapters) ensureRuntimeBundleSecret(ctx context.Cont
 	if err != nil {
 		return "", err
 	}
+	if p.requireAdminReports {
+		if err := validateRequiredAdminReports(bundle.ConfigYAML); err != nil {
+			return "", err
+		}
+	}
 	configYAML := bundle.ConfigYAML
 	envJSON := bundle.EnvJSON
 	if p.DatabaseID != "" {
@@ -460,6 +466,38 @@ func (a *EKSTenantDeploymentAdapters) ensureRuntimeBundleSecret(ctx context.Cont
 		return "", errors.New("write protected runtime bundle")
 	}
 	return tenantDeploymentResourceRef(p.Namespace, "secret", "router-runtime"), nil
+}
+
+func validateRequiredAdminReports(configYAML string) error {
+	var cfg struct {
+		Server struct {
+			AdminAuth struct {
+				Basic struct {
+					Enabled bool `yaml:"enabled"`
+				} `yaml:"basic"`
+				OIDC struct {
+					Enabled bool `yaml:"enabled"`
+				} `yaml:"oidc"`
+				Authorization struct {
+					Enabled bool `yaml:"enabled"`
+				} `yaml:"authorization"`
+			} `yaml:"admin_auth"`
+			AdminReports struct {
+				Enabled    bool   `yaml:"enabled"`
+				PathPrefix string `yaml:"path_prefix"`
+			} `yaml:"admin_reports"`
+		} `yaml:"server"`
+	}
+	if err := yaml.Unmarshal([]byte(configYAML), &cfg); err != nil {
+		return &TenantDeploymentAdapterError{Class: "runtime_bundle_policy_failed", Err: errors.New("required admin reports configuration is invalid")}
+	}
+	if !cfg.Server.AdminReports.Enabled ||
+		cleanAdminReportsPrefix(cfg.Server.AdminReports.PathPrefix) != "/admin/reports" ||
+		(!cfg.Server.AdminAuth.Basic.Enabled && !cfg.Server.AdminAuth.OIDC.Enabled) ||
+		!cfg.Server.AdminAuth.Authorization.Enabled {
+		return &TenantDeploymentAdapterError{Class: "runtime_bundle_policy_failed", Err: errors.New("required admin reports configuration is missing")}
+	}
+	return nil
 }
 
 func (a *EKSTenantDeploymentAdapters) ensureReferenceSecret(ctx context.Context, p TenantDeploymentPlan, name, key, ref string) (string, error) {

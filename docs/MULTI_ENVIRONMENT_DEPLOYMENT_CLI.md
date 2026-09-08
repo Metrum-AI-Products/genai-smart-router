@@ -78,6 +78,13 @@ memory. The payload has exactly `config.yaml` (a YAML mapping) and `env.json`
 echoing protected data. The adapter writes an owned `router-runtime` Secret
 with those two exact keys and mounts it read-only at `/app/config`.
 `metrum-genai-smartrouter-license` continues to be a separate `license.json` Secret and mount.
+
+Profiles for deployments that require continuous browser-report availability
+set `require_admin_reports: true`. Fleet then rejects the runtime bundle before
+writing the Secret unless `/admin/reports` is enabled, Basic or OIDC admin
+authentication is enabled, and admin authorization is enabled. Keep the flag
+unset for deployments that deliberately do not expose browser reports.
+
 The control plane writes this file outside the repository and signs the
 canonical fields with the profile approval key:
 

@@ -53,6 +53,25 @@ func tenantDeploymentFixture(t *testing.T) (TenantDeploymentProfile, TenantDeplo
 	return profile, manifest, plan
 }
 
+func TestTenantDeploymentPlanCarriesPrivateAdminReportsRequirement(t *testing.T) {
+	profile, manifest, _ := tenantDeploymentFixture(t)
+	profile.RequireAdminReports = true
+	plan, err := BuildTenantDeploymentPlan(profile, manifest, "intent-admin-reports")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.requireAdminReports {
+		t.Fatal("required admin reports profile policy was not carried into the deployment plan")
+	}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "require_admin_reports") {
+		t.Fatalf("private runtime policy leaked into public plan: %s", raw)
+	}
+}
+
 func testLifecycleApprovalPrivateKey(t *testing.T) ed25519.PrivateKey {
 	t.Helper()
 	seed, err := base64.StdEncoding.DecodeString("nWGxne/9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A=")

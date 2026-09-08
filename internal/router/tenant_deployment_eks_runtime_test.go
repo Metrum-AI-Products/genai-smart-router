@@ -75,6 +75,48 @@ func TestEKSRuntimeBindingRejectsInvalidBundleWithoutCreatingSecret(t *testing.T
 	}
 }
 
+func TestEKSRuntimeBindingEnforcesProfileRequiredAdminReports(t *testing.T) {
+	const runtimeRef = "aws-secretsmanager:///safe/runtime-bundle"
+	plan := TenantDeploymentPlan{
+		InstanceID:          "instance-a",
+		Namespace:           "tenant-a",
+		runtimeBundleRef:    runtimeRef,
+		requireAdminReports: true,
+	}
+	adapter := &EKSTenantDeploymentAdapters{
+		kube: k8sfake.NewSimpleClientset(),
+		resolveReference: func(context.Context, string) ([]byte, error) {
+			return protectedRuntimeBundle(t, "server:\n  listen: :8080\n", "{}"), nil
+		},
+	}
+	_, err := adapter.EnsureSecretBinding(context.Background(), plan)
+	var adapterErr *TenantDeploymentAdapterError
+	if !errors.As(err, &adapterErr) || adapterErr.Class != "runtime_bundle_policy_failed" {
+		t.Fatalf("missing required admin reports err=%v", err)
+	}
+	secrets, listErr := adapter.kube.CoreV1().Secrets(plan.Namespace).List(context.Background(), metav1.ListOptions{})
+	if listErr != nil || len(secrets.Items) != 0 {
+		t.Fatalf("policy failure created runtime secret: items=%d err=%v", len(secrets.Items), listErr)
+	}
+
+	const enabledConfig = `server:
+  admin_auth:
+    basic:
+      enabled: true
+    authorization:
+      enabled: true
+  admin_reports:
+    enabled: true
+    path_prefix: /admin/reports
+`
+	adapter.resolveReference = func(context.Context, string) ([]byte, error) {
+		return protectedRuntimeBundle(t, enabledConfig, "{}"), nil
+	}
+	if _, err := adapter.EnsureSecretBinding(context.Background(), plan); err != nil {
+		t.Fatalf("valid required admin reports config rejected: %v", err)
+	}
+}
+
 func TestEKSRuntimeBindingSanitizesResolverErrors(t *testing.T) {
 	const canary = "synthetic-runtime-secret-must-not-escape"
 	adapter := &EKSTenantDeploymentAdapters{

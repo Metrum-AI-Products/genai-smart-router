@@ -37,6 +37,18 @@ def main() -> int:
     cidrs = client_ip.get("trusted_proxy_cidrs") or []
     if args.require_trusted_proxy not in cidrs:
         errors.append(f"missing trusted_proxy_cidrs entry {args.require_trusted_proxy}")
+    admin_auth = server.get("admin_auth") or {}
+    basic_enabled = bool((admin_auth.get("basic") or {}).get("enabled"))
+    oidc_enabled = bool((admin_auth.get("oidc") or {}).get("enabled"))
+    if not basic_enabled and not oidc_enabled:
+        errors.append("production admin reports require Basic or OIDC admin authentication")
+    if not bool((admin_auth.get("authorization") or {}).get("enabled")):
+        errors.append("production admin reports require admin authorization")
+    admin_reports = server.get("admin_reports") or {}
+    if not bool(admin_reports.get("enabled")):
+        errors.append("production admin_reports.enabled must be true")
+    if str(admin_reports.get("path_prefix") or "/admin/reports").rstrip("/") != "/admin/reports":
+        errors.append("production admin_reports.path_prefix must be /admin/reports")
     callers = data.get("callers") or []
     if not callers:
         errors.append("callers list is empty")
