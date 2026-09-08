@@ -9,10 +9,57 @@ Release notes help customer operators decide whether to deploy, how to validate 
 
 For upgrade execution, see [Upgrade Guide](/docs/release-notes/upgrade-guide). For the docs package index, see [Releases](/docs/releases).
 
-The entry below describes the validation contract for the package that embeds
+The entries below describe the validation contract for the package that embeds
 this page. The version banner, `/docs/releases`, and `/version` are the
 authoritative sources for its exact router version and build timestamp; do not
 infer the running version from a date written in documentation.
+
+## v1.0.1 - 2026-09-08
+
+GenAI Smart Router v1.0.1 is a maintenance release focused on admin browser
+report availability. Caller-facing routing, model groups, and API behavior are
+unchanged from v1.0.0.
+
+### Highlights
+
+- Deployments that require admin browser reports can now declare the
+  reverse-proxy networks in front of the router. A deployment whose
+  `server.admin_auth.basic.trusted_proxy_cidrs` does not cover those networks is
+  rejected before rollout instead of serving an admin surface that refuses every
+  correct credential.
+- Admin authentication documentation explains the failure mode where Basic Auth
+  returns `401` for a valid password because the forwarded-HTTPS check runs
+  before the password comparison.
+
+### Operator Impact
+
+- Config: when `allow_insecure_http` is `false`, confirm that
+  `server.admin_auth.basic.trusted_proxy_cidrs` contains the network your reverse
+  proxy or ingress controller connects from. In Kubernetes this is the cluster
+  pod network, which usually differs from a local kind or Docker bridge range.
+- Database: no schema or data migration is introduced by this release.
+- License: unchanged.
+- Metrics and reports: `/metrics` isolation and admin report authorization are
+  unchanged.
+
+### Caller Impact
+
+- API behavior: unchanged.
+- Model groups: unchanged.
+- Errors: unchanged.
+
+### Validation
+
+- `/readyz` and `/version`: confirm the new router version and build timestamp.
+- Admin reports: an unauthenticated request returns `401` with a Basic challenge,
+  an incorrect password returns `401`, and an authorized request loads the report
+  shell and a SQL-backed summary.
+- Completion smoke: run one request per actively used model group.
+
+### Rollback
+
+- Restore the previous router package and the previous reviewed config.
+- No reverse migration is required; preserve the usage database.
 
 ## v1.0.0 - 2026-09-07
 
