@@ -49,7 +49,13 @@ unreviewed destination.
 
 Policy URLs use HTTPS by default. Plain HTTP is accepted only for trusted loopback hosts such as `localhost`, `127.0.0.1`, and `::1`, or when `external_policy.allow_http: true` is explicitly set for a trusted non-local endpoint. Redirects are revalidated before they are followed; every hop must keep an allowed `http`/`https` scheme and an exact hostname from `allow_hosts`.
 
-Hostname allowlisting is not a replacement for deployment network controls. Use firewall, service-mesh, or cloud egress policy for private-network and CIDR restrictions until native CIDR egress controls are added.
+The router also rejects non-loopback private/link-local destination IPs and
+nondefault ports for nonlocal endpoints, even when a hostname is allowlisted.
+Use shared-network-namespace loopback for a private policy sidecar. Deployment
+firewall and service-mesh controls supplement those checks.
+
+[Learned Routing Policy](../routing/learned-routing-policy.md) provides an
+outcome-trained service and protected offline training CLI using this contract.
 
 Callers continue to use the model group name:
 

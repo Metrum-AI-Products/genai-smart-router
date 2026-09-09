@@ -69,7 +69,15 @@ promotion or rollback cannot activate an unreviewed destination.
 
 Policy URLs should use HTTPS. Plain HTTP is accepted only for trusted loopback hosts such as `localhost`, `127.0.0.1`, and `::1`, or when `external_policy.allow_http: true` is explicitly configured for a trusted non-local endpoint. `allow_hosts` is exact-host matching, not a suffix or wildcard rule. Redirects are revalidated before each hop; a redirect to any host outside `allow_hosts`, including a loopback address that was not listed, fails before the redirected service is reached.
 
-The router-level control is hostname and scheme based. Use deployment network policy, firewall rules, or service-mesh egress policy for private-network and CIDR restrictions until native CIDR egress controls are added.
+The router also validates destination IPs and ports. Non-loopback private and
+link-local destinations are denied even when the hostname is allowlisted;
+nonlocal HTTPS uses port 443 and HTTP uses port 80. For a private policy service,
+use loopback in the same network namespace (for example a sidecar in the same
+pod). A separate private service on a custom port is rejected. Deployment network
+policy and firewall controls supplement these checks.
+
+For outcome-trained target selection and its protected offline training CLI, see
+[Learned Routing Policy](LEARNED_ROUTING_POLICY.md).
 
 ## Local Demo
 

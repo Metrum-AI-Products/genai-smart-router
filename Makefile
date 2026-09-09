@@ -607,6 +607,21 @@ e2e-live-full: build
 e2e-compose-live:
 	bash scripts/compose_live_e2e.sh
 
+.PHONY: lrp-test lrp-synthetic-demo lrp-e2e
+LRP_PROJECT := services/learned-routing-policy
+LRP_DEMO_DIR ?= /var/tmp/metrum-lrp-synthetic-demo
+
+lrp-test:
+	uv run --project $(LRP_PROJECT) --locked ruff check --config $(LRP_PROJECT)/pyproject.toml $(LRP_PROJECT)/lrp $(LRP_PROJECT)/tests
+	uv run --project $(LRP_PROJECT) --locked mypy --config-file $(LRP_PROJECT)/pyproject.toml --strict $(LRP_PROJECT)/lrp
+	env TMPDIR=/var/tmp uv run --project $(LRP_PROJECT) --locked pytest $(LRP_PROJECT)/tests -q $(if $(LRP_JUNIT_REPORT),--junitxml=$(LRP_JUNIT_REPORT),)
+
+lrp-synthetic-demo:
+	uv run --project $(LRP_PROJECT) --locked python scripts/run_lrp_synthetic_demo.py --out-dir $(LRP_DEMO_DIR)
+
+lrp-e2e: lrp-synthetic-demo
+	uv run --project $(LRP_PROJECT) --locked python scripts/run_lrp_synthetic_demo.py --out-dir $(LRP_DEMO_DIR) --e2e
+
 clean:
 	rm -rf router router-token router-token-gen router-usage-report examples/cli-e2e-c/cli-e2e "$${DIST_DIR}"
 	rm -rf "$(DOCS_SITE_DIR)/build" "$(DOCS_SITE_DIR)/.docusaurus"

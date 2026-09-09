@@ -1,0 +1,10 @@
+{
+  "errors": 0,
+  "failures": 0,
+  "real_verifier_isolation_required": true,
+  "result": "passed",
+  "schema_version": "lrp.public-tests.v1",
+  "skipped": 0,
+  "source": "synthetic",
+  "tests": 79
+}

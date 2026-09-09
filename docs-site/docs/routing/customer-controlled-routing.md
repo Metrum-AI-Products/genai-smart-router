@@ -199,6 +199,10 @@ Scripts receive safe caller and target metadata, not raw provider keys, raw rout
 
 ### External Policy Service
 
+[Learned Routing Policy](learned-routing-policy.md) provides an outcome-trained
+external service and offline training CLI, with per-group quality floors,
+cost-aware selection and explicit evaluation before promotion.
+
 Use `strategy: external` when policy belongs in a trusted standalone service. The service receives already eligible targets and returns a target decision; the router validates that decision before any upstream call.
 
 ```yaml

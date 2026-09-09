@@ -1,0 +1,317 @@
+{
+  "schema": "metrum.lrp.e2e.v1",
+  "evidence_scope": "synthetic-local-binary-http",
+  "checks": [
+    {
+      "case": "E01",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "case": "E02",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "case": "E03",
+      "passed": true,
+      "http_status": 502
+    },
+    {
+      "case": "E05",
+      "passed": true,
+      "http_status": 502
+    },
+    {
+      "case": "E04",
+      "passed": true,
+      "http_status": 200,
+      "policy_outcome": "fallback"
+    },
+    {
+      "case": "E06",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "case": "E07",
+      "passed": true,
+      "http_status": 200,
+      "attempt_count": 2
+    },
+    {
+      "case": "E08",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "case": "native-shadow",
+      "passed": true,
+      "http_status": 200,
+      "policy_outcome": "shadow_recommended"
+    },
+    {
+      "case": "E09",
+      "passed": true,
+      "request_count": 500,
+      "policy_p99_ms": 23.0,
+      "cpu_affinity_count": 4,
+      "embedding_kind": "synthetic",
+      "real_onnx_performance_evidence": false
+    },
+    {
+      "case": "E10",
+      "passed": true,
+      "relational_scalar_telemetry": true,
+      "content_and_credentials_absent": true
+    }
+  ],
+  "production_promotion_evidence": false,
+  "embedding_kind": "synthetic",
+  "real_onnx_performance_evidence": false,
+  "cpu_affinity_count": 4,
+  "latency_requests": 500,
+  "inference_examples": [
+    {
+      "workload": "short-arithmetic",
+      "router_request_id": "req_c026fec2fd2782872dc3e72f3099ecb9",
+      "actual_upstream_provider": "synthetic",
+      "actual_upstream_model": "cheap",
+      "router_policy_outcome": "selected",
+      "policy_http_status": 200,
+      "explain_http_status": 200,
+      "estimated_input_tokens": 11,
+      "text_bytes": 41,
+      "selected_index": 0,
+      "class_label": "lrp:cheapest-above-floor",
+      "explain_selected_index": 0,
+      "quality_floor": 0.8,
+      "targets": [
+        {
+          "index": 0,
+          "provider": "synthetic",
+          "model": "cheap",
+          "quality": 1.0,
+          "out_tokens": 10.000000712100842,
+          "est_cost": 2.1000000712100847e-06,
+          "excluded_reason": null,
+          "feature_importances": [
+            {
+              "feature": "emb_029",
+              "contribution": 12.759557588521
+            },
+            {
+              "feature": "textChars",
+              "contribution": -9.583306370686273e-14
+            },
+            {
+              "feature": "estimatedTokens",
+              "contribution": -6.4210789463281515e-15
+            },
+            {
+              "feature": "emb_000",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_001",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_002",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_003",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_004",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_005",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_006",
+              "contribution": 0.0
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "provider": "synthetic",
+          "model": "strong",
+          "quality": 1.0,
+          "out_tokens": 10.000000712100842,
+          "est_cost": 2.100000071210084e-05,
+          "excluded_reason": null,
+          "feature_importances": [
+            {
+              "feature": "emb_000",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_001",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_002",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_003",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_004",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_005",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_006",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_007",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_008",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_009",
+              "contribution": 0.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "workload": "long-code-review",
+      "router_request_id": "req_1262d5a9d494e80533f8424fe130dd4f",
+      "actual_upstream_provider": "synthetic",
+      "actual_upstream_model": "strong",
+      "router_policy_outcome": "selected",
+      "policy_http_status": 200,
+      "explain_http_status": 200,
+      "estimated_input_tokens": 2535,
+      "text_bytes": 10136,
+      "selected_index": 1,
+      "class_label": "lrp:cheapest-above-floor",
+      "explain_selected_index": 1,
+      "quality_floor": 0.8,
+      "targets": [
+        {
+          "index": 0,
+          "provider": "synthetic",
+          "model": "cheap",
+          "quality": 4.955177496548524e-20,
+          "out_tokens": 99.9999891664714,
+          "est_cost": 0.00026349999891664715,
+          "excluded_reason": null,
+          "feature_importances": [
+            {
+              "feature": "emb_029",
+              "contribution": -12.362201123826638
+            },
+            {
+              "feature": "estimatedTokens",
+              "contribution": -6.190881141066029e-14
+            },
+            {
+              "feature": "textChars",
+              "contribution": 4.230556877038438e-15
+            },
+            {
+              "feature": "emb_000",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_001",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_002",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_003",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_004",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_005",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_006",
+              "contribution": 0.0
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "provider": "synthetic",
+          "model": "strong",
+          "quality": 1.0,
+          "out_tokens": 99.9999891664714,
+          "est_cost": 0.0026349999891664717,
+          "excluded_reason": null,
+          "feature_importances": [
+            {
+              "feature": "emb_000",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_001",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_002",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_003",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_004",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_005",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_006",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_007",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_008",
+              "contribution": 0.0
+            },
+            {
+              "feature": "emb_009",
+              "contribution": 0.0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "bundle_version": "f10b14c5897a571372136168",
+  "explanation_scope": "same-router-payload-separate-authenticated-explain-call",
+  "result": "passed"
+}
