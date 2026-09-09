@@ -89,9 +89,11 @@ budgets into passing evidence or alter embedding truncation or default threads.
 
 ## Follow-ups and release boundary
 
-Conversation key, completion feedback and verifier-hint passthrough remain v2
-follow-ups. Native shadow is already implemented. Optional enhancements remain
-separate from mandatory v1. Live fanout/judging, operator-data promotion evaluation,
-24-hour shadow and subsequent request-shape promotion are manual evidence gates.
-The implementation PR does not authorize merging around branch protections or
-releasing before required review. No live routes or private data enter this work.
+Conversation key, completion feedback and verifier-hint passthrough are
+implemented as external-policy context extensions; see
+[EXTERNAL_POLICY_CONTEXT.md](EXTERNAL_POLICY_CONTEXT.md). Native shadow is already
+implemented. Optional enhancements remain separate from mandatory v1. Live
+fanout/judging, operator-data promotion evaluation, 24-hour shadow and subsequent
+request-shape promotion are manual evidence gates. The implementation PR does not
+authorize merging around branch protections or releasing before required review.
+No live routes or private data enter this work.

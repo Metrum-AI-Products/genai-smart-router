@@ -33,6 +33,8 @@ models:
         Authorization: ${ROUTING_POLICY_AUTH_HEADER}
       on_error: fail_closed
       include_request: false
+      # Optional: conversation_key.salt, feedback{enabled,...}, verifier_hints{enabled,...}
+      # See docs/EXTERNAL_POLICY_CONTEXT.md for #21/#22/#23 fields.
     targets:
       - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
@@ -40,7 +42,7 @@ models:
 
 The external routing policy service receives derived request context, caller
 identity metadata (`id`, user, project, environment, public token ID, and
-allowed groups), and only targets that remain eligible after request-shape and
+allowed groups), a pseudonymous `context.conversationKey`, and only targets that remain eligible after request-shape and
 model-group contract filtering. Eligible-target metadata includes provider,
 model/model-ref, dialect, tier, weight, pricing, capability/validation fields,
 configured key ID, API-key environment-variable name, and whether that
@@ -77,7 +79,9 @@ pod). A separate private service on a custom port is rejected. Deployment networ
 policy and firewall controls supplement these checks.
 
 For outcome-trained target selection and its protected offline training CLI, see
-[Learned Routing Policy](LEARNED_ROUTING_POLICY.md).
+[Learned Routing Policy](LEARNED_ROUTING_POLICY.md). Conversation keys, opt-in
+completion feedback, and governed verifier hints are documented in
+[EXTERNAL_POLICY_CONTEXT.md](EXTERNAL_POLICY_CONTEXT.md).
 
 ## Local Demo
 

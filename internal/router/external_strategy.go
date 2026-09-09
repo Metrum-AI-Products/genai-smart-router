@@ -13,14 +13,19 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
 const externalPolicyDefaultTimeoutMS = 500
 
 type externalPolicyStrategy struct {
-	cfg    ExternalPolicyConfig
-	client *http.Client
+	cfg            ExternalPolicyConfig
+	client         *http.Client
+	feedbackClient *http.Client
+	feedbackCtx    context.Context
+	feedbackCancel context.CancelFunc
+	feedbackWG     sync.WaitGroup
 }
 
 func newExternalPolicyStrategy(cfg ExternalPolicyConfig) *externalPolicyStrategy {
@@ -28,24 +33,32 @@ func newExternalPolicyStrategy(cfg ExternalPolicyConfig) *externalPolicyStrategy
 	if timeout <= 0 {
 		timeout = externalPolicyDefaultTimeoutMS * time.Millisecond
 	}
-	return &externalPolicyStrategy{
-		cfg:    cfg,
-		client: newEgressHTTPClient(timeout, cfg.AllowHosts, cfg.AllowHTTP, "external policy"),
+	feedbackCtx, feedbackCancel := context.WithCancel(context.Background())
+	strat := &externalPolicyStrategy{
+		cfg:            cfg,
+		client:         newEgressHTTPClient(timeout, cfg.AllowHosts, cfg.AllowHTTP, "external policy"),
+		feedbackCtx:    feedbackCtx,
+		feedbackCancel: feedbackCancel,
 	}
+	if cfg.Feedback.Enabled {
+		strat.feedbackClient = newExternalPolicyFeedbackClient(cfg)
+	}
+	return strat
 }
 
 type externalPolicyInput struct {
-	Group           string          `json:"group"`
-	Request         *IRRequest      `json:"request,omitempty"`
-	Context         requestSummary  `json:"context"`
-	Contract        *scriptContract `json:"contract,omitempty"`
-	Requirements    []string        `json:"requirements"`
-	Targets         []scriptTarget  `json:"targets"`
-	AllTargets      []scriptTarget  `json:"allTargets,omitempty"`
-	Caller          *scriptCaller   `json:"caller,omitempty"`
-	Text            string          `json:"text,omitempty"`
-	InputModalities []string        `json:"inputModalities"`
-	Now             string          `json:"now"`
+	Group           string                      `json:"group"`
+	Request         *IRRequest                  `json:"request,omitempty"`
+	Context         requestSummary              `json:"context"`
+	Contract        *scriptContract             `json:"contract,omitempty"`
+	Requirements    []string                    `json:"requirements"`
+	Targets         []scriptTarget              `json:"targets"`
+	AllTargets      []scriptTarget              `json:"allTargets,omitempty"`
+	Caller          *scriptCaller               `json:"caller,omitempty"`
+	Text            string                      `json:"text,omitempty"`
+	InputModalities []string                    `json:"inputModalities"`
+	VerifierHint    *externalPolicyVerifierHint `json:"verifierHint,omitempty"`
+	Now             string                      `json:"now"`
 }
 
 type requestSummary struct {
@@ -70,6 +83,8 @@ type requestSummary struct {
 	StopCount           int               `json:"stopCount,omitempty"`
 	MetadataKeys        []string          `json:"metadataKeys,omitempty"`
 	Reasoning           *reasoningSummary `json:"reasoning,omitempty"`
+	ConversationKey     string            `json:"conversationKey,omitempty"`
+	ConversationKeySrc  string            `json:"conversationKeySource,omitempty"`
 }
 
 type reasoningSummary struct {
@@ -104,27 +119,40 @@ func (e routingPolicyError) Unwrap() error {
 
 func (s *externalPolicyStrategy) Pick(ctx context.Context, group string, req *IRRequest, contract *ModelGroupContract, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
 	start := time.Now()
+	callerID := ""
+	if caller != nil {
+		callerID = caller.cfg.ID
+	}
+	conversationKey := buildExternalPolicyConversationKey(s.cfg.ConversationKey, callerID, group, req)
 	mode := strings.ToLower(strings.TrimSpace(s.cfg.Mode))
 	if mode == "" {
 		mode = "enforce"
 	}
 	if mode == "baseline" {
-		return externalBaselineDecision(group, eligibleTargets, "baseline", nil, 0, len(allTargets)), nil
+		dec := externalBaselineDecision(group, eligibleTargets, "baseline", nil, 0, len(allTargets))
+		dec.ConversationKey = conversationKey
+		return dec, nil
 	}
 	dec, err := s.pick(ctx, group, req, contract, eligibleTargets, allTargets, providers, caller, tokenID, callerDialect)
 	if mode == "shadow" {
 		if err != nil {
-			return externalBaselineDecision(group, eligibleTargets, "shadow_error", err, time.Since(start).Milliseconds(), len(allTargets)), nil
+			baseline := externalBaselineDecision(group, eligibleTargets, "shadow_error", err, time.Since(start).Milliseconds(), len(allTargets))
+			baseline.ConversationKey = conversationKey
+			return baseline, nil
 		}
 		baseline := externalBaselineDecision(group, eligibleTargets, "shadow_recommended", nil, time.Since(start).Milliseconds(), len(allTargets))
 		recommended := dec.Target
 		baseline.ShadowRecommended = &recommended
+		baseline.ConversationKey = conversationKey
 		if dec.ClassLabel != nil {
 			baseline.PolicyExecutions[0].ClassLabel = dec.ClassLabel
 		}
 		return baseline, nil
 	}
 	if err == nil {
+		if dec.ConversationKey == "" {
+			dec.ConversationKey = conversationKey
+		}
 		dec.PolicyExecutions = append(dec.PolicyExecutions, policyExecutionLogRecord{
 			Seq:                    len(dec.PolicyExecutions) + 1,
 			Strategy:               "external",
@@ -143,12 +171,13 @@ func (s *externalPolicyStrategy) Pick(ctx context.Context, group string, req *IR
 		label := "external-policy:fallback"
 		errorClass := policyErrorClass(err, "external")
 		return decision{
-			Target:      eligibleTargets[0],
-			Fallbacks:   eligibleTargets[1:],
-			ClassLabel:  &label,
-			Strategy:    "external",
-			GroupName:   group,
-			TargetIndex: 0,
+			Target:          eligibleTargets[0],
+			Fallbacks:       eligibleTargets[1:],
+			ClassLabel:      &label,
+			Strategy:        "external",
+			GroupName:       group,
+			TargetIndex:     0,
+			ConversationKey: conversationKey,
 			PolicyExecutions: []policyExecutionLogRecord{{
 				Seq:                    1,
 				Strategy:               "external",
@@ -200,9 +229,16 @@ func externalBaselineDecision(group string, eligibleTargets []Target, outcome st
 }
 
 func (s *externalPolicyStrategy) pick(ctx context.Context, group string, req *IRRequest, contract *ModelGroupContract, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
+	callerID := ""
+	if caller != nil {
+		callerID = caller.cfg.ID
+	}
+	summary := buildRequestSummary(req, callerDialect)
+	summary.ConversationKey = buildExternalPolicyConversationKey(s.cfg.ConversationKey, callerID, group, req)
+	summary.ConversationKeySrc = conversationKeySource(req)
 	input := externalPolicyInput{
 		Group:           group,
-		Context:         buildRequestSummary(req, callerDialect),
+		Context:         summary,
 		Contract:        buildScriptContract(contract),
 		Requirements:    routingRequirements(req, callerDialect),
 		Targets:         buildScriptTargets(eligibleTargets, providers),
@@ -214,6 +250,11 @@ func (s *externalPolicyStrategy) pick(ctx context.Context, group string, req *IR
 		input.Request = req
 		input.Text = requestText(req)
 	}
+	hint, err := extractExternalPolicyVerifierHint(s.cfg.VerifierHints, req)
+	if err != nil {
+		return decision{}, fmt.Errorf("external policy verifier hint: %w", err)
+	}
+	input.VerifierHint = hint
 	body, err := json.Marshal(input)
 	if err != nil {
 		return decision{}, err
@@ -243,12 +284,13 @@ func (s *externalPolicyStrategy) pick(ctx context.Context, group string, req *IR
 		classLabel = safePolicyClassLabel(out.ClassLabel)
 	}
 	return decision{
-		Target:      eligibleTargets[primary],
-		Fallbacks:   fallbacks,
-		ClassLabel:  classLabel,
-		Strategy:    "external",
-		GroupName:   group,
-		TargetIndex: primary,
+		Target:          eligibleTargets[primary],
+		Fallbacks:       fallbacks,
+		ClassLabel:      classLabel,
+		Strategy:        "external",
+		GroupName:       group,
+		TargetIndex:     primary,
+		ConversationKey: summary.ConversationKey,
 	}, nil
 }
 

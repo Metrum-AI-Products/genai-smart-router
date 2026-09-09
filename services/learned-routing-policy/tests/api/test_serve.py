@@ -192,6 +192,39 @@ def test_pin_canonical_key_and_auth_required():
         create_apps(ServiceConfig(groups={}), None, auth="")
 
 
+def test_conversation_key_prefers_router_context():
+    payload = Payload.model_validate(body())
+    without = session_key(payload)
+    payload.context["conversationKey"] = "ck_0123456789abcdef0123456789abcdef"
+    with_key = session_key(payload)
+    assert with_key is not None and with_key != without
+    payload.request["messages"][0]["content"] = "completely different first turn"
+    assert session_key(payload) == with_key
+
+
+def test_feedback_endpoint_validates_bounded_payload():
+    client, _, runtime = clients(FakeBundle())
+    try:
+        ok = client.post(
+            "/feedback",
+            json={
+                "schemaVersion": "external_policy.feedback.v1",
+                "requestId": "req_example",
+                "group": "demo",
+                "status": 200,
+                "selectedTarget": {"provider": "synthetic", "model": "cheap"},
+                "usage": {"inputTokens": 1, "outputTokens": 1, "totalTokens": 2},
+                "latencyMs": 12,
+            },
+            headers=AUTH,
+        )
+        assert ok.status_code == 204
+        assert client.post("/feedback", json={"requestId": "x"}, headers=AUTH).status_code == 400
+        assert client.post("/feedback", json={"requestId": "x"}).status_code == 401
+    finally:
+        runtime.pool.shutdown()
+
+
 def test_undertrained_abstains_and_ambiguous_skins_rejected():
     bundle = FakeBundle()
     bundle.manifest = {"targets": [{"provider": "synthetic", "model": "cheap", "n_train": 10}]}
