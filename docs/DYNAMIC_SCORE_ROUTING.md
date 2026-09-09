@@ -23,6 +23,10 @@ Callers still request one deployment-defined model group. The router authenticat
 
 Dynamic scoring must not be used to cross from one model group contract into another. If a cheaper or faster target belongs in the policy, add and validate that target in the requested group.
 
+The following is a focused adaptation of the shipped
+`config.example.yaml` policy. Provider names are illustrative; policy keys
+match the reference group.
+
 ```yaml
 models:
   adaptive-agent:
@@ -41,6 +45,11 @@ models:
           # enabled defaults to true; set enabled: false for independent picks.
           ttl_seconds: 600
           max_entries: 10000
+        hard_filters:
+          require_requested_api_skin: true
+          require_input_modalities: true
+          require_tool_support_when_tools_present: true
+          require_honors_max_tokens_when_caller_capped: true
         signals:
           request_shape: { enabled: true }
           prompt_features:
@@ -87,9 +96,28 @@ Drive enough traffic to pass `min_observations` and verify selection changes fro
 
 ## Conversation Affinity
 
-Dynamic-score groups pin a conversation prefix to the first selected target by default. The key is a SHA-256 digest of the caller ID, model group, inbound dialect, system context, and first user message. Raw prompt content is not retained. Pins are process-local, expire after `affinity.ttl_seconds` (600 seconds by default), and are bounded by `affinity.max_entries` (10,000 by default).
+Dynamic-score groups pin a conversation prefix to the first selected target by
+default. The key is a SHA-256 digest of the caller ID, model group, normalized
+inbound dialect, system context, and complete first normalized message,
+including its role and normalized content parts. Requests without messages use
+their normalized input text/parts. Raw prompt content is not retained. Clients
+must resend the same initial normalized prefix on later turns; clients that
+send only a new incremental turn produce a different key.
 
-Affinity runs after request eligibility, spend ceilings, hard filters, and health thresholds. A pin is ignored and replaced if its target is no longer eligible for the current request shape. Different callers never share pins. Disable the behavior for a group with `affinity.enabled: false`.
+Pins are process-local, expire 600 seconds after creation/replacement by
+default, and are bounded to 10,000 entries by default. Hits do not refresh the
+expiry or make an entry more recent for eviction. At capacity, the oldest
+created/replaced entry is removed; this is bounded creation-time eviction, not
+an LRU cache.
+
+Affinity runs after request eligibility, spend ceilings, hard filters, and
+health thresholds. A pin only reorders that already-eligible list. It is
+created for the initially selected primary before the upstream result is known,
+so a successful fallback does not repin the conversation to the fallback.
+A pin is ignored and replaced if its provider/model/dialect/index no longer
+matches an eligible target for the current request shape. Different callers
+never share pins. Disable the behavior for a group with
+`affinity.enabled: false`.
 
 Chat-to-Responses stateful sessions remain a separate explicit bridge feature. Their caller-supplied session header, `previous_response_id`, backend, and TTL behavior are unchanged.
 

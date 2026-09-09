@@ -168,7 +168,7 @@ rtk python3 scripts/prod_smoke_regressions.py \
   --postgres-dsn "$ROUTER_USAGE_DB_DSN"
 ```
 
-The checked-in reference config includes `reasoning-bridge-smoke` for agent/reasoning bridge fixtures and `responses-to-chat-bridge-smoke` for the inverse bridge fixture that must not be satisfied by a native Responses target. Hosted deployments must grant Harbor/Chetan or another scoped smoke caller access to the deployment-defined smoke groups before staging or production runs. Do not edit or repurpose production `big-coder` just to run bridge fixtures; use a dedicated smoke group or document the missing caller/group access as a blocker.
+The checked-in reference config includes `reasoning-bridge-smoke` for agent/reasoning bridge fixtures and `responses-to-chat-bridge-smoke` for the inverse bridge fixture that must not be satisfied by a native Responses target. Deployments must grant a reusable, scoped evaluation caller access to deployment-defined smoke groups before staging or production runs. Do not edit or repurpose a broad production group just to run bridge fixtures; use a dedicated smoke group or document the missing caller/group access as a blocker.
 
 For local SQLite-backed router runs, use `--mode local` and replace `--postgres-dsn` with `--sqlite-db <usage-db-path>`. The script prints request ID, status, surface, message/tool counts, selected provider/model/dialect, and request-shape buckets only. It exits nonzero if an unexpected request fails, a fixture's must-not-select target is selected, an expected error/status is not observed, or persisted shape buckets do not match the fixture. `--fixture all` skips fixtures marked `replayable: false`, such as diagnostics-only upstream error classification contracts that require a mocked or staging error upstream; select those fixtures explicitly when that environment is configured.
 
@@ -252,20 +252,6 @@ Release packaging smokes prove that artifacts are deterministic, external-safe, 
 | macOS release host | Confirm package tarballs contain no AppleDouble `._*` entries; package recipes set `COPYFILE_DISABLE=1` and validator rejects any accidental metadata entries |
 | Compose assets | Extract Docker package, verify `compose/.env` pins `SMART_LLMROUTER_VERSION=<version>-linux-<arch>`, set deployment-owned passwords/DSNs, and run `docker compose config >/dev/null` |
 
-## Release Package Smokes
-
-Release packaging smokes prove that artifacts are deterministic, external-safe, and architecture-correct before handoff.
-
-| Artifact | Required smoke |
-|---|---|
-| Package validation self-test | `python3 scripts/validate_package_contents_test.py` and `python3 scripts/validate_release_clean_test.py` |
-| Binary amd64 package | Clean tree, `make package-all`, validate `dist/smart-llmrouter-*-linux-amd64.tar.gz`, confirm x86-64 ELF binaries |
-| Binary arm64 package | Clean tree, `make package-all`, validate `dist/smart-llmrouter-*-linux-arm64.tar.gz`, confirm aarch64 ELF binaries |
-| Docker amd64 package | Docker daemon available, `make package-docker-all`, validate `dist/smart-llmrouter-*-docker-linux-amd64.tar.gz`, load image tar, run `/app/bin/router --version` and helper `--version` commands |
-| Docker arm64 package | Docker daemon and buildx platform support available, `make package-docker-all`, validate `dist/smart-llmrouter-*-docker-linux-arm64.tar.gz`, load image tar, run `/app/bin/router --version` and helper `--version` commands where runner architecture or emulation allows |
-| macOS release host | Confirm package tarballs contain no AppleDouble `._*` entries; package recipes set `COPYFILE_DISABLE=1` and validator rejects any accidental metadata entries |
-| Compose assets | Extract Docker package, verify `compose/.env` pins `SMART_LLMROUTER_VERSION=<version>-linux-<arch>`, set deployment-owned passwords/DSNs, and run `docker compose config >/dev/null` |
-
 ## Evidence Evaluation Smokes
 
 Before promoting or rolling back a model group based on a quality claim:
@@ -283,9 +269,10 @@ Run this gate before changing request parsing, upstream encoding, tool routing, 
 
 | Surface | Required deterministic checks | Router test coverage |
 |---|---|---|
-| OpenAI Chat Completions | Plain text, caller streaming flag, `max_tokens`, `max_completion_tokens`, same-dialect tool passthrough, `tool_choice`, JSON-schema `response_format`, and `reasoning_effort` | `go test ./internal/router -run TestAPIDialectConformance` |
+| OpenAI Chat Completions | Plain text, native same-dialect SSE timing/chunks/cancellation, `stream_options.include_usage`, `max_tokens`, `max_completion_tokens`, same-dialect tool deltas, `tool_choice`, JSON-schema `response_format`, and `reasoning_effort` | `go test ./internal/router -run 'TestAPIDialectConformance|TestNative'` |
 | OpenAI Responses | Plain input, `max_output_tokens`, same-dialect function/namespace tool passthrough, generic hosted search/image descriptor stripping, remote hosted tool rejection, JSON-schema `text.format` | `go test ./internal/router -run TestResponsesConformance` |
-| Anthropic Messages | Messages payloads, caller `max_tokens`, `thinking` passthrough, default max-token injection when omitted | `go test ./internal/router -run TestAPIDialectConformance` |
+| Anthropic Messages | Messages payloads, native same-dialect SSE content/tool-use/usage events and cancellation, caller `max_tokens`, `thinking` passthrough, default max-token injection when omitted | `go test ./internal/router -run 'TestAPIDialectConformance|TestNative'` |
+| Gemini `generateContent` target | Unary text encode/decode goldens, exact model endpoint, unsupported-shape rejection, activation-evidence gate | `go test ./internal/router -run TestGemini` |
 | Cross-surface routing | Tool/structured/reasoning/image/cap eligibility and `no-eligible-target` behavior | existing `service_test.go` request-shape and target-filter tests plus live smokes for provider activation |
 
 The conformance gate is intentionally mock-upstream and deterministic. It proves router semantics, not provider quality. Provider/model activation still requires the direct and router-level live smokes in the provider sections below.
@@ -302,7 +289,14 @@ not receive either form. A malformed setting must not run embedded syntax;
 provisioning may fail, but the separately invokable offline conformance target
 remains strictly offline.
 
-For OpenAI-compatible providers, distinguish generic translation from same-dialect passthrough. Generic translation can normalize fields and force upstream unary calls. Same-dialect passthrough is the path that preserves client tool declarations and structured-output payloads for compatible upstreams.
+For OpenAI-compatible providers, distinguish generic translation from
+same-dialect passthrough. Same-dialect OpenAI Chat and Anthropic Messages
+streaming sets upstream streaming and proxies complete native SSE events.
+Verify first-delta timing, more than two caller chunks, tool-call/tool-use
+events, optional final usage, caller cancellation, and no replay or fallback
+after the first committed event. Generic translation, OpenAI Responses, and
+cross-dialect bridges can normalize fields and use unary upstream calls with
+router-encoded caller streaming.
 
 Responses-to-Chat bridging is opt-in target metadata, not automatic cross-skin compatibility. Before enabling `responses_to_chat`, direct-smoke the exact Chat upstream for text, max-token caps, and function tools, then router-smoke `/v1/responses` text and function-tool requests through a restricted group. Enable `responses_to_chat.reasoning` only after a smoke proves Responses `reasoning.effort` reaches the upstream as Chat `reasoning_effort` and usage diagnostics record `bridge_direction = responses_to_chat` with `translated_reasoning_control = reasoning_effort`. Do not enable stateful `previous_response_id`, hosted tools, images, structured output, or streaming unless those exact bridge flags and smokes exist.
 
@@ -310,7 +304,7 @@ Responses-body-on-Chat-endpoint compatibility is server-level and disabled by de
 
 For Chat-to-Responses bridge validation, use an `openai-responses` target with explicit `bridges.chat_to_responses` metadata. Run `POST /v1/chat/completions` through the router and verify the mock or live upstream receives `/v1/responses`, `input`, optional `instructions`, and `max_output_tokens`. For reasoning smokes, enable `bridges.chat_to_responses.reasoning` only on a dedicated smoke group, send Chat `reasoning_effort`, and verify the upstream receives Responses `reasoning.effort`; usage diagnostics should record `bridge_direction = chat_to_responses` and `translated_reasoning_control = reasoning`. For tool smokes, verify Chat function tools translate to Responses function tools and Responses function-call output maps back to Chat `tool_calls`. For stateful session smokes, enable `bridges.chat_to_responses.stateful_sessions`, send two requests with the same configured session header, verify the first upstream body omits `previous_response_id`, verify the second upstream body includes the first upstream Responses `id`, and verify a different caller or session header value does not reuse that id. For `backend: redis`, repeat the two-turn proof across two router processes sharing the Redis namespace, then test Redis outage or timeout behavior and expect a stateless request with `bridge_session_backend_error` rather than cross-session continuation. Also inject a stale `previous_response_id` 4xx in a mock upstream and verify the router emits `bridge_session_previous_response_stale_purged` plus `bridge_session_stateless_retry`, then succeeds once without the stale ID. Unless bridge streaming is implemented and enabled, `stream:true` must produce `502 no-eligible-target` with a safe filter reason and zero upstream attempts.
 
-For production or staging validation, create restricted smoke/test groups such as `chat-to-responses-reasoning-smoke`, `responses-to-chat-reasoning-smoke`, and `chat-to-responses-stateful-smoke`; do not repurpose broad production groups such as coding-agent groups while validating bridge contracts. Grant the Harbor and Chetan validation callers access to the smoke groups for the validation window and remove or narrow that access after evidence is captured.
+For production or staging validation, create restricted smoke/test groups such as `chat-to-responses-reasoning-smoke`, `responses-to-chat-reasoning-smoke`, and `chat-to-responses-stateful-smoke`; do not repurpose broad production groups such as coding-agent groups while validating bridge contracts. Grant one reusable, deployment-owned evaluation caller access to the smoke groups for the validation window and remove or narrow that access after evidence is captured.
 
 For provider-skin eligibility, treat OpenAI Chat, OpenAI Responses, and Anthropic Messages as separate active pools inside the same model group. Catalog metadata for a model can list capabilities for several skins, but a target is effectively eligible only for the resolved provider or target dialect that is active in `models.<group>.targets[]`. A Responses function-tool smoke must select an `openai-responses` target or an explicitly documented bridge target; a Chat-only target with `tool_support.openai_responses` metadata is expected to be skipped until a native Responses skin or bridge is configured and validated. The provider catalog status report should show wrong-skin metadata under `inactiveToolSupport` with `metadata-for-inactive-provider-skin`.
 
@@ -527,7 +521,7 @@ For agent CLI smokes, the agent must create a file and the test must assert the 
 
 Run these smokes when adding or changing `request_shape_support`, `context_tokens`, tool metadata, coding-agent groups, or provider targets that previously returned invalid-request or context-limit errors for large Cursor, Codex, Claude Code, or opencode payloads.
 
-The reference config includes `large-openai-chat-tools-smoke` as a restricted validation group for the production-derived OpenAI Chat shape with `stream:true`, 105 messages, 19 tools, no images, no caller output cap, `64kb-256kb` request/text buckets, a `16kb-64kb` tool-schema bucket, and a huge estimated input-token bucket. It also includes a `high` gt-1mb opencode/OpenAI Chat tool fixture that proves ordinary non-MiniMax `high` targets are skipped by `max_request_bytes: 1048576` while MiniMax Chat remains eligible. Grant Harbor and Chetan validation callers access to dedicated smoke groups before rerunning staging validation; for production validation of caller-visible groups, use an existing scoped production caller and confirm selected provider/model/dialect from safe usage/report rows. Do not change production `big-coder` just to run these regression fixtures.
+The reference config includes `large-openai-chat-tools-smoke` as a restricted validation group for the production-derived OpenAI Chat shape with `stream:true`, 105 messages, 19 tools, no images, no caller output cap, `64kb-256kb` request/text buckets, a `16kb-64kb` tool-schema bucket, and a huge estimated input-token bucket. It also includes a reference gt-1mb OpenAI Chat tool fixture that proves targets with `max_request_bytes: 1048576` are skipped while an explicitly validated large-payload target remains eligible. Grant a reusable, deployment-owned evaluation caller access to dedicated smoke groups before staging validation; for production validation of caller-visible groups, use an existing scoped caller and confirm selected provider/model/dialect from safe usage/report rows. Do not change a broad production coding group just to run these regression fixtures.
 
 | Case | Smoke |
 |---|---|

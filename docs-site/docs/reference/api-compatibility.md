@@ -63,9 +63,10 @@ Router API compatibility is protected by deterministic release validation in add
 
 | Surface | What the conformance suite proves |
 |---|---|
-| OpenAI Chat Completions | Plain text, caller streaming normalization, `max_tokens`, `max_completion_tokens`, same-dialect tool passthrough, `tool_choice`, JSON-schema `response_format`, and `reasoning_effort` forwarding when the selected target supports reasoning. |
+| OpenAI Chat Completions | Plain text, native same-dialect SSE timing/chunks/cancellation, optional final usage, `max_tokens`, `max_completion_tokens`, same-dialect tool passthrough, `tool_choice`, JSON-schema `response_format`, and `reasoning_effort` forwarding when the selected target supports reasoning. |
 | OpenAI Responses | `max_output_tokens`, same-dialect function/namespace tool passthrough, JSON-schema `text.format`, generic hosted search/image descriptor stripping, and remote provider-hosted tool rejection before upstream. |
-| Anthropic Messages | Message payload encoding, caller `max_tokens`, and `thinking` forwarding when the selected target supports Anthropic token-budget reasoning. |
+| Anthropic Messages | Message payload encoding, native same-dialect SSE text/tool-use/usage events and cancellation, caller `max_tokens`, and `thinking` forwarding when the selected target supports Anthropic token-budget reasoning. |
+| Gemini `generateContent` target | Unary text encode/decode, exact model-specific endpoint construction, fail-closed unsupported shapes, and direct-plus-router activation evidence. This is an outbound adapter, not a caller endpoint. |
 
 This suite uses mock upstreams and does not prove a real provider/model is entitled, fast, accurate, or compatible with every workload. Activating an upstream still requires direct provider smokes and router-level smokes for the exact provider, model, dialect, tools, images, structured-output, reasoning, and max-token behavior being advertised.
 

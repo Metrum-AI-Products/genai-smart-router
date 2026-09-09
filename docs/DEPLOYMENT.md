@@ -81,13 +81,51 @@ If `router.ts` imports local helpers, place those files under `config/scripts/` 
 
 External TypeScript policy calls are disabled unless a script model group enables `script_http` in `config.yaml`. Configure exact `allow_hosts`, a small `timeout_ms`, and `max_response_bytes`; scripts call these services through `router.fetchJSON`, not unrestricted browser `fetch`. HTTPS is the default for non-local services. Plain HTTP is allowed only for loopback hosts or when `script_http.allow_http: true` is set for trusted internal infrastructure. Redirects are revalidated at every hop against the same scheme and exact-host rules. Put policy-service auth in `script_http.headers` with env-expanded values such as `${ROUTING_POLICY_AUTH_HEADER}` instead of hardcoding secrets in script source.
 
+Each script decision runs in a fresh isolated VM. Keep the per-group
+`script_max_concurrent` at its default `16` until load evidence justifies a
+change; accepted values are `0`/unset through `256`, where zero means the
+default. Requests queued for a VM slot honor cancellation. Increasing the cap
+increases simultaneous script CPU/memory work inside the serving process, so
+roll back by restoring the prior cap or strategy rather than bypassing the
+limit. The cap does not impose an execution timeout after a VM starts:
+unbounded pure JavaScript can hold its slot and request goroutine indefinitely.
+`router.fetchJSON` has a separate bounded HTTP timeout, but it does not preempt
+other script execution. Review scripts for bounded loops and roll back a stuck
+policy by restoring the previous artifact and restarting affected instances.
+
 License and quota state files are tamper-evident runtime state. Keep the state directory private, copy state files through normal backup/restore procedures, and do not edit JSON counters or disabled flags by hand; integrity failures are treated as serving errors until a trusted backup or approved replacement/top-up workflow restores state. Legacy unsigned quota-state import requires an explicit one-time start with `SMART_LLMROUTER_ALLOW_UNSIGNED_STATE_MIGRATION=1`, then a restart without that flag after signed state is written.
 
 For PII-aware script routing, mark private backing targets with deployment-owned metadata such as `tier: private` or `display_name: Private sensitive target`, and test that likely PII requests select only those targets for both primary routing and retry fallbacks. The example in `examples/typescript-pii-policy/` returns safe class labels only, does not log or return matched text, and fails closed when no sensitive/private target is eligible. Script routing does not redact outbound content; use model-group `pii_filter` for router-managed redaction, restoration, or fail-on-match controls.
 
-For standalone policy services, prefer `strategy: external` with `external_policy.url`, exact `allow_hosts`, low `timeout_ms`, response-size limits, and config-owned auth headers. The external routing policy service receives safe derived request context and eligible target metadata, returns `targetIndex` or `target`, and is validated before any upstream provider call. It does not receive prompt text, message bodies, image URLs/data, tool schemas, tool outputs, or `request.raw` unless `external_policy.include_request: true` is explicitly approved for a trusted service. Use HTTPS unless the service is loopback-local or `external_policy.allow_http: true` is explicitly approved for a trusted internal endpoint. Redirects cannot escape the allowlist. See `docs/EXTERNAL_ROUTING_POLICY.md`.
+For standalone policy services, prefer `strategy: external` with
+`external_policy.url`, exact `allow_hosts`, low `timeout_ms`, response-size
+limits, and config-owned auth headers. The service receives derived request
+context plus pseudonymous caller identity and eligible-target deployment
+inventory, returns `targetIndex` or `target`, and is validated before any
+upstream provider call. It does not receive prompt text, message bodies, image
+URLs/data, tool schemas, tool outputs, or `request.raw` unless
+`external_policy.include_request: true` is explicitly approved for a trusted
+service. Use HTTPS unless the service is loopback-local or
+`external_policy.allow_http: true` is explicitly approved for a trusted
+internal endpoint. Redirects cannot escape the allowlist. The router reuses
+one concurrency-safe HTTP client per external group and propagates caller
+cancellation. Start in `mode: shadow`, promote to `enforce` only after
+recommendation-versus-served evidence passes, and roll back policy influence
+with `mode: baseline`, which skips the policy call. See
+`docs/EXTERNAL_ROUTING_POLICY.md`.
 
-For built-in adaptive routing, prefer `strategy: dynamic_score` before adding custom strategies. It scores only the requested model group's eligible targets, uses in-memory rolling observations instead of hot-path database reads, emits safe scalar `routing_decision` traces, and rolls back by switching the group to `weighted`. See `docs/DYNAMIC_SCORE_ROUTING.md`.
+For built-in adaptive routing, prefer `strategy: dynamic_score` before adding custom strategies. It scores only the requested model group's eligible targets, uses in-memory rolling observations instead of hot-path database reads, emits safe scalar `routing_decision` traces, and pins a caller/conversation prefix to the selected target by default. Pins are process-local, TTL-bounded, and ignored when the target is no longer eligible. Disable only pinning with `routing_policy.dynamic_score.affinity.enabled: false`; roll back the strategy by switching the group to `weighted`. See `docs/DYNAMIC_SCORE_ROUTING.md`.
+
+For optional `targets[].region` diagnostics, choose a stable deployment-owned
+taxonomy only after validating the actual provider/infrastructure location;
+the label is not inferred or enforced. Before rollout, plan/apply usage
+migration `2026090901`, validate YAML, smoke both the primary and a forced
+successful fallback, and confirm `request_usage.target_region` and safe
+selected-target telemetry identify the target that actually served. The value
+is not exposed to callers, TypeScript policy, or external-policy input. Roll
+back by removing the config field and preserving the additive column; a
+package downgrade follows the migration contract and may require restoring
+the approved pre-migration database.
 
 Normal release builds require `server.license` enforcement. Mount the
 operator-generated signed JSON runtime-policy file, its configured verification
@@ -95,7 +133,14 @@ public key, and durable license state path before startup; runtime YAML cannot
 disable enforcement. `/readyz` reflects license readiness. Replace or renew the
 file before expiry, then restart or wait for `recheck_interval`.
 
-Metrum operators should use `docs/LICENSE_OPERATIONS.md` for issuance, renewal, replacement, volume top-up, offline customer support, commercial/control-plane boundaries, and acceptance checklists. GitHub issue #921 owns the commerce purchase/entitlement flow and #42 owns customer-facing commercial/package copy. That source-tree runbook is not part of the public hosted docs and must not contain real licenses, signing keys, customer identifiers, router tokens, provider keys, or full production config.
+Self-managed operators should use `docs/LICENSE_OPERATIONS.md` for key
+generation, issuance, renewal, replacement, trust rotation, and acceptance
+checks. They generate and retain their own Ed25519 keypair; no external issuer
+is required. An optional Metrum-managed deployment service may perform these
+operations under a separate commercial agreement. The source-tree runbook is
+not part of the public hosted docs and must not contain real licenses, signing
+keys, customer identifiers, router tokens, provider keys, or full production
+config.
 
 Enterprise self-hosted packages support offline signed-license operation. Private managed deployments use the same runtime licensing model but are operated for a single customer or customer-specific HA environment. Approved commercial/control-plane flows must deliver a signed license or online lease through the approved system; do not add card-processing, billing-ledger, or public API-credit-wallet behavior to the router runtime.
 

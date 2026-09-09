@@ -13,7 +13,8 @@ Binary packages include:
 - `bin/metrum-genai-smartrouterctl`
 - `bin/metrum-genai-smartrouter-fleetctl`
 - `bin/metrum-genai-smartrouter-fleet-sign`
-- `bin/metrum-genai-smartrouter-license` (Metrum license issuer only; never for customer self-issue)
+- `bin/metrum-genai-smartrouter-license` (operator-side runtime-policy key and
+  license tool; never included in the runtime image)
 - `bin/metrum-genai-customer-lifecycle` (Metrum operator lifecycle CLI only; never for customer self-service)
 - `bin/smartrouterctl` (one-release rename notice → `metrum-genai-smartrouterctl`)
 - `bin/metrum-fleetctl` (one-release rename notice → `metrum-genai-smartrouter-fleetctl`)
@@ -59,7 +60,12 @@ The standard Docker and Docker Compose images do not include
 `metrum-genai-smartrouter-license`, or the one-release Fleet rename notices.
 Docker-based Fleet operators run those tools from a binary package on a separate trusted administration host.
 Fleet CLIs are distributed as prebuilt binaries only; operator hosts must not require a Go toolchain or product source tree.
-Customers never receive license-signing authority; `metrum-genai-smartrouter-license issue` is Metrum-only.
+Self-managed operators generate and retain their own Ed25519 keypair and use
+`metrum-genai-smartrouter-license` from the trusted administration host to
+issue the deployment's runtime-policy `license.json`. Metrum-managed issuance
+may be offered as an optional commercial deployment service, but it is not
+required by the open-source runtime. Keep private keys and real licenses out of
+the package, runtime image, source control, logs, and tickets.
 
 Docker and Compose packages use SQLite state with one Router container and one
 replica by default; they neither provision nor bind RDS. Dedicated RDS is an

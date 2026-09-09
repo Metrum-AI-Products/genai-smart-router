@@ -11,4 +11,24 @@ python3 scripts/fixed_model_outcome_gate.py \
   --out examples/fixed-model-ocr-baseline/live-output/gate.json
 ```
 
-The strict schema accepts only aggregate counts, latency, cost, and identifiers. An unknown field is an error, and a candidate quality regression beyond the preregistered tolerance exits nonzero. `live-results/` and `live-output/` are ignored because real evaluation evidence belongs in the deployment's protected validation boundary.
+The preregistration fixes the workload style, case count, control and candidate
+IDs, maximum pass-rate regression, maximum error-rate increase, and optional
+latency/cost ratios before results are collected. Use the same cases and scoring
+rule for both arms. This example uses exact-match OCR outcomes, but the schema
+also accepts `unit` and `tool` workload labels.
+
+The strict results schema accepts exactly two arms and only aggregate counts,
+p95 latency, total cost, and identifiers. An unknown field is an error, so
+prompt text, image data, extracted text, and model responses cannot be added
+accidentally. Exit status is:
+
+- `0`: every preregistered threshold passed;
+- `1`: the candidate regressed on one or more thresholds;
+- `2`: inputs were unreadable or violated the strict schema.
+
+Run `python3 scripts/fixed_model_outcome_gate_test.py` in CI to verify both the
+pass and regression paths. `live-results/` and `live-output/` are ignored
+because real evaluation evidence belongs in the deployment's protected
+validation boundary. Promotion evidence should pair the scalar gate with the
+reviewed dataset/version, scorer identity, provider entitlement, request-shape
+smokes, and rollback decision retained in that protected system.

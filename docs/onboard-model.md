@@ -146,12 +146,23 @@ activation_evidence:
   validated_at: YYYY-MM-DD
 ```
 
-Set the two pass flags only after the same exact model first passes a direct
-`generateContent` text request and then a router `/v1/chat/completions` text
-request through a restricted group. The codec rejects tools, images,
-structured output, reasoning controls, and streaming; do not advertise or
-activate those shapes without a separately implemented codec and exact direct
-plus router evidence.
+These fields are operator-attested configuration assertions. The router checks
+their presence, date, exact model, and dialect consistency; it does not verify
+an external evidence artifact.
+
+Collect `direct_text_passed` first with the exact provider/model/account. The
+first live router smoke requires a controlled bootstrap because an active
+Gemini target will not load without `router_text_passed: true`: use an isolated
+restricted staging group and caller, treat the flag as a provisional
+change-controlled assertion, start the candidate config, run the exact router
+text smoke immediately, and remove/stop the target if it fails. Retain the flag
+and consider broader promotion only after that smoke passes and its safe scalar
+evidence is recorded outside this repository. If that isolated bootstrap is
+not available, keep the model catalog-only.
+
+The codec rejects tools, images, structured output, reasoning controls, and
+streaming; do not advertise or activate those shapes without a separately
+implemented codec and exact direct plus router evidence.
 
 Catalog metadata is not active routing eligibility by itself. If one upstream model is exposed through multiple provider skins, add and validate each skin as a separate provider or target dialect before expecting callers to use it. For example, `tool_support.openai_responses` on a catalog entry inherited by an `openai-chat` target documents metadata for that model, but Responses clients will not select that target unless an `openai-responses` skin or an explicitly validated bridge target is active in the requested group. Before promotion, check `/admin/reports/api/provider-catalog-status` and confirm each intended group shows the right `activeEligibilitySkin`, nonempty `effectiveToolSupport`, and no surprising `inactiveToolSupport` for the caller surface being validated.
 

@@ -113,7 +113,16 @@ python3 -m sglang.launch_server \
   --tool-call-parser qwen25
 ```
 
-Do not assume a model is tool-capable because the server accepts `tools`. Validate that the response contains correctly shaped tool calls in both non-streaming and streaming modes if clients use both. Add `tool_support.openai_chat: [tools, tool_choice]` only after that validation passes for the exact served model, chat template, parser, and client protocol. For streaming router smokes, verify the downstream SSE contains `delta.tool_calls` and `finish_reason: "tool_calls"`; the router may call the upstream non-streaming for passthrough safety and synthesize OpenAI Chat SSE chunks for the caller.
+Do not assume a model is tool-capable because the server accepts `tools`. Validate that the response contains correctly shaped tool calls in both non-streaming and streaming modes if clients use both. Add `tool_support.openai_chat: [tools, tool_choice]` only after that validation passes for the exact served model, chat template, parser, and client protocol.
+
+For a same-dialect `openai-chat` streaming smoke, verify that the router forwards
+`stream: true`, preserves compatible `stream_options`, and proxies native SSE
+containing `delta.tool_calls`, terminal `finish_reason: "tool_calls"`, and a
+usage event when the caller requested `stream_options.include_usage`. Canceling
+the downstream request must cancel the upstream call. Once the router writes
+the first native event, it cannot safely retry, replay, or fall back to another
+target. OpenAI Responses and cross-dialect bridge paths remain unary upstream
+calls with router-encoded caller streaming.
 
 ## Structured-Output Notes
 

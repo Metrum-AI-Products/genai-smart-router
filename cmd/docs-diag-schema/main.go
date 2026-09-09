@@ -332,7 +332,7 @@ func render(tables []tableDoc) []byte {
 		fmt.Fprintf(&b, "|---|---|---|---|---|---|\n")
 		for _, c := range t.Columns {
 			fmt.Fprintf(&b, "| `%s` | %s | %s | %s | %s | %s |\n",
-				c.Name, c.Scalar, yesNo(c.Nullable), escapeMD(populatedWhen(t.TableName, c)), escapeMD(safeStatus(t.TableName, c.Name)), escapeMD(exampleValue(c)))
+				c.Name, c.Scalar, yesNo(c.Nullable), escapeMD(populatedWhen(t.TableName, c)), escapeMD(safeStatus(t.TableName, c.Name)), escapeMD(exampleValue(t.TableName, c)))
 		}
 		fmt.Fprintf(&b, "\n")
 	}
@@ -505,7 +505,7 @@ func safeStatus(table, column string) string {
 	}
 }
 
-func exampleValue(c columnDoc) string {
+func exampleValue(table string, c columnDoc) string {
 	name := c.Name
 	switch {
 	case name == "request_id":
@@ -522,6 +522,12 @@ func exampleValue(c columnDoc) string {
 		return "`0` or positive integer"
 	case c.Scalar == "boolean":
 		return "`true` or `false`"
+	case table == "request_routing_signals" && name == "signal_name":
+		return "`affinity_hit`, `affinity_miss`, `affinity_expired`, `affinity_ineligible`, `affinity_disabled`, `shadow_recommended_candidate`"
+	case table == "request_policy_executions" && name == "outcome":
+		return "`success`, `fallback`, `shadow_recommended`, `baseline`, `error`"
+	case name == "target_dialect":
+		return "`openai-chat`, `openai-responses`, `anthropic-messages`, `gemini-generate-content`, `replicate`"
 	case strings.Contains(name, "dialect"):
 		return "`openai-chat`, `openai-responses`, `anthropic-messages`"
 	case strings.Contains(name, "provider"):

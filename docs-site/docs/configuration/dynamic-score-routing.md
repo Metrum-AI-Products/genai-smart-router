@@ -13,6 +13,10 @@ For the canonical strategy comparison, start with [Routing Strategy Decision Tre
 
 ## Configuration
 
+This is a focused adaptation of the `dynamic_score` group in
+`config.example.yaml`; provider names remain illustrative, while policy keys
+match the shipped sample.
+
 ```yaml
 models:
   adaptive-agent:
@@ -44,7 +48,6 @@ models:
           require_requested_api_skin: true
           require_input_modalities: true
           require_tool_support_when_tools_present: true
-          require_reasoning_support_when_requested: true
           require_honors_max_tokens_when_caller_capped: true
         signals:
           request_shape: { enabled: true }
@@ -101,7 +104,20 @@ Cold start is deterministic. Until `min_observations` is reached, targets are or
 
 Dynamic-score routing pins the first selected target for requests that share a conversation prefix. Affinity is enabled by default, isolated by caller, expires after 600 seconds by default, and is bounded to 10,000 process-local entries by default. Set `affinity.enabled: false` to disable it, or configure `ttl_seconds` and `max_entries`.
 
-The router retains only a SHA-256 key derived from caller identity, model group, inbound API dialect, system context, and the first user message. It does not retain the raw prefix. Current eligibility always wins: if the pinned target no longer supports the request's tools, modality, API shape, spend ceiling, or health threshold, the router reselects and replaces the pin.
+The router retains only a SHA-256 key derived from caller identity, model
+group, normalized inbound API dialect, system context, and the complete first
+normalized message, including its role and normalized content parts. Requests
+without messages use normalized input text/parts. It does not retain the raw
+prefix. A client must resend the same initial prefix on later turns; sending
+only each new incremental turn produces a different key.
+
+TTL starts when the pin is created or replaced and is not extended by hits.
+Capacity eviction removes the oldest created/replaced entry rather than
+maintaining LRU recency. The pin records the initially selected primary before
+the upstream result is known, so a successful fallback does not automatically
+repin the conversation to the fallback. Current eligibility always wins: if
+the pinned target no longer supports the request's tools, modality, API shape,
+spend ceiling, or health threshold, the router reselects and replaces the pin.
 
 Chat-to-Responses stateful sessions are separate and unchanged. Their explicit session header and `previous_response_id` behavior do not share dynamic-score affinity state.
 

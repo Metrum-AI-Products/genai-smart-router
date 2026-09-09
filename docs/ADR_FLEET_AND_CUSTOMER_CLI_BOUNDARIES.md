@@ -56,6 +56,30 @@ approved signing service or isolated signing workflow.
 Fleet binaries are included only in binary tarballs. Customer Docker images
 contain `metrum-genai-smartrouterctl`, never `metrum-genai-smartrouter-fleetctl` or the compatibility binary.
 
+## Go package boundary
+
+Fleet lifecycle implementations and tests live under `internal/fleet`.
+Dependency-neutral license summaries and limits shared across boundaries live
+under `internal/licensecontract`. The serving command and request-path
+`internal/router` package must not import `internal/fleet` or
+`internal/commerce`; `internal/architecture/dependencies_test.go` enforces
+that direction and confirms the Fleet CLI imports the Fleet package.
+
+Keep lifecycle adapters, Kubernetes/AWS clients, registry mutation, and Fleet
+inventory types out of request-path packages. A shared contract needed by both
+sides should move to a small neutral package instead of making the router
+depend on Fleet. Run:
+
+```bash
+rtk go test ./internal/architecture ./internal/fleet \
+  ./cmd/metrum-genai-smartrouter-fleetctl
+rtk python3 scripts/validate_package_contents_test.py
+```
+
+The package-content check is independent defense: source package separation
+does not replace validation that customer images omit every Fleet lifecycle
+binary and compatibility alias.
+
 ## Runtime bundle boundary
 
 The manifest carries exactly one `runtime_bundle_ref`, an

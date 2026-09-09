@@ -43,6 +43,9 @@ should begin with `shadow`: the router validates and records the recommendation
 but serves normal eligible target order. Promote by changing the reviewed
 configuration to `enforce`. Roll back to `baseline` to serve normal eligible
 order without calling the policy service. Shadow failures never affect serving.
+Every mode still requires a valid `url` and exact matching `allow_hosts` when
+configuration is loaded, so switching modes cannot silently introduce an
+unreviewed destination.
 
 Policy URLs use HTTPS by default. Plain HTTP is accepted only for trusted loopback hosts such as `localhost`, `127.0.0.1`, and `::1`, or when `external_policy.allow_http: true` is explicitly set for a trusted non-local endpoint. Redirects are revalidated before they are followed; every hop must keep an allowed `http`/`https` scheme and an exact hostname from `allow_hosts`.
 
@@ -93,11 +96,11 @@ The router sends a JSON `POST` body to the policy service:
   "inputModalities": ["text"],
   "requirements": ["text", "max_tokens"],
   "caller": {
-    "id": "team-prod",
-    "user": "team",
-    "project": "product",
-    "environment": "prod",
-    "tokenId": "rtr_metrum_team_product_prod_k20260621",
+    "id": "example-caller",
+    "user": "example-user",
+    "project": "example-project",
+    "environment": "staging",
+    "tokenId": "rtr_metrum_example_caller_k1",
     "allow": ["adaptive"]
   },
   "targets": [
@@ -124,6 +127,14 @@ The router sends a JSON `POST` body to the policy service:
 
 By default, the policy request does not include raw prompt text, normalized message bodies, image URLs or base64 data, tool result text, tool schemas, or `request.raw`. Use the derived `context` object for routing signals such as prompt size, estimated token count, message count, image count, tool count, structured-output presence, explicit output cap, streaming flag, safe metadata key names, and normalized reasoning or thinking fields.
 
+The default body still discloses pseudonymous caller and deployment inventory:
+caller ID, user, project, environment, public token ID, allowed groups, and
+eligible targets' provider/model identifiers, dialect, tier, weight, pricing,
+capability/validation metadata, configured key ID, API-key environment-variable
+name, and key-configured boolean. Treat the service, transport, logs, and
+backups as trusted routing infrastructure. `targets[].region` is not included
+and cannot be used by this policy input as a residency gate.
+
 If a deployment needs a trusted policy service to inspect request content, set `external_policy.include_request: true`. That opt-in adds `request` and `text` fields to the policy body. When the model group has `pii_filter` enabled, those fields are built from the redacted request object; placeholder mappings stay in router memory for the current request and are not sent to the policy service. Without `pii_filter`, `include_request: true` can send raw prompts/messages, image references or data, tool schemas, and tool outputs to the external service.
 
 `targets` contains only targets already eligible for the request shape. Filtered
@@ -137,7 +148,8 @@ prices, and configured key identifiers.
 
 When the group has a model-group contract, the policy body includes safe `contract` metadata and target `validation` metadata. `targets[]` is already filtered by the contract, and policy responses are validated against that eligible list. The policy service cannot select a contract-ineligible fallback.
 
-The router does not send raw router tokens, token hashes, provider API keys, or full deployment config.
+The router does not send raw router tokens, token hashes, provider API key
+values, or full deployment config.
 
 ## Policy Response
 

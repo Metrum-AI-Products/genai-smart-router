@@ -23,6 +23,14 @@ For a package whose release contract includes a migration, stop or drain the ser
 
 Use `--dsn-env=ROUTER_USAGE_DB_DSN` for PostgreSQL and the documented non-serving container `--entrypoint` for Compose. Do not put a database connection string in commands, tickets, screenshots, or logs.
 
+Releases containing usage migration `2026090901` add optional diagnostics
+through the non-null text column
+`request_usage.target_region` with an empty default for historical and
+unlabelled rows. Plan and verify this migration through the same non-serving
+gate; do not hand-add or backfill location claims. Package rollback follows
+the migration contract and may require restoring the approved pre-migration
+database snapshot.
+
 ## Docker Compose Upgrade
 
 ```bash

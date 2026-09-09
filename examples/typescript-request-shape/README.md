@@ -10,10 +10,11 @@ script context:
 - structured outputs (`ctx.context.hasStructuredOutput`)
 - explicit reasoning or thinking (`ctx.context.reasoning.requested`)
 
-It is **not** live observed-latency routing, session affinity, or a built-in
-router strategy. For in-process observed performance scoring, use
-`strategy: dynamic_score`. For arbitrary online policy with observations and
-pins, use a trusted `strategy: external` service.
+It is **not** live observed-latency routing, Chat-to-Responses stateful-session
+storage, or a built-in router strategy. For in-process observed performance
+scoring and built-in caller/prefix pinning, use `strategy: dynamic_score` with
+`dynamic_score.affinity`. For arbitrary online policy with service-owned
+observations and pins, use a trusted `strategy: external` service.
 
 Safe class labels look like:
 

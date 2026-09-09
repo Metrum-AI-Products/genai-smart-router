@@ -20,6 +20,13 @@ The entire usage DB schema must remain relational-only:
 - If a future feature needs one-to-many data, add a child table with scalar columns and a foreign key to `request_usage`.
 - Keep schema tests that inspect the actual DB column types.
 
+`request_usage.target_region` stores the optional deployment-declared region
+of the target that actually completed the request, including a successful
+fallback. It is empty for unlabelled targets and historical rows. It is safe
+diagnostics metadata, not evidence that location policy was enforced. Schema
+migration `2026090901` owns this additive column; the immutable version-1
+baseline must not create it.
+
 Diagnostic child tables are part of the usage DB and follow the same rule:
 
 - `request_attempts`: one scalar row per upstream attempt, including provider/model, status, timing, timeout/cancel flags, retryability, and sanitized error class/message.

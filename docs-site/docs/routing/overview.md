@@ -26,6 +26,11 @@ Every model request follows the same routing pipeline:
 
 The router does not select targets from another group just because they are cheaper, lower latency, or more capable. The model group is the caller-facing contract.
 
+For `dynamic_score`, conversation affinity may reorder the already-eligible
+targets toward a caller/prefix pin before the upstream attempt. It never
+restores a filtered target or widens model-group access. See [Dynamic Score
+Routing](../configuration/dynamic-score-routing).
+
 ## Choose A Strategy
 
 | Strategy | Use When | Notes |
