@@ -47,9 +47,44 @@ jobs:
             --base-image python@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea \
             --requirements-lock /var/tmp/lrp-ci/requirements.lock \
             --out /var/tmp/lrp-ci/rootfs
+      - name: Verify runner namespace prerequisites
+        run: |
+          bwrap --version
+          for name in kernel/apparmor_restrict_unprivileged_userns kernel/unprivileged_userns_clone user/max_user_namespaces; do
+            if test -f "/proc/sys/$name"; then printf '%s=' "$name"; cat "/proc/sys/$name"; fi
+          done
+          uv run --project services/learned-routing-policy python - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+          from lrp.judge.sandbox import Sandbox
+          command = Sandbox(Path('/var/tmp/lrp-ci/rootfs')).command()
+          result = subprocess.run(command, input='{"kind":"exact","spec":{"expected":"4"},"content":"4"}\n', text=True, capture_output=True, timeout=35, env={})
+          classes = {name: token in result.stderr.lower() for name, token in {
+              'namespace_denied': 'creating new namespace failed',
+              'permission_denied': 'permission denied',
+              'operation_not_permitted': 'operation not permitted',
+              'uid_map_error': 'uid_map',
+              'missing_runtime': 'no such file',
+              'unknown_option': 'unknown option',
+          }.items()}
+          print(json.dumps({'sandbox_preflight_exit': result.returncode, 'diagnostics': classes}))
+          assert result.returncode == 0 and json.loads(result.stdout) == {'passed': True}, 'sandbox_preflight_failed'
+          PY
       - run: make lrp-test lrp-synthetic-demo lrp-e2e
         env:
           LRP_TEST_ROOTFS: /var/tmp/lrp-ci/rootfs
           LRP_REQUIRE_SANDBOX_TESTS: '1'
       - run: go test ./internal/router -run 'ExternalRoutingPolicy|Config'
       - run: python3 scripts/check_env_example_secrets.py
+      - name: Attach approved synthetic training and inference evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lrp-synthetic-evidence
+          if-no-files-found: error
+          retention-days: 30
+          # Explicit projections only: no raw logs, datasets, models or paths.
+          path: |
+            /var/tmp/metrum-lrp-synthetic-demo/public-training.json
+            /var/tmp/metrum-lrp-synthetic-demo/public-training.log
+            /var/tmp/metrum-lrp-synthetic-demo/public-inference.json

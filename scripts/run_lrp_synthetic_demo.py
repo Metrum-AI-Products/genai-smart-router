@@ -11,10 +11,10 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import httpx
-
 from lrp.bundle import load_bundle
 from lrp.collect import collect
 from lrp.eval import evaluate
@@ -160,6 +160,7 @@ async def run(out: Path, count: int) -> dict:
         )
     features = out / "features.parquet"
     featurize(requests, features, builder=FeatureBuilder(SyntheticEmbedder()))
+    training_started = time.monotonic()
     bundle = train(
         features,
         judgments,
@@ -170,6 +171,7 @@ async def run(out: Path, count: int) -> dict:
         seed=42,
         threads=1,
     )
+    training_seconds = time.monotonic() - training_started
     loaded = load_bundle(bundle, threads=1)
     report = evaluate(
         loaded,
@@ -193,6 +195,51 @@ async def run(out: Path, count: int) -> dict:
         "provider_backed_quality": "not_run",
     }
     (out / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
+    # This explicit synthetic-only projection is the public CI artifact. Never
+    # upload evidence.json, manifests, features, datasets or arbitrary logs.
+    manifest = loaded.manifest
+    group = report["groups"]["lrp-demo"]
+    training = {
+        "schema_version": "lrp.public-training.v1",
+        "source": "synthetic",
+        "promotable": False,
+        "embedding_kind": "synthetic",
+        "seed": 42,
+        "threads": 1,
+        "training_seconds": training_seconds,
+        "requests": count,
+        "split_counts": {key: manifest["split_counts"][key] for key in ("train", "valid", "test")},
+        "targets": [
+            {key: target[key] for key in (
+                "provider", "model", "n_train", "n_valid",
+                "calibration_brier", "calibration_brier_raw", "mean_out_tokens",
+            )}
+            for target in manifest["targets"]
+        ],
+        "training_versions": {key: manifest["training_versions"][key] for key in ("lightgbm", "numpy")},
+        "quality_floor": group["quality_floor"],
+        "holdout": {
+            name: {key: group["baselines"][name][key] for key in (
+                "n", "quality_mean", "cost_total_usd", "floor_violation_rate",
+                "quality_observed", "cost_observed", "billed_cost_observed",
+            )}
+            for name in ("lrp", "always_cheapest", "always_anchor", "weighted_random", "bt_only", "oracle")
+        },
+        "gates": {key: group["gates"][key] for key in (
+            "complete_holdout", "cost_vs_anchor", "dominates_bt", "floor_violations",
+            "quality_vs_anchor", "real_data_and_embedding", "target_auc_and_coverage",
+        )},
+        "provider_backed_quality": "not_run",
+        "real_onnx_performance": "not_run",
+    }
+    (out / "public-training.json").write_text(json.dumps(training, indent=2) + "\n")
+    events = [
+        {"event": "training_completed", "source": "synthetic", "seconds": training_seconds,
+         "seed": 42, "threads": 1, "split_counts": training["split_counts"]},
+        *[{"event": "target_calibrated", "source": "synthetic", **target} for target in training["targets"]],
+        {"event": "holdout_evaluated", "source": "synthetic", "gates": training["gates"], "promotable": False},
+    ]
+    (out / "public-training.log").write_text("".join(json.dumps(event) + "\n" for event in events))
     return evidence
 
 
