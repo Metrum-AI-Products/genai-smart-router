@@ -22,7 +22,12 @@ def test_identical_train_serve_ir(tmp_path):
                 "parts": [{"type": "text", "text": "What is two plus two?"}],
             }
         ],
-        "tools": [{}],
+        "tools": [
+            {
+                "type": "function",
+                "function": {"name": "synthetic", "parameters": {"type": "object"}},
+            }
+        ],
     }
     context = {
         "toolCount": 3,
@@ -32,6 +37,8 @@ def test_identical_train_serve_ir(tmp_path):
     }
     offline = {
         **request,
+        "messages": [{"role": "user", "content": "What is two plus two?"}],
+        "captured_at": "2026-09-09T00:00:00Z",
         "request_id": "synthetic-1",
         "session_key": "session-1",
         "source": "synthetic",
@@ -112,6 +119,8 @@ def tiny_onnx(tmp_path):
         graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=9
     )
     onnx.save(model, tmp_path / "model.onnx")
+    (tmp_path / "model.onnx").chmod(0o600)
+    (tmp_path / "tokenizer.json").chmod(0o600)
     return tmp_path / "model.onnx", tmp_path / "tokenizer.json"
 
 
@@ -125,3 +134,46 @@ def test_real_onnx_tokenizer_quantized_inference(tmp_path):
     assert embedder.session.get_session_options().intra_op_num_threads == 1
     with pytest.raises(ValueError, match="threads"):
         ONNXEmbedder(model, tokenizer, threads=8)
+
+
+def test_protected_io_rejects_repo_symlink_hardlink_and_public_mode(tmp_path):
+    import os
+
+    from lrp.collect import DataError
+    from lrp.features import preflight_file, read_rows, write_private
+
+    repo = tmp_path / "public"
+    repo.mkdir()
+    (repo / ".git").write_text("gitdir: synthetic")
+    with pytest.raises(DataError):
+        write_private(repo / "artifact", b"synthetic")
+    original = tmp_path / "original"
+    write_private(original, b"synthetic")
+    linked = tmp_path / "linked"
+    os.link(original, linked)
+    with pytest.raises(DataError):
+        preflight_file(original)
+    linked.unlink()
+    linked.symlink_to(original)
+    with pytest.raises(DataError):
+        preflight_file(linked)
+    original.chmod(0o644)
+    with pytest.raises(DataError):
+        write_private(original, b"must not overwrite")
+    assert original.read_bytes() == b"synthetic"
+    records = tmp_path / "records.ndjson"
+    write_private(records, b'{"source":"synthetic","source":"synthetic"}\n')
+    with pytest.raises(DataError):
+        read_rows(records)
+
+
+def test_feature_temporary_path_preflight(tmp_path):
+    from lrp.collect import DataError
+
+    output = tmp_path / "features.parquet"
+    temporary = tmp_path / "features.parquet.tmp"
+    temporary.write_text("unchanged")
+    temporary.chmod(0o644)
+    with pytest.raises(DataError):
+        featurize([], output, builder=FeatureBuilder(SyntheticEmbedder()))
+    assert not output.exists() and temporary.read_text() == "unchanged"

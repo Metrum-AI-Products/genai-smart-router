@@ -9,12 +9,27 @@ import json
 import math
 import os
 import re
+import stat
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, BinaryIO, Protocol
 
 import numpy as np
 import numpy.typing as npt
+
+from lrp.collect import (
+    MAX_FILE_BYTES,
+    MAX_ROW_BYTES,
+    MAX_ROWS,
+    DataError,
+    _check_file,
+    canonical,
+    protected_path,
+    validate_record,
+)
+from lrp.collect import read_rows as protected_rows
 
 Vector = npt.NDArray[np.float32]
 DIMENSIONS = 384
@@ -44,6 +59,68 @@ FEATURE_NAMES = tuple(f"emb_{i:03d}" for i in range(DIMENSIONS)) + SCALAR_NAMES
 FEATURE_VERSION = "lrp.features.v1"
 
 
+def private_directory(path: str | Path, *, create: bool = False) -> Path:
+    destination = protected_path(Path(path))
+    if create and not destination.exists():
+        if not destination.parent.exists():
+            private_directory(destination.parent, create=True)
+        destination.mkdir(mode=0o700, exist_ok=True)
+    if destination.exists():
+        info = destination.stat()
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != os.getuid()
+            or info.st_mode & 0o077
+        ):
+            raise DataError("private_directory_required")
+    return destination
+
+
+def preflight_file(path: str | Path) -> Path:
+    destination = protected_path(Path(path))
+    if destination.exists():
+        with private_file(destination):
+            pass
+    return destination
+
+
+@contextmanager
+def private_file(path: str | Path, *, write: bool = False) -> Iterator[BinaryIO]:
+    destination = protected_path(Path(path))
+    if write:
+        private_directory(destination.parent, create=True)
+    flags = os.O_RDWR | os.O_CREAT if write else os.O_RDONLY
+    fd = os.open(destination, flags | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    with os.fdopen(fd, "r+b" if write else "rb") as handle:
+        _check_file(handle.fileno())
+        if write:
+            import fcntl
+
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            handle.truncate(0)
+        yield handle
+        if write:
+            if handle.tell() > MAX_FILE_BYTES:
+                raise DataError("file_size_limit")
+            handle.flush()
+            os.fsync(handle.fileno())
+
+
+def private_bytes(path: str | Path, limit: int = MAX_FILE_BYTES) -> bytes:
+    with private_file(path) as handle:
+        data = handle.read(limit + 1)
+    if len(data) > limit:
+        raise DataError("file_size_limit")
+    return data
+
+
+def write_private(path: str | Path, data: bytes) -> None:
+    if len(data) > MAX_FILE_BYTES:
+        raise DataError("file_size_limit")
+    with private_file(path, write=True) as handle:
+        handle.write(data)
+
+
 def embedding_fingerprint(spec: dict[str, Any]) -> str:
     identity: dict[str, Any] = {
         "feature_version": FEATURE_VERSION,
@@ -52,7 +129,7 @@ def embedding_fingerprint(spec: dict[str, Any]) -> str:
     if spec["kind"] == "onnx":
         for key in ("model_path", "tokenizer_path"):
             digest = hashlib.sha256()
-            with Path(spec[key]).open("rb") as stream:
+            with private_file(Path(spec[key])) as stream:
                 for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                     digest.update(chunk)
             identity[key] = digest.hexdigest()
@@ -194,14 +271,16 @@ class ONNXEmbedder:
                 "prefix": prefix,
             }
         )
-        graph = onnx.load(str(model_path), load_external_data=False)
+        model_bytes = private_bytes(model_path)
+        tokenizer_bytes = private_bytes(tokenizer_path, 16 * 1024 * 1024)
+        graph = onnx.load_model_from_string(model_bytes)
         if any(t.external_data for t in graph.graph.initializer):
             raise ValueError("external ONNX tensor files are unsupported")
         quantized = any(t.data_type in (2, 3) for t in graph.graph.initializer)
         if not quantized:
             raise ValueError("embedding must contain int8 or uint8 weights")
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-        self.tokenizer = Tokenizer.from_file(str(tokenizer_path))
+        self.tokenizer = Tokenizer.from_str(tokenizer_bytes.decode("utf-8"))
         self.tokenizer.enable_truncation(max_length=512, direction="left")
         self.tokenizer.no_padding()
         options = ort.SessionOptions()
@@ -211,7 +290,7 @@ class ONNXEmbedder:
         options.add_session_config_entry("session.intra_op.allow_spinning", "0")
         options.add_session_config_entry("session.inter_op.allow_spinning", "0")
         self.session = ort.InferenceSession(
-            str(model_path), sess_options=options, providers=["CPUExecutionProvider"]
+            model_bytes, sess_options=options, providers=["CPUExecutionProvider"]
         )
 
     def encode(self, text: str) -> Vector:
@@ -391,11 +470,19 @@ def session_split(session_key: str, seed: int = 42) -> str:
     return "train" if bucket < 70 else "valid" if bucket < 85 else "test"
 
 
-def read_rows(source: Any) -> list[dict[str, Any]]:
-    if isinstance(source, (str, Path)):
-        with Path(source).open(encoding="utf-8") as stream:
-            return [as_dict(json.loads(line)) for line in stream if line.strip()]
-    return [as_dict(row) for row in source]
+def read_rows(source: Any, kind: str = "request") -> list[dict[str, Any]]:
+    iterator = (
+        protected_rows(Path(source))
+        if isinstance(source, (str, Path))
+        else iter(source)
+    )
+    result: list[dict[str, Any]] = []
+    for row in iterator:
+        value = as_dict(row)
+        if len(result) >= MAX_ROWS or len(canonical(value).encode()) > MAX_ROW_BYTES:
+            raise DataError("dataset_limit")
+        result.append(validate_record(value, kind))
+    return result
 
 
 def featurize(
@@ -407,6 +494,9 @@ def featurize(
 ) -> Any:
     import pandas as pd
 
+    if out is not None:
+        destination = preflight_file(out)
+        temporary = preflight_file(destination.with_suffix(destination.suffix + ".tmp"))
     rows = []
     seen: set[str] = set()
     for request in read_rows(requests):
@@ -432,9 +522,8 @@ def featurize(
         rows.append(row)
     frame = pd.DataFrame(rows)
     if out is not None:
-        destination = Path(out)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = destination.with_suffix(destination.suffix + ".tmp")
-        frame.to_parquet(temporary, index=False)
+        with private_file(temporary, write=True) as handle:
+            frame.to_parquet(handle, index=False)
+        preflight_file(destination)
         temporary.replace(destination)
     return frame

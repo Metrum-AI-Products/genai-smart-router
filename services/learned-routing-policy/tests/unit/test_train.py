@@ -37,11 +37,10 @@ def dataset():
                     "request_id": row["request_id"],
                     "target": target,
                     "source": "synthetic",
+                    "judged_at": "2026-09-09T00:00:00Z",
                     "method": "pairwise_vs_anchor:v1",
                     "quality": quality,
-                    "detail": {
-                        "anchor": {"provider": "synthetic", "model": "anchor/model"}
-                    },
+                    "detail": {},
                 }
             )
             responses.append(
@@ -49,9 +48,15 @@ def dataset():
                     "request_id": row["request_id"],
                     "target": target,
                     "source": "synthetic",
+                    "started_at": "2026-09-09T00:00:00Z",
                     "status": "ok",
                     "usage": {"input_tokens": 100, "output_tokens": 20 + i % 20},
-                    "pricing": {"input_per_m_usd": price, "output_per_m_usd": price},
+                    "pricing": {
+                        "input_per_m_usd": price,
+                        "output_per_m_usd": price,
+                        "source": "https://example.test/pricing",
+                        "fetched_at": "2026-09-09T00:00:00Z",
+                    },
                     "cost_usd": price * (120 + i % 20) / 1e6,
                     "duration_ms": 50,
                     "ttfb_ms": 5,

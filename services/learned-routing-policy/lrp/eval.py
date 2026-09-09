@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 
 from lrp.bundle import ModelBundle, canonical_json, load_bundle, target_key
-from lrp.features import FEATURE_NAMES, as_dict
+from lrp.features import FEATURE_NAMES, as_dict, preflight_file, write_private
 from lrp.policy import Prediction, decide, estimated_cost
 from lrp.schemas import GroupConfig, Target, TargetKey
 from lrp.train import feature_frame, index_rows, trusted_judgment
@@ -116,12 +116,19 @@ def evaluate(
 
     if split != "test":
         raise ValueError("promotion evaluation requires the test holdout")
+    if out is not None:
+        destination = preflight_file(out)
+        preflight_file(destination.with_suffix(".md"))
+        preflight_file(destination.with_suffix(".svg"))
     model = load_bundle(bundle) if isinstance(bundle, (str, Path)) else bundle
     frame = feature_frame(features, int(model.manifest["seed"]))
     if set(frame.embedding_fingerprint) != {model.manifest["embedding_fingerprint"]}:
         raise ValueError("holdout embedding differs from bundle")
     holdout = frame.loc[frame.split == "test"]
-    judgment_index, response_index = index_rows(judgments), index_rows(responses)
+    judgment_index, response_index = (
+        index_rows(judgments, "judgment"),
+        index_rows(responses, "response"),
+    )
     response_keys: dict[str, list[TargetKey]] = {}
     for request_id, key in response_index:
         response_keys.setdefault(request_id, []).append(key)
@@ -321,11 +328,22 @@ def evaluate(
                 incomplete += 1
             selections: dict[str, TargetKey | None] = {name: None for name in samples}
             selections["oracle"] = oracle_key
-            if targets:
+            trained_predictions = {
+                key: prediction
+                for key, prediction in predictions.items()
+                if key in model.models
+                and model.models[key].n_train >= cfg.min_train_rows
+            }
+            bt_predictions = {
+                key: prediction
+                for key, prediction in model.bt_predictions().items()
+                if key in trained_predictions
+            }
+            if any(t.key in trained_predictions for t in targets):
                 selections["lrp"] = targets[
                     policy(
                         targets,
-                        predictions,
+                        trained_predictions,
                         floor_cfg,
                         random_source,
                         input_tokens=row["input_tokens"],
@@ -335,13 +353,14 @@ def evaluate(
                 selections["bt_only"] = targets[
                     policy(
                         targets,
-                        model.bt_predictions(),
+                        bt_predictions,
                         floor_cfg,
                         random_source,
                         input_tokens=row["input_tokens"],
                         exploration_allowed=False,
                     ).primary
                 ].key
+            if targets:
                 selections["always_anchor"] = anchor if anchor in outcomes else None
                 priced = [
                     (
@@ -461,15 +480,9 @@ def evaluate(
     }
     report["promotion_passed"] = report["promotion_pass"]
     if out is not None:
-        destination = Path(out)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(canonical_json(report))
-        destination.with_suffix(".md").write_text(
-            render_markdown(report), encoding="utf-8"
-        )
-        destination.with_suffix(".svg").write_text(
-            render_scatter(report), encoding="utf-8"
-        )
+        write_private(destination, canonical_json(report))
+        write_private(destination.with_suffix(".md"), render_markdown(report).encode())
+        write_private(destination.with_suffix(".svg"), render_scatter(report).encode())
     return report
 
 

@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from lrp.collect import strict_json
 from lrp.features import (
     FEATURE_NAMES,
     FeatureBuilder,
@@ -24,6 +25,9 @@ from lrp.features import (
     SyntheticEmbedder,
     Vector,
     capped_threads,
+    private_bytes,
+    private_directory,
+    private_file,
 )
 from lrp.policy import Prediction
 from lrp.schemas import TargetKey
@@ -51,7 +55,7 @@ def target_id(key: TargetKey) -> str:
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    with private_file(path) as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
@@ -74,6 +78,10 @@ def _file(root: Path, relative: str) -> Path:
     if path.is_absolute() or ".." in path.parts or "\\" in relative or not path.parts:
         raise ValueError("unsafe bundle path")
     candidate = root.joinpath(*path.parts)
+    for directory in candidate.parents:
+        if directory == root:
+            break
+        private_directory(directory)
     if candidate.is_symlink() or any(
         p.is_symlink() for p in candidate.parents if p != root.parent
     ):
@@ -169,11 +177,11 @@ def load_bundle(path: str | Path, threads: int = 1) -> ModelBundle:
     import lightgbm as lgb
 
     capped_threads(threads)
-    root = Path(path).resolve()
+    root = private_directory(path)
     manifest_file = _file(root, "manifest.json")
     if manifest_file.stat().st_size > 4 * 1024 * 1024:
         raise ValueError("manifest too large")
-    manifest = json.loads(manifest_file.read_bytes())
+    manifest = strict_json(private_bytes(manifest_file, 4 * 1024 * 1024))
     if manifest.get("schema_version") != SCHEMA_VERSION or manifest.get(
         "feature_names"
     ) != list(FEATURE_NAMES):
@@ -232,7 +240,9 @@ def load_bundle(path: str | Path, threads: int = 1) -> ModelBundle:
         if entry["n_train"] < max(200, manifest.get("min_train_rows", 200)):
             raise ValueError("undertrained learned model")
         baseline[key] = Prediction(strength, output)
-        calibration = json.loads(verified(entry["calibration_file"]).read_bytes())
+        calibration = strict_json(
+            private_bytes(verified(entry["calibration_file"]), 4 * 1024 * 1024)
+        )
         xs, ys = calibration["x"], calibration["y"]
         if (
             not xs
@@ -246,8 +256,12 @@ def load_bundle(path: str | Path, threads: int = 1) -> ModelBundle:
             or any(not 0 <= v <= 1 for v in ys)
         ):
             raise ValueError("nonmonotone calibration")
-        quality = lgb.Booster(model_file=str(verified(entry["quality_file"])))
-        tokens = lgb.Booster(model_file=str(verified(entry["out_tokens_file"])))
+        quality = lgb.Booster(
+            model_str=private_bytes(verified(entry["quality_file"])).decode()
+        )
+        tokens = lgb.Booster(
+            model_str=private_bytes(verified(entry["out_tokens_file"])).decode()
+        )
         if (
             quality.num_feature() != len(FEATURE_NAMES)
             or tokens.num_feature() != len(FEATURE_NAMES)

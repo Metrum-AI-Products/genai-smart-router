@@ -21,20 +21,44 @@ from lrp.bundle import (
     target_id,
     target_key,
 )
+from lrp.collect import MAX_FILE_BYTES, MAX_ROWS, DataError
 from lrp.features import (
     FEATURE_NAMES,
     capped_threads,
     embedding_fingerprint,
+    private_bytes,
+    private_directory,
+    private_file,
     read_rows,
     session_split,
+    write_private,
 )
 from lrp.schemas import TargetKey
 
 
 def feature_frame(source: Any, seed: int = 42) -> pd.DataFrame:
-    frame = (
-        pd.read_parquet(source) if isinstance(source, (str, Path)) else source.copy()
-    )
+    frame: pd.DataFrame
+    if isinstance(source, (str, Path)):
+        import pyarrow.parquet as pq
+
+        with private_file(source) as handle:
+            parquet = pq.ParquetFile(handle)
+            if (
+                parquet.metadata.num_rows > MAX_ROWS
+                or parquet.metadata.num_columns > len(FEATURE_NAMES) + 32
+            ):
+                raise DataError("feature_dataset_limit")
+            decoded_bytes = sum(
+                parquet.metadata.row_group(i).total_byte_size
+                for i in range(parquet.metadata.num_row_groups)
+            )
+            if decoded_bytes > MAX_FILE_BYTES:
+                raise DataError("feature_dataset_limit")
+            frame = parquet.read().to_pandas()
+    else:
+        frame = source.copy()
+    if len(frame) > MAX_ROWS:
+        raise DataError("feature_dataset_limit")
     required = {
         *FEATURE_NAMES,
         "request_id",
@@ -75,9 +99,9 @@ def trusted_judgment(row: dict[str, Any]) -> bool:
     )
 
 
-def index_rows(source: Any) -> dict[tuple[str, TargetKey], dict[str, Any]]:
+def index_rows(source: Any, kind: str) -> dict[tuple[str, TargetKey], dict[str, Any]]:
     result = {}
-    for row in read_rows(source):
+    for row in read_rows(source, kind):
         key = (str(row["request_id"]), target_key(row["target"]))
         if key in result:
             raise ValueError("duplicate request-target row")
@@ -165,10 +189,14 @@ def train(
     from sklearn.isotonic import IsotonicRegression
 
     capped_threads(threads)
+    root = private_directory(out)
     if min_train_rows < 200 or not 1 <= num_boost_round <= 400:
         raise ValueError("invalid training resource or minimum-row limits")
     frame = feature_frame(features, seed)
-    judgment_index, response_index = index_rows(judgments), index_rows(responses)
+    judgment_index, response_index = (
+        index_rows(judgments, "judgment"),
+        index_rows(responses, "response"),
+    )
     feature_ids = set(frame.request_id)
     if any(key[0] not in feature_ids for key in judgment_index | response_index):
         raise ValueError("outcome has no feature row")
@@ -210,8 +238,7 @@ def train(
         "anchor": {"provider": anchor[0], "model": anchor[1]} if anchor else None,
         "training_versions": {"lightgbm": lgb.__version__, "numpy": np.__version__},
     }
-    root = Path(out)
-    root.mkdir(parents=True, exist_ok=True)
+    private_directory(root, create=True)
     temporary = Path(tempfile.mkdtemp(prefix=".training-", dir=root))
     try:
         if kind == "onnx":
@@ -225,13 +252,13 @@ def train(
                 embedding.get("pooling", "cls"),
                 embedding.get("prefix", ""),
             ).encode("Synthetic validation.")
-            (temporary / "embed").mkdir()
+            private_directory(temporary / "embed", create=True)
             for asset_key, name in [
                 ("model_path", "model.onnx"),
                 ("tokenizer_path", "tokenizer.json"),
             ]:
                 relative = "embed/" + name
-                shutil.copyfile(embedding[asset_key], temporary / relative)
+                write_private(temporary / relative, private_bytes(embedding[asset_key]))
                 manifest["embedding"][asset_key] = relative
             manifest["embedding"].update(
                 pooling=embedding.get("pooling", "cls"),
@@ -367,17 +394,24 @@ def train(
                 ("out_tokens_file", "out_tokens", ".lgbm.txt"),
                 ("calibration_file", "calibration", ".isotonic.json"),
             ]:
-                (temporary / directory).mkdir(exist_ok=True)
+                private_directory(temporary / directory, create=True)
                 entry[field] = f"{directory}/{entry['id']}{suffix}"
-            quality_model.save_model(str(temporary / entry["quality_file"]))
-            token_model.save_model(str(temporary / entry["out_tokens_file"]))
-            (temporary / entry["calibration_file"]).write_bytes(
+            write_private(
+                temporary / entry["quality_file"],
+                quality_model.model_to_string().encode(),
+            )
+            write_private(
+                temporary / entry["out_tokens_file"],
+                token_model.model_to_string().encode(),
+            )
+            write_private(
+                temporary / entry["calibration_file"],
                 canonical_json(
                     {
                         "x": calibration.X_thresholds_.tolist(),
                         "y": calibration.y_thresholds_.tolist(),
                     }
-                )
+                ),
             )
             manifest["targets"].append(entry)
         for file in sorted(temporary.rglob("*")):
@@ -386,10 +420,11 @@ def train(
                     file
                 )
         manifest["version"] = bundle_version(manifest)
-        (temporary / "manifest.json").write_bytes(canonical_json(manifest))
+        write_private(temporary / "manifest.json", canonical_json(manifest))
         destination = root / str(manifest["version"])
+        private_directory(destination)
         if destination.exists():
-            if (destination / "manifest.json").read_bytes() != canonical_json(
+            if private_bytes(destination / "manifest.json") != canonical_json(
                 manifest
             ) or any(
                 sha256_file(destination / name) != digest

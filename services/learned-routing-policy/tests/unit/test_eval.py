@@ -56,7 +56,23 @@ def test_attempt_costs_and_missing_fanout_fail_coverage(dataset, trained):
     frame, judgments, responses = dataset
     cfg = {"groups": {"demo": {}}}
     attempts = [
-        {**r, "attempts": [{"cost_usd": 0.1}, {"cost_usd": r["cost_usd"]}]}
+        {
+            **r,
+            "attempts": [
+                {
+                    "sequence": 1,
+                    "status": "upstream_error",
+                    "duration_ms": 1,
+                    "cost_usd": 0.1,
+                },
+                {
+                    "sequence": 2,
+                    "status": "ok",
+                    "duration_ms": 1,
+                    "cost_usd": r["cost_usd"],
+                },
+            ],
+        }
         for r in responses
     ]
     base = evaluate(trained, frame, judgments, responses, cfg)
@@ -71,7 +87,23 @@ def test_attempt_costs_and_missing_fanout_fail_coverage(dataset, trained):
         < 1e-9
     )
     unknown = [
-        {**r, "attempts": [{"cost_usd": None}, {"cost_usd": r["cost_usd"]}]}
+        {
+            **r,
+            "attempts": [
+                {
+                    "sequence": 1,
+                    "status": "upstream_error",
+                    "duration_ms": 1,
+                    "cost_usd": None,
+                },
+                {
+                    "sequence": 2,
+                    "status": "ok",
+                    "duration_ms": 1,
+                    "cost_usd": r["cost_usd"],
+                },
+            ],
+        }
         for r in responses
     ]
     result = evaluate(trained, frame, judgments, unknown, cfg)["groups"]["demo"]
@@ -81,3 +113,40 @@ def test_attempt_costs_and_missing_fanout_fail_coverage(dataset, trained):
     assert not evaluate(trained, frame, judgments, missing, cfg)["groups"]["demo"][
         "gates"
     ]["complete_holdout"]
+
+
+def test_no_trained_prediction_abstains(dataset, trained):
+    frame, judgments, responses = dataset
+    result = evaluate(
+        trained,
+        frame,
+        judgments,
+        responses,
+        {"groups": {"demo": {"min_train_rows": 10000}}},
+    )
+    for baseline in ("lrp", "bt_only"):
+        assert result["groups"]["demo"]["baselines"][baseline]["quality_observed"] == 0
+        assert result["groups"]["demo"]["baselines"][baseline]["cost_observed"] == 0
+    assert not result["promotion_passed"]
+
+
+def test_eval_preflights_every_report_path(dataset, trained, tmp_path):
+    import pytest
+    from lrp.collect import DataError
+
+    frame, judgments, responses = dataset
+    destination = tmp_path / "report.json"
+    unsafe = destination.with_suffix(".svg")
+    unsafe.write_text("unchanged")
+    unsafe.chmod(0o644)
+    with pytest.raises(DataError):
+        evaluate(
+            trained,
+            frame,
+            judgments,
+            responses,
+            {"groups": {"demo": {}}},
+            out=destination,
+        )
+    assert not destination.exists() and not destination.with_suffix(".md").exists()
+    assert unsafe.read_text() == "unchanged"
