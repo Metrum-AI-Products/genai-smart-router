@@ -9,6 +9,14 @@ groups:
       demo-loose: 0.70
     explore_rate: 0.0
     exploration_projects: []
+    # Wave-2 defaults preserve v1 epsilon-greedy; enable deliberately.
+    exploration_strategy: epsilon_greedy
+    uncertainty_abstention: false
+    uncertainty_threshold: 0.15
+    cold_start_exploration: false
+    auto_shadow_on_drift: false
+    psi_threshold: 0.25
+    embedding_drift_threshold: 0.15
     pin_ttl_s: 0
     min_train_rows: 200
     # Optional upstream latency gate (p95 ms) from stored duration/TTFB evidence.

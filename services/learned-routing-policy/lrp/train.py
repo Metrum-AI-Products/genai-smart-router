@@ -172,6 +172,41 @@ def _binary_data(x: Any, y: Any) -> tuple[Any, Any, Any]:
     )
 
 
+def _fit_quality_member(
+    lgb: Any,
+    params: dict[str, Any],
+    training: pd.DataFrame,
+    validation: pd.DataFrame,
+    *,
+    num_boost_round: int,
+    threads: int,
+    member_seed: int,
+) -> tuple[Any, Any, np.ndarray, np.ndarray]:
+    """Fit one quality booster + isotonic calibrator; returns model, calib, raw, calibrated."""
+    from sklearn.isotonic import IsotonicRegression
+
+    member_params = {**params, "seed": member_seed}
+    x, y, w = _binary_data(training[list(FEATURE_NAMES)], training.quality)
+    vx, vy, vw = _binary_data(validation[list(FEATURE_NAMES)], validation.quality)
+    dataset = lgb.Dataset(x, label=y, weight=w, feature_name=list(FEATURE_NAMES))
+    valid = lgb.Dataset(vx, label=vy, weight=vw, reference=dataset)
+    quality_model = lgb.train(
+        member_params,
+        dataset,
+        num_boost_round=num_boost_round,
+        valid_sets=[valid],
+        callbacks=[lgb.early_stopping(30, verbose=False)],
+    )
+    raw = quality_model.predict(
+        validation[list(FEATURE_NAMES)].to_numpy(), num_threads=threads
+    )
+    calibration = IsotonicRegression(y_min=0, y_max=1, out_of_bounds="clip").fit(
+        raw, validation.quality
+    )
+    calibrated = calibration.predict(raw)
+    return quality_model, calibration, raw, calibrated
+
+
 def train(
     features: Any,
     judgments: Any,
@@ -184,14 +219,23 @@ def train(
     min_train_rows: int = 200,
     num_boost_round: int = 400,
     anchor: TargetKey | None = None,
+    ensemble_size: int = 5,
+    cold_start_prompts: int = 200,
 ) -> Path:
     import lightgbm as lgb
-    from sklearn.isotonic import IsotonicRegression
+
+    from lrp.thompson import COLD_START_ANCHOR_PROMPTS, cold_start_entry
+    from lrp.uncertainty import ENSEMBLE_SIZE
 
     capped_threads(threads)
     root = private_directory(out)
     if min_train_rows < 200 or not 1 <= num_boost_round <= 400:
         raise ValueError("invalid training resource or minimum-row limits")
+    if not 1 <= ensemble_size <= ENSEMBLE_SIZE:
+        # Cap at the reviewed five-model bag; smaller sizes remain valid for tests.
+        raise ValueError("invalid ensemble size")
+    if cold_start_prompts < COLD_START_ANCHOR_PROMPTS:
+        raise ValueError("cold start requires at least 200 anchor prompts")
     frame = feature_frame(features, seed)
     judgment_index, response_index = (
         index_rows(judgments, "judgment"),
@@ -236,6 +280,8 @@ def train(
             not trusted_judgment(r) for r in judgment_index.values()
         ),
         "anchor": {"provider": anchor[0], "model": anchor[1]} if anchor else None,
+        "ensemble_size": ensemble_size,
+        "cold_start_prompts": cold_start_prompts,
         "training_versions": {"lightgbm": lgb.__version__, "numpy": np.__version__},
     }
     private_directory(root, create=True)
@@ -335,38 +381,40 @@ def train(
                 or len(validation) < 2
                 or len(output_validation) < 2
             ):
-                entry["skipped"] = "insufficient_train_or_validation_rows"
+                # Evidence-backed cold start (#30): 200-prompt anchor seed before
+                # the normal training minimum. Never writes a learned quality model.
+                seeded = cold_start_entry(
+                    provider=target[0],
+                    model=target[1],
+                    bt_strength=float(entry["bt_strength"]),
+                    n_anchor_prompts=len(training),
+                    mean_out_tokens=float(entry["mean_out_tokens"]),
+                    min_prompts=cold_start_prompts,
+                )
+                if seeded is not None and target != anchor:
+                    entry.update(seeded)
+                    reason = "cold_start_anchor_seed"
+                else:
+                    entry["skipped"] = "insufficient_train_or_validation_rows"
+                    reason = entry["skipped"]
                 manifest["skipped"].append(
                     {
                         "provider": target[0],
                         "model": target[1],
-                        "reason": entry["skipped"],
+                        "reason": reason,
                     }
                 )
                 manifest["targets"].append(entry)
                 continue
-            x, y, w = _binary_data(training[list(FEATURE_NAMES)], training.quality)
-            vx, vy, vw = _binary_data(
-                validation[list(FEATURE_NAMES)], validation.quality
-            )
-            dataset = lgb.Dataset(
-                x, label=y, weight=w, feature_name=list(FEATURE_NAMES)
-            )
-            valid = lgb.Dataset(vx, label=vy, weight=vw, reference=dataset)
-            quality_model = lgb.train(
+            quality_model, calibration, raw, calibrated = _fit_quality_member(
+                lgb,
                 params,
-                dataset,
+                training,
+                validation,
                 num_boost_round=num_boost_round,
-                valid_sets=[valid],
-                callbacks=[lgb.early_stopping(30, verbose=False)],
+                threads=threads,
+                member_seed=seed,
             )
-            raw = quality_model.predict(
-                validation[list(FEATURE_NAMES)].to_numpy(), num_threads=threads
-            )
-            calibration = IsotonicRegression(
-                y_min=0, y_max=1, out_of_bounds="clip"
-            ).fit(raw, validation.quality)
-            calibrated = calibration.predict(raw)
             entry["calibration_brier_raw"] = float(
                 np.mean((raw - validation.quality.to_numpy()) ** 2)
             )
@@ -413,6 +461,51 @@ def train(
                     }
                 ),
             )
+            # Five-model bootstrap ensemble for uncertainty (#24). Member 0 is
+            # the primary quality model already written above.
+            ensemble_quality: list[str] = [entry["quality_file"]]
+            ensemble_calibration: list[str] = [entry["calibration_file"]]
+            member_stds: list[float] = []
+            private_directory(temporary / "ensemble", create=True)
+            rng = np.random.default_rng(seed)
+            n_train = len(training)
+            for member in range(1, ensemble_size):
+                if n_train < 2:
+                    break
+                # Bootstrap row indices with replacement; keep validation fixed.
+                sample_idx = rng.choice(n_train, size=n_train, replace=True)
+                boot = training.iloc[sample_idx].reset_index(drop=True)
+                member_model, member_cal, member_raw, _ = _fit_quality_member(
+                    lgb,
+                    params,
+                    boot,
+                    validation,
+                    num_boost_round=num_boost_round,
+                    threads=threads,
+                    member_seed=seed + member,
+                )
+                q_rel = f"ensemble/{entry['id']}.m{member}.lgbm.txt"
+                c_rel = f"ensemble/{entry['id']}.m{member}.isotonic.json"
+                write_private(
+                    temporary / q_rel, member_model.model_to_string().encode()
+                )
+                write_private(
+                    temporary / c_rel,
+                    canonical_json(
+                        {
+                            "x": member_cal.X_thresholds_.tolist(),
+                            "y": member_cal.y_thresholds_.tolist(),
+                        }
+                    ),
+                )
+                ensemble_quality.append(q_rel)
+                ensemble_calibration.append(c_rel)
+                member_stds.append(float(np.std(member_raw, ddof=0)))
+            entry["ensemble_quality_files"] = ensemble_quality
+            entry["ensemble_calibration_files"] = ensemble_calibration
+            entry["ensemble_size"] = len(ensemble_quality)
+            if member_stds:
+                entry["ensemble_raw_std_mean"] = float(np.mean(member_stds))
             manifest["targets"].append(entry)
         for file in sorted(temporary.rglob("*")):
             if file.is_file():

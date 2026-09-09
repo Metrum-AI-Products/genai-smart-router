@@ -22,7 +22,9 @@ manual acceptance gates, shared-loopback deployment and rollback. The
 [read-only usage import](../../docs/LRP_USAGE_IMPORT.md) joins explore metadata
 from SQLite/PostgreSQL usage tables without reconstructing prompts. Near-duplicate
 evaluation splits and serving-provider variance reports are documented in
-[LRP_EVAL_SPLITS.md](../../docs/LRP_EVAL_SPLITS.md). The
+[LRP_EVAL_SPLITS.md](../../docs/LRP_EVAL_SPLITS.md). Wave-2 uncertainty,
+Thompson sampling, drift monitoring, and cold start are documented in
+[LRP_UNCERTAINTY.md](../../docs/LRP_UNCERTAINTY.md). The
 [design reconciliation](../../docs/LRP_DESIGN_RECONCILIATION.md) records corrections
 to issue #15 before implementation. The [caller guide](../../docs-site/docs/routing/learned-routing-policy.md)
 explains request behavior.

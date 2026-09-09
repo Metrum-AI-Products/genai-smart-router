@@ -37,6 +37,7 @@ const sidebars = {
         "configuration/external-policy-context",
         "routing/lrp-signed-bundles",
         "routing/lrp-selection-constraints",
+        "routing/lrp-uncertainty",
         "configuration/image-analysis-vlm",
         "configuration/reasoning-routing",
         "configuration/self-hosted-upstreams",
