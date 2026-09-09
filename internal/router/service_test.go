@@ -6308,7 +6308,9 @@ func TestConcurrentLifetimeReservationRejectionDoesNotDisableKey(t *testing.T) {
 	if rejected.OK || rejected.Status != http.StatusForbidden || rejected.Reason != "key-exhausted" {
 		t.Fatalf("second reserve=%#v, want key-exhausted rejection", rejected)
 	}
-	svc.quota.RecordTokens(caller, resAd.Reservation, Usage{TotalTokens: 5})
+	if _, _, err := svc.quota.RecordTokens(caller, resAd.Reservation, Usage{TotalTokens: 5}); err != nil {
+		t.Fatal(err)
+	}
 	again := svc.quota.ReserveTokens(caller, 10)
 	if !again.OK {
 		t.Fatalf("key was disabled by reservation-only exhaustion: %#v", again)
@@ -6475,7 +6477,9 @@ func TestQuotaStateRejectsRawJSONAfterIntegrityMigration(t *testing.T) {
 	if !ad.OK {
 		t.Fatalf("admit failed: %#v", ad)
 	}
-	qs.RecordTokens(caller, nil, Usage{TotalTokens: 10})
+	if _, _, err := qs.RecordTokens(caller, nil, Usage{TotalTokens: 10}); err != nil {
+		t.Fatal(err)
+	}
 	qs.Release(caller)
 	if err := qs.Close(); err != nil {
 		t.Fatal(err)
@@ -6528,7 +6532,9 @@ func TestQuotaSignedStateSurvivesCallerConfigChanges(t *testing.T) {
 	if !ad.OK {
 		t.Fatalf("admit failed: %#v", ad)
 	}
-	qs.RecordTokens(caller, nil, Usage{TotalTokens: 11})
+	if _, _, err := qs.RecordTokens(caller, nil, Usage{TotalTokens: 11}); err != nil {
+		t.Fatal(err)
+	}
 	qs.Release(caller)
 	if err := qs.Close(); err != nil {
 		t.Fatal(err)
