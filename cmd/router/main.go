@@ -38,10 +38,14 @@ func main() {
 	}
 	defer svc.Close()
 
+	readTO, writeTO, idleTO := defaultHTTPServerTimeouts()
 	srv := &http.Server{
 		Addr:              cfg.Server.Listen,
 		Handler:           svc.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       readTO,
+		WriteTimeout:      writeTO,
+		IdleTimeout:       idleTO,
 	}
 
 	errs := make(chan error, 1)
