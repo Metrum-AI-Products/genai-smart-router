@@ -1535,6 +1535,33 @@ providers:
           anthropic_messages:
           - client_tools
 models:
+  # Catalog-only Learned Routing Policy experiment. Do not activate until exact
+  # provider/model/dialect/caller-shape validation and protected evaluation pass.
+  # See docs/LEARNED_ROUTING_POLICY.md. Group names here are deployment examples.
+  # lrp-demo:
+  #   strategy: external
+  #   external_policy:
+  #     url: http://127.0.0.1:18093/route
+  #     allow_hosts: [127.0.0.1]
+  #     mode: shadow
+  #     timeout_ms: 500
+  #     max_response_bytes: 65536
+  #     include_request: true
+  #     on_error: fail_closed
+  #     headers:
+  #       X-LRP-Auth: ${LRP_POLICY_AUTH_HEADER}
+  #   targets:
+  #     - {provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, tier: cheap, weight: 1}
+  #     - {provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 1}
+  #     - {provider: openrouter, model_ref: openrouter-minimax-m3, tier: mid, weight: 1}
+  #     - {provider: openrouter, model_ref: qwen3-7-plus-nitro, tier: mid, weight: 1}
+  #     - {provider: openrouter, model_ref: openrouter-xai-grok-4-3, tier: strong, weight: 1}
+  #     - {provider: openrouter, model_ref: openrouter-claude-sonnet-4-6, tier: anchor, weight: 1}
+  # A restricted one-target group per validated candidate supports fanout.
+  # lrp-fanout-0:
+  #   strategy: static
+  #   targets:
+  #     - {provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, weight: 1}
   # Local-only VLM acceptance groups. Do not grant these groups to production
   # callers or promote a target into a broad group until the exact API skin has
   # passed receipt OCR, forced function-tool, streaming, and cap tests.

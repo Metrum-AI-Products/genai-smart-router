@@ -666,6 +666,12 @@ A demo PII-aware routing policy lives in `examples/typescript-pii-policy/`. It d
 
 ## External Routing Policy Service
 
+[Learned Routing Policy](docs/LEARNED_ROUTING_POLICY.md) adds a standalone
+outcome-trained service and offline `lrp` CLI. It recommends the cheapest eligible
+target above a configured quality floor, with calibrated per-target models,
+protected datasets and held-out evaluation. Start with `make lrp-synthetic-demo`;
+synthetic results do not authorize live target promotion.
+
 Use `strategy: external` when routing policy should live in a standalone web service instead of in TypeScript. The router sends safe derived request context, safe caller metadata, safe contract metadata when configured, eligible target metadata, validation metadata, pricing, tool capability metadata, and modalities to the configured policy URL, then validates the returned target against the model group's eligible targets. By default the policy payload does not include prompt text, message bodies, image URLs/data, tool schemas, tool outputs, or `request.raw`; route on fields such as `context.textChars`, `context.estimatedTokens`, `context.imageCount`, and `context.toolCount`. Set `external_policy.include_request: true` only for a trusted policy service that is allowed to receive request content. With `pii_filter`, that opt-in request mirror is redacted before dispatch and placeholder mappings are not sent. Raw router tokens, token hashes, and provider API keys are never sent.
 
 ```yaml
@@ -698,6 +704,9 @@ deployment-designated strong default. The reference requires
 infrastructure, with redacted input when the model group uses `pii_filter`.
 
 External policy URLs use the same egress rules as `router.fetchJSON`: HTTPS by default, plaintext HTTP only for loopback hosts or with `external_policy.allow_http: true`, exact-host allowlisting, and redirect revalidation on every hop. A redirect to a host outside `allow_hosts`, including a loopback address that was not explicitly allowed, fails before the redirected service is reached.
+
+Non-loopback private/link-local IPs and nondefault nonlocal ports are also denied.
+Private policy sidecars use loopback in the router's network namespace.
 
 The default `scripts/router.ts` does three things:
 

@@ -1,0 +1,16 @@
+# Deployment-defined demonstration group; pins and exploration are opt-in.
+groups:
+  lrp-demo:
+    quality_floor: 0.80
+    explore_rate: 0.0
+    exploration_projects: []
+    pin_ttl_s: 0
+    min_train_rows: 200
+    # Router external_policy.mode owns shadow activation. LRP returns its recommendation.
+    mode: enforce
+max_pins: 10000
+inference_workers: 2
+# 1..4500 ms; increasing this trades routing latency for more inference time.
+# Router external_policy.timeout_ms must exceed this with transport headroom
+# (for example, deadline_ms: 500 with router timeout_ms: 750; router max 5000).
+deadline_ms: 200

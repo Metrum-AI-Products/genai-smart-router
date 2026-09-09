@@ -1,0 +1,156 @@
+{
+  "concurrency": 1,
+  "cpu_affinity": [
+    0,
+    2,
+    4,
+    6
+  ],
+  "hardware": "AMD Ryzen 7 5825U with Radeon Graphics",
+  "host_conditions": "Shared development host with concurrent synthetic training, tests and harness work; affinity is not isolation or reserved capacity.",
+  "http_router_performance_tested": false,
+  "int8_vs_fp32_cosine": [
+    0.9893000721931458,
+    0.991105318069458,
+    0.980655312538147,
+    0.9859217405319214
+  ],
+  "measured_per_stage": 500,
+  "normalized": true,
+  "platform": "x86_64",
+  "pooling": "cls",
+  "production_promotion_evidence": false,
+  "provider_outcome_quality_tested": false,
+  "quality_model_overhead_tested": false,
+  "scenarios": [
+    {
+      "embedding": {
+        "max_ms": 13.289542,
+        "p50_ms": 8.5297075,
+        "p95_ms": 10.576202299999997,
+        "p99_ms": 12.6541079
+      },
+      "embedding_p99_le_15ms": true,
+      "features_including_language_and_embedding": {
+        "max_ms": 18.878762,
+        "p50_ms": 10.18385,
+        "p95_ms": 12.291036199999995,
+        "p99_ms": 15.412256329999998
+      },
+      "features_p99_lt_40ms": true,
+      "request_bytes_max": 267,
+      "request_bytes_min": 267,
+      "shape": "short",
+      "threads": 1,
+      "token_count_max": 26,
+      "token_count_min": 26
+    },
+    {
+      "embedding": {
+        "max_ms": 340.234884,
+        "p50_ms": 244.404987,
+        "p95_ms": 272.1823212,
+        "p99_ms": 304.52403068
+      },
+      "embedding_p99_le_15ms": false,
+      "features_including_language_and_embedding": {
+        "max_ms": 550.2188,
+        "p50_ms": 247.3548515,
+        "p95_ms": 276.19281929999994,
+        "p99_ms": 312.00273914999997
+      },
+      "features_p99_lt_40ms": false,
+      "request_bytes_max": 7892,
+      "request_bytes_min": 7892,
+      "shape": "truncated_512_tokens",
+      "threads": 1,
+      "token_count_max": 512,
+      "token_count_min": 512
+    },
+    {
+      "embedding": {
+        "max_ms": 16.453038,
+        "p50_ms": 5.646651,
+        "p95_ms": 6.9296712,
+        "p99_ms": 10.355258699999984
+      },
+      "embedding_p99_le_15ms": true,
+      "features_including_language_and_embedding": {
+        "max_ms": 19.467487,
+        "p50_ms": 7.474304500000001,
+        "p95_ms": 9.452630549999995,
+        "p99_ms": 13.083858449999983
+      },
+      "features_p99_lt_40ms": true,
+      "request_bytes_max": 267,
+      "request_bytes_min": 267,
+      "shape": "short",
+      "threads": 4,
+      "token_count_max": 26,
+      "token_count_min": 26
+    },
+    {
+      "embedding": {
+        "max_ms": 171.903159,
+        "p50_ms": 101.2546675,
+        "p95_ms": 123.02706225,
+        "p99_ms": 140.14602392
+      },
+      "embedding_p99_le_15ms": false,
+      "features_including_language_and_embedding": {
+        "max_ms": 197.707493,
+        "p50_ms": 105.56366249999999,
+        "p95_ms": 129.53554674999998,
+        "p99_ms": 161.32244809999997
+      },
+      "features_p99_lt_40ms": false,
+      "request_bytes_max": 7892,
+      "request_bytes_min": 7892,
+      "shape": "truncated_512_tokens",
+      "threads": 4,
+      "token_count_max": 512,
+      "token_count_min": 512
+    }
+  ],
+  "schema_version": "lrp.public-bge-benchmark.v1",
+  "scope": "Real BGE embedding and FeatureBuilder only; no HTTP/router latency or outcome-promotion claim",
+  "service_threads": 1,
+  "source": {
+    "files": {
+      "model.fp32.onnx": {
+        "bytes": 133093490,
+        "sha256": "828e1496d7fabb79cfa4dcd84fa38625c0d3d21da474a00f08db0f559940cf35",
+        "upstream_sha256": "828e1496d7fabb79cfa4dcd84fa38625c0d3d21da474a00f08db0f559940cf35",
+        "url": "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/onnx/model.onnx"
+      },
+      "model.int8.onnx": {
+        "bytes": 33807386,
+        "sha256": "6c09b0019d2f72058c72f39ca5b4f19e79edd65dbe944921c7395b74ddaeec43"
+      },
+      "tokenizer.json": {
+        "bytes": 711396,
+        "sha256": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+        "upstream_sha256": null,
+        "url": "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer.json"
+      }
+    },
+    "model": "BAAI/bge-small-en-v1.5",
+    "quantization": {
+      "documentation": "https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html",
+      "method": "onnxruntime.quantization.quantize_dynamic",
+      "onnxruntime": "1.29.0",
+      "per_channel": false,
+      "reduce_range": false,
+      "weight_type": "QInt8"
+    },
+    "revision": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
+  },
+  "versions": {
+    "langdetect": "1.0.9",
+    "numpy": "2.5.3",
+    "onnx": "1.22.0",
+    "onnxruntime": "1.29.0",
+    "tokenizers": "0.23.2"
+  },
+  "warmup_per_stage": 50
+}

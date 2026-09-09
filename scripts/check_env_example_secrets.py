@@ -118,6 +118,39 @@ def main() -> int:
             continue
         errors.extend(secret_key_errors(path, data))
     errors.extend(retired_agent_ignore_errors())
+    # Service fixtures are public too. Content-bearing runtime artifacts must
+    # remain outside the product tree; scan tracked service sources and fixtures.
+    service_files = subprocess.run(
+        ["git", "ls-files", "services/"], cwd=ROOT, check=True, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    for relative in service_files.stdout.splitlines():
+        path = ROOT / relative
+        if path.suffix in {".onnx", ".parquet", ".sqlite", ".db"}:
+            errors.append(f"{relative} is a protected runtime artifact")
+            continue
+        # Lockfiles legitimately contain integrity hashes. Other public service
+        # files still receive provider/token pattern checks, without printing hits.
+        if path.suffix == ".lock":
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            errors.append(f"{relative} is an unexpected binary service artifact")
+            continue
+        for pattern in LIVE_SECRET_PATTERNS[:-1]:
+            if pattern.search(content):
+                errors.append(f"{relative} contains a live-looking credential pattern")
+        if path.suffix == ".ndjson":
+            for line in content.splitlines():
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    errors.append(f"{relative} contains invalid NDJSON")
+                    break
+                if row.get("source") != "synthetic":
+                    errors.append(f"{relative} contains a non-synthetic fixture")
+                    break
 
     if errors:
         print("env example secret check failed:", file=sys.stderr)

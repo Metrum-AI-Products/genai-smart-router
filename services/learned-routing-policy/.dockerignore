@@ -1,0 +1,7 @@
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!lrp/
+!lrp/**
+lrp/**/__pycache__/
