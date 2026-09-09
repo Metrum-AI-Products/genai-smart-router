@@ -34,7 +34,7 @@ Session-based splitting prevents a conversation appearing in training and test.
 Optional near-duplicate embedding deduplication runs before that split so
 templated prompts do not leak across partitions; operators review removed counts
 and threshold sensitivity without exporting request content. See the operator
-[evaluation splits note](../../../docs/LRP_EVAL_SPLITS.md).
+[evaluation splits note](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/LRP_EVAL_SPLITS.md).
 Small or undertrained models are excluded. Model bundles bind their embedding
 artifacts and feature definitions for consistent training and serving.
 
