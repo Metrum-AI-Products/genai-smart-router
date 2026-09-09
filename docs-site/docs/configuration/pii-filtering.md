@@ -83,8 +83,8 @@ TypeScript routing scripts receive the same redacted request object used for tar
 
 PII filtering does not enable durable capture. Governed content capture is a
 separate disabled-by-default feature. If explicitly enabled, it requires
-redaction plus AES-256-GCM application encryption, a configured `kms_key_id`,
-KMS-backed key material supplied through the deployment secret boundary, and
+redaction plus AES-256-GCM application encryption, a configured `local_key_id`,
+local key material supplied through `CONTENT_CAPTURE_LOCAL_KEY` in the deployment secret boundary, and
 authorized retention/deletion operations. Its usage-database expiry class is
 configured under `server.retention`.
 

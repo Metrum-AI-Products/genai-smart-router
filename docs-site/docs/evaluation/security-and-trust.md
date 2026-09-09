@@ -46,7 +46,7 @@ Expected diagnostic fields include request IDs, selected upstream/provider model
 
 Diagnostic rows exclude raw prompts, raw image payloads, raw router tokens, token hashes, provider API keys, raw tool outputs, full upstream headers, and unsanitized upstream response bodies.
 
-Governed content capture is a separate opt-in deployment mode. When enabled, captured content is redacted and encrypted with AES-256-GCM before storage, stored in dedicated relational tables keyed by `request_id`, and maintained through authorized `content:capture` delete/purge operations with audit rows. Enablement requires `encryption.enabled: true`, a `kms_key_id`, and KMS-backed key material supplied out of band through a deployment secret. Delete-by-request is scoped to the captured row's caller project/environment domain. It is disabled by default and is not part of ordinary diagnostics or usage reports. Usage-database expiry is configured under `server.retention`.
+Governed content capture is a separate opt-in deployment mode. When enabled, captured content is redacted and encrypted with AES-256-GCM before storage, stored in dedicated relational tables keyed by `request_id`, and maintained through authorized `content:capture` delete/purge operations with audit rows. Enablement requires `encryption.enabled: true`, a `local_key_id`, and local AES-256 key material supplied out of band through `CONTENT_CAPTURE_LOCAL_KEY` in a deployment secret. Delete-by-request is scoped to the captured row's caller project/environment domain. It is disabled by default and is not part of ordinary diagnostics or usage reports. Usage-database expiry is configured under `server.retention`.
 
 ## PII Filtering
 

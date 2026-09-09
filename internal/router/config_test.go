@@ -446,7 +446,7 @@ func TestModelGroupContractValidation(t *testing.T) {
 
 func TestContentCaptureConfigValidation(t *testing.T) {
 	falseValue := false
-	encryption := ContentCaptureEncryptionConfig{Enabled: true, KMSKeyID: "kms-test"}
+	encryption := ContentCaptureEncryptionConfig{Enabled: true, LocalKeyID: "local-test"}
 	for _, tt := range []struct {
 		name string
 		edit func(*Config)
@@ -488,11 +488,11 @@ func TestContentCaptureConfigValidation(t *testing.T) {
 			want: "encryption.enabled must be true",
 		},
 		{
-			name: "encryption without kms key id",
+			name: "encryption without local key id",
 			edit: func(cfg *Config) {
 				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, Encryption: ContentCaptureEncryptionConfig{Enabled: true}}
 			},
-			want: "encryption.kms_key_id is required",
+			want: "encryption.local_key_id is required",
 		},
 		{
 			name: "caller capture requires usage db",
@@ -540,7 +540,7 @@ func TestContentCaptureEncryptionConfigValidates(t *testing.T) {
 	cfg.Server.ContentCapture = ContentCaptureConfig{
 		Enabled:        true,
 		CaptureRequest: true,
-		Encryption:     ContentCaptureEncryptionConfig{Enabled: true, KMSKeyID: "test-key"},
+		Encryption:     ContentCaptureEncryptionConfig{Enabled: true, LocalKeyID: "test-key"},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() error=%v", err)

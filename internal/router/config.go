@@ -223,8 +223,26 @@ type ContentCaptureRedactionRule struct {
 }
 
 type ContentCaptureEncryptionConfig struct {
-	Enabled  bool   `yaml:"enabled" json:"enabled"`
-	KMSKeyID string `yaml:"kms_key_id" json:"kms_key_id"`
+	Enabled    bool   `yaml:"enabled" json:"enabled"`
+	LocalKeyID string `yaml:"local_key_id" json:"local_key_id"`
+}
+
+// UnmarshalYAML accepts local_key_id and the deprecated kms_key_id alias.
+func (c *ContentCaptureEncryptionConfig) UnmarshalYAML(value *yaml.Node) error {
+	var raw struct {
+		Enabled    bool   `yaml:"enabled"`
+		LocalKeyID string `yaml:"local_key_id"`
+		KMSKeyID   string `yaml:"kms_key_id"` // deprecated alias for local_key_id
+	}
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	c.Enabled = raw.Enabled
+	c.LocalKeyID = strings.TrimSpace(raw.LocalKeyID)
+	if c.LocalKeyID == "" {
+		c.LocalKeyID = strings.TrimSpace(raw.KMSKeyID)
+	}
+	return nil
 }
 
 type RetentionConfig struct {
@@ -2153,8 +2171,8 @@ func validateContentCapture(label string, cfg ContentCaptureConfig) error {
 	if cfg.Enabled && !cfg.Encryption.Enabled {
 		return fmt.Errorf("%s encryption.enabled must be true when content capture is enabled", label)
 	}
-	if cfg.Enabled && strings.TrimSpace(cfg.Encryption.KMSKeyID) == "" {
-		return fmt.Errorf("%s encryption.kms_key_id is required when content capture is enabled", label)
+	if cfg.Enabled && strings.TrimSpace(cfg.Encryption.LocalKeyID) == "" {
+		return fmt.Errorf("%s encryption.local_key_id is required when content capture is enabled", label)
 	}
 	for _, header := range cfg.CaptureHeadersAllowlist {
 		if !contentCaptureHeaderAllowed(header) {

@@ -2555,10 +2555,10 @@ func applyUsageContentCaptureEncryptionMigration(db *gorm.DB) error {
 		field string
 	}{
 		{&contentCaptureRecord{}, "EncryptionNonce"},
-		{&contentCaptureRecord{}, "EncryptionKMSKeyID"},
+		{&contentCaptureRecord{}, "EncryptionLocalKeyID"},
 		{&contentCaptureRecord{}, "Encrypted"},
 		{&contentCaptureHeaderRecord{}, "EncryptionNonce"},
-		{&contentCaptureHeaderRecord{}, "EncryptionKMSKeyID"},
+		{&contentCaptureHeaderRecord{}, "EncryptionLocalKeyID"},
 		{&contentCaptureHeaderRecord{}, "Encrypted"},
 	} {
 		if !db.Migrator().HasColumn(column.model, column.field) {

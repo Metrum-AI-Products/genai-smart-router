@@ -504,7 +504,7 @@ This section is generated from the router usage and content-capture schema used 
 | `content_type` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
 | `content_text` | string | no | only when governed content capture is explicitly enabled | restricted; redacted and AES-256-GCM-encrypted governed content, not ordinary diagnostics | deployment-defined scalar value |
 | `encryption_nonce` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
-| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
+| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | configured local key id (`local_key_id`); column name retained for schema compatibility | deployment-defined scalar value |
 | `encrypted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 | `content_bytes` | integer | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `0` or positive integer |
 | `truncated` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
@@ -532,7 +532,7 @@ This section is generated from the router usage and content-capture schema used 
 | `name` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
 | `value` | string | no | only when governed content capture is explicitly enabled | restricted; redacted and AES-256-GCM-encrypted governed content, not ordinary diagnostics | deployment-defined scalar value |
 | `encryption_nonce` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
-| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
+| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | configured local key id (`local_key_id`); column name retained for schema compatibility | deployment-defined scalar value |
 | `encrypted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 | `redacted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 

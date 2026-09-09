@@ -26,8 +26,8 @@ Examples use placeholder tokens, placeholder hosts, and sample model group names
 
 Usage-database expiry is configured under `server.retention`. Governed content
 capture remains disabled unless explicitly enabled; enabled capture requires
-AES-256-GCM application encryption, a configured `kms_key_id`, and KMS-backed
-key material supplied through the deployment secret boundary.
+AES-256-GCM application encryption, a configured `local_key_id`, and local
+32-byte key material supplied through `CONTENT_CAPTURE_LOCAL_KEY` in the deployment secret boundary.
 
 `security_access_events` remain available only through authenticated,
 authorized admin reports. Public documentation and examples are anonymized.

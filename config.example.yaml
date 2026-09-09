@@ -193,8 +193,8 @@ server:
   # by request_id. It is not diagnostics, metrics, or usage reporting. Delete
   # maintenance requires content:capture delete authorization for the captured
   # row's project/environment domain, not only the actor's own domain. Capture
-  # cannot be enabled unless encryption.enabled is true, kms_key_id identifies
-  # the managed key, and CONTENT_CAPTURE_KMS_KEY supplies the associated
+  # cannot be enabled unless encryption.enabled is true, local_key_id identifies
+  # the local AES key, and CONTENT_CAPTURE_LOCAL_KEY supplies the associated
   # 32-byte hex/base64 key through the deployment secret boundary.
   content_capture:
     enabled: false
@@ -210,7 +210,7 @@ server:
     max_capture_bytes: 65536
     encryption:
       enabled: false
-      kms_key_id: ""
+      local_key_id: ""
   # Commercial retention foundation. Defaults are conservative and dry-run.
   # When dry_run is false, the CLI deletes at most one configured batch for
   # usage_diagnostics, content_capture, and usage_detail; usage_detail remains
