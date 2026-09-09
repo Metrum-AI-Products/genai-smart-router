@@ -39,6 +39,135 @@ def _response_cost(response: dict[str, Any], field: str) -> float | None:
     )
 
 
+def _serving_provider_identity(response: dict[str, Any]) -> tuple[bool, str | None]:
+    """Return (available, identity). Missing/blank is missing evidence, never invented."""
+    raw = response.get("serving_provider")
+    if raw is None:
+        return False, None
+    if not isinstance(raw, str):
+        return False, None
+    identity = raw.strip()
+    if not identity or len(identity) > 256:
+        return False, None
+    return True, identity
+
+
+def _variance(values: list[float]) -> float | None:
+    if len(values) < 2:
+        return None
+    return float(np.var(np.asarray(values, dtype=np.float64), ddof=0))
+
+
+def _provider_bucket_metrics(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    qualities = [s["quality"] for s in samples if s.get("quality") is not None]
+    costs = [s["cost"] for s in samples if s.get("cost") is not None]
+    durations = [s["duration_ms"] for s in samples if s.get("duration_ms") is not None]
+    ttfbs = [s["ttfb_ms"] for s in samples if s.get("ttfb_ms") is not None]
+    return {
+        "n": len(samples),
+        "quality_observed": len(qualities),
+        "quality_mean": float(np.mean(qualities)) if qualities else None,
+        "cost_observed": len(costs),
+        "cost_mean_usd": float(np.mean(costs)) if costs else None,
+        "duration_observed": len(durations),
+        "duration_p50_ms": float(np.percentile(durations, 50)) if durations else None,
+        "duration_p95_ms": float(np.percentile(durations, 95)) if durations else None,
+        "ttfb_observed": len(ttfbs),
+        "ttfb_p95_ms": float(np.percentile(ttfbs, 95)) if ttfbs else None,
+    }
+
+
+def serving_provider_variance(
+    samples: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Outcome/cost/latency variance by actual upstream serving provider.
+
+    Preserves exact catalog ``provider`` + ``model`` identity. Distinguishes
+    missing serving-provider evidence from observed aggregator backends.
+    """
+    by_target: dict[TargetKey, list[dict[str, Any]]] = {}
+    for sample in samples:
+        key = (str(sample["provider"]), str(sample["model"]))
+        by_target.setdefault(key, []).append(sample)
+    targets = []
+    missing_total = 0
+    observed_total = 0
+    for key in sorted(by_target):
+        rows = by_target[key]
+        buckets: dict[str, list[dict[str, Any]]] = {}
+        observed = 0
+        missing = 0
+        for row in rows:
+            if row.get("serving_provider_available"):
+                identity = str(row["serving_provider"])
+                buckets.setdefault(identity, []).append(row)
+                observed += 1
+            else:
+                buckets.setdefault("missing", []).append(row)
+                missing += 1
+        missing_total += missing
+        observed_total += observed
+        provider_means = {
+            name: _provider_bucket_metrics(group)
+            for name, group in sorted(buckets.items())
+            if name != "missing"
+        }
+        quality_means = [
+            m["quality_mean"]
+            for m in provider_means.values()
+            if m["quality_mean"] is not None
+        ]
+        cost_means = [
+            m["cost_mean_usd"]
+            for m in provider_means.values()
+            if m["cost_mean_usd"] is not None
+        ]
+        duration_means = [
+            m["duration_p50_ms"]
+            for m in provider_means.values()
+            if m["duration_p50_ms"] is not None
+        ]
+        targets.append(
+            {
+                "provider": key[0],
+                "model": key[1],
+                "n_responses": len(rows),
+                "serving_provider_observed": observed,
+                "serving_provider_missing": missing,
+                "distinct_serving_providers": len(provider_means),
+                "by_serving_provider": {
+                    name: _provider_bucket_metrics(group)
+                    for name, group in sorted(buckets.items())
+                },
+                "variance_across_serving_providers": {
+                    "quality_mean_variance": _variance(quality_means),
+                    "cost_mean_usd_variance": _variance(cost_means),
+                    "duration_p50_ms_variance": _variance(duration_means),
+                    "n_serving_providers_with_quality": len(quality_means),
+                    "n_serving_providers_with_cost": len(cost_means),
+                    "n_serving_providers_with_duration": len(duration_means),
+                },
+            }
+        )
+    warnings = []
+    if missing_total:
+        warnings.append("serving_provider_missing_evidence")
+    if observed_total and any(
+        isinstance(t["distinct_serving_providers"], int)
+        and t["distinct_serving_providers"] > 1
+        for t in targets
+    ):
+        warnings.append("aggregator_serving_provider_variance_observed")
+    return {
+        "schema_version": "lrp.serving_provider_variance.v1",
+        "n_responses": len(samples),
+        "serving_provider_observed": observed_total,
+        "serving_provider_missing": missing_total,
+        "targets": targets,
+        "warnings": warnings,
+    }
+
+
 def _metrics(samples: list[dict[str, Any]], floor: float) -> dict[str, Any]:
     quality = [s["quality"] for s in samples if s["quality"] is not None]
     costs = [s["cost"] for s in samples if s["cost"] is not None]
@@ -148,6 +277,7 @@ def evaluate(
     catalog = {target_key(as_dict(t)): as_dict(t) for t in cfg_data.get("targets", [])}
     active_keys = set(model.models)
     per_target: dict[TargetKey, list[dict[str, Any]]] = {key: [] for key in active_keys}
+    variance_samples: list[dict[str, Any]] = []
     data_by_group: dict[str, list[dict[str, Any]]] = {}
     synthetic = (
         bool(model.manifest.get("synthetic"))
@@ -190,6 +320,7 @@ def evaluate(
             # A failed response cannot satisfy the oracle even if a stale judge says one.
             if response.get("status") != "ok" and valid:
                 quality = 0.0
+            available, serving = _serving_provider_identity(response)
             outcome = {
                 "quality": quality,
                 "cost": _response_cost(response, "cost_usd"),
@@ -203,8 +334,23 @@ def evaluate(
                 "output_tokens": _finite(
                     (response.get("usage") or {}).get("output_tokens")
                 ),
+                "serving_provider": serving,
+                "serving_provider_available": available,
             }
             outcomes[key] = outcome
+            variance_samples.append(
+                {
+                    "provider": key[0],
+                    "model": key[1],
+                    "quality": quality,
+                    "cost": outcome["cost"],
+                    "duration_ms": outcome["duration_ms"],
+                    "ttfb_ms": outcome["ttfb_ms"],
+                    "serving_provider": serving,
+                    "serving_provider_available": available,
+                    "status": outcome["status"],
+                }
+            )
             if key in per_target and quality is not None:
                 per_target[key].append(
                     {**outcome, "prediction": predictions[key], "group": group}
@@ -460,6 +606,8 @@ def evaluate(
         warnings.append("judge_is_candidate_self_preference_risk")
     if synthetic:
         warnings.append("synthetic_wiring_only_not_promotable")
+    provider_variance = serving_provider_variance(variance_samples)
+    warnings.extend(provider_variance["warnings"])
     report = {
         "schema_version": "lrp.eval.v1",
         "bundle_version": model.version,
@@ -469,6 +617,7 @@ def evaluate(
         "uncertain_judgments": uncertain,
         "targets": target_reports,
         "groups": groups,
+        "serving_provider_variance": provider_variance,
         "warnings": warnings,
         "language_distribution": {
             str(k): int(v) for k, v in frame.language.value_counts().items()
@@ -522,6 +671,26 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.extend(
         [
             "Single-class AUC is N/A; inspect binary cohort counts and coverage in the JSON report.",
+            "",
+            "## Serving-provider variance",
+            "",
+            (
+                f"Observed serving providers: {report['serving_provider_variance']['serving_provider_observed']}; "
+                f"missing evidence: {report['serving_provider_variance']['serving_provider_missing']}."
+            ),
+            "",
+        ]
+    )
+    for target in report["serving_provider_variance"]["targets"]:
+        safe_model = str(target["model"]).replace("|", "_").replace("\n", " ")
+        safe_provider = str(target["provider"]).replace("|", "_").replace("\n", " ")
+        lines.append(
+            f"- `{safe_provider}` / `{safe_model}`: "
+            f"{target['distinct_serving_providers']} backends, "
+            f"{target['serving_provider_missing']} missing"
+        )
+    lines.extend(
+        [
             "",
             *report["warnings"],
             "",
