@@ -236,9 +236,12 @@ keeps an image specialist out of text-only traffic and records
 `request-shape-required-input-modality` when it is skipped. This metadata never
 alters caller content or silently adds a modality.
 
-`required_input_modalities` is a positive request-shape gate. Use it for a validated image or multimodal fallback that should serve image-bearing agent requests without receiving ordinary text traffic in the same broad group. It supplements `input_modalities`; it never makes a target eligible for a modality the target does not declare.
-
-Use `unsupported_request_features` for deterministic provider incompatibilities that are narrower than the whole target. For example, some OpenAI-compatible coding-agent clients send Chat `stream_options` while the router converts tool-bearing upstream calls to unary requests and synthesizes downstream SSE. If a provider/model rejects that exact shape, set `stream_options` until a direct upstream smoke and router-level smoke pass for that provider/model/skin.
+Use `unsupported_request_features` for deterministic provider
+incompatibilities that are narrower than the whole target. For example, some
+OpenAI-compatible coding-agent clients send Chat `stream_options`. Same-dialect
+Chat forwards compatible options while proxying native SSE, so a target that
+rejects that field should declare `stream_options` until the exact client,
+provider, model, skin, and router path pass direct and router-level smokes.
 
 `tool_choice` applies to every explicit choice, including `"auto"` and a JSON `null`: it removes both automatic and forced tool-choice evidence from the target. Omitted-choice client tools remain a distinct callable shape only when the key is absent and the target has separate passing omitted-choice capability evidence. Explicit null can stay on a same-skin request with explicit tool-choice eligibility, but Chat-to-Responses and Responses-to-Chat bridges reject it because they do not have a lossless null mapping. Use `forced_tool_choice` when only an explicit forced choice is unsupported.
 
@@ -392,3 +395,15 @@ must validate the target location and use reviewed eligibility or group policy
 when a workload requires region-specific routing. The caller-facing
 `/v1/models` response describes allowed model groups and does not expose
 per-target region inventory.
+
+The field is also not supplied as an input to TypeScript or external routing
+policies. A deployment that must select by processing location should encode
+that requirement through separate caller-authorized model groups or another
+explicit policy-visible, validated classification; it must not assume
+`targets[].region` changes eligibility.
+
+Values are 1–64 characters when present, must start with an ASCII letter or
+digit, and may then contain letters, digits, `.`, `_`, `:`, `/`, or `-`.
+Leading/trailing whitespace and free-form legal or customer text are rejected.
+Use a stable deployment taxonomy such as `deployment-region-a`, not a claim
+copied from marketing material.

@@ -277,5 +277,11 @@ Responses smoke remain separate required operator evidence.
 ## Validation
 
 ```bash
-rtk go test ./internal/router ./cmd/metrum-genai-smartrouter-fleetctl -run TenantDeployment -count=1
+rtk go test ./internal/fleet ./cmd/metrum-genai-smartrouter-fleetctl -run TenantDeployment -count=1
+rtk go test ./internal/architecture -count=1
 ```
+
+The architecture test keeps the serving request path independent from Fleet
+and commerce packages. Customer image/package validation separately confirms
+that Fleet lifecycle binaries and compatibility aliases are absent from
+customer Docker images.

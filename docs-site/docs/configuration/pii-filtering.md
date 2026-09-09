@@ -53,12 +53,19 @@ is sent upstream as:
 Email [EMAIL_1] or call [PHONE_1].
 ```
 
-When `mode: redact_and_restore` or `restore_response: true` is enabled, downstream text responses that contain `[EMAIL_1]` or `[PHONE_1]` are restored for the original caller. Placeholder mappings are kept in memory for the request lifecycle and are not persisted by default.
+When `mode: redact_and_restore` or `restore_response: true` is enabled,
+buffered downstream text responses that contain `[EMAIL_1]` or `[PHONE_1]`
+are restored for the original caller. Same-dialect native OpenAI Chat and
+Anthropic Messages streams preserve placeholders because the router does not
+buffer arbitrary SSE boundaries. Placeholder mappings are kept in memory for
+the request lifecycle and are not persisted by default.
 
 ## Modes
 
 - `redact_only`: send placeholders upstream and return placeholders downstream.
-- `redact_and_restore`: send placeholders upstream and restore placeholders in downstream text responses.
+- `redact_and_restore`: send placeholders upstream and restore placeholders in
+  buffered downstream text responses; native Chat and Messages SSE preserves
+  placeholders.
 - `fail_on_match`: reject the request before upstream target selection when any rule matches.
 
 `fail_on_match: true` can also be used with a mode to force blocking behavior.
@@ -136,7 +143,21 @@ curl "$ROUTER_BASE_URL/anthropic/v1/messages" \
   }'
 ```
 
-For all three APIs, the upstream target receives placeholders such as `[EMAIL_1]` and `[US_SSN_1]`. With `redact_and_restore`, non-streaming downstream text responses are restored for the original caller. For streamed responses, restoration applies to router-generated text events after the upstream response is decoded; deployments that need raw upstream SSE pass-through should use `redact_only` or validate the exact streaming path before enabling restoration.
+For all three APIs, the upstream target receives placeholders such as
+`[EMAIL_1]` and `[US_SSN_1]`.
+
+| Response path | `redact_and_restore` behavior |
+| --- | --- |
+| Non-streaming Chat, Responses, or Messages | Restores placeholders in buffered downstream text. |
+| Same-dialect OpenAI Chat or Anthropic Messages native SSE | Preserves placeholders in caller-visible events; the router logs a safe restoration-skipped warning. |
+| OpenAI Responses or cross-dialect router-generated SSE | Restores buffered text after upstream decode, before emitting router-generated events. |
+
+If caller-visible placeholders are unacceptable for a native stream, use a
+non-streaming request or choose a workflow that does not require restoration.
+Do not assume `redact_only` will restore them—it intentionally returns
+placeholders on every path. See [Privacy And Data
+Handling](../privacy) and [Native Stream
+Failures](../reference/errors#native-stream-failures).
 
 ## Logging And Usage
 
@@ -175,3 +196,9 @@ curl "$ROUTER_BASE_URL/v1/chat/completions" \
 
 Check the upstream capture, router logs, and usage rows for the same `X-Request-Id`. Raw matched values should not appear upstream or in diagnostics.
 Also test a request with more matches than `max_replacements_per_request`; it should fail with `pii-filter-blocked` and produce no upstream request.
+
+Repeat the Chat request with `"stream": true` against a same-dialect test
+target. Confirm the upstream receives placeholders, caller-visible SSE keeps
+the placeholders, and logs contain only the safe
+`pii-response-restoration-skipped-native-stream` warning—not the matched
+values or placeholder map.

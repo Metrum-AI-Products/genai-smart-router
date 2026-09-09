@@ -51,6 +51,15 @@ closed when either stage is missing or does not match. Tools, images,
 structured output, reasoning controls, and streaming are not enabled by this
 codec and must not be claimed from catalog metadata.
 
+Activation evidence is an operator-attested configuration record, not a
+cryptographically verified smoke artifact. Collect the direct pass first. For
+the first live router pass, use an isolated staging group and caller under
+change control, treat `router_text_passed: true` as provisional only for that
+bootstrap, run the exact text smoke immediately, and remove the target if it
+fails. Keep the model catalog-only when that restricted bootstrap and safe
+evidence capture are unavailable. The shipped reference configuration does not
+activate a Gemini target.
+
 Treat provider access failures as activation prerequisites. A direct smoke returning `401`, entitlement-shaped `403`, generic access `403`, or model-access `404` means the target should not receive ordinary traffic until the exact provider credential, account/project/region, model ID, dialect, and request shape are fixed and retested. Router-level smokes should show sanitized access-failure classes and never expose provider keys or raw upstream bodies.
 
 ## 2. Run Direct Provider Smokes

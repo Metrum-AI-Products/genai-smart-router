@@ -235,9 +235,26 @@ The public customer-facing version of this ownership model is `docs-site/docs/ro
 
 External routing-policy calls are opt-in per script model group with `script_http.enabled: true`, exact `allow_hosts`, `timeout_ms`, and `max_response_bytes`. Scripts call allowlisted services with `router.fetchJSON`; unrestricted `fetch`, runtime package installation, provider keys, and raw router tokens are not exposed to scripts. HTTPS is required for non-local services unless `script_http.allow_http: true` is explicitly approved; loopback HTTP is allowed for local demos and sidecars. Redirects must keep an allowed scheme and exact allowlisted hostname. Put policy-service auth in env-expanded `script_http.headers`, not in script source.
 
+Each script decision uses a fresh VM. `script_max_concurrent` defaults to `16`
+per script group and accepts values through `256`; requests waiting for a slot
+honor cancellation. Start with the default, load-test the intended request
+shape, and raise it only with CPU/memory evidence. Roll back by restoring the
+previous cap or strategy. This cap is admission control, not a VM execution
+timeout: once admitted, unbounded pure JavaScript can hold its slot and request
+goroutine indefinitely. `router.fetchJSON` has a separate HTTP timeout. Keep
+scripts bounded, and restart affected containers after restoring a stuck
+policy.
+
 For PII-aware script routing, package the policy file under `compose/config/scripts/`, mark private backing targets with deployment-owned metadata such as `tier: private` or `display_name: Private sensitive target`, and smoke-test that likely PII prompts select only those targets for primary routing and retry fallbacks. The `examples/typescript-pii-policy/` demo returns safe labels only, fails closed when no sensitive/private target is eligible, and does not redact outbound content. Use model-group `pii_filter` when the router must redact, restore, or fail requests before provider calls.
 
-For standalone policy services, configure `strategy: external` with `external_policy.url`, exact `allow_hosts`, low `timeout_ms`, `max_response_bytes`, and config-owned auth headers. Use HTTPS unless the service is loopback-local or `external_policy.allow_http: true` is approved for a trusted internal endpoint. Redirects are blocked when any hop changes to a non-allowlisted hostname. The service receives safe routing context and eligible target metadata, then returns the selected target decision.
+For standalone policy services, configure `strategy: external` with `external_policy.url`, exact `allow_hosts`, low `timeout_ms`, `max_response_bytes`, and config-owned auth headers. Use HTTPS unless the service is loopback-local or `external_policy.allow_http: true` is approved for a trusted internal endpoint. Redirects are blocked when any hop changes to a non-allowlisted hostname. The service receives safe routing context and eligible target metadata, then returns the selected target decision. The router reuses one HTTP client per group and propagates caller cancellation. Start new policies with `external_policy.mode: shadow`, promote to `enforce` only after evidence review, and roll back policy calls immediately with `mode: baseline`.
+
+For `dynamic_score`, conversation affinity is enabled by default and stores
+only a caller-isolated prefix digest plus selected target. Pins are
+process-local, expire after the configured TTL, and never override current
+request eligibility. Disable affinity without changing the scoring policy with
+`routing_policy.dynamic_score.affinity.enabled: false`; restarting the
+container also clears pins.
 
 Edit `compose/config/config.yaml` for the default durable SQLite paths:
 
@@ -289,7 +306,22 @@ callers:
 
 Roll out by enabling one non-critical caller first, sending a controlled burst with realistic `max_tokens`, and confirming brief bursts queue and complete within `max_wait_ms` while bursts beyond `max_depth` return deterministic `429 traffic-shaped` responses with `Retry-After`, `request_id`, and `bucket` without upstream attempts for rejected requests. Then compare shaped requests, queued count, queue wait p50/p95/max, upstream provider 429s, latency, cancellations, and user-visible errors in usage reports. Roll back by setting the caller `traffic_shape.queue.enabled: false` to keep fail-fast shaping, setting the caller `traffic_shape.enabled: false`, or setting `server.traffic_shape.enabled: false` for inherited defaults, then restart/reload through the normal config process and verify new queued events stop while hard quota behavior remains.
 
-Upstream request safety is controlled under `server.upstream`. `timeout_ms` bounds the shared upstream HTTP client, `default_attempt_timeout_ms` provides a default per-target cap when no group or target override is set, and `max_response_bytes` bounds successful upstream bodies before decode or synthesized streaming. The router does not follow upstream API redirects. Image URL requests reject literal or initially resolved loopback, link-local, RFC1918/private, multicast, and unspecified destinations by default, with one bounded 500 ms DNS budget per request. The router forwards accepted image URLs without dereferencing or probing redirects, so deployment egress controls must independently block redirect targets and DNS rebinding to private, metadata, and administrative destinations. Keep `allow_private_image_urls: false` unless a reviewed private VLM deployment intentionally permits private URL dereference and has those network controls.
+Upstream request safety is controlled under `server.upstream`. `timeout_ms` bounds the shared upstream HTTP client, `default_attempt_timeout_ms` provides a default per-target cap when no group or target override is set, and `max_response_bytes` bounds successful upstream bodies before decode or synthesized streaming. The router does not follow upstream API redirects. Image URL requests reject literal or initially resolved loopback, link-local, RFC1918/private, multicast, and unspecified destinations by default, with one bounded 500 ms DNS budget per request. The router forwards accepted image URLs without dereferencing or probing redirects, so deployment egress controls must independently block redirect targets and DNS rebinding to private, metadata, and administrative destinations.
+
+Keep `allow_private_image_urls: false` unless a reviewed private VLM
+deployment intentionally accepts the risk. Setting it to `true` bypasses the
+router's entire image-URL admission step, including scheme, host/address, and
+DNS checks; it is not a narrow RFC1918 exception. The provider may then
+dereference any forwarded URL, so network egress policy must block metadata,
+administrative, and other prohibited destinations and redirect/rebinding
+paths.
+
+Same-dialect OpenAI Chat and Anthropic Messages streaming is native upstream
+SSE. Ensure Caddy or another ingress does not buffer event streams. Once the
+first event is written, the router does not retry or replay the request to a
+fallback target; caller cancellation cancels the upstream. OpenAI Responses
+and cross-dialect bridges retain unary upstream behavior with router-encoded
+caller streaming.
 
 Provider/model/target `traffic_shape` blocks are optional and should be rolled out disabled or conservatively. For a first production rollout, enable a low-risk provider or smoke group, set small request-start and token bursts, run two parallel caller tokens through the same group, and verify routing either skips the shaped target or returns `503 upstream-capacity-throttled` with a safe request ID. Query `request_upstream_shape_events` for `admitted`, `skipped`, and `cooldown_started` decisions before broadening limits. Roll back by removing or disabling the `traffic_shape` block and restarting the router; restart also clears in-memory token buckets and adaptive backoff state.
 

@@ -1,12 +1,14 @@
 # Kubernetes deployment specification
 
-**Status:** Proposed interim  
+**Status:** Historical proposed interim; package boundaries updated 2026-09-09
 **Date:** 2026-08-31  
 **Applies to:** GenAI Smart Router release builds  
 **Supersedes for review:** `docs/specs/kubernetes-deployment.md` dated 2026-08-28  
 
-This document is an interim design artifact. It does not ship a Helm chart, CRD, or operator.
-Current repository packaging takes precedence over aspirational text in this file.
+This document is a historical interim design artifact. Current installation
+docs and repository packaging take precedence over aspirational text in this
+file. The dependency wording below was corrected after Fleet moved out of the
+request-path package; the remaining proposal is retained for design history.
 
 ## Scope and non-goals
 
@@ -154,11 +156,13 @@ The serving router (`cmd/router`) is a standalone process. It does not read kube
 in-cluster service-account tokens, or cluster credentials. It does not call the
 Kubernetes API at runtime.
 
-Kubernetes client libraries already exist in this Go module because Fleet EKS adapters
-live in `internal/router` without build tags. Only `metrum-genai-smartrouter-fleetctl`
-invokes those adapters. This specification MUST NOT add a router Kubernetes dependency,
-`controller-runtime` import, CRD, or in-process cluster client. A later package split is
-out of scope for this docs-only interim.
+Kubernetes client libraries exist in this Go module because Fleet EKS adapters
+live in `internal/fleet`. Only `metrum-genai-smartrouter-fleetctl` and its
+package-only support commands import that package. Architecture tests enforce
+that `cmd/router` and `internal/router` do not import `internal/fleet` or
+`internal/commerce`. This specification MUST NOT add a serving-router
+Kubernetes dependency, `controller-runtime` import, CRD, or in-process cluster
+client.
 
 ### Brief assumptions that were wrong
 
@@ -171,7 +175,7 @@ out of scope for this docs-only interim.
 | `replicas` / `ingress` in config | Packaging topology only |
 | Provider needs only `api_key_env` | YAML serving needs `api_key: ${ENV}` |
 | `allowed_validation_status: validated` | Illegal; use `passed` |
-| Serving binary imports no Kubernetes client | Source and linked client-go exist; runtime API use does not |
+| Serving binary imports no Kubernetes client | Correct after the package split: Fleet owns Kubernetes adapters; the serving request path does not import Fleet or commerce |
 | Resource name `smart-router` | Shipped objects use `smart-llmrouter` |
 | Mooncake has a first-party CRD | Current docs use Deployment and Service |
 | LMCache is the only cache product | Mooncake Store is a peer Level 3 option |

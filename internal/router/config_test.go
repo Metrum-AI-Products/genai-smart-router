@@ -1841,8 +1841,8 @@ func TestExampleConfigLargeOpenAIChatToolsSmokeHasShapeGate(t *testing.T) {
 			notes := target.RequestShapeSupport.ValidationNotes
 			if target.RequestShapeSupport.ValidationStatus != "passed" ||
 				!strings.Contains(notes, "production-derived large") ||
-				!strings.Contains(notes, "broad production coding group is not changed") ||
-				!strings.Contains(notes, "Harbor and Chetan validation callers") {
+				!strings.Contains(notes, "Broad production coding groups are not changed") ||
+				!strings.Contains(notes, "reusable scoped evaluation caller") {
 				t.Fatalf("large-openai-chat-tools-smoke validation notes=%#v", target.RequestShapeSupport)
 			}
 			if group.Targets[1].Provider != "minimax" || group.Targets[1].Model != "MiniMax-M3" {

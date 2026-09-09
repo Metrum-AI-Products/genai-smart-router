@@ -37,9 +37,22 @@ Current MVP capabilities:
 - Anthropic token-count estimate endpoint for Claude Code startup.
 - Bearer-token auth using configured SHA-256 token hashes.
 - Config-driven model groups with shipped strategies: `static`, `weighted`, `failover`, `dynamic_score`, TypeScript `script`, and `external` policy services. External policy `shadow`, `enforce`, and `baseline` modes provide explicit promotion and rollback while selection remains limited to post-eligibility targets. Optional model-group `contract` gates run before strategy selection. Legacy selectors named `latency`, `cost`, and `semantic` remain for compatibility only (configured RPM/cost ranks and stub keyword classification); they are not observed-signal routers. `strategy: intelligent` is a licensed baseline-only config contract, not an active decision-model picker.
-- TypeScript routing scripts for custom model-selection logic inside the Go router.
-- External routing policy services for standalone web-service target selection with safe request, caller, target, pricing, tool, and modality context.
-- Separate caller dialects from upstream provider adapters: callers can use Anthropic/OpenAI wire formats while targets route to Anthropic, OpenAI-compatible providers, or Replicate.
+- Dynamic-score conversation affinity is enabled by default, caller-isolated,
+  process-local, TTL-bounded, and subordinate to current eligibility.
+- TypeScript routing scripts for custom model-selection logic inside the Go
+  router, with fresh per-decision VMs, a bounded per-group concurrency cap, and
+  cancellation-aware admission.
+- External routing policy services for standalone web-service target selection
+  with safe request, caller, target, pricing, tool, and modality context,
+  connection reuse, bounded timeouts, and reversible baseline/shadow/enforce
+  modes.
+- Separate caller dialects from upstream provider adapters: callers can use
+  Anthropic/OpenAI wire formats while targets route to Anthropic,
+  OpenAI-compatible, Replicate, or evidence-gated unary-text Gemini
+  `generateContent` adapters.
+- Optional bounded `targets[].region` metadata for selected-target diagnostics;
+  deployments remain responsible for residency enforcement and provider
+  validation.
 - Server-side provider key injection.
 - Same-dialect OpenAI Chat and Anthropic Messages native SSE proxying with incremental delivery, plus unary upstream proxying and caller-dialect response encoding for OpenAI Responses and cross-dialect bridges.
 - Committed native streams never fall back after the first event; caller cancellation stops the upstream request.

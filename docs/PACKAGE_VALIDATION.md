@@ -64,7 +64,15 @@ Packages must not contain:
 - Go source files (`.go`), `go.mod`, or `go.sum`;
 - full production config files.
 
-Packaged CLIs (`router`, `metrum-genai-smartrouterctl`, `metrum-genai-smartrouter-fleetctl`, `metrum-genai-smartrouter-fleet-sign`, `metrum-genai-smartrouter-license`, and related tools) are prebuilt ELF binaries only. Operator and customer hosts must not require a Go toolchain or product source tree to run them. `metrum-genai-smartrouter-license` is Metrum-only and must not appear in customer Docker images.
+Packaged CLIs (`router`, `metrum-genai-smartrouterctl`,
+`metrum-genai-smartrouter-fleetctl`,
+`metrum-genai-smartrouter-fleet-sign`,
+`metrum-genai-smartrouter-license`, and related tools) are prebuilt ELF
+binaries only. Operator and customer hosts must not require a Go toolchain or
+product source tree to run them. Self-managed operators use
+`metrum-genai-smartrouter-license` from a trusted administration host with
+their own retained Ed25519 keypair; the tool, private key, and real
+`license.json` must not appear in customer runtime Docker images.
 
 ## Runtime Health Checks
 

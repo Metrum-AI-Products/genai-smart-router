@@ -77,7 +77,7 @@ This section is generated from the router usage and content-capture schema used 
 | `strategy` | string | no | once per request at terminal request accounting | safe scalar diagnostics metadata | deployment-defined scalar value |
 | `target_provider` | string | no | once per request at terminal request accounting | safe deployment metadata | `openrouter` |
 | `target_model` | string | no | once per request at terminal request accounting | safe deployment metadata | deployment-defined model or group label |
-| `target_dialect` | string | no | once per request at terminal request accounting | safe scalar diagnostics metadata | `openai-chat`, `openai-responses`, `anthropic-messages` |
+| `target_dialect` | string | no | once per request at terminal request accounting | safe scalar diagnostics metadata | `openai-chat`, `openai-responses`, `anthropic-messages`, `gemini-generate-content`, `replicate` |
 | `target_region` | string | no | once per request at terminal request accounting | safe scalar diagnostics metadata | deployment-defined scalar value |
 | `stream` | boolean | no | once per request at terminal request accounting | safe scalar diagnostics metadata | `true` or `false` |
 | `cache` | string | no | once per request at terminal request accounting | safe scalar diagnostics metadata | deployment-defined scalar value |
@@ -501,7 +501,7 @@ This section is generated from the router usage and content-capture schema used 
 | `target_provider` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `openrouter` |
 | `target_model` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined model or group label |
 | `inbound_dialect` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `openai-chat`, `openai-responses`, `anthropic-messages` |
-| `target_dialect` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `openai-chat`, `openai-responses`, `anthropic-messages` |
+| `target_dialect` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `openai-chat`, `openai-responses`, `anthropic-messages`, `gemini-generate-content`, `replicate` |
 | `content_type` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
 | `content_text` | string | no | only when governed content capture is explicitly enabled | restricted; redacted and AES-256-GCM-encrypted governed content, not ordinary diagnostics | deployment-defined scalar value |
 | `encryption_nonce` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
@@ -619,7 +619,7 @@ This section is generated from the router usage and content-capture schema used 
 | `seq` | integer | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | `0` or positive integer |
 | `strategy` | string | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | deployment-defined scalar value |
 | `policy_kind` | string | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | deployment-defined scalar value |
-| `outcome` | string | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | deployment-defined scalar value |
+| `outcome` | string | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | `success`, `fallback`, `shadow_recommended`, `baseline`, `error` |
 | `duration_ms` | integer | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | `0..600000` milliseconds |
 | `eligible_target_count` | integer | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | `0` or positive integer |
 | `all_target_count` | integer | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | `0` or positive integer |
@@ -661,7 +661,7 @@ This section is generated from the router usage and content-capture schema used 
 | `request_id` | string | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | `req_0123456789abcdef0123456789abcdef` |
 | `seq` | integer | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | `0` or positive integer |
 | `strategy` | string | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | deployment-defined scalar value |
-| `signal_name` | string | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | deployment-defined scalar value |
+| `signal_name` | string | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | `affinity_hit`, `affinity_miss`, `affinity_expired`, `affinity_ineligible`, `affinity_disabled`, `shadow_recommended_candidate` |
 | `source` | string | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | deployment-defined scalar value |
 | `candidate_index` | integer | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | `0` or positive integer |
 | `bool_value` | boolean | no | when optional decision telemetry records the routing decision | safe scalar diagnostics metadata | `true` or `false` |
@@ -938,7 +938,7 @@ This section is generated from the router usage and content-capture schema used 
 | `strategy` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | deployment-defined scalar value |
 | `target_provider` | string | no | during usage rollup generation or finalization | safe deployment metadata | `openrouter` |
 | `target_model` | string | no | during usage rollup generation or finalization | safe deployment metadata | deployment-defined model or group label |
-| `target_dialect` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `openai-chat`, `openai-responses`, `anthropic-messages` |
+| `target_dialect` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `openai-chat`, `openai-responses`, `anthropic-messages`, `gemini-generate-content`, `replicate` |
 | `status_class` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `200`, `403`, `502` |
 | `stream` | boolean | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `true` or `false` |
 | `cache` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | deployment-defined scalar value |
@@ -1073,7 +1073,7 @@ This section is generated from the router usage and content-capture schema used 
 | `strategy` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | deployment-defined scalar value |
 | `target_provider` | string | no | during usage rollup generation or finalization | safe deployment metadata | `openrouter` |
 | `target_model` | string | no | during usage rollup generation or finalization | safe deployment metadata | deployment-defined model or group label |
-| `target_dialect` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `openai-chat`, `openai-responses`, `anthropic-messages` |
+| `target_dialect` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `openai-chat`, `openai-responses`, `anthropic-messages`, `gemini-generate-content`, `replicate` |
 | `status_class` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `200`, `403`, `502` |
 | `stream` | boolean | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `true` or `false` |
 | `cache` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | deployment-defined scalar value |
@@ -1180,7 +1180,7 @@ This section is generated from the router usage and content-capture schema used 
 | `strategy` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | deployment-defined scalar value |
 | `target_provider` | string | no | during usage rollup generation or finalization | safe deployment metadata | `openrouter` |
 | `target_model` | string | no | during usage rollup generation or finalization | safe deployment metadata | deployment-defined model or group label |
-| `target_dialect` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `openai-chat`, `openai-responses`, `anthropic-messages` |
+| `target_dialect` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `openai-chat`, `openai-responses`, `anthropic-messages`, `gemini-generate-content`, `replicate` |
 | `status_class` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `200`, `403`, `502` |
 | `stream` | boolean | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | `true` or `false` |
 | `cache` | string | no | during usage rollup generation or finalization | safe scalar diagnostics metadata | deployment-defined scalar value |

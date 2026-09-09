@@ -28,7 +28,14 @@ Weights are local to each model group. A target with weight `60` in one group ha
 
 `tool_only: true` keeps a target eligible only for requests that include tools. Broad developer-facing groups that accept Anthropic Messages should also keep at least one validated native Anthropic target without `tool_only`, so a plain-text Messages turn is not answered with `502 no-eligible-target`.
 
-Groups can use `static`, `failover`, `weighted`, `dynamic_score`, `script`, or `external` strategies. Contracts, request-shape filters, modalities, tools, structured outputs, reasoning metadata, and max-token safety all filter the target list before strategy selection.
+Groups can use `static`, `failover`, `weighted`, `dynamic_score`, `script`, or
+`external` strategies. Contracts, request-shape filters, modalities, tools,
+structured outputs, reasoning metadata, and max-token safety all filter the
+target list before strategy selection. The licensed `intelligent` configuration
+contract is accepted as a baseline-only foundation in the current release: it
+does not call its decision model or change the selected serving target. Use
+external-policy `shadow` and `enforce` modes for a shipped adaptive promotion
+path.
 
 ## Stable And Staging Groups
 

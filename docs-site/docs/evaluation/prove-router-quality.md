@@ -96,6 +96,10 @@ a nonzero status. Live images, prompts, extracted text, and responses remain in
 the deployment's protected evaluation system rather than the example or gate
 artifact.
 
+See `examples/fixed-model-ocr-baseline/` in the source distribution for the
+preregistration, two-arm aggregate result shape, command, and exit-code
+contract.
+
 ## Non-Harbor Examples
 
 | Workload | Objective evidence |

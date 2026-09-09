@@ -255,7 +255,16 @@ curl "$ROUTER_BASE_URL/v1/chat/completions" \
   }'
 ```
 
-For streaming OpenAI Chat clients, repeat the same request with `"stream": true` and verify the downstream SSE contains `delta.tool_calls` and `finish_reason: "tool_calls"`. The router may call the upstream non-streaming for passthrough safety and synthesize OpenAI Chat SSE chunks for the caller.
+For streaming OpenAI Chat clients, repeat the same request with `"stream": true`
+and verify that the upstream receives native streaming. The downstream SSE
+should contain incremental `delta.tool_calls`, terminal
+`finish_reason: "tool_calls"`, and a final usage event when the caller sends
+`stream_options.include_usage: true`. Compatible `stream_options` are
+forwarded to the selected target. Canceling the caller request cancels the
+upstream call; after the first native event is written, the router does not
+retry, replay, or fall back to another target. OpenAI Responses and
+cross-dialect bridges continue to use unary upstream calls with router-encoded
+caller streaming.
 
 Expected shape when the model chooses the tool:
 

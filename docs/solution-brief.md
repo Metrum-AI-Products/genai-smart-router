@@ -60,11 +60,12 @@ GenAI Smart Router is designed for platform teams that need a controlled, observ
 Core capabilities:
 
 - One gateway endpoint for OpenAI-compatible and Anthropic-compatible clients.
-- Provider abstraction for OpenAI-style providers, Anthropic-style providers, Groq/OpenRouter-compatible routing, Replicate-style prediction APIs, enterprise-hosted vLLM/SGLang services, and other compatible upstreams.
+- Provider abstraction for OpenAI-style providers, Anthropic-style providers, Groq/OpenRouter-compatible routing, Replicate-style prediction APIs, evidence-gated unary-text Gemini `generateContent`, enterprise-hosted vLLM/SGLang services, and other compatible upstreams.
 - Server-side provider key injection, keeping upstream credentials out of client machines and application code.
 - Caller API tokens with traceable public prefixes, hashed token storage, per-caller allow lists, rate limits, quotas, and lifetime token budgets.
 - Configurable deployment-defined model groups. Names such as `small`, `medium`, `high`, `default`, `fast`, `big-coder`, or `vision` are example/reference deployment names, not product-required names.
-- Routing strategies including static, weighted, failover, dynamic_score observed-performance policy, TypeScript-driven custom policy, and external policy services. Legacy `latency`/`cost`/`semantic` selectors remain compatibility stubs; `strategy: intelligent` is baseline-only licensed config, not an active decision-model picker.
+- Routing strategies including static, weighted, failover, dynamic_score observed-performance policy, TypeScript-driven custom policy, and external policy services. Dynamic score includes caller-isolated, TTL-bounded, process-local conversation affinity. External policy supports baseline, shadow, and enforce promotion states without bypassing eligibility. Legacy `latency`/`cost`/`semantic` selectors remain compatibility stubs; `strategy: intelligent` is baseline-only licensed config, not an active decision-model picker.
+- Same-dialect OpenAI Chat and Anthropic Messages native SSE with incremental tool/usage events, cancellation propagation, and no replay or fallback after response commitment. OpenAI Responses and cross-dialect bridges remain unary upstream paths with caller-dialect encoding.
 - In-process LRU plus TTL cache for eligible unary responses.
 - Structured request logs, Prometheus-compatible metrics, and durable relational usage reporting with request-time pricing/cost fields.
 - Markdown usage reports by time period with per-key, per-model, hourly, daily, throughput, cost, and cache summaries.
@@ -96,6 +97,7 @@ flowchart TB
     AN[Anthropic-compatible APIs]
     OR[Aggregator APIs]
     RP[Prediction APIs]
+    GM[Gemini generateContent text]
   end
 
   C1 --> I
@@ -106,10 +108,12 @@ flowchart TB
   K --> AN
   K --> OR
   K --> RP
+  K --> GM
   OA --> O
   AN --> O
   OR --> O
   RP --> O
+  GM --> O
   O --> I
   A --> T
   R --> T
@@ -181,6 +185,9 @@ Routing targets can include metadata such as:
 - Rate hints.
 - Provider key identifier.
 - Tool-call eligibility.
+- Optional deployment-declared region metadata for selected-target diagnostics;
+  residency enforcement remains an operator policy and infrastructure
+  responsibility.
 
 For agentic developer tools, a model group can carry tool-only targets that are used only when the incoming request includes compatible tools. Ordinary text requests continue to use the group's normal weighted targets, while Codex and Claude Code tool-call requests can route to providers that preserve the required tool protocol. Tool-bearing requests bypass the response cache because their output depends on live filesystem, shell, and tool state.
 

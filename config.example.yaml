@@ -64,9 +64,10 @@ server:
     default_attempt_timeout_ms: 0
     # Successful upstream responses larger than this are rejected before decode.
     max_response_bytes: 33554432
-    # Keep false unless a reviewed private VLM deployment intentionally accepts
-    # image URLs that resolve to loopback, link-local, RFC1918, or other reserved
-    # addresses. Data URL and base64 image payloads do not need this opt-in.
+    # Keep false unless a reviewed private VLM deployment intentionally bypasses
+    # all router image-URL admission, including scheme, host/address, and DNS
+    # checks. The router forwards URLs; enforce destination and redirect safety
+    # with deployment egress controls. Data/base64 images do not need this opt-in.
     allow_private_image_urls: false
   diagnostics:
     enabled: true
@@ -1631,9 +1632,9 @@ models:
   reasoning-bridge-smoke:
     strategy: failover
     # Dedicated safe group for production-derived agent/reasoning bridge fixtures.
-    # Grant Harbor/Chetan or another scoped smoke caller access in deployment config
-    # before staging or production validation. Do not use production big-coder for
-    # experimental bridge fixture activation.
+    # Grant one reusable, scoped evaluation caller access in deployment config
+    # before staging or production validation. Do not repurpose a broad production
+    # coding group for experimental bridge fixture activation.
     targets:
     - provider: minimax_responses
       model_ref: m3
@@ -2438,8 +2439,8 @@ models:
         max_request_bytes: 196608
         validation_status: passed
         validation_notes: Dedicated validation route for production-derived large
-          OpenAI Chat tool payloads. The broad production coding group is not
-          changed by this example; grant Harbor and Chetan validation callers
+          OpenAI Chat tool payloads. Broad production coding groups are not
+          changed by this example; grant a reusable scoped evaluation caller
           access to this smoke group when rerunning the synthetic fixture.
     - provider: minimax
       model_ref: m3

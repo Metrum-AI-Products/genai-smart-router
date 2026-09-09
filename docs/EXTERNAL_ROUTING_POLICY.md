@@ -38,14 +38,34 @@ models:
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 
-The external routing policy service receives safe derived request context, safe caller metadata, and only targets that remain eligible after request-shape and model-group contract filtering. It receives pricing, tool, modality, and max-token metadata for those eligible targets, but no separate list of filtered targets. By default it does not receive prompt text, message bodies, image URLs/data, tool schemas, tool outputs, or `request.raw`; route on fields such as `context.textChars`, `context.estimatedTokens`, `context.imageCount`, and `context.toolCount`. Set `external_policy.include_request: true` only when the service is trusted to receive request content. If the model group enables `pii_filter`, that opt-in request mirror is built from the redacted request object and placeholder mappings remain request-local. The service must be treated as trusted infrastructure. It never receives raw router tokens, caller token hashes, provider API keys, or full router config.
+The external routing policy service receives derived request context, caller
+identity metadata (`id`, user, project, environment, public token ID, and
+allowed groups), and only targets that remain eligible after request-shape and
+model-group contract filtering. Eligible-target metadata includes provider,
+model/model-ref, dialect, tier, weight, pricing, capability/validation fields,
+configured key ID, API-key environment-variable name, and whether that
+variable is configured. These fields are useful for policy but disclose
+deployment inventory and pseudonymous caller identity, so the policy service
+and transport are trusted infrastructure. `targets[].region` is not included.
+
+By default the request does not include prompt text, message bodies, image
+URLs/data, tool schemas, tool outputs, or `request.raw`; route on fields such
+as `context.textChars`, `context.estimatedTokens`, `context.imageCount`, and
+`context.toolCount`. Set `external_policy.include_request: true` only when the
+service is trusted to receive request content. If the model group enables
+`pii_filter`, that opt-in request mirror is built from the redacted request
+object and placeholder mappings remain request-local. The service never
+receives raw router tokens, caller token hashes, provider API key values, or
+full router config.
 
 `external_policy.mode` controls reversible activation. Omitted mode keeps the
 backward-compatible `enforce` behavior. In `shadow`, the router calls the
 policy, validates and records its recommendation, and still serves configured
 eligible target order. Promote by changing reviewed config to `enforce`. Roll
 back to `baseline` to preserve eligible configured order without calling the
-policy. Shadow failures never affect the served target.
+policy. Shadow failures never affect the served target. All three modes still
+require a valid `url` and matching `allow_hosts` at config validation time, so
+promotion or rollback cannot activate an unreviewed destination.
 
 Policy URLs should use HTTPS. Plain HTTP is accepted only for trusted loopback hosts such as `localhost`, `127.0.0.1`, and `::1`, or when `external_policy.allow_http: true` is explicitly configured for a trusted non-local endpoint. `allow_hosts` is exact-host matching, not a suffix or wildcard rule. Redirects are revalidated before each hop; a redirect to any host outside `allow_hosts`, including a loopback address that was not listed, fails before the redirected service is reached.
 

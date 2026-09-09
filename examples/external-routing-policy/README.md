@@ -14,20 +14,30 @@ Configure a model group with:
 strategy: external
 external_policy:
   url: http://127.0.0.1:18090/route
+  mode: shadow
   allow_hosts: [127.0.0.1]
   timeout_ms: 500
   max_response_bytes: 65536
   on_error: fail_closed
 ```
 
-The service receives safe routing context, eligible targets, caller metadata, pricing metadata, tool support, and input modality details. It does not receive raw router tokens, caller token hashes, or provider API keys.
+Start with `shadow`, which records a valid recommendation while serving normal
+eligible order. Promote explicitly to `enforce`; use `baseline` to skip policy
+calls during rollback. Omitting `mode` defaults to `enforce` for compatibility.
+
+The service receives derived routing context, eligible-target inventory,
+pseudonymous caller identity, pricing, capability data, key IDs and API-key
+environment-variable names—but never provider API key values, raw router
+tokens, or token hashes. Treat it as trusted infrastructure.
 
 ## Adaptive Signal Policy Reference
 
 `adaptive_signal_policy.py` is a deployment-owned external policy that
 demonstrates observed-signal scoring, short-lived conversation pins, cache-hit
 exclusion, and serving-target fallback attribution. It is **not** built-in
-router state and is **not** online learning from the usage database.
+router state and is **not** online learning from the usage database. Its pins
+belong to this example policy service and are separate from the router's
+`dynamic_score.affinity` store.
 
 Run the synthetic wiring harness:
 
@@ -46,6 +56,7 @@ models:
     strategy: external
     external_policy:
       url: http://127.0.0.1:18092/route
+      mode: enforce
       allow_hosts: [127.0.0.1]
       timeout_ms: 300
       max_response_bytes: 65536

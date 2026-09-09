@@ -59,6 +59,7 @@ The error body, headers, diagnostics, and reports must not expose raw prompts, r
 | `pii-filter-blocked` | 400 | The requested model group is configured to reject requests that match PII filter rules, or the request exceeded the configured PII replacement cap. | Remove the sensitive value, reduce matched values, or use an approved workflow. | Review the model group's `pii_filter` rules, mode, and `max_replacements_per_request`. |
 | `pii-filter-failed` | 502 | The router could not apply the configured PII filter. | Retry after the administrator resolves configuration. | Check regex validation, filter limits, and request shape. |
 | `no-eligible-target` | 502 | No configured upstream target satisfies the request requirements. | Try a different allowed group only if instructed. | Add or enable a target that supports the requested dialect, tools, modalities, and cap behavior. |
+| `routing-policy-error` | 502 | A TypeScript or enforced external routing policy failed, timed out, returned an invalid decision, or selected a target outside the eligible list. | Retry only if the operator says the policy failure is transient; otherwise provide the request ID. | Inspect safe policy execution/error telemetry, script concurrency, external-policy reachability and timeout, then restore the reviewed policy or use its documented baseline rollback. |
 | `upstream-rate-limited` | 503 | All eligible upstream attempts were rejected by provider-side rate limits. | Retry later with backoff, or contact the administrator with the request ID if it persists. | Inspect `request_attempts`, provider status, and upstream rate-limit policy. |
 | `upstream-capacity-throttled` | 503 | Every otherwise eligible target is temporarily unavailable because provider/model/target shared shaping or adaptive backoff is protecting upstream capacity. | Retry after the `Retry-After` window when present, or contact the administrator with the request ID. | Inspect `request_upstream_shape_events`, `request_trace_events`, current traffic-shape config, and recent upstream `429` or quota events. |
 | `upstream-quota-exhausted` | 503 | All eligible upstream attempts failed because a provider reported exhausted balance, credits, quota, billing, or payment state. | Retry later only after the provider account is funded or quota is restored; include the request ID when escalating. | Inspect `request_attempts` for `upstream_quota_exhausted`, then verify provider account balance, billing, quota, and entitlement state. |
@@ -147,6 +148,39 @@ Terminal upstream failures include safe fields that help clients and operators d
 - `error.details.router_quota_state` and `error.details.router_key_state`: safe caller admission state at the time of the request.
 
 An upstream `400` normally remains a `502 upstream-failed` terminal router response because the proxy could not satisfy the caller request, but its `error_class` and `reason_code` are `upstream_bad_request` and `retryable` is false in diagnostics. This usually means the selected upstream rejected the request shape or parameters; do not blindly retry the same payload. An upstream `413` returns `reason_code: upstream_request_too_large`, which means callers should reduce context, attachments, tool schemas, or output caps before retrying. A router-side `429` such as `traffic-shaped`, `tpm-exceeded`, or `rpm-exceeded` happens before upstream attempts and does not include `X-Upstream-Status`.
+
+Image URL validation also uses the `upstream-failed` envelope with a safe
+`reason_code`. `image_url_forbidden` means the URL scheme, literal address, or
+initially resolved destination is not allowed. `image_url_dns_failure` means
+the hostname could not be resolved, and `image_url_dns_timeout` means the
+request-wide 500 ms DNS budget expired. The router does not include the URL in
+the response or diagnostics. Use a reviewed public object-store URL or a data
+URL; operators should keep private-address allowance disabled unless a private
+VLM deployment has independent egress controls.
+
+## Native Stream Failures
+
+Same-dialect OpenAI Chat and Anthropic Messages streams commit the downstream
+response when the first native SSE event is written. If the upstream fails or
+the connection ends unexpectedly after that point, HTTP status and headers
+cannot be replaced with a JSON error envelope, and the router does not replay
+the request against a fallback target. The caller still observes the committed
+HTTP `200`; no JSON or synthetic SSE error is appended. Diagnostics record
+`499` for client cancellation or `502` for another committed interruption.
+Clients should treat a stream that lacks its dialect's terminal event as
+incomplete and may retry according to their idempotency policy. Preserve the
+response's `X-Request-Id` for operator correlation.
+
+Canceling the downstream request cancels the upstream request and is recorded
+as a cancellation rather than a fallback opportunity. A normally completed
+Chat stream may end with `[DONE]` or a terminal `finish_reason`; a requested
+`stream_options.include_usage` usage event is forwarded when the upstream
+provides it; the router does not synthesize a missing caller-visible usage
+event. A committed stream that later fails releases its quota/license
+reservation rather than charging partially observed streamed tokens. Native
+PII-filtered streams preserve placeholders because safe
+restoration cannot be performed independently across arbitrary SSE chunk
+boundaries.
 
 Safe upstream bad-request example:
 

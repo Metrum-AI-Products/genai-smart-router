@@ -34,6 +34,7 @@ Contracts live at `models.<group>.contract`:
 Targets may include:
 
 ```yaml
+region: deployment-region-a
 validation:
   status: passed
   workload: support_chat
@@ -45,6 +46,20 @@ validation:
 ```
 
 Do not put prompts, images, tool outputs, bearer tokens, token hashes, provider keys, private headers, or full config snippets in validation notes.
+
+`region` is optional deployment-declared metadata. When present, it is 1–64
+characters, starts with an ASCII letter or digit, and then permits letters,
+digits, `.`, `_`, `:`, `/`, and `-`. It is recorded for the target that actually served the request,
+including a successful fallback, and appears in safe selected-target decision
+telemetry. It is not inferred from the provider URL and does not enforce
+residency, retention, jurisdiction, transfer, or training policy. If a workload
+requires a processing location, operators must validate the provider and
+infrastructure controls and encode that requirement in reviewed group
+eligibility or policy; ordinary callers see allowed model groups through
+`/v1/models`, not the per-target inventory. `region` is not passed to
+TypeScript or external-policy inputs and does not itself filter candidates.
+Use separate caller-authorized groups or another explicitly policy-visible,
+validated classification when routing must enforce location.
 
 Use `required_capabilities.reasoning` when the group itself promises reasoning or thinking support for every compatible request. Use per-target `reasoning` metadata without a contract requirement when a mixed weighted group should keep ordinary traffic on all ordinary eligible targets but restrict explicit OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, or Anthropic Messages `thinking` requests to validated reasoning targets. In both cases, target metadata must come from direct upstream and router-level smokes for the exact dialect and skin.
 

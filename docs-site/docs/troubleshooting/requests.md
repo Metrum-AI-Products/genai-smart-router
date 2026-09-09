@@ -15,7 +15,9 @@ The workflow is symptom -> evidence -> fix:
 | `429` before any upstream attempt | Quota, traffic-shaping, TPM/RPM, concurrency, and license-volume rows. | Adjust caller policy, queueing, or workload shape. |
 | Upstream `429`, quota, or billing errors | Attempt rows, provider capacity shaping, adaptive backoff, fallback rows. | Tune provider shaping, route weights, fallback mix, or upstream account capacity. |
 | `502 no-eligible-target` | Candidate and filter rows, request-shape diagnostics, provider catalog status. | Add compatible targets or correct modality/tool/context metadata. |
+| `502 routing-policy-error` | Policy execution outcome, script/runtime class, external-policy duration and response class. | Restore the reviewed policy, reduce script concurrency, or use external-policy baseline rollback. |
 | Slow or timed-out request | Attempt duration, TTFB, fallback, client cancellation, downstream throughput. | Isolate the provider/model/client path before changing the whole group. |
+| Stream ends without a terminal event | Response `X-Request-Id`, committed attempt, cancellation/timeout state, proxy buffering. | Treat output as incomplete; fix upstream/intermediary streaming before retrying or changing weights. |
 | Agent or large-context failure | Request bytes, tool-schema bytes, estimated-token buckets, output-cap buckets, dialect and bridge rows. | Route around incompatible targets or add validated `request_shape_support`. |
 
 ## 1. Capture The Caller View
@@ -133,6 +135,49 @@ Common request-shape causes:
 - streaming behavior differs from the caller expectation.
 
 Model-group contracts and provider catalog metadata should describe validated modalities, tools, dialects, pricing, and max-token behavior.
+
+### Native Streaming
+
+Same-dialect OpenAI Chat and Anthropic Messages requests use native upstream
+SSE. Confirm that the selected target dialect matches the inbound dialect,
+multiple deltas arrive before total completion, and the reverse proxy does not
+buffer event streams. OpenAI Responses and cross-dialect bridges use unary
+upstream calls with router-encoded caller streaming, so they have different
+TTFB characteristics.
+
+After the first native event, the response is committed: a later upstream error
+cannot become a JSON error response and the router does not replay the request
+to another target. The caller still sees HTTP `200`, with no appended synthetic
+error event, while diagnostics record `499` for cancellation or `502` for
+another committed interruption. A stream without its normal terminal event is
+incomplete. Keep `X-Request-Id`, then inspect the selected attempt for timeout,
+client cancellation, status, and response bytes. Failed committed streams
+release quota/license reservations instead of reconciling partial streamed
+tokens. For Chat callers that request `stream_options.include_usage`, verify a
+compatible target received the option and emitted the final usage event; the
+router does not synthesize one when the upstream omits it.
+
+Native streams for groups using `pii_filter` preserve redaction placeholders.
+Buffered responses can restore them, but arbitrary SSE boundaries do not allow
+safe per-chunk restoration.
+
+### Routing Policy And Dynamic Affinity
+
+For `routing-policy-error`, identify whether the group uses `script` or
+`external`. Script decisions run in fresh isolated VMs with a per-group
+`script_max_concurrent` cap; queued decisions honor cancellation. External
+policy calls use a bounded per-group client and propagate caller cancellation.
+Use `external_policy.mode: baseline` to stop policy calls, `shadow` to record
+recommendations without changing the target, and `enforce` only after shadow
+evidence passes. Policy output is always checked against the already eligible
+target list and cannot widen caller access.
+
+For unexpected `dynamic_score` target changes, inspect the safe affinity
+signal. Expired pins are reselected after the configured TTL; ineligible pins
+are replaced when current tools, modality, API shape, contract, spend, or
+health gates reject the old target. Pins are caller-isolated and process-local,
+so they do not survive restart and are not shared automatically between
+replicas.
 
 ### Reasoning Controls
 

@@ -14,6 +14,75 @@ this page. The version banner, `/docs/releases`, and `/version` are the
 authoritative sources for its exact router version and build timestamp; do not
 infer the running version from a date written in documentation.
 
+## Next Package - Version Assigned At Packaging
+
+### Highlights
+
+- Same-dialect OpenAI Chat and Anthropic Messages requests proxy native
+  upstream SSE, including tool and usage events. Responses and cross-dialect
+  streaming remain router-encoded after a unary upstream call.
+- `dynamic_score` adds caller-isolated, process-local conversation affinity
+  with bounded fixed-TTL storage.
+- TypeScript decisions use fresh VMs with per-group concurrency admission;
+  external policy adds explicit `baseline`, `shadow`, and `enforce` modes with
+  reusable cancellation-aware HTTP clients.
+- The outbound Gemini `generateContent` codec supports evidence-gated unary
+  text targets. It is not a caller endpoint and does not enable tools, images,
+  reasoning, structured output, or streaming.
+- Targets may declare a bounded diagnostic `region` label. It records the
+  actual serving target but does not enforce or prove processing location.
+- Fleet lifecycle implementation is isolated from the serving request-path
+  package, and package validation excludes Fleet binaries from runtime images.
+- A second preregistered fixed-model OCR outcome gate demonstrates
+  scalar-only quality, latency, cost, and regression decisions.
+
+### Operator Impact
+
+- Config: review `dynamic_score.affinity`, `script_max_concurrent`,
+  `external_policy.mode`, and optional `targets[].region`. New external
+  policies should begin in `shadow`; `baseline` skips policy calls.
+- Database: migration `2026090901` adds non-null text
+  `request_usage.target_region` with an empty default.
+- Streaming: reverse proxies must not buffer SSE. After the first native event,
+  a later failure cannot change the committed `200`, append an error envelope,
+  or fall back.
+- Security: `allow_private_image_urls: true` bypasses all router image-URL
+  admission and therefore requires independent egress controls.
+- Script safety: concurrency limits do not preempt unbounded JavaScript after
+  a VM starts.
+
+### Caller Impact
+
+- Native Chat/Messages streams can deliver lower time-to-first-event and
+  preserve upstream event shapes. Clients must treat a missing terminal event
+  as incomplete.
+- Native PII-filtered streams preserve placeholders; buffered responses and
+  router-generated Responses/bridge streams can restore them.
+- Existing model-group authorization and request-shape eligibility remain
+  authoritative. Affinity and external policy cannot widen access.
+
+### Validation
+
+- Run the documented native Chat and Messages text/tool/usage/cancellation
+  smokes, plus Responses and bridge regressions.
+- Exercise affinity hit, miss, expiry, ineligible replacement, caller
+  isolation, restart, and multi-replica behavior.
+- Load-test TypeScript admission/cancellation and compare external-policy
+  `shadow` recommendation with the served baseline before promotion.
+- Plan, apply, and verify migration `2026090901`; confirm serving-target region
+  attribution after successful fallback.
+- Keep Gemini targets catalog-only unless the exact provider/model/account has
+  direct and restricted router text evidence.
+
+### Rollback
+
+- Disable affinity or restore the previous strategy; set external policy to
+  `baseline`; restore the prior script/cap; remove Gemini or region-bearing
+  targets from active groups; and restore the prior package/config.
+- Native-stream rollback requires the prior package. Follow the migration
+  contract before downgrading; restore the approved pre-migration database
+  when the contract requires it.
+
 ## v1.0.2 - 2026-09-08
 
 GenAI Smart Router v1.0.2 is a documentation packaging release. Caller-facing

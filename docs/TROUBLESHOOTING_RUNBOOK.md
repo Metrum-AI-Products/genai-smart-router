@@ -4,19 +4,22 @@ Use this runbook for production issues reported by users or monitoring.
 
 ## Deployment Shape
 
-The Metrum production deployment runs on **Amazon EKS**, not Docker Compose.
-Production changes are applied by publishing a new runtime bundle and activating
-a signed immutable Fleet intent through `metrum-genai-smartrouter-fleetctl`; the
-cluster then rolls the `router` Deployment. Never edit a live Kubernetes secret,
-ConfigMap, or Deployment by hand to change production behavior, because the next
-Fleet reconciliation replaces it and the change leaves no signed record. See
-[Customer instance operations runbook](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md)
-and [Multi-environment deployment CLI](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md).
+First identify the deployment under test: standalone binary, Docker Compose,
+generic Kubernetes, or a packaged Fleet-managed Kubernetes instance. Use only
+the procedure for that deployment and its currently authenticated operator
+session.
 
-Docker Compose remains a supported **self-hosted customer** option documented in
-[Docker deployment](DOCKER_DEPLOYMENT.md). Compose-specific steps in this runbook
-apply only to those installs. When triaging the Metrum production deployment, use
-the Kubernetes and Fleet procedures.
+For Fleet-managed instances, publish a protected runtime bundle and activate a
+signed immutable intent through `metrum-genai-smartrouter-fleetctl`; do not edit
+owned Kubernetes Secrets, ConfigMaps, or Deployments by hand because
+reconciliation replaces unrecorded changes. See [Customer instance operations
+runbook](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md) and [Multi-environment
+deployment CLI](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md).
+
+Docker Compose remains a supported self-hosted option documented in [Docker
+deployment](DOCKER_DEPLOYMENT.md). Keep all hosts, namespaces, protected
+profile references, credentials, and live evidence deployment-owned and
+outside this public tree.
 
 For startup blocked by an incompatible, pending, running, or failed migration state, use the canonical [Data migration framework](DATA_MIGRATIONS.md). Inspect the metrics-admin migration summary and authenticated read-only **Operations / Data migrations** report; do not use the serving router to apply, retry, or reverse work. Ledger `failed` or `running` state takes precedence over a bound data-job projection. Recovery follows the recorded backup/restore and deployment-job procedure.
 
@@ -86,8 +89,8 @@ rtk curl -fsS https://<router-host>/readyz
 rtk curl -fsS https://<router-host>/version
 ```
 
-On the EKS production deployment, inspect workload state with the currently
-authenticated cluster session and the deployment-owned namespace:
+For a Kubernetes deployment, inspect workload state with the currently
+authenticated cluster session and deployment-owned namespace:
 
 ```bash
 rtk kubectl get pods -n <namespace> -o wide
@@ -334,7 +337,10 @@ rtk go test ./internal/router -run 'ProductionDerived'
 rtk python3 scripts/prod_smoke_regressions.py --mode prod --fixture all --model-group reasoning-bridge-smoke
 ```
 
-Use a deployment-defined smoke group and a scoped smoke caller with access granted in config, for example Harbor/Chetan access in the managed deployment. Do not change production `big-coder` just to run these fixtures; missing smoke group, caller access, or report DB access should be recorded as the blocker.
+Use a deployment-defined smoke group and one reusable, scoped evaluation
+caller with access granted in config. Do not change a broad production coding
+group just to run these fixtures; missing smoke group, caller access, or report
+DB access should be recorded as the blocker.
 
 When the workload is trusted and production-critical, raising TPM for that key can be the right fix. For routine or exploratory work, prefer reducing client context, lowering output caps, splitting requests, or moving the key to a cheaper/smaller model group only after that group passes the workload verifier. Distinguish router-side `429` policy failures from upstream provider `429` attempts and user/client cancellations before changing quotas.
 
@@ -369,6 +375,51 @@ Separate provider/model shared shaping from both caller limits and upstream-retu
 
 For aggregate provider-shaping triage, use `router-usage-report --provider <provider> --traffic-shape-scope provider --since 24h` and the Provider shaping and Backoff admin tabs. Confirm whether route-around successes are high enough before tightening limits or removing active targets.
 
+### Native Streaming, Policy Latency, And Affinity
+
+For same-dialect OpenAI Chat or Anthropic Messages, verify that a streaming
+caller produces multiple incremental upstream and downstream events. A first
+delta that arrives only near total completion usually means the target is
+cross-dialect, the caller used OpenAI Responses, or an intermediary buffered
+SSE. Check `request_usage.inbound_dialect`, `target_dialect`, TTFB, total
+duration, and the selected target before changing routing weights. Confirm
+reverse proxies disable response buffering for SSE.
+
+Once the first native event is committed, a later upstream failure cannot be
+replaced with a JSON error or replayed to a fallback. Treat a missing terminal
+event as an interrupted stream even though the caller already received HTTP
+`200`; no synthetic SSE error is appended. Correlate it with `X-Request-Id`
+and inspect the internal terminal status (`499` for cancellation, `502` for
+another committed interruption), selected attempt's cancellation, timeout,
+status, and byte counts. Caller cancellation should cancel the upstream
+context, release quota/license reservations, and should not create a fallback
+transition; partially observed streamed tokens are not reconciled into those
+durable counters on the failed path. For Chat callers using
+`stream_options.include_usage: true`, verify that compatible targets receive
+the field and return a final usage event—the router forwards but does not
+synthesize a missing caller-visible usage chunk.
+
+For `routing-policy-error`, separate TypeScript from external-policy failures.
+TypeScript groups should check script load/runtime errors and whether
+`script_max_concurrent` is saturated; requests waiting for a VM slot honor
+caller cancellation, and increasing the cap above the default `16` increases
+simultaneous Goja work in the router process. External groups should inspect
+safe policy execution outcome, duration, timeout, response class, and selected
+candidate index. `mode: shadow` records recommendations without changing the
+served target, `mode: enforce` applies valid recommendations, and
+`mode: baseline` skips the policy call. Roll back policy influence with
+`baseline`; do not weaken target eligibility or caller model-group access to
+work around policy failures.
+
+If a `dynamic_score` conversation unexpectedly changes targets, inspect its
+safe affinity signal. `affinity_expired` means the TTL elapsed;
+`affinity_ineligible` means the pinned target no longer passed current request
+shape, contract, spend, or health gates; and `affinity_miss` means no active
+pin matched. Pins are caller-isolated and process-local, so a restart or a
+request routed to another replica also starts without the previous pin. Disable
+only the affinity layer with `routing_policy.dynamic_score.affinity.enabled:
+false`; switch to `weighted` for a full dynamic-score rollback.
+
 ## License Errors
 
 `license-*` errors occur before upstream routing. `license-expired`, `license-feature-forbidden`, and `license-limit-exceeded` indicate a verified license that does not currently permit the request; other license errors normally mean the file is missing, malformed, unverifiable, for the wrong product, not yet valid, or the local clock moved backwards. Check `/readyz`, safe `request_usage.license_status` and `license_reason` fields, metrics-admin license gauges, and authorized `/admin/license/status`. Do not copy license payloads, signatures, private keys, or full config into tickets; use request IDs and safe status fields.
@@ -383,7 +434,7 @@ Ordinary upstream 4xx malformed-request errors remain non-retryable and stop fal
 
 For large coding-agent payloads, `upstream_bad_request` is usually request-shape evidence, not a provider outage. Common safe buckets are large request bytes, large tool schema bytes, unsupported forced tool choice, unsupported structured output, unsupported reasoning field, image sent to a text-only skin, wrong output-token cap field, or bridge metadata missing for the requested shape. Compare failed and successful rows by client, inbound dialect, provider/model/dialect, request bytes bucket, tool-schema bucket, tool count, output-cap bucket, and sanitized upstream code/type/param. Do not paste the tool schema, repository contents, prompts, screenshots, raw upstream response, bearer token, token hash, provider key, or full production config into the incident.
 
-If an image-bearing request fails before upstream with `image_url_forbidden`, `image_url_dns_failure`, or `image_url_dns_timeout`, inspect only the safe class, not the URL or raw image content. The default policy blocks `http`/`https` image URLs that point to or initially resolve to loopback, link-local, RFC1918/private, multicast, or unspecified addresses, and all lookups in one request share a bounded 500 ms DNS budget. The router does not dereference accepted image URLs or inspect redirects; deployment egress controls must block redirect targets and DNS rebinding to private, metadata, and administrative destinations. Prefer data URLs or a reviewed public object-store URL; use `server.upstream.allow_private_image_urls: true` only for a private VLM deployment with reviewed egress controls.
+If an image-bearing request fails before upstream with `image_url_forbidden`, `image_url_dns_failure`, or `image_url_dns_timeout`, inspect only the safe class, not the URL or raw image content. The default policy blocks `http`/`https` image URLs that point to or initially resolve to loopback, link-local, RFC1918/private, multicast, or unspecified addresses, and all lookups in one request share a bounded 500 ms DNS budget. The router does not dereference accepted image URLs or inspect redirects; deployment egress controls must block redirect targets and DNS rebinding to private, metadata, and administrative destinations. Prefer data URLs or a reviewed public object-store URL. `server.upstream.allow_private_image_urls: true` bypasses all router-side image-URL admission, including scheme, address, and DNS checks—not only private-address rejection—so use it only for a private VLM deployment whose network egress controls enforce every destination restriction.
 
 ### Bad Image Analysis
 

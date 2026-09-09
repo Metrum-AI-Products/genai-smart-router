@@ -20,6 +20,10 @@ sanitized usage and performance fields.
 - provider optionality behind stable application configuration;
 - server-side key custody and scoped caller access;
 - weighted, failover, dynamic-score, TypeScript, and external-service policy;
+- caller-isolated dynamic-score affinity and reversible external-policy
+  baseline/shadow/enforce promotion;
+- native incremental OpenAI Chat and Anthropic Messages streaming, with
+  translated caller streaming for Responses and cross-dialect bridges;
 - text, tool, image, and agent request-shape eligibility;
 - caller budgets and upstream traffic shaping;
 - request-time cost, latency, throughput, attempt, fallback, and cache reports;

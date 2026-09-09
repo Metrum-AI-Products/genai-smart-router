@@ -98,7 +98,13 @@ For capped requests, keep model quality and cap enforcement separate. A model ca
 
 The router validates dereferenceable `http` and `https` image URLs before selecting an upstream target. By default, URLs that point to or resolve to loopback, link-local, RFC1918/private, multicast, unspecified, or other reserved addresses are rejected before any provider call. All hostname lookups in one request share a bounded 500 ms DNS budget. The router does not dereference image URLs or probe redirects; the upstream VLM may follow a redirect after receiving the URL, so deployment egress controls must independently block private, metadata, and administrative destinations. Inline `data:` URLs and base64 image blocks remain supported because they do not ask the upstream VLM to fetch a network URL.
 
-Keep `server.upstream.allow_private_image_urls: false` for hosted and ordinary private-upstream deployments. Set it to `true` only after a reviewed private VLM design intentionally permits server-side dereference of private image URLs and the deployment has network controls around metadata services and internal admin endpoints.
+Keep `server.upstream.allow_private_image_urls: false` for hosted and ordinary
+private-upstream deployments. Setting it to `true` bypasses the router's
+entire image-URL admission step—including scheme, host/address, and DNS
+checks—not only private-address rejection. Use it only when a reviewed private
+VLM design intentionally permits that behavior and deployment egress controls
+block metadata services, internal administration endpoints, redirects, DNS
+rebinding, and any other prohibited destination.
 
 Blocked image URLs fail before target selection and before provider authentication is used. A failure usually means the URL is malformed, uses a non-HTTP scheme, resolves to a private or reserved address, cannot be resolved, or exceeds the request-wide DNS budget. Safe diagnostics distinguish `image_url_forbidden`, `image_url_dns_failure`, and `image_url_dns_timeout` without storing the URL.
 

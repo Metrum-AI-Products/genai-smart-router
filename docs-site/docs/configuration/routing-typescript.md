@@ -234,7 +234,27 @@ export function route(ctx: RouteContext) {
 
 ## External Policy Calls
 
-Scripts run synchronously inside the router process after TypeScript transpilation. Each decision uses a fresh Goja VM so mutable JavaScript globals cannot cross request boundaries; VMs are not pooled. `script_max_concurrent` caps simultaneously executing VMs per model group, defaults to `16` when unset or zero, and accepts values through `256`. Requests waiting for a slot honor caller cancellation. Keep policy fast and deterministic. If a script returns `classLabel`, treat it as a telemetry token only: use at most 64 characters from letters, numbers, `_`, `-`, `.`, and `:`. Do not echo prompt text, secrets, HTML, or user input into `classLabel`; unsafe values are stored as `unsafe_class_label`. External calls use the router-provided `router.fetchJSON(url, options)` helper, not browser `fetch`, and only work when `script_http.enabled` is true for that model group.
+Scripts run synchronously inside the router process after TypeScript
+transpilation. Each decision uses a fresh Goja VM so mutable JavaScript globals
+cannot cross request boundaries; VMs are not pooled. `script_max_concurrent`
+caps simultaneously executing VMs per model group, defaults to `16` when unset
+or zero, and accepts values through `256`. Requests waiting for a slot honor
+caller cancellation.
+
+The cap is admission control, not an execution deadline. After a VM starts,
+pure JavaScript has no configured timeout or context preemption; an infinite
+loop can hold its slot and request goroutine indefinitely. Keep policy bounded,
+fast, deterministic, and free of unbounded loops. `router.fetchJSON` has its
+own configured HTTP timeout, but that timeout does not bound unrelated
+JavaScript execution. Roll back a stuck or slow policy by restoring the
+previous reviewed config/script and restarting affected instances.
+
+If a script returns `classLabel`, treat it as a telemetry token only: use at
+most 64 characters from letters, numbers, `_`, `-`, `.`, and `:`. Do not echo
+prompt text, secrets, HTML, or user input into `classLabel`; unsafe values are
+stored as `unsafe_class_label`. External calls use the router-provided
+`router.fetchJSON(url, options)` helper, not browser `fetch`, and only work
+when `script_http.enabled` is true for that model group.
 
 ```typescript
 export function route(ctx: RouteContext) {
