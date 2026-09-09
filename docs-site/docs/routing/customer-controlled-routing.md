@@ -32,7 +32,8 @@ The router does not route across unauthorized groups and does not activate provi
 | Always use one target | `static` | Regulated workload, fixed-model evaluation, smoke group | No provider diversity |
 | Ordered fallback | `failover` | Reliability with a preferred provider first | Watch total timeout and retry budget |
 | Weighted mix | `weighted` | Gradual rollout, cost mix, provider diversity | Needs monitoring and rollback criteria |
-| Fast configurable scoring | `dynamic_score` | Cost, latency, reliability, request-shape, and evaluation scoring with scalar terms | Keep terms lightweight and group-local |
+| Fast configurable scoring | `dynamic_score` | Cost, latency, reliability, request-shape, and evaluation scoring with scalar terms and observed signals | Keep terms lightweight and group-local; this is the mature built-in adaptive scorer |
+| Legacy stubs only | `latency`, `cost`, `semantic` | Older configs that still parse these names | Stub maturity only: configured RPM/cost ranks or keyword classification, not live observations or embeddings; prefer `dynamic_score` |
 | Custom logic in config | TypeScript `script` | Deployment-specific routing using safe context | Scripts are trusted deployment code |
 | Separate policy service | `external` | Enterprise policy engine, sidecar, or ML scorer | Secure network, auth, timeout, and fail-closed behavior are required |
 | Hard capability promise | Model-group `contract` | Quality and capability floor per group | Stale validation or strict floors can remove all targets |

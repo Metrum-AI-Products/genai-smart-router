@@ -48,7 +48,7 @@ flowchart TD
 - Use `script` when a compact trusted local policy is easier to review than a large config block.
 - Use `external` only for trusted deployment infrastructure. The service receives request context and eligible target metadata, so protect it like routing control plane infrastructure.
 - Use `contract` with another strategy when the model group itself is a quality and capability promise. Contract is a gate before selection, not a peer selector that replaces the strategies above.
-- Do not use the legacy `latency`, `cost`, or `semantic` strategy names for new groups. They remain for older configs and rank configured integers or stub keywords rather than live observations. Prefer `dynamic_score` for built-in adaptive scoring and `script`/`external` for custom decision logic.
+- Do not use the legacy `latency`, `cost`, or `semantic` strategy names for new groups. They remain for older configs only and are not mature adaptive routers: they rank configured integers or stub keyword classes rather than live observations or embeddings. Prefer `dynamic_score` for built-in adaptive scoring and `script`/`external` for custom decision logic.
 
 ## Detailed References
 
