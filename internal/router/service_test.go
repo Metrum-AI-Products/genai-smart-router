@@ -4102,6 +4102,93 @@ func TestVersionAndHealthEndpointsExposeBuildInfo(t *testing.T) {
 	}
 }
 
+func TestReadyzDoesNotLeakValidationDetail(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+
+	readyOK := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(readyOK, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if readyOK.Code != http.StatusOK {
+		t.Fatalf("healthy /readyz status=%d body=%s", readyOK.Code, readyOK.Body.String())
+	}
+
+	// Mutate runtime config so Validate() fails with a detailed message that must not leak.
+	leakCallerID := "alice"
+	leakPath := "/tmp/secret-config-path.yaml"
+	svc.cfg.Models["default"] = ModelGroup{
+		Strategy: "script",
+		Script:   leakPath,
+		Targets:  []Target{{Provider: "mock", Model: "mock-model"}},
+	}
+	svc.cfg.Callers[0].Allow = []string{"missing-group-for-" + leakCallerID}
+
+	validateErr := svc.cfg.Validate()
+	if validateErr == nil {
+		t.Fatal("expected Validate() to fail after config mutation")
+	}
+	detail := validateErr.Error()
+	if !strings.Contains(detail, leakCallerID) {
+		t.Fatalf("Validate() error=%q does not include caller id %q; adjust mutation", detail, leakCallerID)
+	}
+	if !strings.Contains(detail, "missing-group-for-"+leakCallerID) && !strings.Contains(detail, leakPath) {
+		// Prefer either the allow-list group detail or script path in the validation text.
+		t.Fatalf("Validate() error=%q missing expected detail markers", detail)
+	}
+
+	ready := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(ready, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if ready.Code != http.StatusServiceUnavailable {
+		t.Fatalf("/readyz status=%d body=%s, want 503", ready.Code, ready.Body.String())
+	}
+	var readyBody map[string]any
+	if err := json.Unmarshal(ready.Body.Bytes(), &readyBody); err != nil {
+		t.Fatalf("/readyz json: %v body=%s", err, ready.Body.String())
+	}
+	if readyBody["ok"] != false {
+		t.Fatalf("/readyz ok=%#v, want false", readyBody["ok"])
+	}
+	if readyBody["error"] != "not-ready" {
+		t.Fatalf("/readyz error=%#v, want not-ready", readyBody["error"])
+	}
+	raw := ready.Body.String()
+	if strings.Contains(raw, detail) {
+		t.Fatalf("/readyz leaked Validate() detail %q in body=%s", detail, raw)
+	}
+	if strings.Contains(raw, leakCallerID) {
+		t.Fatalf("/readyz leaked caller id %q in body=%s", leakCallerID, raw)
+	}
+	if strings.Contains(raw, leakPath) {
+		t.Fatalf("/readyz leaked path %q in body=%s", leakPath, raw)
+	}
+	if strings.Contains(raw, "missing-group-for-") {
+		t.Fatalf("/readyz leaked allow-list detail in body=%s", raw)
+	}
+	if strings.Count(raw, `"error"`) != 1 {
+		t.Fatalf("/readyz has duplicate error fields in body=%s", raw)
+	}
+	for _, key := range []string{"version", "commit", "build_date"} {
+		if readyBody[key] == "" || readyBody[key] == nil {
+			t.Fatalf("/readyz missing %s: %#v", key, readyBody)
+		}
+	}
+
+	health := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if health.Code != http.StatusOK {
+		t.Fatalf("/healthz status=%d body=%s, want 200 after /readyz failure", health.Code, health.Body.String())
+	}
+	var healthBody map[string]any
+	if err := json.Unmarshal(health.Body.Bytes(), &healthBody); err != nil {
+		t.Fatalf("/healthz json: %v", err)
+	}
+	if healthBody["ok"] != true {
+		t.Fatalf("/healthz ok=%#v, want true", healthBody["ok"])
+	}
+	if _, hasError := healthBody["error"]; hasError {
+		t.Fatalf("/healthz unexpectedly included error: %#v", healthBody)
+	}
+}
+
 func TestEmbeddedDocsRootRedirectsToDocs(t *testing.T) {
 	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
 	defer svc.Close()

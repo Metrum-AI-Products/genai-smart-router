@@ -39,7 +39,7 @@ The router does not select targets from another group just because they are chea
 
 Use an optional model-group `contract` together with one of the strategies above when the group needs explicit workload requirements, quality floors, and validation gates before selection. A contract is a pre-filter, not a seventh selector. See [Model Group Contracts](../configuration/model-group-contracts).
 
-Legacy compatibility selectors named `latency`, `cost`, and `semantic` still parse for older configs, but they rank configured RPM/cost integers or stub keyword classes rather than live observations. Prefer `dynamic_score`, `script`, or `external` for adaptive or programmable decisions.
+Legacy compatibility selectors named `latency`, `cost`, and `semantic` still parse for older configs. They are stubs: `latency`/`cost` rank configured integer fields, and `semantic` uses keyword classification, not embeddings or live quality observations. Do not treat them as mature adaptive routers. Prefer `dynamic_score` for config-only observed-signal scoring, or `script`/`external` for programmable policy.
 
 ## Capability Filtering
 
@@ -117,7 +117,7 @@ For deterministic fallback, configure a failover-style group or a strategy-speci
 
 When a fallback target answers successfully, terminal usage and request-time cost fields record that serving target and its prices. Per-attempt rows still preserve the failed primary. Router response-cache entries for the successful response use the serving target's cache key.
 
-Current upstream streaming is buffered and then re-encoded for the caller dialect. The router does not use live mid-stream TTFT or tokens-per-second to change the selected target during a request. Fallback retries are for retryable attempt failures before a successful response is returned, not for mid-stream rerouting after the first successful upstream body.
+Current upstream calls are unary. When a caller requests streaming, the router buffers the completed upstream response and then synthesizes dialect-correct SSE for the caller. This is not live mid-generation token streaming and is not used for mid-stream TTFT or tokens-per-second target changes. Fallback retries are for retryable attempt failures before a successful response is returned, not for mid-stream rerouting after the first successful upstream body.
 
 ## Validation Checklist
 

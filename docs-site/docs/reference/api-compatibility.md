@@ -133,7 +133,7 @@ credential.
 | Capability | Chat Completions | Responses | Messages |
 |---|---|---|---|
 | Text input/output | Supported | Supported | Supported |
-| Streaming | Supported when the selected target supports the provider path | Supported when the selected target supports the provider path | Supported when the selected target supports the provider path |
+| Streaming | Caller SSE after unary upstream (not live token streaming) | Caller SSE after unary upstream (not live token streaming) | Caller SSE after unary upstream (not live token streaming) |
 | Tool calls | Requires `tool_support.openai_chat` | Requires `tool_support.openai_responses` | Requires `tool_support.anthropic_messages` |
 | Structured outputs | `response_format` requires `tool_support.openai_chat: [structured_outputs]` | `text.format` requires `tool_support.openai_responses: [structured_outputs]` | No OpenAI structured-output equivalent |
 | Reasoning/thinking | `reasoning_effort` requires target `reasoning` metadata | `reasoning` requires target `reasoning` metadata | `thinking` requires target `reasoning` metadata or validated target default thinking |
@@ -141,6 +141,8 @@ credential.
 | Caller max-token caps | `max_tokens` and `max_completion_tokens` are enforced against configured target metadata | `max_output_tokens` is enforced against configured target metadata | `max_tokens` is enforced against configured target metadata |
 | Cache eligibility | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests |
 | Usage and cost rows | Recorded | Recorded | Recorded |
+
+Caller `stream: true` requests receive dialect-correct SSE framing after the router completes a unary upstream call and re-encodes the final response. Treat the Streaming row as caller-facing stream compatibility, not a claim of live mid-generation token streaming from the upstream. Clients that need provider-native incremental tokens should not assume the router forwards an upstream SSE byte stream.
 
 If a request includes tools, structured-output fields, images, or an explicit max-token cap, the router filters the model group's target list before policy selection. Targets that do not satisfy the request shape are skipped. If no compatible target remains, the router returns `502 no-eligible-target` before sending an upstream request.
 
@@ -391,7 +393,7 @@ Text-only and image-capable work do not need separate user workflows. A deployme
 
 Router-only endpoints are not part of OpenAI or Anthropic compatibility:
 
-- `/readyz` and `/healthz` report service health and runtime build metadata for operational checks.
+- `/healthz` always returns `200` with runtime build metadata when the process is serving HTTP. `/readyz` returns `200` when the in-memory config still validates and routing license enforcement allows serving; a failed readiness check returns `503` with a fixed `error: "not-ready"` (or a safe license code) and never echoes `Validate()` text, caller IDs, paths, or other config detail.
 - `/version` returns the running router version, build timestamp, Go runtime version, OS, and architecture for administrators.
 - `/v1/usage` returns usage/quota information for the authenticated caller.
 - `/admin/reports/api/quota-status` returns live remaining and configured limits for authorized reports administrators; it never accepts ordinary caller tokens.

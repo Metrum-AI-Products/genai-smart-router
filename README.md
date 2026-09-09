@@ -42,7 +42,7 @@ Current MVP capabilities:
 - Separate caller dialects from upstream provider adapters: callers can use Anthropic/OpenAI wire formats while targets route to Anthropic, OpenAI-compatible providers, or Replicate.
 - Server-side provider key injection.
 - Unary upstream proxying with caller-dialect response encoding.
-- Caller-facing SSE framing for streaming requests.
+- Caller-facing SSE framing for streaming requests, synthesized after a unary upstream response (not live upstream token streaming).
 - In-process LRU+TTL cache for eligible unary responses.
 - Per-caller RPM, TPM, concurrency, traffic shaping, rolling quota, and lifetime key budget enforcement.
 - Disk-persisted quota/key state.
@@ -501,7 +501,7 @@ When decision telemetry is enabled, usage/admin reports expose safe dynamic-scor
 
 Rollout should start on a deployment-defined test group with interchangeable validated targets. Use mock or local router smokes for simple text, code/debug prompts, tool calls, forced tool calls, image requests when supported, structured-output requests when supported, and low output caps for each caller API. Roll back by switching the group strategy to `weighted` or by removing score terms and thresholds that are too strict for the workload.
 
-For structured-output rollout, smoke both Chat Completions `response_format` and Responses `text.format` if both dialects are configured. Also run a negative router smoke against a group with no structured-output-capable target and expect `502 no-eligible-target` with no upstream attempt. If a target claims both tools and structured outputs, include a combined request in rollout validation. Streaming clients should be told whether the router is returning provider-native streaming or synthesizing downstream SSE from a unary upstream call; schema-constrained incremental chunks are provider-specific and not guaranteed by the router.
+For structured-output rollout, smoke both Chat Completions `response_format` and Responses `text.format` if both dialects are configured. Also run a negative router smoke against a group with no structured-output-capable target and expect `502 no-eligible-target` with no upstream attempt. If a target claims both tools and structured outputs, include a combined request in rollout validation. Streaming clients receive caller-facing SSE synthesized after a unary upstream call; do not assume the router forwards a live upstream SSE byte stream. Schema-constrained incremental chunks are provider-specific and not guaranteed by the router.
 
 For reasoning routing, see the Docusaurus [Reasoning Routing](docs-site/docs/configuration/reasoning-routing.md) guide and the operator [Smoke Test Matrix](docs/SMOKE_TEST_MATRIX.md). Explicit OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, and Anthropic Messages `thinking` requests must use targets with validated reasoning metadata inside the requested group; ordinary traffic can still use the group's ordinary eligible weighted mix.
 

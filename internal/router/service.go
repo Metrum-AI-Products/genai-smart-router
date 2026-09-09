@@ -286,7 +286,8 @@ func (s *Service) routes() {
 	})
 	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.cfg.Validate(); err != nil {
-			writeJSON(w, http.StatusServiceUnavailable, healthPayload(false, err.Error()))
+			// Never echo Validate() text: it can include caller IDs, paths, and other config detail.
+			writeJSON(w, http.StatusServiceUnavailable, healthPayload(false, "not-ready"))
 			return
 		}
 		if lerr := s.license.enforce(LicenseFeatureRouting); lerr != nil {
