@@ -460,3 +460,7 @@ Stopping LRP with `on_error: fallback` also serves configured order; it is not a
 equivalent weighted rollback. `fail_closed` produces `502 routing-policy-error`
 on policy failure. Keep previous validated bundles/config for atomic rollback,
 then remove temporary calibration groups/callers through normal operator control.
+
+Wave-2 uncertainty abstention, Thompson sampling, drift monitoring, and
+cold-start seeding are documented in [LRP_UNCERTAINTY.md](LRP_UNCERTAINTY.md).
+Those features default off and do not authorize live routing activation.

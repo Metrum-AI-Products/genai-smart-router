@@ -129,6 +129,13 @@ def parser() -> argparse.ArgumentParser:
     train.add_argument("--seed", type=int, default=42)
     train.add_argument("--anchor", required=True, help="Actual upstream model ID")
     train.add_argument("--anchor-provider", default="openrouter")
+    train.add_argument(
+        "--ensemble-size",
+        type=int,
+        default=5,
+        choices=[1, 2, 3, 4, 5],
+        help="Bootstrap ensemble members for uncertainty (reviewed default 5)",
+    )
 
     evaluate = sub.add_parser("eval")
     for name in ("bundle", "features", "judgments", "responses", "config", "out"):
@@ -136,6 +143,21 @@ def parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--split", choices=("test",), default="test")
     evaluate.add_argument(
         "--synthetic", action="store_true", help="Evaluate gates without promotion"
+    )
+
+    drift = sub.add_parser(
+        "drift-check",
+        help="Compute PSI + embedding-distance drift; optional auto-shadow recommendation",
+    )
+    drift.add_argument("--reference-features", type=Path, required=True)
+    drift.add_argument("--observed-features", type=Path, required=True)
+    drift.add_argument("--out", type=Path, required=True)
+    drift.add_argument("--psi-threshold", type=float, default=0.25)
+    drift.add_argument("--embedding-distance-threshold", type=float, default=0.15)
+    drift.add_argument(
+        "--auto-shadow",
+        action="store_true",
+        help="Recommend router shadow when thresholds are exceeded (does not mutate router)",
     )
 
     serving = sub.add_parser("serve")
@@ -322,8 +344,59 @@ def execute(args: argparse.Namespace) -> int:
             threads=1,
             min_train_rows=200,
             anchor=(args.anchor_provider, args.anchor),
+            ensemble_size=int(args.ensemble_size),
         )
         print(json.dumps({"bundle_version": produced.name}))
+    elif args.command == "drift-check":
+        import numpy as np
+        import pyarrow.parquet as pq
+
+        from lrp.drift import DriftThresholds, evaluate_drift, feature_matrix_split
+        from lrp.features import FEATURE_NAMES, private_file
+
+        def load_matrix(path: Path) -> np.ndarray:
+            with private_file(path) as handle:
+                frame = pq.ParquetFile(handle).read().to_pandas()
+            matrix = frame.loc[:, list(FEATURE_NAMES)].to_numpy(dtype=np.float32)
+            return np.asarray(matrix, dtype=np.float32)
+
+        ref_emb, ref_scalar = feature_matrix_split(load_matrix(args.reference_features))
+        obs_emb, obs_scalar = feature_matrix_split(load_matrix(args.observed_features))
+        drift_report = evaluate_drift(
+            reference_scalars=ref_scalar,
+            observed_scalars=obs_scalar,
+            reference_embeddings=ref_emb,
+            observed_embeddings=obs_emb,
+            thresholds=DriftThresholds(
+                psi=float(args.psi_threshold),
+                embedding_distance=float(args.embedding_distance_threshold),
+            ),
+            auto_shadow=bool(args.auto_shadow),
+        )
+        from lrp.bundle import canonical_json
+        from lrp.features import write_private
+
+        write_private(
+            args.out,
+            canonical_json(
+                {
+                    "schema_version": "lrp.drift.report.v1",
+                    **drift_report.metrics(),
+                    "reasons": list(drift_report.reasons),
+                    "psi_by_feature": drift_report.psi_by_feature,
+                }
+            ),
+        )
+        print(
+            json.dumps(
+                {
+                    "above_threshold": drift_report.above_threshold,
+                    "recommend_shadow": drift_report.recommend_shadow,
+                    "psi_max": drift_report.psi_max,
+                    "embedding_centroid_distance": drift_report.embedding_centroid_distance,
+                }
+            )
+        )
     elif args.command == "eval":
         from lrp.bundle import load_bundle
         from lrp.eval import evaluate

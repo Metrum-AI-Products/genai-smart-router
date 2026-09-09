@@ -79,6 +79,7 @@ def trained(tmp_path_factory, dataset):
         embedding={"kind": "synthetic"},
         anchor=("synthetic", "anchor/model"),
         num_boost_round=35,
+        ensemble_size=1,
     )
 
 
@@ -92,6 +93,7 @@ def test_real_training_reproducible_and_calibrated(dataset, trained, tmp_path):
         embedding={"kind": "synthetic"},
         anchor=("synthetic", "anchor/model"),
         num_boost_round=35,
+        ensemble_size=1,
     )
     assert other.name == trained.name
     manifest = json.loads((trained / "manifest.json").read_text())
@@ -119,6 +121,7 @@ def test_undertrained_and_parse_uncertainty(dataset, tmp_path):
         tmp_path,
         embedding={"kind": "synthetic"},
         num_boost_round=2,
+        ensemble_size=1,
     )
     manifest = json.loads((path / "manifest.json").read_text())
     assert manifest["skipped"][0]["model"] == "cheap/model"
@@ -130,7 +133,7 @@ def test_undertrained_and_parse_uncertainty(dataset, tmp_path):
     changed = frame.copy()
     changed["embedding_fingerprint"] = "wrong-artifact"
     with pytest.raises(ValueError, match="artifact"):
-        train(changed, judgments, responses, tmp_path, embedding={"kind": "synthetic"})
+        train(changed, judgments, responses, tmp_path, embedding={"kind": "synthetic"}, ensemble_size=1)
 
 
 def test_bt_direction_and_no_verifier_inference():

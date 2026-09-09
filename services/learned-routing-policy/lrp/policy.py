@@ -1,7 +1,12 @@
 # Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
-"""Pure cheapest-above-floor selection. No content, credentials or I/O."""
+"""Pure cheapest-above-floor selection. No content, credentials or I/O.
+
+Exploration variants (Thompson sampling, cold-start) live in ``lrp.thompson``;
+uncertainty abstention lives in ``lrp.uncertainty``. ``decide`` remains the v1
+epsilon-greedy core so Wave-2 hooks stay one-line call sites.
+"""
 
 from __future__ import annotations
 

@@ -148,6 +148,16 @@ class GroupConfig(Model):
     unknown_latency: Literal["allow", "exclude"] = "allow"
     # Optional static p95 evidence keyed as "provider/model" (operator/eval seeded).
     latency_evidence: dict[str, float] = Field(default_factory=dict)
+    # Wave-2 uncertainty / explore (defaults preserve epsilon-greedy behavior).
+    uncertainty_abstention: bool = False
+    uncertainty_threshold: float = Field(default=0.15, ge=0, le=1)
+    exploration_strategy: Literal["epsilon_greedy", "thompson"] = "epsilon_greedy"
+    auto_shadow_on_drift: bool = False
+    psi_threshold: float = Field(default=0.25, ge=0)
+    embedding_drift_threshold: float = Field(default=0.15, ge=0)
+    cold_start_exploration: bool = False
+    # Optional (provider, model) abstention anchor; when unset, first fallback is used.
+    abstention_anchor: tuple[str, str] | None = None
 
     @field_validator("floors_by_project")
     @classmethod

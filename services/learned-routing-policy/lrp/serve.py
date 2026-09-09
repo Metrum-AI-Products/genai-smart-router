@@ -36,7 +36,6 @@ from pydantic import ValidationError
 from lrp.policy import (
     Decision,
     Prediction,
-    decide,
     effective_quality_floor,
     estimated_cost,
     metric_label,
@@ -44,6 +43,13 @@ from lrp.policy import (
     safe_label,
 )
 from lrp.schemas import FeedbackPayload, Payload, ServiceConfig, TargetKey
+from lrp.thompson import (
+    cold_start_exploration_only,
+    decide_with_exploration,
+    inject_cold_start_predictions,
+    parse_cold_start_targets,
+)
+from lrp.uncertainty import BundleEnsemble, apply_abstention, load_bundle_ensemble
 
 LOG = logging.getLogger("lrp")
 MAX_BODY = 2 * 1024 * 1024
@@ -230,6 +236,7 @@ class Runtime:
             raise ValueError("LRP_POLICY_AUTH_HEADER must contain a nonempty header value")
         self.auth = auth.encode()
         self.config, self.bundle, self.bundle_path = config, bundle, bundle_path
+        self.ensemble: BundleEnsemble = BundleEnsemble({})
         self.pins = Pins(config.max_pins)
         self.latency_ledger = LatencyLedger()
         self.pool = ThreadPoolExecutor(
@@ -248,6 +255,9 @@ class Runtime:
         self.degraded = Counter(
             "lrp_route_degraded_total", "Degraded decisions", ["reason"], registry=self.registry
         )
+        self.drift_alert = Counter(
+            "lrp_drift_alert", "Drift threshold crossings", ["reason"], registry=self.registry
+        )
         self.quality = Histogram(
             "lrp_predicted_quality",
             "Predicted quality",
@@ -257,6 +267,17 @@ class Runtime:
         )
         self.info = Gauge("lrp_bundle_info", "Loaded bundle", ["version"], registry=self.registry)
         self._set_version()
+        self._reload_ensemble()
+
+    def _reload_ensemble(self) -> None:
+        if self.bundle is None or self.bundle_path is None:
+            self.ensemble = BundleEnsemble({})
+            return
+        try:
+            self.ensemble = load_bundle_ensemble(self.bundle_path, self.bundle.manifest)
+        except Exception:  # noqa: BLE001 - ensemble is optional Wave-2 enrichment
+            LOG.warning("ensemble load skipped")
+            self.ensemble = BundleEnsemble({})
 
     def _set_version(self) -> None:
         self.info.clear()
@@ -272,6 +293,7 @@ class Runtime:
             candidate = load_bundle(self.bundle_path, threads=1)
             self.bundle = candidate
             self._set_version()
+            self._reload_ensemble()
 
     async def infer(
         self, bundle: Bundle, payload: Payload, remaining: float, explain: bool = False
@@ -373,19 +395,41 @@ def create_apps(
                     explain,
                 )
                 entries = current.manifest.get("targets", [])
+                trained = {
+                    (row["provider"], row["model"])
+                    for row in entries
+                    if row.get("n_train", 0) >= cfg.min_train_rows and not row.get("skipped")
+                }
                 if entries:
-                    trained = {
-                        (row["provider"], row["model"])
-                        for row in entries
-                        if row.get("n_train", 0) >= cfg.min_train_rows
-                    }
                     predictions = {
                         key: value for key, value in predictions.items() if key in trained
                     }
                     if not predictions and any((row["provider"], row["model"]) in
                             {target.key for target in payload.targets} for row in entries):
-                        runtime.degraded.labels("undertrained").inc()
-                        return JSONResponse({"error": "no_trained_target"}, status_code=503)
+                        cold = parse_cold_start_targets(current.manifest)
+                        if not cold or not cfg.cold_start_exploration:
+                            runtime.degraded.labels("undertrained").inc()
+                            return JSONResponse({"error": "no_trained_target"}, status_code=503)
+                estimates: dict[TargetKey, Any] = {}
+                if cfg.uncertainty_abstention or cfg.exploration_strategy == "thompson":
+                    try:
+                        feature_vector = current.build(payload.model_dump(by_alias=True))
+                        estimates = runtime.ensemble.estimates_for(
+                            feature_vector,
+                            [target.key for target in payload.targets],
+                        )
+                    except Exception:  # noqa: BLE001 - uncertainty is best-effort
+                        estimates = {}
+                cold_starts = parse_cold_start_targets(current.manifest)
+                if cfg.cold_start_exploration and cold_starts:
+                    predictions, cold_estimates = inject_cold_start_predictions(
+                        predictions,
+                        payload.targets,
+                        cold_starts,
+                        min_train_rows=cfg.min_train_rows,
+                        trained_keys=trained if entries else set(),
+                    )
+                    estimates = {**estimates, **cold_estimates}
                 for target in payload.targets:
                     if target.key not in predictions:
                         identity = hashlib.sha256(json.dumps(target.key).encode()).hexdigest()[:16]
@@ -401,17 +445,53 @@ def create_apps(
                     if cfg.latency_p95_ms_max is not None
                     else {}
                 )
-                decision = decide(
+                exploration_allowed = payload.caller.project in cfg.exploration_projects
+                rng = random.SystemRandom()
+                cold_keys = {c.key for c in cold_starts}
+                input_tokens = float(payload.context.get("estimatedTokens", 0))
+                if (
+                    cfg.cold_start_exploration
+                    and cold_keys
+                    and any(k in predictions for k in cold_keys)
+                    and not any(k in trained for k in predictions)
+                ):
+                    decision = cold_start_exploration_only(
+                        payload.targets,
+                        predictions,
+                        estimates,
+                        cold_keys,
+                        cfg,
+                        rng,
+                        input_tokens=input_tokens,
+                        pin=pin,
+                        exploration_allowed=exploration_allowed,
+                        project=payload.caller.project,
+                        latency_evidence=latency_map or None,
+                        cache=cache,
+                    )
+                else:
+                    decision = decide_with_exploration(
+                        payload.targets,
+                        predictions,
+                        cfg,
+                        rng,
+                        estimates=estimates,
+                        input_tokens=input_tokens,
+                        pin=pin,
+                        exploration_allowed=exploration_allowed,
+                        strategy=cfg.exploration_strategy,
+                        project=payload.caller.project,
+                        latency_evidence=latency_map or None,
+                        cache=cache,
+                    )
+                # Wave-2 abstention hook (#24).
+                decision = apply_abstention(
+                    decision,
                     payload.targets,
-                    predictions,
-                    cfg,
-                    random.SystemRandom(),
-                    input_tokens=float(payload.context.get("estimatedTokens", 0)),
-                    pin=pin,
-                    exploration_allowed=(payload.caller.project in cfg.exploration_projects),
-                    project=payload.caller.project,
-                    latency_evidence=latency_map or None,
-                    cache=cache,
+                    estimates,
+                    anchor=cfg.abstention_anchor,
+                    threshold=cfg.uncertainty_threshold,
+                    enabled=cfg.uncertainty_abstention,
                 )
                 if degradation:
                     runtime.degraded.labels(degradation).inc()
