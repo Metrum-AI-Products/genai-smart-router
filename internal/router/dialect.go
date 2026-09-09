@@ -42,6 +42,7 @@ func decodeRequest(dialect string, body []byte, h http.Header) (*IRRequest, erro
 	if temp, ok := numberAsFloat(raw["temperature"]); ok {
 		req.Temperature = &temp
 	}
+	req.Stop = decodeStopSequences(raw)
 	if h.Get("Cache-Control") == "no-cache" || strings.Contains(strings.ToLower(h.Get("Cache-Control")), "no-store") {
 		req.NoCache = true
 	}
@@ -114,6 +115,9 @@ func encodeUpstreamForTarget(dialect, model string, req *IRRequest, target Targe
 		if req.Temperature != nil {
 			body["temperature"] = *req.Temperature
 		}
+		if len(req.Stop) > 0 {
+			body["stop_sequences"] = req.Stop
+		}
 		if err := applyReasoningToAnthropic(body, req, target); err != nil {
 			return nil, err
 		}
@@ -181,6 +185,9 @@ func encodeUpstreamForTarget(dialect, model string, req *IRRequest, target Targe
 		if req.Temperature != nil {
 			body["temperature"] = *req.Temperature
 		}
+		if len(req.Stop) > 0 {
+			body["stop"] = req.Stop
+		}
 		if err := applyReasoningToOpenAIChat(body, req, target); err != nil {
 			return nil, err
 		}
@@ -233,19 +240,12 @@ func applyDefaultOpenAIChatThinking(body map[string]any, target Target) {
 }
 
 func encodeAnthropicPassthrough(model string, req *IRRequest, target Target) ([]byte, error) {
+	// Preserve caller message blocks (tool_use, tool_result, thinking+signature,
+	// cache_control) from Raw. Do not rebuild messages from IR text/parts.
 	body := providerPassthroughBody(req)
 	body["model"] = model
 	body["stream"] = false
-	if len(req.Messages) > 0 {
-		msgs := make([]map[string]any, 0, len(req.Messages))
-		for _, m := range req.Messages {
-			msgs = append(msgs, map[string]any{
-				"role":    m.Role,
-				"content": encodeAnthropicContent(m),
-			})
-		}
-		body["messages"] = msgs
-	}
+	normalizeAnthropicPassthroughImages(body)
 	if _, ok := body["max_tokens"]; !ok {
 		body["max_tokens"] = effectiveMaxTokens(req, 1024)
 	}
@@ -266,6 +266,79 @@ func encodeAnthropicPassthrough(model string, req *IRRequest, target Target) ([]
 		return nil, err
 	}
 	return json.Marshal(body)
+}
+
+// normalizeAnthropicPassthroughImages rewrites only OpenAI-style image_url blocks
+// into Anthropic image/source shape in place. All other content blocks are left alone
+// so tool_use, tool_result, thinking, and cache_control survive passthrough.
+func normalizeAnthropicPassthroughImages(body map[string]any) {
+	messages, ok := body["messages"].([]any)
+	if !ok {
+		return
+	}
+	for _, item := range messages {
+		msg, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		content, ok := msg["content"].([]any)
+		if !ok {
+			continue
+		}
+		for i, part := range content {
+			m, ok := part.(map[string]any)
+			if !ok {
+				continue
+			}
+			if stringValue(m["type"]) != "image_url" {
+				continue
+			}
+			imagePart := decodeContentPart(m)
+			if source := imageSourceForAnthropic(imagePart); source != nil {
+				content[i] = map[string]any{"type": "image", "source": source}
+			}
+		}
+	}
+}
+
+func decodeStopSequences(raw map[string]any) []string {
+	if raw == nil {
+		return nil
+	}
+	for _, key := range []string{"stop", "stop_sequences"} {
+		if stops := decodeStringOrStringSlice(raw[key]); len(stops) > 0 {
+			return stops
+		}
+	}
+	return nil
+}
+
+func decodeStringOrStringSlice(v any) []string {
+	switch x := v.(type) {
+	case string:
+		if strings.TrimSpace(x) == "" {
+			return nil
+		}
+		return []string{x}
+	case []any:
+		out := make([]string, 0, len(x))
+		for _, item := range x {
+			if s, ok := item.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []string:
+		out := make([]string, 0, len(x))
+		for _, s := range x {
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }
 
 func providerPassthroughBody(req *IRRequest) map[string]any {

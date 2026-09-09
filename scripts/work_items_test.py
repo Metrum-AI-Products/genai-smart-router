@@ -15,7 +15,6 @@ from typing import Any
 
 
 SCRIPT = Path(__file__).resolve().with_name("work_items.py")
-SNAPSHOT_SCRIPT = Path(__file__).resolve().with_name("work_dashboard_snapshot.py")
 TIMESTAMP = "2026-08-05T00:00:00Z"
 
 
@@ -283,31 +282,6 @@ def main() -> int:
         require(projected_tasks["task.first"]["due_date"] == "2026-08-20", "projection missed second update")
         require(projected_tasks["task.dashboard"]["status"] == "ready", "projection missed create")
         require(registry.read_bytes() == original_baseline, "projection mutated baseline registry")
-        snapshot = root / "work-dashboard.html"
-        snapshot_result = subprocess.run(
-            [
-                sys.executable,
-                str(SNAPSHOT_SCRIPT),
-                "--file",
-                str(registry),
-                "--events",
-                str(events),
-                "--output",
-                str(snapshot),
-                "--title",
-                "Status <Work>",
-            ],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-        require(snapshot_result.returncode == 0, snapshot_result.stderr)
-        snapshot_html = snapshot.read_text()
-        require("Status &lt;Work&gt;" in snapshot_html, "snapshot title was not escaped")
-        require("Interactive work-item status" in snapshot_html, "snapshot omitted task description")
-        require("gate.resume" in snapshot_html, "snapshot omitted task dependency")
-        require("task.dashboard" in snapshot_html, "snapshot omitted event-created task")
 
         event_lines = events.read_text().splitlines()
         require(len(event_lines) == 3, f"expected three events, found {len(event_lines)}")

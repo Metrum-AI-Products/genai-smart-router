@@ -17,7 +17,7 @@ Router instance env is the same shape as any customer deployment: provider keys 
 |---|---|---|
 | `env.example.json` | `env.json` | Instance/router provider keys |
 | `commerce.env.example.json` | `commerce.env.json` | Stripe, commerce admin token, Fleet bootstrap refs |
-| `ops.env.example.json` | `ops.env.json` | Restic/backup + work-dashboard port |
+| `ops.env.example.json` | `ops.env.json` | Restic/backup secrets |
 
 Customer bootstrap template: `examples/commerce-customer-runtime/` (instance-only `env.example.json` + minimal `config.example.yaml`).
 

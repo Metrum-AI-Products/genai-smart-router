@@ -46,9 +46,9 @@ advisory paths, and issue-template support links already use
 historical archive** for pre-cutover issues, pull requests, and older release
 assets. Do not open new product work there. Historical `#N` / `PR#N` links that
 already point at `sysadmin-metrum-ai` stay (those numbers were not copied to
-the public home). The work-dashboard default repository stays on
-`sysadmin-metrum-ai` so short `#N` / `PR#N` resolution still hits that archive
-until a later dual-link migration.
+the public home). Short `#N` / `PR#N` resolution for historical numbers still
+hits that archive until a later dual-link migration; new product issues and
+PRs use `Metrum-AI-Products/genai-smart-router`.
 
 Metrum hosted production operations (Fleet/EKS profiles, runtime-bundle refs,
 smoke runbooks, operator evidence pointers) live in the private ops umbrella
@@ -129,13 +129,13 @@ local gitignored files—never in the public product tree.
   `{agent, model_group}` for routine Harbor runs; use the run matrix, client,
   model group, timestamps, and usage-report filters to separate results.
 
-## Local Work-Item Tracking And Dashboard
+## Local Work-Item Tracking
 
-- Any instruction to create, read, or update the plan, local plan, task list, task status, next steps, or pending work always refers to the reconciled checked-in NDJSON state from `work-items.ndjson` plus `work-item-events.ndjson`. Never maintain a competing Markdown plan, agent-only todo list, dashboard-owned state, generated projection, or ignored local plan.
+- Any instruction to create, read, or update the plan, local plan, task list, task status, next steps, or pending work always refers to the reconciled checked-in NDJSON state from `work-items.ndjson` plus `work-item-events.ndjson`. Never maintain a competing Markdown plan, agent-only todo list, generated projection, or ignored local plan.
 - `work-items.ndjson` is the durable baseline and `work-item-events.ndjson` is the append-only task journal. Do not hand-edit the journal or rewrite old events; use `scripts/work_items.py` for every task write so locking, optimistic status checks, revision and dependency validation, global task-ID uniqueness, and `fsync` protect concurrent agents.
 - Every task has explicit `status_reason`, `next_steps`, and `human_actions`. Active statuses (`pending`, `ready`, `in_progress`, and `blocked`) require a next step; closed statuses may omit it. A status transition must replace all three fields so stale instructions cannot survive.
-- Every `blocked` task must make the stop condition and exit path answerable. Its description and `status_reason` must name each concrete blocker and the observable conditions that will unblock it. Its `human_actions` must be a non-empty ordered list of specific questions, each ending in `?`, whose answers resolve every outstanding decision; never use a vague instruction such as "review" or "approve." Its `next_steps` must say how the answers and dependency evidence will be verified and must keep mutation disabled until all unblock conditions pass. When any task becomes blocked, update these fields in the same event rather than leaving the dashboard to infer what is missing.
-- Put related GitHub issues (`#<number>`), pull requests (`PR#<number>`), and full HTTP(S) references in status context or structured references. Never put credentials, secret values, full configs, or private operational URLs in task records because dashboard users can see them.
+- Every `blocked` task must make the stop condition and exit path answerable. Its description and `status_reason` must name each concrete blocker and the observable conditions that will unblock it. Its `human_actions` must be a non-empty ordered list of specific questions, each ending in `?`, whose answers resolve every outstanding decision; never use a vague instruction such as "review" or "approve." Its `next_steps` must say how the answers and dependency evidence will be verified and must keep mutation disabled until all unblock conditions pass. When any task becomes blocked, update these fields in the same event rather than leaving stale blockers.
+- Put related GitHub issues (`#<number>`), pull requests (`PR#<number>`), and full HTTP(S) references in status context or structured references. Never put credentials, secret values, full configs, or private operational URLs in task records.
 
 
   ```bash
@@ -191,29 +191,7 @@ local gitignored files—never in the public product tree.
     --replace-human-actions
   ```
 
-- After every task write, validate with `rtk python3 scripts/work_items.py validate`, inspect `work-items.ndjson` and `work-item-events.ndjson`, and commit the journal change with the work it describes. A plan or status update is not durable until its NDJSON event is checked in.
-- `work-items.sql` and the live Mosaic dashboard under `work-dashboard/` are read-only derived views. The running dashboard must reconcile both NDJSON sources and auto-refresh directly from their current contents within about one second, without manual import, synchronization, rebuild, or restart. If a valid NDJSON write is not reflected automatically, treat that as a dashboard bug; never patch a generated database or dashboard state to hide it. Configure `WORK_ITEMS_DASHBOARD_PORT` in ignored `env.json`, then run:
-
-  ```bash
-  cd work-dashboard
-  rtk npm install
-  rtk npm run dev
-  ```
-
-  For a built preview, run `rtk npm run build` followed by `rtk npm run preview`. Both commands bind to `0.0.0.0` on the configured port; restrict access with localhost binding, a firewall, VPN, or an authenticated reverse proxy. The dashboard has no authentication and may display task titles, assignments, references, and acceptance details.
-- WeasyPrint does not execute the JavaScript dashboard. Generate the checked-in helper's self-contained, reconciled HTML snapshot first, then render that HTML to an offline PDF:
-
-  ```bash
-  mkdir -p tmp
-  rtk python3 scripts/work_dashboard_snapshot.py \
-    --output tmp/work-dashboard.html \
-    --title "GenAI Smart Router Work Dashboard"
-  rtk uvx --from weasyprint weasyprint \
-    tmp/work-dashboard.html \
-    tmp/work-dashboard.pdf
-  ```
-
-  The static snapshot includes status summaries, the current task register, revisions, descriptions, actions, acceptance criteria, evidence, dependencies, and references. It requires no live dashboard server after generation. `tmp/` is ignored; do not commit generated HTML/PDF artifacts unless a release or audit requirement explicitly calls for them. Regenerate the snapshot after every task-state change rather than treating an older PDF as current state.
+- After every task write, validate with `rtk python3 scripts/work_items.py validate`, inspect `work-items.ndjson` and `work-item-events.ndjson`, and commit the journal change with the work it describes. A plan or status update is not durable until its NDJSON event is checked in. Inspect status with `rtk python3 scripts/work_items.py list` or `list --status <status> --json`.
 
 ## Development Workflow
 
