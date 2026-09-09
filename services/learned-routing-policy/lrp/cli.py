@@ -27,8 +27,29 @@ def parser() -> argparse.ArgumentParser:
     collect = sub.add_parser("collect", help="Normalize approved content; logs alone are metadata")
     for name in ("router-log", "content-capture", "dataset"):
         collect.add_argument(f"--{name}", type=Path)
+    collect.add_argument(
+        "--usage-db",
+        help="Read-only SQLite path or PostgreSQL DSN for explore metadata joins",
+    )
     collect.add_argument("--out", type=Path, required=True)
     collect.add_argument("--approved-content", action="store_true")
+
+    usage = sub.add_parser(
+        "import-usage",
+        help="Export read-only explore metadata from usage DB (no prompts)",
+    )
+    usage.add_argument(
+        "--db",
+        required=True,
+        help="SQLite path/URI or PostgreSQL DSN (opened read-only)",
+    )
+    usage.add_argument("--out", type=Path, required=True)
+    usage.add_argument("--class-label", default="lrp:explore")
+    usage.add_argument(
+        "--content-ids",
+        type=Path,
+        help="Governed content JSONL; only matching explore request IDs are written",
+    )
 
     fanout = sub.add_parser("fanout", help="Collect candidate responses in protected storage")
     fanout.add_argument("--requests", type=Path, required=True)
@@ -124,7 +145,18 @@ def execute(args: argparse.Namespace) -> int:
             dataset=args.dataset,
             content_capture=args.content_capture,
             router_log=args.router_log,
+            usage_db=args.usage_db,
             approved_content=args.approved_content,
+        )
+        print(json.dumps({"counts": stats}))
+    elif args.command == "import-usage":
+        from lrp.usage_import import import_usage
+
+        stats = import_usage(
+            dsn=args.db,
+            out=args.out,
+            class_label=args.class_label,
+            content_ids=args.content_ids,
         )
         print(json.dumps({"counts": stats}))
     elif args.command == "fanout":

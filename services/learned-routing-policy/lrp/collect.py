@@ -422,12 +422,14 @@ def collect(
     dataset: Path | None = None,
     content_capture: Path | None = None,
     router_log: Path | None = None,
+    usage_db: str | None = None,
     approved_content: bool = False,
 ) -> dict[str, int]:
     """Inputs are versioned request records exported by the operator, not encrypted captures.
 
     Log joins select IDs and fill missing safe metadata only. They cannot manufacture
-    messages, tools, verifier ground truth or a PII restoration map.
+    messages, tools, verifier ground truth or a PII restoration map. A read-only
+    ``usage_db`` DSN supplies the same safe scalars for explore-tagged requests.
     """
     logs: dict[str, dict[str, Any]] = {}
     if router_log:
@@ -435,6 +437,24 @@ def collect(
             rid = raw.get("request_id")
             if not isinstance(rid, str) or not rid or len(rid) > 256:
                 raise DataError("invalid_log_request_id")
+            if rid in logs:
+                raise DataError("duplicate_log_request_id")
+            logs[rid] = {
+                k: raw[k]
+                for k in (
+                    "ts",
+                    "resolved_group",
+                    "inbound_dialect",
+                    "caller_project",
+                    "caller_environment",
+                )
+                if k in raw
+            }
+    if usage_db:
+        from lrp.usage_import import iter_usage_log_metadata
+
+        for raw in iter_usage_log_metadata(usage_db):
+            rid = raw["request_id"]
             if rid in logs:
                 raise DataError("duplicate_log_request_id")
             logs[rid] = {
