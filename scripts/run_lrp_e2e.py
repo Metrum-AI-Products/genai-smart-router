@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
-"""Exercise E01-E10 with a normal router binary, real LRP, and loopback mocks.
+"""Exercise E01-E10 and native shadow with a router binary, real LRP, and loopback mocks.
 
 Run using the service environment, or pass --lrp-python explicitly. A synthetic
 bundle must contain two trained targets: --cheap-model and --strong-model select
@@ -39,7 +39,8 @@ SHORT = "Calculate 3 + 1. Return the integer only."
 LONG = ("Review this multi-file code and identify the invariant. "
         + "module synthetic: function preserves counter invariant. " * 180)
 GROUPS = ("lrp-e2e-staging", "lrp-e2e-no-content-staging", "lrp-e2e-pin-staging",
-          "lrp-e2e-down-staging", "lrp-e2e-fallback-staging", "lrp-e2e-invalid-staging")
+          "lrp-e2e-down-staging", "lrp-e2e-fallback-staging", "lrp-e2e-invalid-staging",
+          "lrp-e2e-shadow-staging")
 # Identifiers are fixed by this program, not supplied by a caller or a bundle.
 DECISION_TABLES = (
     "request_decision_shape_features", "request_target_candidates",
@@ -285,6 +286,7 @@ def execute(args: argparse.Namespace, checks: list[dict[str, Any]]) -> dict[str,
             models[group] = {"strategy": "external", "targets": router_targets, "external_policy": {
                 "url": url, "allow_hosts": ["127.0.0.1"], "timeout_ms": 500,
                 "max_response_bytes": 65536, "include_request": group != GROUPS[1],
+                "mode": "shadow" if group == GROUPS[6] else "enforce",
                 "on_error": "fallback" if group == GROUPS[4] else "fail_closed",
                 "headers": {"X-LRP-Auth": auth}}}
         write_json(temp / "router.json", {"server": {
@@ -370,6 +372,16 @@ def execute(args: argparse.Namespace, checks: list[dict[str, Any]]) -> dict[str,
                                   {"role": "assistant", "content": "4"}, {"role": "user", "content": LONG}])
         record("E08", first_status == status == 200 and model_for(first_rid) == model_for(rid) == cheap["model"]
                and event["class_label"] == "lrp:pinned", http_status=status)
+        status, _, rid, event = chat(GROUPS[6], text=LONG)
+        recommended = rows(db, "SELECT c.provider, c.model FROM request_routing_signals s "
+                           "JOIN request_target_candidates c ON c.request_id = s.request_id "
+                           "AND c.candidate_index = s.candidate_index "
+                           "WHERE s.request_id = ? AND s.signal_name = 'shadow_recommended_candidate'",
+                           (rid,))
+        record("native-shadow", status == 200 and model_for(rid) == cheap["model"] and
+               event["outcome"] == "shadow_recommended" and len(recommended) == 1 and
+               recommended[0]["provider"] == strong["provider"] and recommended[0]["model"] == strong["model"],
+               http_status=status, policy_outcome=event["outcome"])
         # Warmup is excluded. Every measured request must have a fresh policy row
         # and a normal learned decision; BT/cache paths cannot fake a fast p99.
         for _ in range(10):
@@ -420,7 +432,7 @@ def main() -> int:
         report["error_class"] = "interrupted"
     except Exception:  # noqa: BLE001 -- exceptions can contain protected input; emit a fixed class only.
         report["error_class"] = "harness_internal_error"
-    passed = len(checks) == 10 and all(check["passed"] for check in checks) and "error_class" not in report
+    passed = len(checks) == 11 and all(check["passed"] for check in checks) and "error_class" not in report
     report["result"] = "passed" if passed else "failed"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
