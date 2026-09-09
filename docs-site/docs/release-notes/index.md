@@ -14,6 +14,65 @@ this page. The version banner, `/docs/releases`, and `/version` are the
 authoritative sources for its exact router version and build timestamp; do not
 infer the running version from a date written in documentation.
 
+## v1.2.0 - 2026-09-09
+
+### Highlights
+
+- Learned Routing Policy follow-ups (#21–#37) ship as opt-in LRP and external
+  policy enhancements. Defaults preserve v1.1.0 cheapest-above-floor behavior.
+  No live routing activation is authorized by installing this release.
+- External policy context adds a pseudonymous `conversationKey`, opt-in
+  post-completion feedback callbacks, and governed verifier-hint metadata for
+  Chat, Responses, and Anthropic (#21–#23).
+- LRP adds operator-signed Ed25519 bundles, read-only usage-DB explore import,
+  near-duplicate evaluation splits, serving-provider variance reports, SQL and
+  allowlisted plugin verifiers, and protected human-judge audit sampling
+  (#29, #31–#34, #37).
+- Selection constraints cover upstream latency gates, per-project quality
+  floors, evidence-based prompt-cache cost estimates, and bounded explanation
+  labels (#26, #27, #35, #36).
+- Uncertainty abstention, Thompson sampling, PSI/embedding drift
+  recommendations, and evidence-backed cold-start exploration are available
+  behind explicit LRP group knobs (#24, #25, #28, #30).
+
+### Operator Impact
+
+- Review external-policy docs for conversation key, feedback URL, and
+  verifier-hint configuration. Feedback never sends prompts, tools, or
+  credentials.
+- LRP operators can enable signed-bundle trust stores, usage import, eval
+  split options, selection constraints, and uncertainty/explore knobs through
+  LRP YAML and CLI. Cryptography for signing pins to a patched 50.x release.
+- Synthetic wiring and local e2e evidence passed for these surfaces. They do
+  not establish provider-backed quality, production latency, or live deployment
+  readiness. Keep new knobs off until deployment-owned validation completes.
+- No usage schema migration is introduced by this release beyond contracts
+  already documented for v1.1.0.
+
+### Caller Impact
+
+- Ordinary Chat, Responses, and Anthropic callers continue to send model-group
+  requests. New conversation-key and verifier-hint fields are operator-gated
+  metadata; callers do not choose LRP internals.
+- Class labels may use bounded abbreviations such as `lrp:caf:q0.90:c2`. Coarse
+  Prometheus labels stay low-cardinality. Rich explanations remain on
+  authenticated LRP `/explain`.
+
+### Validation
+
+- `/readyz` and `/version`: confirm `v1.2.0` and the package build timestamp.
+- Browser docs: confirm the v1.2.0 release notes and LRP follow-up pages.
+- `make lrp-test` and `make lrp-e2e` when exercising LRP packages from the
+  source archive.
+- Completion smoke for any deployment that enables new external-policy or LRP
+  knobs; keep synthetic wiring separate from provider-backed evidence.
+
+### Rollback
+
+- Restore the previous router package and previous reviewed config/license.
+- Disable new LRP and external-policy knobs or revert to the prior LRP bundle.
+- No reverse migration is required for this release’s LRP follow-ups.
+
 ## v1.1.0 - 2026-09-09
 
 ### Highlights
