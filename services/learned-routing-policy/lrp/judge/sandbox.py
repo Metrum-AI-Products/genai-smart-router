@@ -16,6 +16,16 @@ from pathlib import Path
 from typing import Any
 
 from ..collect import DataError, canonical, protected_path, strict_json
+from .contracts import normalize_verifier
+
+
+def worker_source() -> str:
+    """Allowlisted plugin runtime plus worker, executed only inside bubblewrap."""
+    runtime = Path(__file__).with_name("plugins_runtime.py").read_text()
+    worker = Path(__file__).with_name("worker.py").read_text()
+    # Strip the runtime module's unused future import noise is fine; keep source exact
+    # for cache identity. Worker calls run_plugin from the concatenated namespace.
+    return runtime + "\n" + worker
 
 
 @dataclass(frozen=True)
@@ -39,7 +49,7 @@ class Sandbox:
         executable = shutil.which("bwrap")
         if not executable:
             raise DataError("sandbox_unavailable")
-        worker = Path(__file__).with_name("worker.py").read_text()
+        worker = worker_source()
         return [
             executable,
             "--unshare-all",
@@ -82,14 +92,32 @@ class Sandbox:
         self, verifier: dict[str, Any], content: str
     ) -> tuple[float | None, dict[str, Any]]:
         try:
+            normalized = normalize_verifier(verifier)
             command = self.command()
-        except (DataError, OSError):
+        except DataError as exc:
+            name = str(exc)
+            if name in {
+                "unsupported_verifier",
+                "unsupported_verifier_version",
+                "unsupported_verifier_contract",
+                "unsupported_verifier_spec_field",
+                "missing_verifier_spec",
+                "unsupported_plugin_id",
+                "invalid_plugin_params",
+                "invalid_sql_result_expected",
+                "invalid_sql_result_columns",
+                "invalid_sql_result_order_flag",
+            }:
+                return None, {"unsupported": True, "error_class": name}
+            return None, {"unsupported": True, "error_class": "sandbox_unavailable"}
+        except OSError:
             return None, {"unsupported": True, "error_class": "sandbox_unavailable"}
         payload = (
             canonical(
                 {
-                    "kind": verifier["kind"],
-                    "spec": verifier.get("spec", {}),
+                    "kind": normalized["kind"],
+                    "version": normalized["version"],
+                    "spec": normalized.get("spec", {}),
                     "content": content,
                 }
             )

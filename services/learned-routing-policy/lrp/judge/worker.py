@@ -9,6 +9,39 @@ import resource
 import subprocess
 import sys
 
+# Concatenated sandbox payloads define run_plugin from plugins_runtime.py first.
+if "run_plugin" not in globals():
+
+    def run_plugin(plugin_id: str, params: dict[str, object], content: str) -> bool:
+        raise RuntimeError("plugin_runtime_missing")
+
+
+def _normalize_sql_rows(
+    value: object, columns: list[str] | None
+) -> list[tuple[str, ...]]:
+    if isinstance(value, dict) and "rows" in value:
+        rows = value["rows"]
+        if columns is None and isinstance(value.get("columns"), list):
+            columns = [str(name) for name in value["columns"]]
+    else:
+        rows = value
+    if not isinstance(rows, list):
+        raise TypeError("invalid_sql_rows")
+    normalized: list[tuple[str, ...]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise TypeError("invalid_sql_row")
+        if columns is None:
+            keys = sorted(str(key) for key in row)
+        else:
+            keys = columns
+            if any(name not in row for name in keys):
+                raise ValueError("missing_column")
+        normalized.append(
+            tuple(json.dumps(row[name], sort_keys=True) for name in keys)
+        )
+    return normalized
+
 
 def main() -> None:
     resource.setrlimit(resource.RLIMIT_CPU, (30, 30))
@@ -74,6 +107,16 @@ def main() -> None:
                     check=False,
                 )
             passed = result.returncode == 0
+        elif kind == "sql_result":
+            columns = spec.get("columns")
+            expected = _normalize_sql_rows(spec["expected_rows"], columns)
+            actual = _normalize_sql_rows(json.loads(content), columns)
+            if spec.get("ignore_row_order"):
+                passed = sorted(expected) == sorted(actual)
+            else:
+                passed = expected == actual
+        elif kind == "plugin":
+            passed = run_plugin(spec["plugin_id"], spec.get("params", {}), content)
         else:
             sys.exit(78)
     except ImportError:

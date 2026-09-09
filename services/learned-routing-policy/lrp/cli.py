@@ -71,6 +71,35 @@ def parser() -> argparse.ArgumentParser:
     judge.add_argument("--anchor-provider", default="openrouter")
     judge.add_argument("--approved-content", action="store_true")
     judge.add_argument("--sandbox-rootfs", type=Path)
+    judge.add_argument(
+        "--audit-queue",
+        type=Path,
+        help="Protected scalar human-audit queue (no content)",
+    )
+    judge.add_argument(
+        "--audit-sample-rate",
+        type=float,
+        help="Deterministic sample rate for pairwise/absolute judgments (default 0.02)",
+    )
+    judge.add_argument("--audit-seed", default="lrp-human-audit-v1")
+
+    audit = sub.add_parser(
+        "judge-audit",
+        help="Sample or gate human judge audit without exporting protected content",
+    )
+    audit_sub = audit.add_subparsers(dest="audit_command", required=True)
+    audit_sample = audit_sub.add_parser("sample", help="Build a scalar review queue")
+    audit_sample.add_argument("--judgments", type=Path, required=True)
+    audit_sample.add_argument("--out", type=Path, required=True)
+    audit_sample.add_argument("--rate", type=float, default=0.02)
+    audit_sample.add_argument("--seed", default="lrp-human-audit-v1")
+    audit_report = audit_sub.add_parser("report", help="Agreement gate from human reviews")
+    audit_report.add_argument("--queue", type=Path, required=True)
+    audit_report.add_argument("--reviews", type=Path, required=True)
+    audit_report.add_argument("--out", type=Path, required=True)
+    audit_report.add_argument("--min-agreement", type=float, default=0.8)
+    audit_report.add_argument("--min-coverage", type=float, default=0.5)
+    audit_report.add_argument("--min-reviews", type=int, default=5)
 
     features = sub.add_parser("featurize")
     features.add_argument("--requests", type=Path, required=True)
@@ -206,11 +235,51 @@ def execute(args: argparse.Namespace) -> int:
                 out=args.out,
                 anchor=(args.anchor_provider, args.anchor),
                 judge_model=args.judge,
-                    approved_content=args.approved_content,
-                    sandbox=Sandbox(args.sandbox_rootfs) if args.sandbox_rootfs else None,
+                approved_content=args.approved_content,
+                sandbox=Sandbox(args.sandbox_rootfs) if args.sandbox_rootfs else None,
+                audit_queue=args.audit_queue,
+                audit_sample_rate=args.audit_sample_rate,
+                audit_seed=args.audit_seed,
             )
         )
         print(json.dumps({"counts": stats}))
+    elif args.command == "judge-audit":
+        from lrp.judge.audit import (
+            build_agreement_report,
+            sample_judgments,
+            write_agreement_report,
+        )
+
+        if args.audit_command == "sample":
+            stats = sample_judgments(
+                judgments=args.judgments,
+                out=args.out,
+                rate=args.rate,
+                seed=args.seed,
+            )
+            print(json.dumps({"counts": stats}))
+        else:
+            report = build_agreement_report(
+                queue=args.queue,
+                reviews=args.reviews,
+                min_agreement=args.min_agreement,
+                min_coverage=args.min_coverage,
+                min_reviews=args.min_reviews,
+            )
+            write_agreement_report(report, args.out)
+            print(
+                json.dumps(
+                    {
+                        "gate_passed": report["gate_passed"],
+                        "agreement_rate": report["agreement_rate"],
+                        "coverage": report["coverage"],
+                        "reviewed_count": report["reviewed_count"],
+                        "gate_reasons": report["gate_reasons"],
+                    }
+                )
+            )
+            if not report["gate_passed"]:
+                return 1
     elif args.command == "featurize":
         from lrp.features import FeatureBuilder, ONNXEmbedder, SyntheticEmbedder, featurize
 

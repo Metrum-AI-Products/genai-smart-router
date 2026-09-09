@@ -128,10 +128,16 @@ rtk proxy uv run --project services/learned-routing-policy lrp judge \
   --out "$LRP_DATA_DIR/judgments.ndjson"
 ```
 
-An approved dataset with verifier kind `exact`, `regex`, `json_schema` or `pytest`
-uses the sandbox before considering an LLM judge. Rows without a verifier may
+An approved dataset with verifier kind `exact`, `regex`, `json_schema`, `pytest`,
+`sql_result`, or governed `plugin` uses the sandbox before considering an LLM
+judge. Versioned allowlisted contracts and plugin IDs are defined in
+`contracts.py` / `plugins_runtime.py`; unknown contracts fail closed as missing
+evidence. Rows without a verifier may
 send protected content to the chosen third-party judge and require separately
 approved data handling. No credentials are forwarded to verifier processes.
+
+Operator docs: [LRP extensible verifiers](../../../../docs/LRP_VERIFIERS.md) and
+[human judge audit](../../../../docs/LRP_HUMAN_JUDGE.md).
 
 Implementation references: [bubblewrap security model](https://github.com/containers/bubblewrap),
 [bubblewrap command options](https://github.com/containers/bubblewrap/blob/main/bwrap.xml),

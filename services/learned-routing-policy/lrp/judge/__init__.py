@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sqlite3
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -30,9 +31,9 @@ from ..collect import (
     validate_record,
 )
 from ..fanout import bounded_json, refresh_prices, usage_and_cost
-from .sandbox import Sandbox
+from .sandbox import Sandbox, worker_source
 
-__all__ = ["Sandbox", "cache_identity", "judge_requests"]
+__all__ = ["Sandbox", "cache_identity", "judge_requests", "worker_source"]
 PROMPT_DIR = Path(__file__).with_name("prompts")
 
 
@@ -55,7 +56,7 @@ def cache_identity(
             "settings": settings,
             "pairwise": (PROMPT_DIR / "pairwise_v1.md").read_text(),
             "absolute": (PROMPT_DIR / "absolute_v1.md").read_text(),
-            "worker": Path(__file__).with_name("worker.py").read_text(),
+            "worker": worker_source(),
             "sandbox": {"rootfs": str(sandbox.rootfs), "timeout": sandbox.timeout_s}
             if sandbox
             else None,
@@ -97,6 +98,9 @@ async def judge_requests(
     timeout_s: float = 120,
     temperature: float = 0,
     max_tokens: int = 512,
+    audit_queue: Path | None = None,
+    audit_sample_rate: float | None = None,
+    audit_seed: str | int | None = None,
 ) -> dict[str, int]:
     if (
         not 0 < timeout_s <= 120
@@ -135,7 +139,7 @@ async def judge_requests(
         if sidecar.exists() or sidecar.is_symlink():
             sidecar_fd = open_private(sidecar, os.O_RDONLY)
             os.close(sidecar_fd)
-    stats = {"written": 0, "skipped": 0, "cached": 0, "uncertain": 0}
+    stats = {"written": 0, "skipped": 0, "cached": 0, "uncertain": 0, "audit_sampled": 0}
     owned_client = client is None
     connection = sqlite3.connect(cache)
     # DELETE journal inherits private db permissions. No raw content in keys.
@@ -144,6 +148,18 @@ async def judge_requests(
         "CREATE TABLE IF NOT EXISTS judgments (cache_key TEXT PRIMARY KEY, verdict TEXT NOT NULL)"
     )
     prices: dict[str, dict[str, Any]] | None = None
+    if audit_sample_rate is not None and audit_queue is None:
+        raise DataError("audit_queue_required")
+    from ..collect import read_rows as read_ndjson
+    from .audit import (
+        DEFAULT_SAMPLE_RATE,
+        queue_row_from_judgment,
+        should_sample,
+    )
+
+    sample_rate = (
+        DEFAULT_SAMPLE_RATE if audit_queue is not None and audit_sample_rate is None else audit_sample_rate
+    )
 
     async def vote(
         payload: dict[str, Any], absolute: bool
@@ -206,7 +222,19 @@ async def judge_requests(
         return None, cost
 
     try:
-        with journal(out) as handle:
+        with ExitStack() as stack:
+            handle = stack.enter_context(journal(out))
+            audit_handle = None
+            audit_existing: set[str] = set()
+            if audit_queue is not None:
+                assert sample_rate is not None
+                audit_path = protected_path(audit_queue)
+                audit_handle = stack.enter_context(journal(audit_path))
+                audit_existing = {
+                    response_key(row)
+                    for row in read_ndjson(audit_path)
+                    if row.get("schema_version") == "lrp.human_audit_queue.v1"
+                }
             existing = existing_rows(out, "judgment", response_key)
             for rid, response_list in grouped.items():
                 request = reqs[rid]
@@ -369,6 +397,21 @@ async def judge_requests(
                     stats["written"] += 1
                     if record.get("quality") is None:
                         stats["uncertain"] += 1
+                    if (
+                        audit_handle is not None
+                        and sample_rate is not None
+                        and key not in audit_existing
+                        and should_sample(
+                            request_id=rid,
+                            target=record["target"],
+                            method=record["method"],
+                            rate=sample_rate,
+                            seed=audit_seed,
+                        )
+                    ):
+                        append_row(audit_handle, queue_row_from_judgment(record))
+                        audit_existing.add(key)
+                        stats["audit_sampled"] += 1
         return stats
     finally:
         connection.close()
