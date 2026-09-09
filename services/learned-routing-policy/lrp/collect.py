@@ -85,10 +85,48 @@ def _check_file(fd: int, *, fixture: bool = False) -> None:
         raise DataError("file_size_limit")
 
 
+def open_private(path: Path, flags: int, *, fixture: bool = False) -> int:
+    """Walk pinned directory descriptors; never follow an intermediate symlink.
+
+    Operator data requires a private containing directory. Sticky system temp
+    ancestors are permitted; writable non-sticky ancestors are not.
+    """
+    path = protected_path(path, fixture_read=fixture)
+    directory = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for component in path.parent.parts[1:]:
+            child = os.open(
+                component,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=directory,
+            )
+            os.close(directory)
+            directory = child
+            info = os.fstat(directory)
+            if not fixture and info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX:
+                raise DataError("unsafe_parent_directory")
+        parent = os.fstat(directory)
+        if not fixture and (parent.st_uid != os.getuid() or parent.st_mode & 0o077):
+            raise DataError("private_directory_required")
+        fd = os.open(
+            path.name, flags | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=directory
+        )
+        try:
+            _check_file(fd, fixture=fixture)
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
+    except OSError:
+        raise DataError("protected_file_open_failed") from None
+    finally:
+        os.close(directory)
+
+
 def read_rows(path: Path) -> Iterator[dict[str, Any]]:
     path = protected_path(path, fixture_read=True)
     fixtures = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = open_private(path, os.O_RDONLY, fixture=path.parent == fixtures)
     with os.fdopen(fd, "rb") as handle:
         _check_file(handle.fileno(), fixture=path.parent == fixtures)
         for index in range(MAX_ROWS + 1):
@@ -107,7 +145,7 @@ def journal(path: Path) -> Iterator[BinaryIO]:
     """Single writer, durable row commits; discard only an interrupted last row."""
     path = protected_path(path)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    fd = open_private(path, os.O_RDWR | os.O_CREAT)
     with os.fdopen(fd, "r+b") as handle:
         _check_file(handle.fileno())
         try:

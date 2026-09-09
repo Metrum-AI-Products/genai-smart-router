@@ -19,6 +19,7 @@ from ..collect import (
     existing_rows,
     identity,
     journal,
+    open_private,
     protected_path,
     response_key,
     strict_json,
@@ -121,11 +122,16 @@ async def judge_requests(
     }
     cache = protected_path(cache or out.with_suffix(".sqlite"))
     cache.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(cache, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    fd = open_private(cache, os.O_RDWR | os.O_CREAT)
     try:
         _check_file(fd)
     finally:
         os.close(fd)
+    for suffix in ("-journal", "-wal", "-shm"):
+        sidecar = Path(str(cache) + suffix)
+        if sidecar.exists() or sidecar.is_symlink():
+            sidecar_fd = open_private(sidecar, os.O_RDONLY)
+            os.close(sidecar_fd)
     stats = {"written": 0, "skipped": 0, "cached": 0, "uncertain": 0}
     owned_client = client is None
     connection = sqlite3.connect(cache)

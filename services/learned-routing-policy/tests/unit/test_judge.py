@@ -238,6 +238,8 @@ def test_sandbox_command_is_real_namespace_isolation_and_missing_root_fails_clos
     sandbox = Sandbox(rootfs)
     command = sandbox.command()
     assert "--unshare-all" in command and "--clearenv" in command
+    assert "--disable-userns" in command
+    assert command[command.index("--size") + 1] == "16777216"
     assert command[command.index("--uid") + 1] == "65534"
     assert command[command.index("--ro-bind") + 1 : command.index("--ro-bind") + 3] == [
         str(rootfs),
@@ -251,20 +253,59 @@ def test_sandbox_command_is_real_namespace_isolation_and_missing_root_fails_clos
 
 
 @pytest.mark.skipif(
-    not os.environ.get("LRP_TEST_ROOTFS"),
+    not os.environ.get("LRP_TEST_ROOTFS")
+    and not os.environ.get("LRP_REQUIRE_SANDBOX_TESTS"),
     reason="requires operator-provisioned isolated Python/pytest rootfs and namespace support",
 )
-def test_real_sandbox_network_host_denial_and_wall_timeout():
+def test_real_sandbox_network_host_denial_and_wall_timeout(tmp_path, monkeypatch):
+    assert os.environ.get("LRP_TEST_ROOTFS"), (
+        "mandatory sandbox test requires LRP_TEST_ROOTFS"
+    )
     sandbox = Sandbox(Path(os.environ["LRP_TEST_ROOTFS"]))
     assert sandbox.verify({"kind": "exact", "spec": {"expected": "4"}}, "4")[0] == 1
     assert sandbox.verify({"kind": "exact", "spec": {"expected": "4"}}, "5")[0] == 0
-    tests = """import socket, pathlib, pytest
+    assert (
+        sandbox.verify({"kind": "regex", "spec": {"pattern": r"[0-9]+"}}, "123")[0] == 1
+    )
+    assert (
+        sandbox.verify(
+            {"kind": "json_schema", "spec": {"schema": {"type": "integer"}}}, "123"
+        )[0]
+        == 1
+    )
+    assert (
+        sandbox.verify(
+            {"kind": "json_schema", "spec": {"schema": {"type": "integer"}}}, '"bad"'
+        )[0]
+        == 0
+    )
+    host_file = tmp_path / "host-only"
+    host_file.write_text("synthetic sentinel")
+    host_network = os.readlink("/proc/self/ns/net")
+    monkeypatch.setenv("LRP_SYNTHETIC_HOST_SECRET", "must-not-reach-worker")
+    tests = f"""import os, socket, pathlib, pytest
+import solution
 def test_isolation():
+    assert solution.value == 42
     assert not pathlib.Path('/home').exists()
+    assert not pathlib.Path({str(host_file)!r}).exists()
+    assert 'LRP_SYNTHETIC_HOST_SECRET' not in os.environ
+    assert os.getuid() == 65534
+    assert os.readlink('/proc/self/ns/net') != {host_network!r}
+    assert len(pathlib.Path('/proc/net/route').read_text().splitlines()) <= 1
     with pytest.raises(OSError):
         socket.create_connection(('192.0.2.1', 443), timeout=1)
+
+def test_scratch_limit():
+    assert os.statvfs('/work').f_blocks * os.statvfs('/work').f_frsize <= 16777216
+    with pytest.raises(OSError):
+        for i in range(32):
+            pathlib.Path('/work/fill-' + str(i)).write_bytes(b'x' * 1048576)
 """
-    assert sandbox.verify({"kind": "pytest", "spec": {"tests": tests}}, "")[0] == 1
+    assert (
+        sandbox.verify({"kind": "pytest", "spec": {"tests": tests}}, "value = 42")[0]
+        == 1
+    )
     short = Sandbox(sandbox.rootfs, timeout_s=0.2)
     quality, detail = short.verify(
         {"kind": "pytest", "spec": {"tests": "import time; time.sleep(60)"}}, ""

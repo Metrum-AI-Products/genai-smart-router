@@ -141,6 +141,46 @@ def test_storage_rejects_repositories(tmp_path):
         pass
 
 
+def test_private_parent_and_fifo_fail_closed(tmp_path):
+    public = tmp_path / "public"
+    public.mkdir(mode=0o755)
+    source = write(public / "source", [request()])
+    with pytest.raises(DataError, match="private_directory_required"):
+        list(read_rows(source))
+    public.chmod(0o777)
+    with pytest.raises(DataError, match="unsafe_parent_directory"):
+        list(read_rows(source))
+    fifo = tmp_path / "fifo"
+    os.mkfifo(fifo, mode=0o600)
+    with pytest.raises(DataError, match="regular_private"):
+        list(read_rows(fifo))
+
+
+def test_directory_swap_cannot_redirect_open(tmp_path, monkeypatch):
+    import lrp.collect as module
+    from lrp.collect import open_private
+
+    original = tmp_path / "original"
+    original.mkdir(mode=0o700)
+    destination = original / "out"
+    attacker = tmp_path / "attacker"
+    attacker.mkdir(mode=0o700)
+    pinned = tmp_path / "pinned"
+    real_open = os.open
+
+    def swapping_open(path, flags, *args, **kwargs):
+        if path == "out":
+            original.rename(pinned)
+            original.symlink_to(attacker, target_is_directory=True)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(module.os, "open", swapping_open)
+    fd = open_private(destination, os.O_WRONLY | os.O_CREAT)
+    os.close(fd)
+    assert (pinned / "out").exists()
+    assert not (attacker / "out").exists()
+
+
 def test_all_synthetic_fixtures_validate():
     fixture_dir = Path(__file__).parents[1] / "fixtures"
     for name, kind in (
