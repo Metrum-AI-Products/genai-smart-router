@@ -614,7 +614,7 @@ LRP_DEMO_DIR ?= /var/tmp/metrum-lrp-synthetic-demo
 lrp-test:
 	uv run --project $(LRP_PROJECT) --locked ruff check --config $(LRP_PROJECT)/pyproject.toml $(LRP_PROJECT)/lrp $(LRP_PROJECT)/tests
 	uv run --project $(LRP_PROJECT) --locked mypy --config-file $(LRP_PROJECT)/pyproject.toml --strict $(LRP_PROJECT)/lrp
-	env TMPDIR=/var/tmp uv run --project $(LRP_PROJECT) --locked pytest $(LRP_PROJECT)/tests -q
+	env TMPDIR=/var/tmp uv run --project $(LRP_PROJECT) --locked pytest $(LRP_PROJECT)/tests -q $(if $(LRP_JUNIT_REPORT),--junitxml=$(LRP_JUNIT_REPORT),)
 
 lrp-synthetic-demo:
 	uv run --project $(LRP_PROJECT) --locked python scripts/run_lrp_synthetic_demo.py --out-dir $(LRP_DEMO_DIR)
