@@ -1591,8 +1591,38 @@ func (s *Service) pick(rc *requestContext, groupName string, group ModelGroup, r
 				return i < j
 			})
 		}
+		ceiling := effectiveSpendCeiling(caller, group)
+		if ceiling.configured() {
+			kept, filtered := filterTargetsBySpendCeiling(targets, req, ceiling)
+			for _, target := range filtered {
+				s.recordSpendCeilingFilterReason(rc, target)
+			}
+			if len(kept) == 0 {
+				return decision{}, routingEligibilityError{
+					Model:        groupName,
+					Dialect:      callerDialect,
+					Requirements: append(routingRequirements(req, callerDialect), spendCeilingReason),
+				}
+			}
+			targets = kept
+			if len(filtered) > 0 {
+				trace := spendCeilingDecisionTrace(ceiling, len(filtered))
+				if label != nil {
+					label = safePolicyClassLabel(*label)
+				}
+				return decision{
+					Target:            targets[0],
+					Fallbacks:         targets[1:],
+					ClassLabel:        label,
+					Strategy:          strategy,
+					GroupName:         groupName,
+					DecisionTrace:     trace,
+					DynamicScoreTerms: simpleStrategyRankingTelemetry(strategy, targets, s.cfg.Provider),
+				}, nil
+			}
+		}
 	case "dynamic_score":
-		return s.pickDynamicScore(groupName, group, req, callerDialect, targets)
+		return s.pickDynamicScore(rc, groupName, group, req, callerDialect, caller, targets)
 	case "script":
 		strat := s.scripts[groupName]
 		if strat == nil {

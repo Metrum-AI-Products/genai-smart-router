@@ -211,11 +211,26 @@ func summarizeDynamicObservations(records []dynamicObservation) dynamicStats {
 	return stats
 }
 
-func (s *Service) pickDynamicScore(groupName string, group ModelGroup, req *IRRequest, callerDialect string, targets []Target) (decision, error) {
+func (s *Service) pickDynamicScore(rc *requestContext, groupName string, group ModelGroup, req *IRRequest, callerDialect string, caller *callerRuntime, targets []Target) (decision, error) {
 	cfg := group.RoutingPolicy.DynamicScore
 	window := time.Duration(cfg.ObservationWindowSeconds) * time.Second
 	if window <= 0 {
 		window = defaultDynamicObservationWindow
+	}
+	ceiling := effectiveSpendCeiling(caller, group)
+	if ceiling.configured() {
+		kept, filtered := filterTargetsBySpendCeiling(targets, req, ceiling)
+		for _, target := range filtered {
+			s.recordSpendCeilingFilterReason(rc, target)
+		}
+		if len(kept) == 0 {
+			return decision{}, routingEligibilityError{
+				Model:        groupName,
+				Dialect:      callerDialect,
+				Requirements: append(routingRequirements(req, callerDialect), spendCeilingReason),
+			}
+		}
+		targets = kept
 	}
 	candidates := make([]dynamicCandidate, 0, len(targets))
 	for i, target := range targets {
@@ -254,6 +269,7 @@ func (s *Service) pickDynamicScore(groupName string, group ModelGroup, req *IRRe
 	if coldStart {
 		ordered := configuredWeightOrder(candidates)
 		trace := dynamicDecisionTrace(cfg, req, ordered, true, "configured_weight")
+		trace = annotateSpendCeilingTrace(trace, ceiling)
 		signals := dynamicRoutingSignalTelemetry(cfg, "dynamic_score")
 		terms := dynamicColdStartRankingTelemetry(ordered, groupName)
 		return decision{Target: ordered[0].Target, Fallbacks: dynamicFallbacks(ordered[1:]), Strategy: "dynamic_score", GroupName: groupName, TargetIndex: ordered[0].Index, DecisionTrace: trace, RoutingSignals: signals, DynamicScoreTerms: terms}, nil
@@ -300,6 +316,7 @@ func (s *Service) pickDynamicScore(groupName string, group ModelGroup, req *IRRe
 		return candidates[i].Index < candidates[j].Index
 	})
 	trace := dynamicDecisionTrace(cfg, req, candidates, false, "score")
+	trace = annotateSpendCeilingTrace(trace, ceiling)
 	signals := dynamicRoutingSignalTelemetry(cfg, "dynamic_score")
 	scoreTerms := dynamicScoreTermTelemetry(candidates, terms, groupName)
 	return decision{Target: candidates[0].Target, Fallbacks: dynamicFallbacks(candidates[1:]), Strategy: "dynamic_score", GroupName: groupName, TargetIndex: candidates[0].Index, DecisionTrace: trace, RoutingSignals: signals, DynamicScoreTerms: scoreTerms}, nil
@@ -1006,4 +1023,237 @@ func complexityRank(bucket string) int {
 	default:
 		return 1
 	}
+}
+
+const spendCeilingReason = "spend-ceiling"
+
+func effectiveSpendCeiling(caller *callerRuntime, group ModelGroup) SpendCeilingConfig {
+	var callerCeiling SpendCeilingConfig
+	if caller != nil {
+		callerCeiling = caller.cfg.SpendCeiling
+	}
+	return mergeSpendCeilings(callerCeiling, group.SpendCeiling)
+}
+
+func mergeSpendCeilings(a, b SpendCeilingConfig) SpendCeilingConfig {
+	if !a.configured() {
+		return b
+	}
+	if !b.configured() {
+		return a
+	}
+	out := SpendCeilingConfig{
+		MaxTier:      moreRestrictiveMaxTier(a.MaxTier, b.MaxTier),
+		AllowedTiers: intersectSpendTiers(a.AllowedTiers, b.AllowedTiers),
+		TierCeilings: map[string]float64{},
+	}
+	switch {
+	case a.MaxEstimatedCostUSD != nil && b.MaxEstimatedCostUSD != nil:
+		min := math.Min(*a.MaxEstimatedCostUSD, *b.MaxEstimatedCostUSD)
+		out.MaxEstimatedCostUSD = &min
+	case a.MaxEstimatedCostUSD != nil:
+		v := *a.MaxEstimatedCostUSD
+		out.MaxEstimatedCostUSD = &v
+	case b.MaxEstimatedCostUSD != nil:
+		v := *b.MaxEstimatedCostUSD
+		out.MaxEstimatedCostUSD = &v
+	}
+	for _, src := range []SpendCeilingConfig{a, b} {
+		for tier, ceiling := range src.TierCeilings {
+			key := strings.ToLower(strings.TrimSpace(tier))
+			if key == "" {
+				continue
+			}
+			if existing, ok := out.TierCeilings[key]; !ok || ceiling < existing {
+				out.TierCeilings[key] = ceiling
+			}
+		}
+	}
+	if len(out.TierCeilings) == 0 {
+		out.TierCeilings = nil
+	}
+	return out
+}
+
+func moreRestrictiveMaxTier(a, b string) string {
+	a = strings.ToLower(strings.TrimSpace(a))
+	b = strings.ToLower(strings.TrimSpace(b))
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	case spendTierRank(a) <= spendTierRank(b):
+		return a
+	default:
+		return b
+	}
+}
+
+func intersectSpendTiers(a, b []string) []string {
+	if len(a) == 0 {
+		return append([]string(nil), b...)
+	}
+	if len(b) == 0 {
+		return append([]string(nil), a...)
+	}
+	allowed := map[string]bool{}
+	for _, tier := range b {
+		allowed[strings.ToLower(strings.TrimSpace(tier))] = true
+	}
+	out := make([]string, 0, len(a))
+	seen := map[string]bool{}
+	for _, tier := range a {
+		key := strings.ToLower(strings.TrimSpace(tier))
+		if key == "" || !allowed[key] || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, key)
+	}
+	return out
+}
+
+func spendTierRank(tier string) int {
+	switch strings.ToLower(strings.TrimSpace(tier)) {
+	case "cheap":
+		return 1
+	case "standard":
+		return 2
+	case "heavy":
+		return 3
+	default:
+		return 0
+	}
+}
+
+func filterTargetsBySpendCeiling(targets []Target, req *IRRequest, ceiling SpendCeilingConfig) (kept, filtered []Target) {
+	if !ceiling.configured() {
+		return targets, nil
+	}
+	kept = make([]Target, 0, len(targets))
+	for _, target := range targets {
+		if targetPassesSpendCeiling(target, req, ceiling) {
+			kept = append(kept, target)
+			continue
+		}
+		filtered = append(filtered, target)
+	}
+	return kept, filtered
+}
+
+func targetPassesSpendCeiling(target Target, req *IRRequest, ceiling SpendCeilingConfig) bool {
+	if !ceiling.configured() {
+		return true
+	}
+	tier := strings.ToLower(strings.TrimSpace(target.Tier))
+	if len(ceiling.AllowedTiers) > 0 {
+		allowed := false
+		for _, candidate := range ceiling.AllowedTiers {
+			if strings.EqualFold(strings.TrimSpace(candidate), tier) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return false
+		}
+	} else if maxTier := strings.ToLower(strings.TrimSpace(ceiling.MaxTier)); maxTier != "" && tier != "" {
+		maxRank := spendTierRank(maxTier)
+		targetRank := spendTierRank(tier)
+		switch {
+		case maxRank == 0 || targetRank == 0:
+			if !strings.EqualFold(tier, maxTier) {
+				return false
+			}
+		case targetRank > maxRank:
+			return false
+		}
+	}
+	estimated := estimateTargetRequestCostUSD(target, req)
+	if ceiling.MaxEstimatedCostUSD != nil && estimated > *ceiling.MaxEstimatedCostUSD {
+		return false
+	}
+	if len(ceiling.TierCeilings) > 0 && tier != "" {
+		if limit, ok := ceiling.TierCeilings[tier]; ok && estimated > limit {
+			return false
+		}
+		for name, limit := range ceiling.TierCeilings {
+			if strings.EqualFold(strings.TrimSpace(name), tier) && estimated > limit {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func estimateTargetRequestCostUSD(target Target, req *IRRequest) float64 {
+	inputTokens := float64(estimateTokens(req))
+	outputTokens := float64(0)
+	if req != nil && req.MaxTokens > 0 {
+		outputTokens = float64(req.MaxTokens)
+	}
+	return (target.InputPricePerMillionUSD*inputTokens + target.OutputPricePerMillionUSD*outputTokens) / 1_000_000.0
+}
+
+func annotateSpendCeilingTrace(trace string, ceiling SpendCeilingConfig) string {
+	if !ceiling.configured() {
+		return trace
+	}
+	payload := map[string]any{}
+	if err := json.Unmarshal([]byte(trace), &payload); err != nil {
+		return trace
+	}
+	payload["spend_ceiling"] = spendCeilingReason
+	if ceiling.MaxTier != "" {
+		payload["spend_ceiling_max_tier"] = strings.ToLower(strings.TrimSpace(ceiling.MaxTier))
+	}
+	if len(ceiling.AllowedTiers) > 0 {
+		payload["spend_ceiling_allowed_tiers"] = append([]string(nil), ceiling.AllowedTiers...)
+	}
+	if ceiling.MaxEstimatedCostUSD != nil {
+		payload["spend_ceiling_max_estimated_cost_usd"] = *ceiling.MaxEstimatedCostUSD
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return trace
+	}
+	return string(raw)
+}
+
+func (s *Service) recordSpendCeilingFilterReason(rc *requestContext, target Target) {
+	if s == nil || !s.decisionTelemetryEnabled() || rc == nil {
+		return
+	}
+	maxReasons := s.cfg.Server.DecisionTelemetry.MaxFilterReasons
+	if maxReasons <= 0 {
+		maxReasons = 256
+	}
+	if len(rc.rec.DecisionFilterReasons) >= maxReasons {
+		return
+	}
+	rc.rec.DecisionFilterReasons = append(rc.rec.DecisionFilterReasons, decisionFilterReasonLogRecord{
+		Seq:            len(rc.rec.DecisionFilterReasons) + 1,
+		CandidateIndex: candidateIndexForTarget(rc.rec.DecisionCandidates, target),
+		Stage:          "spend_ceiling",
+		Reason:         spendCeilingReason,
+	})
+}
+
+func spendCeilingDecisionTrace(ceiling SpendCeilingConfig, filtered int) string {
+	if !ceiling.configured() {
+		return ""
+	}
+	payload := map[string]any{
+		"spend_ceiling":          spendCeilingReason,
+		"spend_ceiling_filtered": filtered,
+	}
+	if ceiling.MaxTier != "" {
+		payload["spend_ceiling_max_tier"] = strings.ToLower(strings.TrimSpace(ceiling.MaxTier))
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return `{"spend_ceiling":"spend-ceiling"}`
+	}
+	return string(raw)
 }

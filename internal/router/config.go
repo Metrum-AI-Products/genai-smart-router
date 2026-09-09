@@ -345,8 +345,24 @@ type ModelGroup struct {
 	Contract           *ModelGroupContract      `yaml:"contract" json:"contract,omitempty"`
 	PIIFilter          PIIFilterConfig          `yaml:"pii_filter"`
 	ContentCapture     ContentCaptureConfig     `yaml:"content_capture"`
-	AttemptTimeoutMS   int                      `yaml:"attempt_timeout_ms"`
-	Targets            []Target                 `yaml:"targets"`
+	// SpendCeiling optionally caps semantic/dynamic_score escalation for this group.
+	// Weighted and other strategies ignore it. Merge with caller spend_ceiling when both set.
+	SpendCeiling     SpendCeilingConfig `yaml:"spend_ceiling" json:"spend_ceiling,omitempty"`
+	AttemptTimeoutMS int                `yaml:"attempt_timeout_ms"`
+	Targets          []Target           `yaml:"targets"`
+}
+
+// SpendCeilingConfig limits which tiers/costs semantic and dynamic_score may select.
+// It is opt-in entitlement: unset means escalation strategies may select any eligible target.
+type SpendCeilingConfig struct {
+	// MaxEstimatedCostUSD caps estimated request cost (input+output list prices).
+	MaxEstimatedCostUSD *float64 `yaml:"max_estimated_cost_usd" json:"max_estimated_cost_usd,omitempty"`
+	// MaxTier is the highest allowed target tier under escalation (cheap < standard < heavy).
+	MaxTier string `yaml:"max_tier" json:"max_tier,omitempty"`
+	// AllowedTiers, when set, restricts escalation to these exact tier names.
+	AllowedTiers []string `yaml:"allowed_tiers" json:"allowed_tiers,omitempty"`
+	// TierCeilings optionally caps estimated USD cost per target tier name.
+	TierCeilings map[string]float64 `yaml:"tier_ceilings" json:"tier_ceilings,omitempty"`
 }
 
 type ModelGroupContract struct {
@@ -730,10 +746,12 @@ type CallerConfig struct {
 	MetricsAdmin   bool                 `yaml:"metrics_admin" json:"metrics_admin"`
 	ContentAdmin   bool                 `yaml:"content_admin" json:"content_admin"`
 	ContentCapture ContentCaptureConfig `yaml:"content_capture" json:"content_capture"`
-	Rate           RateConfig           `yaml:"rate" json:"rate"`
-	TrafficShape   TrafficShapeConfig   `yaml:"traffic_shape" json:"traffic_shape"`
-	Quota          QuotaConfig          `yaml:"quota" json:"quota"`
-	Key            KeyConfig            `yaml:"key" json:"key"`
+	// SpendCeiling is the caller's opt-in entitlement for semantic/dynamic_score escalation.
+	SpendCeiling SpendCeilingConfig `yaml:"spend_ceiling" json:"spend_ceiling"`
+	Rate         RateConfig         `yaml:"rate" json:"rate"`
+	TrafficShape TrafficShapeConfig `yaml:"traffic_shape" json:"traffic_shape"`
+	Quota        QuotaConfig        `yaml:"quota" json:"quota"`
+	Key          KeyConfig          `yaml:"key" json:"key"`
 }
 
 type UserConfig struct {
@@ -1311,6 +1329,12 @@ func (c *Config) Validate() error {
 		}
 		c.Models[name] = m
 	}
+	knownTiers := c.knownSpendCeilingTiers()
+	for name, m := range c.Models {
+		if err := validateSpendCeiling("model group "+name+" spend_ceiling", m.SpendCeiling, knownTiers); err != nil {
+			return err
+		}
+	}
 	callerIDs := map[string]string{}
 	callerTokenHashes := map[string]string{}
 	callerTokenIDs := map[string]string{}
@@ -1370,8 +1394,74 @@ func (c *Config) Validate() error {
 				return err
 			}
 		}
+		if err := validateSpendCeiling("caller "+caller.ID+" spend_ceiling", caller.SpendCeiling, knownTiers); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func (c *Config) knownSpendCeilingTiers() map[string]bool {
+	known := map[string]bool{
+		"cheap":    true,
+		"standard": true,
+		"heavy":    true,
+	}
+	if c == nil {
+		return known
+	}
+	for _, group := range c.Models {
+		for _, target := range group.Targets {
+			tier := strings.ToLower(strings.TrimSpace(target.Tier))
+			if tier != "" {
+				known[tier] = true
+			}
+		}
+	}
+	return known
+}
+
+func validateSpendCeiling(label string, cfg SpendCeilingConfig, knownTiers map[string]bool) error {
+	if !cfg.configured() {
+		return nil
+	}
+	if cfg.MaxEstimatedCostUSD != nil && *cfg.MaxEstimatedCostUSD < 0 {
+		return fmt.Errorf("%s max_estimated_cost_usd cannot be negative", label)
+	}
+	if maxTier := strings.ToLower(strings.TrimSpace(cfg.MaxTier)); maxTier != "" {
+		if !knownTiers[maxTier] {
+			return fmt.Errorf("%s max_tier %q is unknown", label, cfg.MaxTier)
+		}
+	}
+	for _, tier := range cfg.AllowedTiers {
+		normalized := strings.ToLower(strings.TrimSpace(tier))
+		if normalized == "" {
+			return fmt.Errorf("%s allowed_tiers contains an empty value", label)
+		}
+		if !knownTiers[normalized] {
+			return fmt.Errorf("%s allowed_tiers contains unknown tier %q", label, tier)
+		}
+	}
+	for tier, ceiling := range cfg.TierCeilings {
+		normalized := strings.ToLower(strings.TrimSpace(tier))
+		if normalized == "" {
+			return fmt.Errorf("%s tier_ceilings contains an empty tier name", label)
+		}
+		if !knownTiers[normalized] {
+			return fmt.Errorf("%s tier_ceilings contains unknown tier %q", label, tier)
+		}
+		if ceiling < 0 {
+			return fmt.Errorf("%s tier_ceilings[%s] cannot be negative", label, tier)
+		}
+	}
+	return nil
+}
+
+func (c SpendCeilingConfig) configured() bool {
+	return c.MaxEstimatedCostUSD != nil ||
+		strings.TrimSpace(c.MaxTier) != "" ||
+		len(c.AllowedTiers) > 0 ||
+		len(c.TierCeilings) > 0
 }
 
 func validateTrafficShape(label string, cfg TrafficShapeConfig) error {
