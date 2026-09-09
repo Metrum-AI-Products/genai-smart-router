@@ -18,6 +18,8 @@ infer the running version from a date written in documentation.
 
 ### Highlights
 
+- Release binaries use Go 1.26.8, including standard-library security fixes
+  identified by the package vulnerability scan.
 - Learned Routing Policy (LRP) adds a separate Python/uv service that trains
   calibrated quality and output-token models and selects the cheapest eligible
   target predicted to meet a workload's quality floor. Training, evaluation,
