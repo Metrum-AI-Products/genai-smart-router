@@ -5923,12 +5923,12 @@ func TestCacheHitAcrossDialectsAndTargetIsolation(t *testing.T) {
 		return rr
 	}
 
-	post("/v1/chat/completions", `{"model":"default","messages":[{"role":"user","content":"same"}]}`)
-	post("/v1/messages", `{"model":"default","messages":[{"role":"user","content":"same"}]}`)
+	post("/v1/chat/completions", `{"model":"default","temperature":0,"messages":[{"role":"user","content":"same"}]}`)
+	post("/v1/messages", `{"model":"default","temperature":0,"messages":[{"role":"user","content":"same"}]}`)
 	if calls.Load() != 1 {
 		t.Fatalf("expected cross-dialect cache hit, upstream calls=%d", calls.Load())
 	}
-	post("/v1/messages", `{"model":"other","messages":[{"role":"user","content":"same"}]}`)
+	post("/v1/messages", `{"model":"other","temperature":0,"messages":[{"role":"user","content":"same"}]}`)
 	if calls.Load() != 2 {
 		t.Fatalf("expected separate cache entry for different target, upstream calls=%d", calls.Load())
 	}
@@ -5953,7 +5953,7 @@ func TestCacheHitSanitizesProviderIDAndRawPayload(t *testing.T) {
 	defer svc.Close()
 
 	post := func() map[string]any {
-		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"id":"caller-specific-id","model":"default","messages":[{"role":"user","content":"same cache prompt"}]}`))
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"id":"caller-specific-id","model":"default","temperature":0,"messages":[{"role":"user","content":"same cache prompt"}]}`))
 		req.Header.Set("Authorization", "Bearer "+testToken)
 		rr := httptest.NewRecorder()
 		svc.Handler().ServeHTTP(rr, req)
@@ -6001,7 +6001,7 @@ func TestCacheKeyIgnoresRawRequestID(t *testing.T) {
 	defer svc.Close()
 
 	for _, id := range []string{"caller-id-1", "caller-id-2"} {
-		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"id":"`+id+`","model":"default","messages":[{"role":"user","content":"raw id ignored"}]}`))
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"id":"`+id+`","model":"default","temperature":0,"messages":[{"role":"user","content":"raw id ignored"}]}`))
 		req.Header.Set("Authorization", "Bearer "+testToken)
 		rr := httptest.NewRecorder()
 		svc.Handler().ServeHTTP(rr, req)
@@ -6057,7 +6057,7 @@ func TestCacheHitDoesNotConsumeLifetimeQuota(t *testing.T) {
 	defer svc.Close()
 
 	post := func() {
-		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}],"max_tokens":4}`))
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","temperature":0,"messages":[{"role":"user","content":"hi"}],"max_tokens":4}`))
 		req.Header.Set("Authorization", "Bearer "+testToken)
 		rr := httptest.NewRecorder()
 		svc.Handler().ServeHTTP(rr, req)
@@ -6074,6 +6074,182 @@ func TestCacheHitDoesNotConsumeLifetimeQuota(t *testing.T) {
 	keyUsage := usage["key"].(map[string]any)
 	if keyUsage["lifetime_tokens"] != int64(5) {
 		t.Fatalf("expected only upstream request to count against lifetime quota: %#v", keyUsage)
+	}
+}
+
+func TestCacheIsolatesCallersGC1(t *testing.T) {
+	// GC-1: identical temperature:0 prompts from different callers must not share cache hits.
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		body := "alice-only-body"
+		if n > 1 {
+			body = "bob-fresh-body"
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "cache-caller-iso",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": body},
+			}},
+			"usage": map[string]any{"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4},
+		})
+	}))
+	defer upstream.Close()
+
+	const bobToken = "rtr_bob_cache_iso"
+	bobSum := sha256.Sum256([]byte(bobToken))
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.Cache.Enabled = true
+	cfg.Callers = append(cfg.Callers, CallerConfig{
+		ID:          "bob",
+		User:        "bob",
+		Project:     "other-project",
+		Environment: "test",
+		TokenSHA256: hex.EncodeToString(bobSum[:]),
+		TokenID:     "rtr_bob_test",
+		Allow:       []string{"default"},
+		Rate:        RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+		Quota:       QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 100000}, Month: BudgetConfig{Tokens: 1000000}, SoftPct: 80},
+		Key:         KeyConfig{LifetimeTokens: 1000000, SoftPct: 90, OnExhaust: "disable"},
+	})
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"default","temperature":0,"messages":[{"role":"user","content":"shared prompt"}]}`
+	post := func(token string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		return rr
+	}
+	aliceRR := post(testToken)
+	if aliceRR.Code != http.StatusOK {
+		t.Fatalf("alice status=%d body=%s", aliceRR.Code, aliceRR.Body.String())
+	}
+	bobRR := post(bobToken)
+	if bobRR.Code != http.StatusOK {
+		t.Fatalf("bob status=%d body=%s", bobRR.Code, bobRR.Body.String())
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("bob should miss alice cache; upstream calls=%d want 2", calls.Load())
+	}
+	if !strings.Contains(bobRR.Body.String(), "bob-fresh-body") {
+		t.Fatalf("bob got shared/wrong body: %s", bobRR.Body.String())
+	}
+	aliceAgain := post(testToken)
+	if aliceAgain.Code != http.StatusOK {
+		t.Fatalf("alice replay status=%d body=%s", aliceAgain.Code, aliceAgain.Body.String())
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("alice same-caller replay should hit cache; calls=%d", calls.Load())
+	}
+}
+
+func TestConcurrencyAdmitBeforeBodyGC9(t *testing.T) {
+	// GC-9: concurrent:1 second request is 429 while first is still reading a slow body.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "slow-body",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Callers[0].Rate.Concurrent = 1
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	type gateBody struct {
+		started chan struct{}
+		release chan struct{}
+		once    sync.Once
+		payload []byte
+		off     int
+	}
+	gb := &gateBody{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+		payload: []byte(`{"model":"default","temperature":0,"messages":[{"role":"user","content":"slow"}]}`),
+	}
+	readFn := func(p []byte) (int, error) {
+		gb.once.Do(func() { close(gb.started) })
+		<-gb.release
+		if gb.off >= len(gb.payload) {
+			return 0, io.EOF
+		}
+		n := copy(p, gb.payload[gb.off:])
+		gb.off += n
+		return n, nil
+	}
+	firstDone := make(chan int, 1)
+	go func() {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", io.NopCloser(readerFunc(readFn)))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		firstDone <- rr.Code
+	}()
+	select {
+	case <-gb.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first request never reached body read after admit")
+	}
+
+	second := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"second"}]}`))
+	second.Header.Set("Authorization", "Bearer "+testToken)
+	secondRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(secondRR, second)
+	if secondRR.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status=%d body=%s, want 429 before first body finishes", secondRR.Code, secondRR.Body.String())
+	}
+	close(gb.release)
+	select {
+	case code := <-firstDone:
+		if code != http.StatusOK {
+			t.Fatalf("first status=%d, want 200 after body released", code)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("first request did not finish")
+	}
+}
+
+type readerFunc func([]byte) (int, error)
+
+func (f readerFunc) Read(p []byte) (int, error) { return f(p) }
+
+func TestUnauthenticatedDoesNotAdmitGC10(t *testing.T) {
+	// GC-10: unauthorized fails before quota admit / body buffering.
+	cfg := testConfig(t, "http://127.0.0.1:9", "provider-key", t.TempDir())
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	huge := strings.NewReader(strings.Repeat("x", 1<<20))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", huge)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d body=%s, want 401", rr.Code, rr.Body.String())
+	}
+	if len(svc.quota.callers) == 0 {
+		t.Fatal("expected callers map")
+	}
+	alice := svc.quota.callers["alice"]
+	if alice.inFlight != 0 {
+		t.Fatalf("unauthenticated request counted in-flight: %d", alice.inFlight)
 	}
 }
 
@@ -9146,7 +9322,7 @@ func TestPIIFilterCacheStoresRedactedResponseNotRestoredPII(t *testing.T) {
 	defer svc.Close()
 
 	post := func(email string) string {
-		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"Email `+email+`."}]}`))
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","temperature":0,"messages":[{"role":"user","content":"Email `+email+`."}]}`))
 		req.Header.Set("Authorization", "Bearer "+testToken)
 		rr := httptest.NewRecorder()
 		svc.Handler().ServeHTTP(rr, req)
@@ -12647,7 +12823,7 @@ func TestFallbackAttributesServingTargetPricingCostsCacheAndObservations(t *test
 			}
 			defer svc.Close()
 
-			reqBody := `{"model":"default","messages":[{"role":"user","content":"attribute fallback"}]}`
+			reqBody := `{"model":"default","temperature":0,"messages":[{"role":"user","content":"attribute fallback"}]}`
 			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqBody))
 			req.Header.Set("Authorization", "Bearer "+testToken)
 			rr := httptest.NewRecorder()
@@ -12688,8 +12864,8 @@ func TestFallbackAttributesServingTargetPricingCostsCacheAndObservations(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			primaryKey := cacheKey(decoded, Target{Provider: "mock", Model: "primary-expensive"})
-			fallbackKey := cacheKey(decoded, Target{Provider: "mock", Model: "fallback-cheap"})
+			primaryKey := cacheKey(decoded, Target{Provider: "mock", Model: "primary-expensive"}, "alice", "metrum-insights")
+			fallbackKey := cacheKey(decoded, Target{Provider: "mock", Model: "fallback-cheap"}, "alice", "metrum-insights")
 			if _, ok := svc.cache.Get(primaryKey); ok {
 				t.Fatal("fallback response stored under failed primary cache key")
 			}

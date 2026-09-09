@@ -829,6 +829,22 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	if !ok {
 		return
 	}
+	// Bound concurrent body buffering before ReadAll. Full request-count Admit
+	// and license request admission stay after validation / traffic-shape queue
+	// waits so invalid bodies and queued shaping do not burn license volume or
+	// hold caller concurrency slots.
+	conc := s.quota.AcquireConcurrency(rc.caller)
+	if !conc.OK {
+		s.writeAdmissionError(w, rc, conc)
+		return
+	}
+	bodyConcurrencyHeld := true
+	defer func() {
+		if bodyConcurrencyHeld {
+			s.quota.Release(rc.caller)
+		}
+	}()
+
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<20))
 	if err != nil {
 		s.writeError(w, rc, http.StatusBadRequest, "invalid-body")
@@ -919,6 +935,9 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	inputTokens := estimateTokens(req)
 	outputReservationTokens := trafficShapeOutputReservation(req, dialect)
 	totalReservationTokens := inputTokens + outputReservationTokens
+	// Drop body-phase concurrency before traffic-shape may queue.
+	s.quota.Release(rc.caller)
+	bodyConcurrencyHeld = false
 	if shapeEnabled {
 		shapeRes := s.trafficShape.Admit(r.Context(), trafficShapeRequest{
 			CallerID:                 rc.caller.cfg.ID,
@@ -1040,7 +1059,8 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		rc.trace("bridge_session_requested", "chat-to-responses stateful session header present", dec.Target, 0, 0, "", false, 0)
 	}
 
-	key := cacheKey(req, dec.Target)
+	callerID, project := cacheCallerScope(rc)
+	key := cacheKey(req, dec.Target, callerID, project)
 	if cacheable(req) {
 		if cached, ok := s.cache.Get(key); ok {
 			ensureResponseID(cached)
@@ -1134,7 +1154,8 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		if cacheable(req) {
 			// Store under the target that actually answered. A fallback response
 			// must not poison the failed primary's target-sensitive cache key.
-			s.cache.Put(cacheKey(req, served), resp)
+			putCaller, putProject := cacheCallerScope(rc)
+			s.cache.Put(cacheKey(req, served, putCaller, putProject), resp)
 		}
 		s.captureResponseContent(rc, resp, captureDecision)
 		if piiRestoreEnabled(group.PIIFilter) {
@@ -1226,6 +1247,13 @@ func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) 
 		return nil, false
 	}
 	return rc, true
+}
+
+func cacheCallerScope(rc *requestContext) (callerID, project string) {
+	if rc == nil || rc.caller == nil {
+		return "", ""
+	}
+	return rc.caller.cfg.ID, callerProject(rc.caller.cfg)
 }
 
 func (s *Service) finish(rc *requestContext, status int, code *string) {

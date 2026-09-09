@@ -5,6 +5,9 @@ package router
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -59,9 +62,98 @@ func TestCacheKeyDistinguishesOpenAIChatCapField(t *testing.T) {
 	}
 
 	target := Target{Provider: "openai_chat", Model: "chat-model"}
-	maxTokensKey := cacheKey(maxTokensReq, target)
-	maxCompletionTokensKey := cacheKey(maxCompletionTokensReq, target)
+	maxTokensKey := cacheKey(maxTokensReq, target, "caller-a", "proj")
+	maxCompletionTokensKey := cacheKey(maxCompletionTokensReq, target, "caller-a", "proj")
 	if maxTokensKey == maxCompletionTokensKey {
 		t.Fatalf("cache key reused across cap fields: %s", maxTokensKey)
+	}
+}
+
+func TestCacheKeyIncludesCallerAndSamplingFields(t *testing.T) {
+	zero := 0.0
+	base := &IRRequest{
+		Model:       "default",
+		Messages:    []IRMessage{{Role: "user", Content: "hi"}},
+		Temperature: &zero,
+		Raw:         map[string]any{},
+	}
+	target := Target{Provider: "mock", Model: "m"}
+	a := cacheKey(base, target, "caller-a", "proj-1")
+	b := cacheKey(base, target, "caller-b", "proj-1")
+	if a == b {
+		t.Fatal("cache key must include caller id")
+	}
+	withTopP := &IRRequest{
+		Model:       base.Model,
+		Messages:    base.Messages,
+		Temperature: &zero,
+		Raw:         map[string]any{"top_p": 0.9},
+	}
+	if cacheKey(base, target, "caller-a", "proj-1") == cacheKey(withTopP, target, "caller-a", "proj-1") {
+		t.Fatal("cache key must include top_p")
+	}
+	withSeed := &IRRequest{
+		Model:       base.Model,
+		Messages:    base.Messages,
+		Temperature: &zero,
+		Raw:         map[string]any{"seed": 7},
+	}
+	if cacheKey(base, target, "caller-a", "proj-1") == cacheKey(withSeed, target, "caller-a", "proj-1") {
+		t.Fatal("cache key must include seed")
+	}
+	withPrev := &IRRequest{
+		Model:       base.Model,
+		Messages:    base.Messages,
+		Temperature: &zero,
+		Raw:         map[string]any{"previous_response_id": "resp_1"},
+	}
+	if cacheKey(base, target, "caller-a", "proj-1") == cacheKey(withPrev, target, "caller-a", "proj-1") {
+		t.Fatal("cache key must include previous_response_id")
+	}
+	withThinking := &IRRequest{
+		Model:       base.Model,
+		Messages:    base.Messages,
+		Temperature: &zero,
+		Thinking:    map[string]any{"type": "enabled", "budget_tokens": 256},
+		Raw:         map[string]any{},
+	}
+	if cacheKey(base, target, "caller-a", "proj-1") == cacheKey(withThinking, target, "caller-a", "proj-1") {
+		t.Fatal("cache key must include thinking")
+	}
+}
+
+func TestOmittedTemperatureIsNotCacheable(t *testing.T) {
+	req := &IRRequest{Messages: []IRMessage{{Role: "user", Content: "hi"}}}
+	if cacheable(req) {
+		t.Fatal("omitted temperature must not be cacheable")
+	}
+	zero := 0.0
+	req.Temperature = &zero
+	if !cacheable(req) {
+		t.Fatal("explicit temperature 0 should be cacheable")
+	}
+	hot := 0.7
+	req.Temperature = &hot
+	if cacheable(req) {
+		t.Fatal("temperature > 0 must not be cacheable")
+	}
+}
+
+func TestExampleConfigCacheDisabledByDefaultGC8(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "config.example.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "cache:") {
+		t.Fatal("config.example.yaml missing cache section")
+	}
+	// GC-8: sample cache stays off until operators enable caller-scoped caching.
+	idx := strings.Index(string(raw), "\n  cache:")
+	if idx < 0 {
+		t.Fatal("server cache section not found")
+	}
+	section := string(raw)[idx : idx+200]
+	if !strings.Contains(section, "enabled: false") {
+		t.Fatalf("example cache default should be false; section=%q", section)
 	}
 }

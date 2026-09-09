@@ -8,7 +8,8 @@ server:
   openai_compatibility:
     tolerate_responses_body_on_chat_endpoint: false
   cache:
-    enabled: true
+    # Disabled by default until operators enable caller-scoped deterministic caching.
+    enabled: false
     max_bytes: 134217728
     default_ttl: 15m
   logging:

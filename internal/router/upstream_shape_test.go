@@ -213,7 +213,7 @@ func TestProviderTrafficShapeCacheHitBypassesCapacity(t *testing.T) {
 	}
 	defer svc.Close()
 
-	body := `{"model":"default","messages":[{"role":"user","content":"same deterministic prompt"}]}`
+	body := `{"model":"default","temperature":0,"messages":[{"role":"user","content":"same deterministic prompt"}]}`
 	first := performChatRequest(t, svc, body)
 	if first.Code != http.StatusOK {
 		t.Fatalf("first status=%d body=%s", first.Code, first.Body.String())

@@ -178,6 +178,28 @@ func (q *quotaStore) Admit(c *callerRuntime, estTokens int) admission {
 	return admission{OK: true, Status: http.StatusOK, QuotaState: quotaState, KeyState: keyState, WarningText: warning, Reservation: res}
 }
 
+// AcquireConcurrency reserves one in-flight slot without counting a request
+// against RPM/day/month budgets. Used to bound body buffering before the
+// full Admit that runs after traffic-shape queue waits.
+func (q *quotaStore) AcquireConcurrency(c *callerRuntime) admission {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	now := time.Now().UTC()
+	st := q.stateFor(c.cfg.ID, now)
+	q.resetWindows(st, now)
+	keyState := q.keyState(c.cfg, st, 0)
+	if st.Disabled || keyState == "exhausted" {
+		st.Disabled = true
+		_ = q.saveLocked()
+		return admission{Status: http.StatusForbidden, Reason: "key-exhausted", QuotaState: "ok", KeyState: "exhausted"}
+	}
+	if c.cfg.Rate.Concurrent > 0 && c.inFlight >= c.cfg.Rate.Concurrent {
+		return admission{Status: http.StatusTooManyRequests, Reason: "concurrency-exceeded", RetryAfter: "1", QuotaState: "ok", KeyState: keyState}
+	}
+	c.inFlight++
+	return admission{OK: true, Status: http.StatusOK, QuotaState: "ok", KeyState: keyState}
+}
+
 func (q *quotaStore) Release(c *callerRuntime) {
 	q.mu.Lock()
 	defer q.mu.Unlock()

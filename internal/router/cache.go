@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 )
@@ -47,20 +48,30 @@ func newCache(cfg CacheConfig) *responseCache {
 	}
 }
 
-func cacheKey(req *IRRequest, target Target) string {
+func cacheKey(req *IRRequest, target Target, callerID, project string) string {
 	type normalized struct {
-		Model          string      `json:"model"`
-		System         string      `json:"system,omitempty"`
-		Messages       []IRMessage `json:"messages,omitempty"`
-		Input          string      `json:"input,omitempty"`
-		MaxTokens      int         `json:"max_tokens,omitempty"`
-		MaxTokensField string      `json:"max_tokens_field,omitempty"`
-		Temperature    *float64    `json:"temperature,omitempty"`
-		Stop           []string    `json:"stop,omitempty"`
-		Provider       string      `json:"provider"`
-		TargetModel    string      `json:"target_model"`
+		CallerID           string          `json:"caller_id,omitempty"`
+		Project            string          `json:"project,omitempty"`
+		Model              string          `json:"model"`
+		System             string          `json:"system,omitempty"`
+		Messages           []IRMessage     `json:"messages,omitempty"`
+		Input              string          `json:"input,omitempty"`
+		MaxTokens          int             `json:"max_tokens,omitempty"`
+		MaxTokensField     string          `json:"max_tokens_field,omitempty"`
+		Temperature        *float64        `json:"temperature,omitempty"`
+		Stop               []string        `json:"stop,omitempty"`
+		Thinking           map[string]any  `json:"thinking,omitempty"`
+		Reasoning          ReasoningIntent `json:"reasoning,omitempty"`
+		TopP               any             `json:"top_p,omitempty"`
+		Seed               any             `json:"seed,omitempty"`
+		PreviousResponseID string          `json:"previous_response_id,omitempty"`
+		ReasoningEffort    any             `json:"reasoning_effort,omitempty"`
+		Provider           string          `json:"provider"`
+		TargetModel        string          `json:"target_model"`
 	}
-	raw, _ := json.Marshal(normalized{
+	n := normalized{
+		CallerID:       callerID,
+		Project:        project,
 		Model:          req.Model,
 		System:         req.System,
 		Messages:       req.Messages,
@@ -69,9 +80,26 @@ func cacheKey(req *IRRequest, target Target) string {
 		MaxTokensField: req.MaxTokensField,
 		Temperature:    req.Temperature,
 		Stop:           req.Stop,
+		Thinking:       req.Thinking,
+		Reasoning:      req.Reasoning,
 		Provider:       target.Provider,
 		TargetModel:    target.Model,
-	})
+	}
+	if req.Raw != nil {
+		n.TopP = req.Raw["top_p"]
+		n.Seed = req.Raw["seed"]
+		n.PreviousResponseID = strings.TrimSpace(stringValue(req.Raw["previous_response_id"]))
+		n.ReasoningEffort = req.Raw["reasoning_effort"]
+		if n.Thinking == nil {
+			if thinking, ok := req.Raw["thinking"].(map[string]any); ok {
+				n.Thinking = thinking
+			}
+		}
+		if reasoning, ok := req.Raw["reasoning"].(map[string]any); ok && !req.Reasoning.Requested && !req.Reasoning.Disabled {
+			_ = reasoning
+		}
+	}
+	raw, _ := json.Marshal(n)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
@@ -80,7 +108,8 @@ func cacheable(req *IRRequest) bool {
 	if req.Stream || req.NoCache || len(req.Tools) > 0 || requestHasImages(req) || requestHasStructuredOutput(req) {
 		return false
 	}
-	if req.Temperature != nil && *req.Temperature > 0 {
+	// Omitted temperature must not be cached: providers may sample nondeterministically.
+	if req.Temperature == nil || *req.Temperature != 0 {
 		return false
 	}
 	return true
