@@ -97,6 +97,12 @@ Package rollback never runs a reverse migration. Use database restore whenever t
 
 ## Most Recent Upgrade Flow
 
+For v1.2.0, review the LRP follow-up and external-policy notes in the release
+notes. New conversation-key, feedback, verifier-hint, signed-bundle, usage
+import, selection-constraint, and uncertainty/explore knobs are opt-in; leave
+them disabled unless the deployment has validated them. No new usage migration
+is required solely for these LRP follow-ups.
+
 For v1.1.0, review the migration and streaming changes in the release notes.
 LRP is optional: install the separate locked Python/uv service from the release
 source archive and validate its bundle before configuring a deployment-defined
