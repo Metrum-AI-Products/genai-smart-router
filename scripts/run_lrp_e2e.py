@@ -306,7 +306,9 @@ def execute(args: argparse.Namespace, checks: list[dict[str, Any]]) -> dict[str,
                     "MKL_NUM_THREADS": "1", "GOMAXPROCS": str(len(cpus) or 4)})
         policy_sock.close()
         admin_sock.close()
-        policy = start(stack, [str(args.lrp_python.resolve()), "-m", "lrp.cli", "serve", "--bundle",
+        # Preserve a virtualenv interpreter symlink: resolving it selects the
+        # base interpreter and loses the installed service dependencies.
+        policy = start(stack, [str(args.lrp_python.absolute()), "-m", "lrp.cli", "serve", "--bundle",
                        str(args.bundle.resolve()), "--config", str(temp / "lrp.json"), "--port", str(policy_port),
                        "--admin-port", str(admin_port)], temp / "lrp.log", env, cpus)
         ready(f"http://127.0.0.1:{admin_port}/readyz", policy, "lrp")
