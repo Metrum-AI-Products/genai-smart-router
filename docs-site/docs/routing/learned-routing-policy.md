@@ -184,6 +184,10 @@ require workload, security, client and request-shape acceptance before broad
 promotion. Baseline mode bypasses LRP and preserves configured eligible order;
 restoring a prior weighted strategy is a separate configuration rollback.
 
+Operators may optionally require Ed25519-signed model bundles before load or
+reload. Signing is deployment-owned and transparent to callers; see
+[Operator-signed LRP bundles](lrp-signed-bundles.md).
+
 Deploy the service over loopback in the router's network namespace, such as a
 sidecar in the same pod. A separate private service on a custom port does not
 satisfy the router's current egress rules. Policy requests are authenticated;

@@ -365,6 +365,11 @@ Readiness requires a valid bundle and warmup. `--enable-admin` enables authed
 before atomic replacement. In-flight requests retain their old bundle. Keep
 router `/metrics` separately restricted to `metrics_admin` callers.
 
+Optional Ed25519 detached signatures for `manifest.json` are documented in
+[LRP signed bundles](LRP_SIGNED_BUNDLES.md). Use operator-owned keys, a trust
+store for rotation, and `lrp validate --require-signed` when production loaders
+must reject unsigned candidates.
+
 ## Validation, promotion and rollback
 
 ### Measured real-embedding limitation
