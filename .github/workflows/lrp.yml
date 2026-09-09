@@ -36,6 +36,20 @@ jobs:
           go-version-file: go.mod
       - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
       - run: uv sync --project services/learned-routing-policy --locked
+      - name: Build isolated verifier rootfs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          umask 077
+          mkdir -p /var/tmp/lrp-ci
+          cp services/learned-routing-policy/verifier-requirements.lock /var/tmp/lrp-ci/requirements.lock
+          bash services/learned-routing-policy/lrp/judge/build_rootfs.sh \
+            --base-image python@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea \
+            --requirements-lock /var/tmp/lrp-ci/requirements.lock \
+            --out /var/tmp/lrp-ci/rootfs
       - run: make lrp-test lrp-synthetic-demo lrp-e2e
+        env:
+          LRP_TEST_ROOTFS: /var/tmp/lrp-ci/rootfs
+          LRP_REQUIRE_SANDBOX_TESTS: '1'
       - run: go test ./internal/router -run 'ExternalRoutingPolicy|Config'
       - run: python3 scripts/check_env_example_secrets.py

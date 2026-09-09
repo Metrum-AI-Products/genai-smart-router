@@ -132,7 +132,7 @@ def test_bounded_deadline_no_queued_work():
 
 def test_reload_midtraffic_and_native_shadow(monkeypatch):
     bundle = FakeBundle()
-    client, _, runtime = clients(bundle)
+    client, admin, runtime = clients(bundle)
     runtime.config.groups["test-staging"].mode = "shadow"
     # LRP returns real recommendation; router owns shadow serving.
     assert client.post("/route", json=body(), headers=AUTH).json()["targetIndex"] == 2
@@ -144,8 +144,13 @@ def test_reload_midtraffic_and_native_shadow(monkeypatch):
         futures = [pool.submit(request, i) for i in range(100)]
         replacement = FakeBundle()
         replacement.version = "synthetic-next"
-        runtime.bundle = replacement
-        runtime._set_version()
+        from pathlib import Path
+
+        import lrp.bundle
+        runtime.bundle_path = Path("/synthetic-bundle")
+        monkeypatch.setattr(lrp.bundle, "load_bundle", lambda path, threads: replacement)
+        assert admin.post("/admin/reload", headers=AUTH).status_code == 200
+        assert runtime.bundle is replacement
         assert all(f.result() == 200 for f in futures)
     runtime.pool.shutdown()
 

@@ -37,13 +37,16 @@ and artifacts; validate their source and dependency/container scan results.
 ## Pipeline commands
 
 These commands assume `LRP_DATA_DIR` is already set, the input files are approved,
-and `lrp` is invoked with `uv run --project services/learned-routing-policy`.
+`LRP_VERIFIER_ROOTFS` has passed the isolated-worker preflight when verifiers are
+used, and `lrp` is invoked with `uv run --project services/learned-routing-policy`.
+Adapt `services/learned-routing-policy/targets.example.yaml` into protected
+`targets.yaml` only after validating its deployment-owned single-target groups.
 
 ```bash
 lrp collect --dataset "$LRP_DATA_DIR/seed.ndjson" --approved-content --out "$LRP_DATA_DIR/requests.ndjson"
 lrp collect --router-log "$LRP_DATA_DIR/requests.jsonl" --content-capture "$LRP_DATA_DIR/approved-export.ndjson" --approved-content --out "$LRP_DATA_DIR/requests.ndjson"
 lrp fanout --requests "$LRP_DATA_DIR/requests.ndjson" --targets "$LRP_DATA_DIR/targets.yaml" --via router --base-url http://127.0.0.1:8080/v1 --refresh-pricing --approved-content --out "$LRP_DATA_DIR/responses.ndjson"
-lrp judge --requests "$LRP_DATA_DIR/requests.ndjson" --responses "$LRP_DATA_DIR/responses.ndjson" --anchor-provider openrouter --anchor anthropic/claude-sonnet-4.6 --judge anthropic/claude-sonnet-4.6 --approved-content --out "$LRP_DATA_DIR/judgments.ndjson"
+lrp judge --requests "$LRP_DATA_DIR/requests.ndjson" --responses "$LRP_DATA_DIR/responses.ndjson" --anchor-provider openrouter --anchor anthropic/claude-sonnet-4.6 --judge anthropic/claude-sonnet-4.6 --approved-content --sandbox-rootfs "$LRP_VERIFIER_ROOTFS" --out "$LRP_DATA_DIR/judgments.ndjson"
 lrp featurize --requests "$LRP_DATA_DIR/requests.ndjson" --embedding-model "$LRP_DATA_DIR/embed/model.onnx" --tokenizer "$LRP_DATA_DIR/embed/tokenizer.json" --out "$LRP_DATA_DIR/features.parquet"
 lrp train --features "$LRP_DATA_DIR/features.parquet" --judgments "$LRP_DATA_DIR/judgments.ndjson" --responses "$LRP_DATA_DIR/responses.ndjson" --embedding-model "$LRP_DATA_DIR/embed/model.onnx" --tokenizer "$LRP_DATA_DIR/embed/tokenizer.json" --anchor-provider openrouter --anchor anthropic/claude-sonnet-4.6 --out "$LRP_DATA_DIR/bundles"
 # Set LRP_BUNDLE_DIR to $LRP_DATA_DIR/bundles/<bundle_version printed by train>.
@@ -68,6 +71,11 @@ worker enforces no network, no host files/secrets, an unprivileged UID, bounded
 scratch/CPU/memory/PIDs/output, and whole-process-tree timeout cleanup. A host
 subprocess and temporary directory alone do not provide isolation. Never install
 requirements or execute shell commands supplied by a dataset.
+
+The [isolated verifier guide](../services/learned-routing-policy/lrp/judge/README.md)
+provides the digest-pinned rootfs builder and mandatory no-skip preflight. Pass
+`--sandbox-rootfs "$LRP_VERIFIER_ROOTFS"` to `lrp judge` after that preflight.
+The serving container is separate from the offline verifier worker.
 
 Use a local trusted int8 ONNX export of
 [BAAI bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) with its matching
@@ -94,7 +102,9 @@ and selected targets. Positive caps filter targets marked `honors_max_tokens:
 false`, irrespective of cap size. For the historical set this affects MiniMax,
 Qwen and Grok, not Sonnet. Capped rows are ineligible. An uncapped experiment
 requires explicit `--allow-uncapped`, separate spend safeguards and an operator
-budget; client truncation cannot cap billed generation. Retry costs and actual
+budget with `--concurrency 1 --max-total-cost-usd <approved-limit>`. A spend guard
+stops subsequent requests; it cannot guarantee the cost of an already running
+uncapped request. Retry costs and actual
 reported billing remain distinct from terminal usage-times-price estimates.
 Reports use stored prices/costs and include TTFB, duration, throughput and errors
 so both cost and slow user experience can be investigated.
@@ -116,6 +126,10 @@ The commented sample shows the full configuration. LRP only selects from current
 eligible targets, preserving indexes after router filtering. Unknown/undertrained
 targets are excluded from learned predictions; with none known it returns first
 eligible order with `lrp:no-known-target`. Unknown prices cannot win as free.
+If known targets all fall below the configured training minimum, LRP returns
+503 rather than re-enabling them. The router applies its configured policy-error
+behavior. Conflicting dialect/catalog aliases for duplicate target identities
+are rejected instead of silently sharing incompatible predictions.
 Image requests pass through to first eligible order; no learned image-quality
 claim is made. Missing request content degrades with `lrp:no-request-content`.
 

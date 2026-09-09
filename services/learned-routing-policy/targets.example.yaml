@@ -1,0 +1,46 @@
+# Historical candidate manifest; does not create or activate router groups.
+# Refresh exact pricing and validate each account/model/dialect before any live run.
+# For router mode replace router_group/mapping with verified deployment-owned groups.
+targets:
+  - provider: openrouter
+    model: google/gemma-4-26b-a4b-it:nitro
+    model_ref: gemma-4-26b-a4b-it-nitro
+    honors_max_tokens: true
+    router_group: lrp-fanout-0
+    router_targets:
+      - {provider: openrouter, model: 'google/gemma-4-26b-a4b-it:nitro', model_ref: gemma-4-26b-a4b-it-nitro}
+  - provider: openrouter
+    model: deepseek/deepseek-v4-flash:nitro
+    model_ref: deepseek-v4-flash-nitro
+    honors_max_tokens: true
+    router_group: lrp-fanout-1
+    router_targets:
+      - {provider: openrouter, model: 'deepseek/deepseek-v4-flash:nitro', model_ref: deepseek-v4-flash-nitro}
+  - provider: openrouter
+    model: minimax/minimax-m3
+    model_ref: openrouter-minimax-m3
+    honors_max_tokens: false
+    router_group: lrp-fanout-2
+    router_targets:
+      - {provider: openrouter, model: 'minimax/minimax-m3', model_ref: openrouter-minimax-m3}
+  - provider: openrouter
+    model: qwen/qwen3.7-plus:nitro
+    model_ref: qwen3-7-plus-nitro
+    honors_max_tokens: false
+    router_group: lrp-fanout-3
+    router_targets:
+      - {provider: openrouter, model: 'qwen/qwen3.7-plus:nitro', model_ref: qwen3-7-plus-nitro}
+  - provider: openrouter
+    model: x-ai/grok-4.3
+    model_ref: openrouter-xai-grok-4-3
+    honors_max_tokens: false
+    router_group: lrp-fanout-4
+    router_targets:
+      - {provider: openrouter, model: 'x-ai/grok-4.3', model_ref: openrouter-xai-grok-4-3}
+  - provider: openrouter
+    model: anthropic/claude-sonnet-4.6
+    model_ref: openrouter-claude-sonnet-4-6
+    honors_max_tokens: true
+    router_group: lrp-fanout-5
+    router_targets:
+      - {provider: openrouter, model: 'anthropic/claude-sonnet-4.6', model_ref: openrouter-claude-sonnet-4-6}

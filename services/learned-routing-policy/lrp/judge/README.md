@@ -81,7 +81,7 @@ reviewed digest/lock artifact, then run this exact command. Never count a skip o
 unsupported result as passing mandatory security evidence. Local runs without a
 rootfs may skip the real isolation tests and must report that limitation.
 
-After the CLI exposes `--sandbox-rootfs`, invoke it explicitly:
+The CLI exposes `--sandbox-rootfs`; invoke it explicitly:
 
 ```bash
 rtk proxy uv run --project services/learned-routing-policy lrp judge \

@@ -122,6 +122,7 @@ class Runtime:
         )
         self.admission = threading.BoundedSemaphore(config.inference_workers)
         self.reload_lock = threading.Lock()
+        self.warned_targets: set[str] = set()
         self.registry = CollectorRegistry()
         self.latency = Histogram(
             "lrp_route_latency_seconds", "Whole route handler latency", registry=self.registry
@@ -270,6 +271,12 @@ def create_apps(
                             {target.key for target in payload.targets} for row in entries):
                         runtime.degraded.labels("undertrained").inc()
                         return JSONResponse({"error": "no_trained_target"}, status_code=503)
+                for target in payload.targets:
+                    if target.key not in predictions:
+                        identity = hashlib.sha256(json.dumps(target.key).encode()).hexdigest()[:16]
+                        if identity not in runtime.warned_targets and len(runtime.warned_targets) < 1024:
+                            runtime.warned_targets.add(identity)
+                            LOG.warning("unknown or excluded model identity: %s", identity)
                 decision = decide(
                     payload.targets,
                     predictions,
