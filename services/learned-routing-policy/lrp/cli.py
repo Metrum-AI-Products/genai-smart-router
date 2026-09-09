@@ -86,6 +86,22 @@ def parser() -> argparse.ArgumentParser:
     serving.add_argument("--deadline-ms", type=int, help="Override YAML deadline_ms (1..4500; default 200)")
     validate = sub.add_parser("validate")
     validate.add_argument("--bundle", type=Path, required=True)
+    validate.add_argument("--trust", type=Path, help="Operator Ed25519 trust JSON")
+    validate.add_argument(
+        "--require-signed",
+        action="store_true",
+        help="Reject unsigned bundles",
+    )
+
+    sign = sub.add_parser("sign-bundle", help="Detach-sign manifest.json with Ed25519")
+    sign.add_argument("--bundle", type=Path, required=True)
+    sign.add_argument("--key", type=Path, required=True, help="Base64 Ed25519 seed or private key")
+    sign.add_argument("--key-id", required=True)
+
+    verify = sub.add_parser("verify-bundle", help="Verify optional operator manifest signature")
+    verify.add_argument("--bundle", type=Path, required=True)
+    verify.add_argument("--trust", type=Path, required=True)
+    verify.add_argument("--require-signed", action="store_true")
     return root
 
 
@@ -206,7 +222,36 @@ def execute(args: argparse.Namespace) -> int:
     elif args.command == "validate":
         from lrp.bundle import load_bundle
 
-        load_bundle(args.bundle, threads=1)
+        load_bundle(
+            args.bundle,
+            threads=1,
+            require_signed=args.require_signed,
+            trusted_keys=args.trust,
+        )
+    elif args.command == "sign-bundle":
+        from lrp.bundle import sign_bundle
+
+        envelope = sign_bundle(args.bundle, args.key, args.key_id)
+        print(
+            json.dumps(
+                {
+                    "key_id": envelope["key_id"],
+                    "manifest_version": envelope["manifest_version"],
+                    "manifest_sha256": envelope["manifest_sha256"],
+                }
+            )
+        )
+    elif args.command == "verify-bundle":
+        from lrp.bundle import load_bundle, verify_bundle_signature
+
+        if args.require_signed:
+            loaded = load_bundle(
+                args.bundle, threads=1, require_signed=True, trusted_keys=args.trust
+            )
+            print(json.dumps({"key_id": loaded.signature_key_id, "version": loaded.version}))
+        else:
+            key_id = verify_bundle_signature(args.bundle, args.trust)
+            print(json.dumps({"key_id": key_id}))
     elif args.command == "serve":
         from lrp.serve import serve
 

@@ -28,3 +28,5 @@ auth refuses startup. Serving binds loopback; admin endpoints use a separate
 loopback port. Explain and reload require `--enable-admin` and authentication.
 Dataset content, responses, judgments, embeddings and bundles are operator-owned
 protected artifacts. Commit only small explicitly synthetic fixtures.
+Optional [operator-signed bundles](../../docs/LRP_SIGNED_BUNDLES.md) add Ed25519
+manifest signatures and require-signed loading with operator-owned keys.
