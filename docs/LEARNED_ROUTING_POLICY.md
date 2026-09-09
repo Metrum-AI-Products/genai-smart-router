@@ -244,7 +244,10 @@ requirements or execute shell commands supplied by a dataset.
 The [isolated verifier guide](../services/learned-routing-policy/lrp/judge/README.md)
 provides the digest-pinned rootfs builder and mandatory no-skip preflight. Pass
 `--sandbox-rootfs "$LRP_VERIFIER_ROOTFS"` to `lrp judge` after that preflight.
-The serving container is separate from the offline verifier worker.
+The serving container is separate from the offline verifier worker. Extensible
+`sql_result` and governed `plugin` contracts are documented in
+[LRP_VERIFIERS.md](LRP_VERIFIERS.md). Sample pairwise/absolute judgments for
+protected human review with [LRP_HUMAN_JUDGE.md](LRP_HUMAN_JUDGE.md).
 
 Use a local trusted int8 ONNX export of
 [BAAI bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) with its matching

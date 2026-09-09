@@ -367,23 +367,46 @@ def _validate_request(row: dict[str, Any]) -> None:
             )
     verifier = row.get("verifier", {"kind": "none"})
     _fields(verifier, {"kind", "spec", "version"})
-    specs = {
-        "none": set(),
-        "exact": {"expected"},
-        "regex": {"pattern"},
-        "json_schema": {"schema"},
-        "pytest": {"tests"},
-    }
-    if verifier.get("kind") not in specs:
-        raise DataError("unsupported_verifier")
-    _fields(verifier.get("spec", {}), specs[verifier["kind"]])
+    # Structural request-row checks; semantic allowlists live in lrp.judge.contracts.
+    from .judge.contracts import ALLOWED_PLUGIN_IDS, structural_spec_keys
+
+    kind = verifier.get("kind", "none")
+    try:
+        required, optional = structural_spec_keys(str(kind))
+    except DataError:
+        raise DataError("unsupported_verifier") from None
     spec = verifier.get("spec", {})
-    if set(spec) != specs[verifier["kind"]]:
+    _fields(spec, required | optional)
+    if not required <= set(spec) <= required | optional:
         raise DataError("missing_verifier_spec")
+    if verifier.get("version") is not None and not isinstance(verifier.get("version"), str):
+        raise DataError("unsupported_verifier_version")
     for key, value in spec.items():
         if key == "schema":
             if not isinstance(value, dict):
                 raise DataError("invalid_verifier_schema")
+        elif key == "expected_rows":
+            if not isinstance(value, list) or len(canonical(value)) > MAX_ROW_BYTES:
+                raise DataError("invalid_sql_result_expected")
+            for item in value:
+                if not isinstance(item, dict):
+                    raise DataError("invalid_sql_result_expected")
+        elif key == "columns":
+            if (
+                not isinstance(value, list)
+                or not value
+                or not all(isinstance(name, str) and name for name in value)
+            ):
+                raise DataError("invalid_sql_result_columns")
+        elif key == "ignore_row_order":
+            if type(value) is not bool:
+                raise DataError("invalid_sql_result_order_flag")
+        elif key == "plugin_id":
+            if not isinstance(value, str) or value not in ALLOWED_PLUGIN_IDS:
+                raise DataError("unsupported_plugin_id")
+        elif key == "params":
+            if not isinstance(value, dict) or len(canonical(value)) > MAX_ROW_BYTES:
+                raise DataError("invalid_plugin_params")
         else:
             _bounded_text(value, MAX_ROW_BYTES)
 
