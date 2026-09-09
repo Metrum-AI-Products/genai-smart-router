@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from lrp.policy import Prediction, decide, estimated_cost
-from lrp.schemas import GroupConfig, Target, TargetKey
 
 from lrp.bundle import ModelBundle, canonical_json, load_bundle, target_key
 from lrp.features import FEATURE_NAMES, as_dict
+from lrp.policy import Prediction, decide, estimated_cost
+from lrp.schemas import GroupConfig, Target, TargetKey
 from lrp.train import feature_frame, index_rows, trusted_judgment
 
 

@@ -3,7 +3,6 @@ import json
 import numpy as np
 import pandas as pd
 import pytest
-
 from lrp.features import FEATURE_NAMES, SyntheticEmbedder, session_split
 from lrp.train import bradley_terry, feature_frame, train
 

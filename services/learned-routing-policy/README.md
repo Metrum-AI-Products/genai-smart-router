@@ -1,0 +1,30 @@
+# Metrum Learned Routing Policy
+
+Standalone Python 3.12+ policy service and offline training CLI for the router's
+existing `strategy: external` contract. It predicts target quality and output
+tokens, then recommends the cheapest eligible target meeting an operator floor.
+
+From the repository root:
+
+```bash
+uv sync --project services/learned-routing-policy --locked
+make lrp-test
+make lrp-synthetic-demo
+```
+
+The synthetic demo trains real LightGBM models using explicitly synthetic
+embeddings, responses and labels. It evaluates promotion gates but cannot supply
+provider quality or real-ONNX latency evidence. It writes outside the repository.
+
+See [the operator runbook](../../docs/LEARNED_ROUTING_POLICY.md) for all pipeline
+commands, protected storage, approved third-party judging, local ONNX artifacts,
+manual acceptance gates, shared-loopback deployment and rollback. The
+[design reconciliation](../../docs/LRP_DESIGN_RECONCILIATION.md) records corrections
+to issue #15 before implementation. The [caller guide](../../docs-site/docs/routing/learned-routing-policy.md)
+explains request behavior.
+
+`LRP_POLICY_AUTH_HEADER` contains the secret **value** for `X-LRP-Auth`. Blank
+auth refuses startup. Serving binds loopback; admin endpoints use a separate
+loopback port. Explain and reload require `--enable-admin` and authentication.
+Dataset content, responses, judgments, embeddings and bundles are operator-owned
+protected artifacts. Commit only small explicitly synthetic fixtures.

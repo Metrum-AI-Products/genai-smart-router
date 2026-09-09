@@ -16,8 +16,6 @@ from types import MappingProxyType
 from typing import Any
 
 import numpy as np
-from lrp.policy import Prediction
-from lrp.schemas import TargetKey
 
 from lrp.features import (
     FEATURE_NAMES,
@@ -27,6 +25,8 @@ from lrp.features import (
     Vector,
     capped_threads,
 )
+from lrp.policy import Prediction
+from lrp.schemas import TargetKey
 
 SCHEMA_VERSION = "lrp.bundle.v1"
 

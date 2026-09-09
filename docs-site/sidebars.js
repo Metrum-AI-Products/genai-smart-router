@@ -80,6 +80,7 @@ const sidebars = {
         "routing/strategy-decision-tree",
         "routing/overview",
         "routing/customer-controlled-routing",
+        "routing/learned-routing-policy",
         "configuration/model-group-contracts",
         "agents-tools-vision/overview",
         "agents-tools-vision/structured-outputs",

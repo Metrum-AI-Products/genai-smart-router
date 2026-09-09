@@ -1,0 +1,13 @@
+# Deployment-defined demonstration group; pins and exploration are opt-in.
+groups:
+  lrp-demo:
+    quality_floor: 0.80
+    explore_rate: 0.0
+    exploration_projects: []
+    pin_ttl_s: 0
+    min_train_rows: 200
+    # Router external_policy.mode owns shadow activation. LRP returns its recommendation.
+    mode: enforce
+max_pins: 10000
+inference_workers: 2
+deadline_ms: 200

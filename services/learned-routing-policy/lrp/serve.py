@@ -1,0 +1,409 @@
+"""Authenticated policy service with bounded inference and atomic bundle reload."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import hmac
+import json
+import logging
+import os
+import random
+import signal
+import threading
+import time
+from collections import OrderedDict
+from collections.abc import AsyncIterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any, Protocol
+
+import numpy as np
+import numpy.typing as npt
+import uvicorn
+import yaml
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest
+from pydantic import ValidationError
+
+from lrp.policy import Decision, Prediction, decide, estimated_cost, safe_label
+from lrp.schemas import Payload, ServiceConfig, TargetKey
+
+LOG = logging.getLogger("lrp")
+MAX_BODY = 2 * 1024 * 1024
+
+
+class Bundle(Protocol):
+    @property
+    def version(self) -> str: ...
+    @property
+    def manifest(self) -> Mapping[str, Any]: ...
+
+    def build(self, payload: Mapping[str, Any]) -> npt.NDArray[np.float32]: ...
+    def predict(
+        self, vector: npt.NDArray[np.float32], targets: Any = None
+    ) -> Mapping[TargetKey, Prediction]: ...
+    def bt_predictions(self) -> Mapping[TargetKey, Prediction]: ...
+    def explain(
+        self, vector: npt.NDArray[np.float32], keys: Any = None
+    ) -> Mapping[TargetKey, list[dict[str, Any]]]: ...
+
+
+class Pins:
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self.rows: OrderedDict[str, tuple[float, TargetKey]] = OrderedDict()
+        self.lock = threading.Lock()
+
+    def get(self, key: str) -> TargetKey | None:
+        with self.lock:
+            value = self.rows.pop(key, None)
+            if value is None or value[0] <= time.monotonic():
+                return None
+            self.rows[key] = value
+            return value[1]
+
+    def put(self, key: str, target: TargetKey, ttl: float) -> None:
+        with self.lock:
+            self.rows.pop(key, None)
+            self.rows[key] = time.monotonic() + ttl, target
+            while len(self.rows) > self.limit:
+                self.rows.popitem(last=False)
+
+
+def session_key(payload: Payload) -> str | None:
+    req = payload.request or {}
+    first = ""
+    for message in req.get("messages", []):
+        if isinstance(message, dict) and message.get("role") == "user":
+            content = message.get("content", "")
+            if isinstance(content, str):
+                first = content
+            if not first:
+                first = "".join(
+                    str(part.get("text", ""))
+                    for part in message.get("parts", [])
+                    if isinstance(part, dict)
+                )
+            break
+    if not first and isinstance(req.get("input"), str):
+        first = req["input"]
+    if not first:
+        return None
+    encoded = json.dumps(
+        [
+            payload.group,
+            payload.caller.project,
+            payload.caller.environment,
+            hashlib.sha256(first.encode()).hexdigest(),
+        ],
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+class Runtime:
+    def __init__(
+        self,
+        config: ServiceConfig,
+        bundle: Bundle | None,
+        auth: str,
+        bundle_path: Path | None = None,
+    ) -> None:
+        if not auth or auth.strip() != auth or "\n" in auth or "\r" in auth:
+            raise ValueError("LRP_POLICY_AUTH_HEADER must contain a nonempty header value")
+        self.auth = auth.encode()
+        self.config, self.bundle, self.bundle_path = config, bundle, bundle_path
+        self.pins = Pins(config.max_pins)
+        self.pool = ThreadPoolExecutor(
+            max_workers=config.inference_workers, thread_name_prefix="lrp-inference"
+        )
+        self.admission = threading.BoundedSemaphore(config.inference_workers)
+        self.reload_lock = threading.Lock()
+        self.registry = CollectorRegistry()
+        self.latency = Histogram(
+            "lrp_route_latency_seconds", "Whole route handler latency", registry=self.registry
+        )
+        self.total = Counter(
+            "lrp_route_total", "Policy decisions", ["label"], registry=self.registry
+        )
+        self.degraded = Counter(
+            "lrp_route_degraded_total", "Degraded decisions", ["reason"], registry=self.registry
+        )
+        self.quality = Histogram(
+            "lrp_predicted_quality",
+            "Predicted quality",
+            ["target"],
+            buckets=(0, 0.25, 0.5, 0.75, 0.8, 0.9, 1),
+            registry=self.registry,
+        )
+        self.info = Gauge("lrp_bundle_info", "Loaded bundle", ["version"], registry=self.registry)
+        self._set_version()
+
+    def _set_version(self) -> None:
+        self.info.clear()
+        if self.bundle is not None:
+            self.info.labels(safe_label(self.bundle.version)).set(1)
+
+    def reload(self) -> None:
+        from lrp.bundle import load_bundle
+
+        if self.bundle_path is None:
+            raise ValueError("bundle path unavailable")
+        with self.reload_lock:
+            candidate = load_bundle(self.bundle_path, threads=1)
+            self.bundle = candidate
+            self._set_version()
+
+    async def infer(
+        self, bundle: Bundle, payload: Payload, remaining: float, explain: bool = False
+    ) -> tuple[
+        Mapping[TargetKey, Prediction], str | None, Mapping[TargetKey, list[dict[str, Any]]]
+    ]:
+        if remaining <= 0 or not self.admission.acquire(blocking=False):
+            return bundle.bt_predictions(), "latency", {}
+
+        def run() -> tuple[
+            Mapping[TargetKey, Prediction], Mapping[TargetKey, list[dict[str, Any]]]
+        ]:
+            try:
+                vector = bundle.build(payload.model_dump(by_alias=True))
+                keys = [target.key for target in payload.targets]
+                return bundle.predict(vector, keys), bundle.explain(vector, keys) if explain else {}
+            finally:
+                self.admission.release()
+
+        # A timed-out computation cannot create an unbounded queue: its admission
+        # slot stays occupied until it finishes. Subsequent requests use BT immediately.
+        future = asyncio.wrap_future(self.pool.submit(run))
+        try:
+            predictions, contributions = await asyncio.wait_for(asyncio.shield(future), remaining)
+            return predictions, None, contributions
+        except TimeoutError:
+            future.add_done_callback(
+                lambda done: done.exception() if not done.cancelled() else None
+            )
+            return bundle.bt_predictions(), "latency", {}
+        except Exception:  # noqa: BLE001 - inference failure degrades without exposing content
+            return bundle.bt_predictions(), "embedding", {}
+
+
+def create_apps(
+    config: ServiceConfig,
+    bundle: Bundle | None,
+    *,
+    auth: str,
+    enable_admin: bool = False,
+    bundle_path: Path | None = None,
+) -> tuple[FastAPI, FastAPI, Runtime]:
+    runtime = Runtime(config, bundle, auth, bundle_path)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        yield
+        runtime.pool.shutdown(wait=False, cancel_futures=True)
+
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    admin = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+    def authenticated(request: Request) -> bool:
+        value = request.headers.get("X-LRP-Auth", "").encode()
+        return hmac.compare_digest(value, runtime.auth)
+
+    async def route(request: Request, explain: bool = False) -> Response:
+        started = time.monotonic()
+        try:
+            if not authenticated(request):
+                return Response(status_code=401)
+            current = runtime.bundle
+            if current is None:
+                return JSONResponse({"error": "not_ready"}, status_code=503)
+            raw = bytearray()
+            try:
+                async with asyncio.timeout(config.deadline_ms / 1000):
+                    async for chunk in request.stream():
+                        raw.extend(chunk)
+                        if len(raw) > MAX_BODY:
+                            return JSONResponse({"error": "body_too_large"}, status_code=413)
+            except TimeoutError:
+                return JSONResponse({"error": "body_timeout"}, status_code=408)
+            try:
+                payload = Payload.model_validate_json(raw)
+            except (ValidationError, ValueError):
+                return JSONResponse({"error": "invalid_request"}, status_code=400)
+            cfg = config.groups.get(payload.group)
+            if cfg is None:
+                return JSONResponse({"error": "unknown_group"}, status_code=400)
+            predictions: Mapping[TargetKey, Prediction] = {}
+            contributions: Mapping[TargetKey, list[dict[str, Any]]] = {}
+            key = session_key(payload) if cfg.pin_ttl_s else None
+            pin = runtime.pins.get(key) if key else None
+            if not payload.request and not payload.text:
+                decision = Decision(
+                    0, tuple(range(1, len(payload.targets))), "lrp:no-request-content"
+                )
+                runtime.degraded.labels("no_request").inc()
+            elif payload.context.get("imageCount", 0) > 0:
+                decision = Decision(
+                    0, tuple(range(1, len(payload.targets))), "lrp:image-passthrough"
+                )
+            else:
+                predictions, degradation, contributions = await runtime.infer(
+                    current,
+                    payload,
+                    config.deadline_ms / 1000 - (time.monotonic() - started),
+                    explain,
+                )
+                entries = current.manifest.get("targets", [])
+                if entries:
+                    trained = {
+                        (row["provider"], row["model"])
+                        for row in entries
+                        if row.get("n_train", 0) >= cfg.min_train_rows
+                    }
+                    predictions = {
+                        key: value for key, value in predictions.items() if key in trained
+                    }
+                    if not predictions and any((row["provider"], row["model"]) in
+                            {target.key for target in payload.targets} for row in entries):
+                        runtime.degraded.labels("undertrained").inc()
+                        return JSONResponse({"error": "no_trained_target"}, status_code=503)
+                decision = decide(
+                    payload.targets,
+                    predictions,
+                    cfg,
+                    random.SystemRandom(),
+                    input_tokens=float(payload.context.get("estimatedTokens", 0)),
+                    pin=pin,
+                    exploration_allowed=(payload.caller.project in cfg.exploration_projects),
+                )
+                if degradation:
+                    runtime.degraded.labels(degradation).inc()
+                    decision = Decision(
+                        decision.primary, decision.fallbacks, f"lrp:{degradation}-fallback"
+                    )
+                if key and not explain:
+                    runtime.pins.put(key, payload.targets[decision.primary].key, cfg.pin_ttl_s)
+            runtime.total.labels(decision.label).inc()
+            for target in payload.targets:
+                prediction = predictions.get(target.key)
+                if prediction is not None:
+                    # Stable manifest target identity only, never caller data.
+                    metric_key = hashlib.sha256(json.dumps(target.key).encode()).hexdigest()[:16]
+                    runtime.quality.labels(metric_key).observe(prediction.quality)
+            if not explain:
+                return JSONResponse(decision.response())
+            explained = []
+            for index, target in enumerate(payload.targets):
+                pred = predictions.get(target.key)
+                explained.append(
+                    {
+                        "index": index,
+                        "provider": target.provider,
+                        "model": target.model,
+                        "quality": pred.quality if pred else None,
+                        "out_tokens": pred.out_tokens if pred else None,
+                        "est_cost": estimated_cost(
+                            target, pred, float(payload.context.get("estimatedTokens", 0)), cfg
+                        )
+                        if pred
+                        else None,
+                        "excluded_reason": None if pred else "unknown_or_undertrained",
+                        "feature_importances": contributions.get(target.key, []),
+                    }
+                )
+            return JSONResponse(
+                {**decision.response(), "targets": explained, "floor": cfg.quality_floor}
+            )
+        except Exception:  # noqa: BLE001 - sanitize all exceptions at the HTTP boundary
+            LOG.error("policy request failed: internal_error")
+            return JSONResponse({"error": "internal_error"}, status_code=500)
+        finally:
+            runtime.latency.observe(time.monotonic() - started)
+
+    @app.post("/route")
+    async def route_endpoint(request: Request) -> Response:
+        return await route(request)
+
+    @admin.get("/healthz")
+    async def health() -> Response:
+        return JSONResponse({"status": "ok"})
+
+    @admin.get("/readyz")
+    async def ready() -> Response:
+        return JSONResponse(
+            {"ready": runtime.bundle is not None},
+            status_code=200 if runtime.bundle is not None else 503,
+        )
+
+    @admin.get("/metrics")
+    async def metrics() -> Response:
+        return Response(
+            generate_latest(runtime.registry), media_type="text/plain; version=0.0.4; charset=utf-8"
+        )
+
+    if enable_admin:
+
+        @app.post("/explain")
+        async def explain_endpoint(request: Request) -> Response:
+            return await route(request, explain=True)
+
+        @admin.post("/admin/reload")
+        async def reload_endpoint(request: Request) -> Response:
+            if not authenticated(request):
+                return Response(status_code=401)
+            try:
+                await asyncio.to_thread(runtime.reload)
+            except Exception:  # noqa: BLE001 - preserve old bundle without exposing artifact data
+                return JSONResponse({"error": "reload_failed"}, status_code=400)
+            return JSONResponse({"version": runtime.bundle.version if runtime.bundle else None})
+
+    return app, admin, runtime
+
+
+def serve(
+    *,
+    bundle: Path,
+    config: Path,
+    port: int = 18093,
+    admin_port: int = 18094,
+    enable_admin: bool = False,
+) -> None:
+    from lrp.bundle import load_bundle
+
+    settings = ServiceConfig.model_validate(yaml.safe_load(config.read_text()))
+    loaded = load_bundle(bundle, threads=1)
+    app, admin, runtime = create_apps(
+        settings,
+        loaded,
+        auth=os.environ.get("LRP_POLICY_AUTH_HEADER", ""),
+        enable_admin=enable_admin,
+        bundle_path=bundle,
+    )
+    if enable_admin and hasattr(signal, "SIGHUP"):
+
+        def reload_signal(signum: int, frame: Any) -> None:
+            def reload_safe() -> None:
+                try:
+                    runtime.reload()
+                except Exception:  # noqa: BLE001 - signal-thread errors must not expose artifact data
+                    LOG.error("bundle reload failed")
+
+            if not runtime.reload_lock.locked():
+                threading.Thread(target=reload_safe, daemon=True).start()
+
+        signal.signal(signal.SIGHUP, reload_signal)
+    threading.Thread(
+        target=uvicorn.run,
+        args=(admin,),
+        kwargs={
+            "host": "127.0.0.1",
+            "port": admin_port,
+            "access_log": False,
+            "log_level": "warning",
+        },
+        daemon=True,
+    ).start()
+    uvicorn.run(app, host="127.0.0.1", port=port, access_log=False, log_level="warning")

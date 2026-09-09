@@ -1,9 +1,8 @@
 # ruff: noqa: F811 -- pytest fixtures are imported from the owned training test module.
 import json
 
-from test_train import dataset, trained  # noqa: F401
-
 from lrp.eval import evaluate
+from test_train import dataset, trained  # noqa: F401
 
 
 def test_holdout_gates_baselines_sweep_and_report(dataset, trained, tmp_path):

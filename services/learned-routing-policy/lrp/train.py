@@ -12,7 +12,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from lrp.schemas import TargetKey
 
 from lrp.bundle import (
     SCHEMA_VERSION,
@@ -29,6 +28,7 @@ from lrp.features import (
     read_rows,
     session_split,
 )
+from lrp.schemas import TargetKey
 
 
 def feature_frame(source: Any, seed: int = 42) -> pd.DataFrame:

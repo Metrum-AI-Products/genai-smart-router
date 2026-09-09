@@ -6,10 +6,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
-from test_train import dataset, trained  # noqa: F401
-
 from lrp.bundle import AtomicBundle, bundle_version, canonical_json, load_bundle
 from lrp.features import FEATURE_NAMES
+from test_train import dataset, trained  # noqa: F401
 
 
 def test_load_predict_explain_and_atomic_failed_reload(trained, tmp_path):
