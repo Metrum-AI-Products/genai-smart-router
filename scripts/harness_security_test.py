@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2006 Metrum AI
+# Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
 """Static security regression checks for live E2E harness scripts."""

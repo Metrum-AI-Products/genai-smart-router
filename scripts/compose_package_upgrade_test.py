@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2006 Metrum AI
+# Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
 """Self-test Compose package upgrade unpack, runtime copy, and fail-closed checks."""

@@ -125,9 +125,14 @@ npm install --save-dev typescript
 
 Package the files required by the deployment, including `package.json`, lockfile, local helper files, and the resolved dependency tree or a pre-bundled script bundle according to your release process. Keep this directory free of provider keys, router tokens, and private host credentials. If a dependency is large or has native modules, prefer pre-bundling the routing script during release and deploying the generated JavaScript/TypeScript entrypoint plus any review assets required by your change-control process.
 
-## Prompt-Size Routing Example
+## Request-Shape Routing Example
 
-This tested example keeps short prompts on a smaller/cheaper target and sends large prompts to a heavier target. It falls back to the first configured eligible target if a preferred tier is not available.
+The checked-in example at `examples/typescript-request-shape/router.ts` keeps
+short chat prompts on a cheaper tier and routes long-context, tool, image,
+structured-output, and reasoning requests to matching target tiers. It falls
+back to the first configured eligible target if a preferred tier is not
+available. Packaged `scripts/router.ts` is a separate caller-regex weighted
+sample and does not implement this request-shape policy.
 
 ```typescript
 type Target = {
@@ -141,6 +146,13 @@ type Target = {
 type RouteContext = {
   text: string;
   targets: Target[];
+  context?: {
+    textChars?: number;
+    toolCount?: number;
+    imageCount?: number;
+    hasStructuredOutput?: boolean;
+    reasoning?: { requested?: boolean };
+  };
 };
 
 export function route(ctx: RouteContext) {
@@ -149,18 +161,20 @@ export function route(ctx: RouteContext) {
     .filter((entry) => entry.target.keyConfigured && entry.target.weight > 0);
 
   if (eligible.length === 0) {
-    return { targetIndex: 0, classLabel: "prompt-size:no-eligible-targets" };
+    return { targetIndex: 0, classLabel: "request-shape:no-eligible-targets" };
   }
 
-  const preferredTier = ctx.text.length > 8000 ? "heavy" : "cheap";
-  const preferred = eligible.find((entry) => entry.target.tier === preferredTier) || eligible[0];
+  const preferredTiers = (ctx.text || "").length > 8000 ? ["heavy"] : ["cheap"];
+  const preferred =
+    eligible.find((entry) => preferredTiers.includes(entry.target.tier || "")) ||
+    eligible[0];
 
   return {
     targetIndex: preferred.index,
     fallbackIndexes: eligible
       .filter((entry) => entry.index !== preferred.index)
       .map((entry) => entry.index),
-    classLabel: `prompt-size:${preferredTier}`,
+    classLabel: `request-shape:${preferred.target.tier || "default"}`,
   };
 }
 ```

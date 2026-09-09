@@ -157,6 +157,23 @@ python3 examples/external-routing-policy/prompt_size_policy.py
 
 It listens on `http://127.0.0.1:18090/route`, sends requests with `context.textChars <= 8000` to a `cheap` target, sends larger requests to a `heavy` target, and returns the same response schema shown above.
 
+The repository also includes an adaptive signal policy under
+`examples/external-routing-policy/adaptive_signal_policy.py`. That reference
+scores observed latency, throughput, reliability, and optional quality labels,
+keeps short-lived conversation pins, ignores response-cache hits, and books
+fallback outcomes to the serving target. Run the synthetic harness with:
+
+```bash
+python3 scripts/run_adaptive_signal_policy_demo.py
+# or: make adaptive-signal-policy-demo
+```
+
+That harness is wiring evidence only. It is not provider-backed quality
+evidence and is not a built-in online-learning control plane. Built-in
+`dynamic_score` remains the in-router observed-performance strategy; external
+policy is for deployment-owned logic that needs its own process, pins, or
+feedback loop.
+
 The reference config includes an example group named `external-policy-demo`:
 
 ```yaml

@@ -22,6 +22,46 @@ external_policy:
 
 The service receives safe routing context, eligible targets, caller metadata, pricing metadata, tool support, and input modality details. It does not receive raw router tokens, caller token hashes, or provider API keys.
 
+## Adaptive Signal Policy Reference
+
+`adaptive_signal_policy.py` is a deployment-owned external policy that
+demonstrates observed-signal scoring, short-lived conversation pins, cache-hit
+exclusion, and serving-target fallback attribution. It is **not** built-in
+router state and is **not** online learning from the usage database.
+
+Run the synthetic wiring harness:
+
+```bash
+python3 scripts/run_adaptive_signal_policy_demo.py
+# or:
+make adaptive-signal-policy-demo
+```
+
+Configure a trusted local group with `include_request: true` only when the
+policy service is allowed to inspect request content:
+
+```yaml
+models:
+  adaptive-signal-demo:
+    strategy: external
+    external_policy:
+      url: http://127.0.0.1:18092/route
+      allow_hosts: [127.0.0.1]
+      timeout_ms: 300
+      max_response_bytes: 65536
+      include_request: true
+      on_error: fail_closed
+    targets:
+      - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
+      - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
+```
+
+Optional feedback: point `--tail-log` at the router's JSONL request log so
+`/observe` can book outcomes. Prefer diagnostics-enabled logs so
+`attempts_detail[].selected` identifies the serving target. Current router
+releases also rewrite terminal `target_*` and request-time prices to the
+serving target after a successful fallback.
+
 ## Outcome-Calibrated Reference
 
 `outcome_calibrated_policy.py` is a separate reference implementation for

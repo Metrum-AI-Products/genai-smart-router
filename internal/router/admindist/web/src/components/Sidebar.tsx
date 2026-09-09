@@ -1,4 +1,4 @@
-// Copyright 2006 Metrum AI
+// Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
 import { BarChart3, Boxes, Gauge, LineChart, LockKeyhole, Network, SearchCheck, ShieldCheck, SlidersHorizontal, WalletCards } from "lucide-react";

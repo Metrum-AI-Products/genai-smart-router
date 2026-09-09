@@ -163,32 +163,36 @@ models:
 
 ### TypeScript Script Policy
 
-Use `strategy: script` when policy should run inside the router process and can be packaged with deployment config. This tested pattern routes large normalized request text to a heavier target inside the requested group.
+Use `strategy: script` when policy should run inside the router process and can be packaged with deployment config. The checked-in request-shape example under `examples/typescript-request-shape/router.ts` routes by prompt size, tools, images, structured outputs, and explicit reasoning signals:
 
 ```yaml
 models:
-  script-sized:
+  script-request-shape:
     strategy: script
-    script: scripts/router.ts
+    script: examples/typescript-request-shape/router.ts
     targets:
-      - { provider: hosted_openai_compatible, model_ref: compact, tier: compact, weight: 70 }
-      - { provider: hosted_openai_compatible, model_ref: long-context, tier: long_context, weight: 30 }
+      - { provider: hosted_openai_compatible, model_ref: compact, tier: cheap, weight: 70 }
+      - { provider: hosted_openai_compatible, model_ref: long-context, tier: heavy, weight: 20 }
+      - { provider: hosted_openai_compatible, model_ref: tool-model, tier: tool, weight: 10 }
 ```
 
 ```typescript
 export function route(ctx) {
-  const preferredTier = ctx.text.length > 8000 ? "long_context" : "compact";
+  const preferredTiers = ctx.text.length > 8000 ? ["heavy"] : ["cheap"];
+  // The checked-in example also inspects ctx.context.toolCount, imageCount,
+  // hasStructuredOutput, and reasoning.requested before picking a tier.
   const entries = ctx.targets.map((target, index) => ({ target, index }));
-  const preferred = entries.find((entry) => entry.target.tier === preferredTier) || entries[0];
+  const preferred =
+    entries.find((entry) => preferredTiers.includes(entry.target.tier)) || entries[0];
   return {
     targetIndex: preferred.index,
     fallbackIndexes: entries.filter((entry) => entry.index !== preferred.index).map((entry) => entry.index),
-    classLabel: `prompt-size:${preferredTier}`,
+    classLabel: `request-shape:${preferred.target.tier}`,
   };
 }
 ```
 
-Scripts receive safe caller and target metadata, not raw provider keys, raw router tokens, or token hashes. If a group enables `pii_filter`, the script context is built from the redacted request.
+Scripts receive safe caller and target metadata, not raw provider keys, raw router tokens, or token hashes. If a group enables `pii_filter`, the script context is built from the redacted request. The packaged `scripts/router.ts` sample is a caller-regex weighted picker; use `examples/typescript-request-shape/` for request-shape routing.
 
 ### External Policy Service
 

@@ -95,10 +95,14 @@ Cold start is deterministic. Until `min_observations` is reached, targets are or
 
 ## Operations
 
-The strategy uses in-memory rolling observations for latency, upstream duration, TTFB, output throughput, status, timeout class, error class, and fallback use. It does not read the usage database while routing. Historical usage tables remain useful for offline validation and reports.
+The strategy uses in-memory rolling observations for latency, upstream duration, TTFB, output throughput, status, timeout class, error class, and fallback use. It does not read the usage database while routing. Historical usage tables and decision-telemetry reports remain useful for offline validation; they do not select the next target on the hot path.
+
+Router response-cache hits are excluded from adaptive observations so local cache latency cannot make a target look artificially fast. After a successful fallback, terminal usage/cost fields and later observations attribute the serving target; failed primary attempts still update reliability signals through attempt detail.
 
 Decision traces and telemetry rows are safe scalar diagnostics. They include fields such as strategy, cold-start mode, enabled signal names, request-shape buckets, selected provider/model, score bucket, observation count, candidate count, normalized reasoning fields when a caller explicitly requested reasoning or thinking, and fallback-transition rows after upstream failures. Failed attempts update the same in-memory observation store used by later dynamic-score decisions, so provider 429s, 5xxs, timeouts, decode errors, and client cancellations affect future reliability/timeout/fallback signals according to the configured scoring policy. These rows do not include raw prompts, raw images, raw tool outputs, router tokens, token hashes, provider keys, full upstream headers, or full config contents.
 
 When decision telemetry is enabled, usage and admin reports expose safe dynamic-score buckets for operations: enabled signal names, score/value/final-score buckets, threshold/filter buckets, max-token cap filtering, max-token buckets, large input-token buckets, and quota/admission reason buckets. Daily rollups preserve those buckets in normalized rows so operators can keep commercial reporting after raw request-level detail expires.
+
+Current upstream streaming is buffered before caller SSE re-encoding. Dynamic score therefore uses completed-attempt observations, not live mid-stream TTFT rerouting. Session stickiness for provider prompt caches is not a built-in `dynamic_score` feature; use a trusted TypeScript or external policy when a deployment needs conversation pins.
 
 Roll out on a deployment-defined test group with interchangeable validated targets before enabling broad production traffic. Test simple text, code/debug prompts, tool requests, forced tool requests, image requests where supported, structured-output requests where supported, reasoning or thinking requests where supported, and low explicit max-token caps. Roll back by changing the group strategy to `weighted`, removing unsafe reasoning metadata, or disabling strict thresholds and score terms.

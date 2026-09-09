@@ -1,4 +1,4 @@
-// Copyright 2006 Metrum AI
+// Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
 package router
@@ -1126,8 +1126,15 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			resp.Usage = estimatedUsageForReservation(req, dialect, reservationTokens)
 			resp.Warnings = appendWarning(resp.Warnings, "usage-estimated")
 		}
+		served := dec.Target
+		if selected, ok := selectedServingTarget(rc, dec); ok {
+			served = selected
+			s.applyServingTargetRecord(rc, served)
+		}
 		if cacheable(req) {
-			s.cache.Put(key, resp)
+			// Store under the target that actually answered. A fallback response
+			// must not poison the failed primary's target-sensitive cache key.
+			s.cache.Put(cacheKey(req, served), resp)
 		}
 		s.captureResponseContent(rc, resp, captureDecision)
 		if piiRestoreEnabled(group.PIIFilter) {
@@ -1226,10 +1233,6 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 		return
 	}
 	populateReasoningUsageCoverage(&rc.rec)
-	if !s.diagnosticsEnabled() {
-		rc.rec.AttemptsDetail = nil
-		rc.rec.TraceEvents = nil
-	}
 	s.sanitizeDiagnosticRecord(&rc.rec)
 	s.recordCacheStats(rc)
 	populateThroughput(&rc.rec)
@@ -1242,7 +1245,13 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 		rc.rec.Error = code
 	}
 	rc.rec.LatencyMS = time.Since(rc.start).Milliseconds()
+	// Record adaptive observations before stripping attempt detail so
+	// diagnostics-disabled deployments still attribute fallbacks correctly.
 	s.recordDynamicObservation(rc.rec)
+	if !s.diagnosticsEnabled() {
+		rc.rec.AttemptsDetail = nil
+		rc.rec.TraceEvents = nil
+	}
 	s.metrics.Observe(rc.rec)
 	s.logger.Emit(rc.rec)
 	s.usage.Emit(rc.rec)
@@ -1254,6 +1263,48 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 		s.recordRequestSecurityAccess(rc, rc.rec.Status, codeText)
 		rc.securityRecorded = true
 	}
+}
+
+func selectedServingTarget(rc *requestContext, dec decision) (Target, bool) {
+	if rc == nil {
+		return Target{}, false
+	}
+	targets := append([]Target{dec.Target}, dec.Fallbacks...)
+	for _, attempt := range rc.rec.AttemptsDetail {
+		if !attempt.Selected {
+			continue
+		}
+		for _, tgt := range targets {
+			if tgt.Provider == attempt.Provider && tgt.Model == attempt.Model {
+				return tgt, true
+			}
+		}
+	}
+	return Target{}, false
+}
+
+func (s *Service) applyServingTargetRecord(rc *requestContext, served Target) {
+	if rc == nil {
+		return
+	}
+	rc.rec.TargetProvider = served.Provider
+	rc.rec.TargetModel = served.Model
+	if s != nil && s.cfg != nil {
+		rc.rec.TargetDialect = targetDialect(s.cfg.Provider[served.Provider], served)
+	} else if strings.TrimSpace(served.Dialect) != "" {
+		rc.rec.TargetDialect = served.Dialect
+	}
+	if served.Validation != nil {
+		rc.rec.TargetValidationStatus = strings.ToLower(strings.TrimSpace(served.Validation.Status))
+		rc.rec.TargetValidationWorkload = strings.TrimSpace(served.Validation.Workload)
+		rc.rec.TargetValidationAgeBucket = validationAgeBucket(served.Validation, time.Now().UTC())
+	}
+	rc.rec.InputPricePerMillionUSD = served.InputPricePerMillionUSD
+	rc.rec.OutputPricePerMillionUSD = served.OutputPricePerMillionUSD
+	rc.rec.ImageInputPricePerMillionTokensUSD = served.ImageInputPricePerMillionTokensUSD
+	rc.rec.ImageInputPricePerImageUSD = served.ImageInputPricePerImageUSD
+	rc.rec.PricingSource = served.PricingSource
+	rc.rec.PricingUpdatedAt = served.PricingUpdatedAt
 }
 
 func populateReasoningUsageCoverage(rec *logRecord) {

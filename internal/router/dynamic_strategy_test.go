@@ -1,4 +1,4 @@
-// Copyright 2006 Metrum AI
+// Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
 package router
@@ -196,6 +196,35 @@ func TestDynamicScoreRecordsFailedPrimaryAndSuccessfulFallbackSeparately(t *test
 	}
 	if fallback.Count != 1 || fallback.ErrorRate != 0 {
 		t.Fatalf("fallback stats=%#v, want one successful observation", fallback)
+	}
+}
+
+func TestDynamicScoreIgnoresResponseCacheHits(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+	svc.cfg.Models["default"] = ModelGroup{
+		Strategy: "dynamic_score",
+		RoutingPolicy: RoutingPolicyConfig{DynamicScore: DynamicScoreConfig{
+			ObservationWindowSeconds: 600,
+		}},
+		Targets: []Target{{Provider: "mock", Model: "cached-target"}},
+	}
+	ttfb := int64(2)
+	tps := 0.0
+	svc.recordDynamicObservation(logRecord{
+		ResolvedGroup:     "default",
+		TargetProvider:    "mock",
+		TargetModel:       "cached-target",
+		Status:            http.StatusOK,
+		Cache:             "hit",
+		LatencyMS:         2,
+		TTFBMS:            &ttfb,
+		UpstreamOutputTPS: &tps,
+		AttemptsDetail:    nil,
+	})
+	stats := svc.observations.stats(dynamicObservationKey("default", "mock", "cached-target"), defaultDynamicObservationWindow)
+	if stats.Count != 0 {
+		t.Fatalf("cache-hit observation counted: %#v", stats)
 	}
 }
 

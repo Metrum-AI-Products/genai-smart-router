@@ -83,7 +83,9 @@ For savings reports:
 - keep image costs separate when applicable;
 - state the price source and date for any comparison baseline.
 
-Use stored request-time values for actual historical router cost. They are the durable financial record even when current provider metadata changes.
+Savings are measured against an explicit baseline and an outcome gate, not implied by the product name. A cheaper mix that fails quality, latency, or reliability criteria is not a valid savings claim.
+
+Use stored request-time values for actual historical router cost. They are the durable financial record even when current provider metadata changes. Parent usage rows record the terminal serving target after successful fallback; failed hops remain on attempt rows.
 
 For anonymized graphical examples that show daily savings, caller-cohort savings, and upstream performance triage, see [Report Examples](/docs/operations/report-examples).
 

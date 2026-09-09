@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2006 Metrum AI
+# Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
 # Operator helper for EKS production cutover steps that require authenticated

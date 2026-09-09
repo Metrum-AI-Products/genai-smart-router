@@ -6,7 +6,7 @@ Last reviewed: 2026-06-19.
 
 ## Public Positioning Rule
 
-Position Smart LLM Router as a governed enterprise LLM gateway with deployment-defined routing control, detailed usage/cost accounting, private upstream support, and agent-client compatibility.
+Position GenAI Smart Router as a governed enterprise LLM gateway with deployment-defined routing control, detailed usage/cost accounting, private upstream support, and agent-client compatibility.
 
 Do not position it as:
 
@@ -37,16 +37,16 @@ Use these primary links for public docs:
 
 Safe public claims:
 
-- Smart LLM Router supports deployment-defined model groups.
-- Smart LLM Router supports OpenAI Chat, OpenAI Responses, and Anthropic Messages API shapes.
-- Smart LLM Router supports dialect-specific tool routing based on configured metadata.
-- Smart LLM Router supports image-aware routing when upstream metadata includes validated image modality.
-- Smart LLM Router records request-time cost values in usage rows.
-- Smart LLM Router can route to private OpenAI-compatible upstreams such as vLLM and SGLang when configured and validated.
+- GenAI Smart Router supports deployment-defined model groups.
+- GenAI Smart Router supports OpenAI Chat, OpenAI Responses, and Anthropic Messages API shapes.
+- GenAI Smart Router supports dialect-specific tool routing based on configured metadata.
+- GenAI Smart Router supports image-aware routing when upstream metadata includes validated image modality.
+- GenAI Smart Router records request-time cost values in usage rows.
+- GenAI Smart Router can route to private OpenAI-compatible upstreams such as vLLM and SGLang when configured and validated.
 
 Avoid or qualify:
 
 - Exact competitor prices.
 - Claims that competitors lack a feature unless primary docs clearly show that.
-- Claims that Smart LLM Router has enterprise dashboard/SSO/compliance UI features unless implemented.
+- Claims that GenAI Smart Router has enterprise dashboard/SSO/compliance UI features unless implemented.
 - Claims that the router automatically improves quality or cost for every workload.

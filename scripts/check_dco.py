@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2006 Metrum AI
+# Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
 """Require a valid DCO Signed-off-by trailer on every commit in a range."""
