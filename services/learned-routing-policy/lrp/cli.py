@@ -108,6 +108,17 @@ def parser() -> argparse.ArgumentParser:
     features.add_argument("--tokenizer", type=Path)
     features.add_argument("--synthetic", action="store_true", help="Wiring only; never promotable")
     features.add_argument("--seed", type=int, default=42)
+    features.add_argument(
+        "--near-dup-cosine",
+        type=float,
+        default=None,
+        metavar="THRESHOLD",
+        help=(
+            "Before session splits, drop later rows with embedding cosine above "
+            "THRESHOLD (reviewed value 0.98); keep earliest. "
+            "Filter judgments/responses to kept request_ids before train/eval."
+        ),
+    )
 
     train = sub.add_parser("train")
     for name in ("features", "judgments", "responses", "out"):
@@ -289,7 +300,15 @@ def execute(args: argparse.Namespace) -> int:
             if spec["kind"] == "synthetic"
             else ONNXEmbedder(Path(spec["model_path"]), Path(spec["tokenizer_path"]), threads=1)
         )
-        featurize(args.requests, args.out, builder=FeatureBuilder(embedder), seed=args.seed)
+        near_dup = None if args.near_dup_cosine is None else float(args.near_dup_cosine)
+        frame = featurize(
+            args.requests,
+            args.out,
+            builder=FeatureBuilder(embedder),
+            seed=args.seed,
+            near_dup_cosine=near_dup,
+        )
+        print(json.dumps({"near_duplicate": dict(frame.attrs.get("near_duplicate", {}))}))
     elif args.command == "train":
         from lrp.train import train
 

@@ -56,7 +56,11 @@ SCALAR_NAMES = (
     "question_mark_count",
 )
 FEATURE_NAMES = tuple(f"emb_{i:03d}" for i in range(DIMENSIONS)) + SCALAR_NAMES
+EMBEDDING_NAMES = tuple(f"emb_{i:03d}" for i in range(DIMENSIONS))
 FEATURE_VERSION = "lrp.features.v1"
+# Reviewed default from LRP design (#15/#31): cosine above this drops later near-duplicates.
+NEAR_DUP_COSINE_DEFAULT = 0.98
+NEAR_DUP_SENSITIVITY_THRESHOLDS = (0.95, 0.98, 0.99)
 
 
 def private_directory(path: str | Path, *, create: bool = False) -> Path:
@@ -470,6 +474,99 @@ def session_split(session_key: str, seed: int = 42) -> str:
     return "train" if bucket < 70 else "valid" if bucket < 85 else "test"
 
 
+def _validate_cosine_threshold(threshold: float) -> float:
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)):
+        raise TypeError("near_dup_cosine must be a finite float in (0, 1]")
+    value = float(threshold)
+    if not math.isfinite(value) or not 0.0 < value <= 1.0:
+        raise ValueError("near_dup_cosine must be a finite float in (0, 1]")
+    return value
+
+
+def embedding_matrix(rows: list[dict[str, Any]] | Any) -> Vector:
+    """Return L2-normalized embedding rows only (no request content)."""
+    if hasattr(rows, "loc"):
+        matrix = np.asarray(rows.loc[:, list(EMBEDDING_NAMES)], dtype=np.float32)
+    else:
+        matrix = np.asarray(
+            [[float(row[name]) for name in EMBEDDING_NAMES] for row in rows],
+            dtype=np.float32,
+        )
+    if matrix.ndim != 2 or matrix.shape[1] != DIMENSIONS:
+        raise ValueError("invalid embedding matrix")
+    if matrix.size and not np.isfinite(matrix).all():
+        raise ValueError("non-finite embedding values")
+    return matrix
+
+
+def near_duplicate_keep_mask(
+    embeddings: Vector, threshold: float = NEAR_DUP_COSINE_DEFAULT
+) -> npt.NDArray[np.bool_]:
+    """Keep earliest rows; drop later rows with cosine strictly above threshold.
+
+    Embeddings must already be L2-normalized so cosine equals the dot product.
+    Comparison order is row order (earliest first). No request text is retained.
+    """
+    limit = _validate_cosine_threshold(threshold)
+    matrix = np.asarray(embeddings, dtype=np.float32)
+    if matrix.ndim != 2 or matrix.shape[1] != DIMENSIONS:
+        raise ValueError("invalid embedding matrix")
+    keep = np.ones(matrix.shape[0], dtype=bool)
+    kept: list[int] = []
+    for index in range(matrix.shape[0]):
+        if kept:
+            similarity = matrix[kept] @ matrix[index]
+            if float(np.max(similarity)) > limit:
+                keep[index] = False
+                continue
+        kept.append(index)
+    return keep
+
+
+def near_duplicate_sensitivity(
+    embeddings: Vector,
+    thresholds: tuple[float, ...] = NEAR_DUP_SENSITIVITY_THRESHOLDS,
+) -> dict[str, int]:
+    """Scalar removed counts at reviewed thresholds; never stores request content."""
+    matrix = np.asarray(embeddings, dtype=np.float32)
+    report: dict[str, int] = {}
+    for threshold in thresholds:
+        limit = _validate_cosine_threshold(threshold)
+        removed = int((~near_duplicate_keep_mask(matrix, limit)).sum())
+        report[f"{limit:.2f}"] = removed
+    return report
+
+
+def deduplicate_near_duplicates(
+    rows: list[dict[str, Any]],
+    *,
+    threshold: float = NEAR_DUP_COSINE_DEFAULT,
+    sensitivity_thresholds: tuple[float, ...] = NEAR_DUP_SENSITIVITY_THRESHOLDS,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Drop near-duplicates before split assignment; keep earliest samples.
+
+    Returns kept rows plus a content-free report of removed counts and
+    threshold sensitivity. Request text, tool payloads and prompts are never
+    copied into the report.
+    """
+    limit = _validate_cosine_threshold(threshold)
+    matrix = embedding_matrix(rows)
+    keep = near_duplicate_keep_mask(matrix, limit)
+    kept = [row for row, retain in zip(rows, keep, strict=True) if retain]
+    report = {
+        "schema_version": "lrp.near_dup.v1",
+        "threshold": limit,
+        "input_rows": len(rows),
+        "kept_rows": len(kept),
+        "removed_rows": int((~keep).sum()),
+        "sensitivity_removed": near_duplicate_sensitivity(
+            matrix, sensitivity_thresholds
+        ),
+        "synthetic": any(bool(row.get("synthetic")) for row in rows),
+    }
+    return kept, report
+
+
 def read_rows(source: Any, kind: str = "request") -> list[dict[str, Any]]:
     iterator = (
         protected_rows(Path(source))
@@ -491,12 +588,16 @@ def featurize(
     *,
     builder: FeatureBuilder,
     seed: int = 42,
+    near_dup_cosine: float | None = None,
 ) -> Any:
     import pandas as pd
 
     if out is not None:
         destination = preflight_file(out)
         temporary = preflight_file(destination.with_suffix(destination.suffix + ".tmp"))
+        near_dup_path = preflight_file(
+            destination.with_name(destination.name + ".near_dup.json")
+        )
     rows = []
     seen: set[str] = set()
     for request in read_rows(requests):
@@ -510,7 +611,6 @@ def featurize(
         row.update(
             request_id=request_id,
             session_key=session,
-            split=session_split(session, seed),
             group=request.get("group", ""),
             source=request.get("source", "unknown"),
             synthetic=builder.embedder.kind == "synthetic"
@@ -520,10 +620,29 @@ def featurize(
         )
         row["language"] = LANGUAGES[int(vector[FEATURE_NAMES.index("lang_id")])]
         rows.append(row)
+    near_duplicate: dict[str, Any] = {
+        "schema_version": "lrp.near_dup.v1",
+        "enabled": False,
+        "input_rows": len(rows),
+        "kept_rows": len(rows),
+        "removed_rows": 0,
+        "threshold": None,
+        "sensitivity_removed": {},
+        "synthetic": any(bool(row.get("synthetic")) for row in rows),
+    }
+    if near_dup_cosine is not None:
+        rows, near_duplicate = deduplicate_near_duplicates(
+            rows, threshold=near_dup_cosine
+        )
+        near_duplicate["enabled"] = True
+    for row in rows:
+        row["split"] = session_split(str(row["session_key"]), seed)
     frame = pd.DataFrame(rows)
+    frame.attrs["near_duplicate"] = near_duplicate
     if out is not None:
         with private_file(temporary, write=True) as handle:
             frame.to_parquet(handle, index=False)
+        write_private(near_dup_path, (canonical(near_duplicate) + "\n").encode())
         preflight_file(destination)
         temporary.replace(destination)
     return frame

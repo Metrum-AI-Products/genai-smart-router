@@ -153,3 +153,86 @@ def test_eval_preflights_every_report_path(dataset, trained, tmp_path):
         )
     assert not destination.exists() and not destination.with_suffix(".md").exists()
     assert unsafe.read_text() == "unchanged"
+
+
+def test_serving_provider_variance_preserves_model_and_missing(dataset, trained):
+    from lrp.eval import render_markdown, serving_provider_variance
+
+    frame, judgments, responses = dataset
+    holdout = set(frame.loc[frame.split == "test", "request_id"])
+    annotated = []
+    cheap_index = 0
+    for row in responses:
+        if row["request_id"] not in holdout:
+            annotated.append(row)
+            continue
+        updated = dict(row)
+        if row["target"]["model"] == "cheap/model":
+            if cheap_index % 2 == 0:
+                updated["serving_provider"] = "synthetic-backend-a"
+                updated["duration_ms"] = 40.0
+                updated["ttfb_ms"] = 4.0
+            else:
+                updated["serving_provider"] = "synthetic-backend-b"
+                updated["duration_ms"] = 120.0
+                updated["ttfb_ms"] = 12.0
+            cheap_index += 1
+        # anchor/model intentionally omits serving_provider → missing evidence
+        annotated.append(updated)
+    report = evaluate(trained, frame, judgments, annotated, {"groups": {"demo": {}}})
+    variance = report["serving_provider_variance"]
+    assert variance["schema_version"] == "lrp.serving_provider_variance.v1"
+    assert variance["serving_provider_missing"] > 0
+    assert variance["serving_provider_observed"] > 0
+    assert "serving_provider_missing_evidence" in report["warnings"]
+    by_model = {(t["provider"], t["model"]): t for t in variance["targets"]}
+    cheap = by_model[("synthetic", "cheap/model")]
+    anchor = by_model[("synthetic", "anchor/model")]
+    assert cheap["model"] == "cheap/model"
+    assert cheap["distinct_serving_providers"] == 2
+    assert "synthetic-backend-a" in cheap["by_serving_provider"]
+    assert "synthetic-backend-b" in cheap["by_serving_provider"]
+    assert cheap["variance_across_serving_providers"]["duration_p50_ms_variance"] is not None
+    assert anchor["serving_provider_missing"] == anchor["n_responses"]
+    assert "missing" in anchor["by_serving_provider"]
+    assert "Serving-provider variance" in render_markdown(report)
+    markdown_samples = serving_provider_variance(
+        [
+            {
+                "provider": "openrouter",
+                "model": "example/model-a",
+                "quality": 1.0,
+                "cost": 0.01,
+                "duration_ms": 10,
+                "ttfb_ms": 1,
+                "serving_provider": "Together",
+                "serving_provider_available": True,
+                "status": "ok",
+            },
+            {
+                "provider": "openrouter",
+                "model": "example/model-a",
+                "quality": 0.0,
+                "cost": 0.02,
+                "duration_ms": 50,
+                "ttfb_ms": 2,
+                "serving_provider": "Fireworks",
+                "serving_provider_available": True,
+                "status": "ok",
+            },
+            {
+                "provider": "openrouter",
+                "model": "example/model-b",
+                "quality": 1.0,
+                "cost": 0.03,
+                "duration_ms": 20,
+                "ttfb_ms": None,
+                "serving_provider": None,
+                "serving_provider_available": False,
+                "status": "ok",
+            },
+        ]
+    )
+    assert markdown_samples["targets"][0]["model"] == "example/model-a"
+    assert markdown_samples["targets"][1]["model"] == "example/model-b"
+    assert markdown_samples["targets"][1]["by_serving_provider"]["missing"]["n"] == 1

@@ -20,7 +20,9 @@ See [the operator runbook](../../docs/LEARNED_ROUTING_POLICY.md) for all pipelin
 commands, protected storage, approved third-party judging, local ONNX artifacts,
 manual acceptance gates, shared-loopback deployment and rollback. The
 [read-only usage import](../../docs/LRP_USAGE_IMPORT.md) joins explore metadata
-from SQLite/PostgreSQL usage tables without reconstructing prompts. The
+from SQLite/PostgreSQL usage tables without reconstructing prompts. Near-duplicate
+evaluation splits and serving-provider variance reports are documented in
+[LRP_EVAL_SPLITS.md](../../docs/LRP_EVAL_SPLITS.md). The
 [design reconciliation](../../docs/LRP_DESIGN_RECONCILIATION.md) records corrections
 to issue #15 before implementation. The [caller guide](../../docs-site/docs/routing/learned-routing-policy.md)
 explains request behavior.

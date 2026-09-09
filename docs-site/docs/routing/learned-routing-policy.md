@@ -31,13 +31,20 @@ The standalone `lrp` training CLI collects approved datasets, fans requests out 
 candidate targets, verifies or judges responses, builds shared features, trains
 per-target LightGBM models, calibrates predictions, and evaluates a held-out split.
 Session-based splitting prevents a conversation appearing in training and test.
+Optional near-duplicate embedding deduplication runs before that split so
+templated prompts do not leak across partitions; operators review removed counts
+and threshold sensitivity without exporting request content. See the operator
+[evaluation splits note](../../../docs/LRP_EVAL_SPLITS.md).
 Small or undertrained models are excluded. Model bundles bind their embedding
 artifacts and feature definitions for consistent training and serving.
 
 Evaluation compares learned decisions with cheapest, anchor, weighted-random,
 strength-only and oracle baselines. Operators review quality, stored cost,
 coverage, floor violations, calibration and performance, including response
-duration and time to first byte. A cost saving is useful when workload outcomes
+duration and time to first byte. When aggregator backends expose an actual
+upstream serving provider, evaluation reports outcome, cost and latency variance
+by that identity while preserving the exact catalog model id and marking missing
+provider evidence separately. A cost saving is useful when workload outcomes
 remain acceptable. Synthetic demonstrations prove wiring and evaluate gates;
 provider-backed outcomes and actual embedding latency establish promotion evidence.
 The shipped sample configuration is the source of truth for catalog pricing

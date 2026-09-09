@@ -98,9 +98,14 @@ and rubric scores answer different questions.
 
 ### 4. Train and assess the held-out workload mix
 
-`featurize` builds the same vector used at inference. `train` fits a quality
+`featurize` builds the same vector used at inference. Optional
+`--near-dup-cosine` (reviewed value `0.98`) drops later near-duplicate
+embeddings before the session split so templated prompts cannot leak across
+partitions; see [LRP evaluation splits](./LRP_EVAL_SPLITS.md). `train` fits a quality
 model and output-token model for each candidate, then calibrates on validation
-rows. `eval` uses only the session-disjoint test partition. At least 200 training
+rows. `eval` uses only the session-disjoint test partition and reports
+serving-provider outcome/cost/latency variance for aggregator backends when
+fanout recorded `serving_provider`. At least 200 training
 rows are required per trained target; this minimum is not evidence that the
 dataset covers your intended workload.
 

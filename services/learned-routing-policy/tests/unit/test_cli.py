@@ -17,6 +17,10 @@ def test_cli_seed_and_serial_uncapped_options():
     args = parser().parse_args(["featurize", "--requests", "/data/in", "--out", "/data/out",
                                 "--synthetic", "--seed", "7"])
     assert args.seed == 7
+    assert args.near_dup_cosine is None
+    args = parser().parse_args(["featurize", "--requests", "/data/in", "--out", "/data/out",
+                                "--synthetic", "--near-dup-cosine", "0.98"])
+    assert args.near_dup_cosine == 0.98
     args = parser().parse_args(["fanout", "--requests", "/data/in", "--out", "/data/out",
                                 "--targets", "/data/targets", "--allow-uncapped",
                                 "--concurrency", "1", "--max-total-cost-usd", "1"])

@@ -180,3 +180,80 @@ def test_feature_temporary_path_preflight(tmp_path):
     with pytest.raises(DataError):
         featurize([], output, builder=FeatureBuilder(SyntheticEmbedder()))
     assert not output.exists() and temporary.read_text() == "unchanged"
+
+
+def _request(request_id: str, session: str, text: str) -> dict:
+    return {
+        "request_id": request_id,
+        "session_key": session,
+        "source": "synthetic",
+        "group": "demo",
+        "captured_at": "2026-09-09T00:00:00Z",
+        "messages": [{"role": "user", "content": text}],
+    }
+
+
+def test_near_duplicate_dedup_before_split_keeps_earliest(tmp_path):
+    import json
+
+    from lrp.features import (
+        NEAR_DUP_COSINE_DEFAULT,
+        near_duplicate_keep_mask,
+        near_duplicate_sensitivity,
+    )
+
+    builder = FeatureBuilder(SyntheticEmbedder())
+    template = "Please summarize the quarterly status update for project alpha."
+    near = "Please summarize the quarterly status update for project alpha!"
+    distinct = "Compute the checksum of an empty byte string and reply OK only."
+    requests = [
+        _request("synthetic-a", "session-a", template),
+        _request("synthetic-b", "session-b", near),
+        _request("synthetic-c", "session-c", distinct),
+        _request("synthetic-d", "session-d", template),
+    ]
+    frame = featurize(
+        requests,
+        tmp_path / "features.parquet",
+        builder=builder,
+        near_dup_cosine=NEAR_DUP_COSINE_DEFAULT,
+    )
+    report = frame.attrs["near_duplicate"]
+    assert report["enabled"] is True
+    assert report["threshold"] == NEAR_DUP_COSINE_DEFAULT
+    assert report["input_rows"] == 4
+    assert report["removed_rows"] >= 1
+    assert set(frame.request_id) <= {"synthetic-a", "synthetic-b", "synthetic-c", "synthetic-d"}
+    assert "synthetic-a" in set(frame.request_id)
+    assert "synthetic-d" not in set(frame.request_id)
+    assert frame.groupby("session_key").split.nunique().max() == 1
+    sidecar = json.loads((tmp_path / "features.parquet.near_dup.json").read_text())
+    assert sidecar["removed_rows"] == report["removed_rows"]
+    assert "0.98" in sidecar["sensitivity_removed"]
+    assert "prompt" not in json.dumps(sidecar).lower()
+    assert "quarterly" not in json.dumps(sidecar)
+
+    embeddings = frame[[name for name in FEATURE_NAMES if name.startswith("emb_")]].to_numpy(
+        dtype=np.float32
+    )
+    # Reconstruct from pre-dedup vectors via a disabled run for sensitivity checks.
+    full = featurize(requests, builder=builder, near_dup_cosine=None)
+    matrix = full[[name for name in FEATURE_NAMES if name.startswith("emb_")]].to_numpy(
+        dtype=np.float32
+    )
+    sensitivity = near_duplicate_sensitivity(matrix)
+    assert sensitivity["0.98"] == report["removed_rows"]
+    assert near_duplicate_keep_mask(matrix, 1.0).all()
+    assert embeddings.shape[0] == report["kept_rows"]
+
+
+def test_near_duplicate_disabled_preserves_all_rows():
+    builder = FeatureBuilder(SyntheticEmbedder())
+    requests = [
+        _request("synthetic-1", "session-1", "alpha template text for wiring"),
+        _request("synthetic-2", "session-2", "alpha template text for wiring"),
+    ]
+    frame = featurize(requests, builder=builder, near_dup_cosine=None)
+    assert len(frame) == 2
+    assert frame.attrs["near_duplicate"]["enabled"] is False
+    assert frame.attrs["near_duplicate"]["removed_rows"] == 0
