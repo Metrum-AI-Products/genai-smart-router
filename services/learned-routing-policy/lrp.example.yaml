@@ -2,10 +2,22 @@
 groups:
   lrp-demo:
     quality_floor: 0.80
+    # Optional per-project floors keyed on caller.project (generic demo names only).
+    # Unknown projects fall back to quality_floor. Never hardcode production IDs.
+    floors_by_project:
+      demo-strict: 0.90
+      demo-loose: 0.70
     explore_rate: 0.0
     exploration_projects: []
     pin_ttl_s: 0
     min_train_rows: 200
+    # Optional upstream latency gate (p95 ms) from stored duration/TTFB evidence.
+    # Omit or null to disable. Cold-start targets follow unknown_latency.
+    latency_p95_ms_max: null
+    latency_metric: duration  # or ttfb
+    unknown_latency: allow  # allow | exclude
+    # Optional static p95 seeds from offline eval; feedback updates supersede these.
+    latency_evidence: {}
     # Router external_policy.mode owns shadow activation. LRP returns its recommendation.
     mode: enforce
 max_pins: 10000

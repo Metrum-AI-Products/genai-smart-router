@@ -316,6 +316,13 @@ are rejected instead of silently sharing incompatible predictions.
 Image requests pass through to first eligible order; no learned image-quality
 claim is made. Missing request content degrades with `lrp:no-request-content`.
 
+Optional Wave 2 selection constraints—per-project quality floors, upstream
+latency p95 gates, evidence-based prompt-cache cost estimates, and bounded
+explanation labels—are documented in
+[LRP_SELECTION_CONSTRAINTS.md](LRP_SELECTION_CONSTRAINTS.md). They are off or
+conservative by default in the sample config and do not authorize live route
+activation.
+
 ### Choose a deadline for the workload or test
 
 The LRP service's top-level `deadline_ms` accepts **1–4,500 ms**, with an unchanged

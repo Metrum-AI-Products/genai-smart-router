@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -31,6 +32,11 @@ class Target(Model):
     weight: float = Field(default=1, ge=0)
     input_price: float | None = Field(default=None, alias="inputPricePerMillionUsd", ge=0)
     output_price: float | None = Field(default=None, alias="outputPricePerMillionUsd", ge=0)
+    # Optional catalog cached-input price. Used for selection estimates only when
+    # trustworthy prompt-cache state is also present; never invents savings.
+    cached_input_price: float | None = Field(
+        default=None, alias="cachedInputPricePerMillionUsd", ge=0
+    )
 
     @property
     def key(self) -> TargetKey:
@@ -125,6 +131,9 @@ class FeedbackPayload(Model):
 
 class GroupConfig(Model):
     quality_floor: float = Field(default=0.8, ge=0, le=1)
+    # Deployment-defined project → floor overrides. Unknown projects fall back
+    # to quality_floor. Keys are operator-authored; never hardcode production IDs.
+    floors_by_project: dict[str, float] = Field(default_factory=dict)
     explore_rate: float = Field(default=0, ge=0, le=1)
     pin_ttl_s: float = Field(default=0, ge=0, le=86400)
     min_train_rows: int = Field(default=200, ge=200)
@@ -132,6 +141,52 @@ class GroupConfig(Model):
     # Explicit operator evidence can distinguish omitted known-free prices from unknown.
     zero_price_targets: list[tuple[str, str]] = Field(default_factory=list)
     exploration_projects: list[str] = Field(default_factory=list)
+    # Optional upstream latency gate from stored TTFB/duration evidence (p95 ms).
+    # None disables the constraint. Cold-start/unknown targets follow unknown_latency.
+    latency_p95_ms_max: float | None = Field(default=None, ge=0)
+    latency_metric: Literal["duration", "ttfb"] = "duration"
+    unknown_latency: Literal["allow", "exclude"] = "allow"
+    # Optional static p95 evidence keyed as "provider/model" (operator/eval seeded).
+    latency_evidence: dict[str, float] = Field(default_factory=dict)
+
+    @field_validator("floors_by_project")
+    @classmethod
+    def validate_project_floors(cls, value: dict[str, float]) -> dict[str, float]:
+        cleaned: dict[str, float] = {}
+        for raw_key, raw_floor in value.items():
+            key = str(raw_key).strip()
+            if not key or len(key) > 256:
+                raise ValueError("project floor keys must be nonempty and ≤256 characters")
+            floor = float(raw_floor)
+            if not (0.0 <= floor <= 1.0) or not math.isfinite(floor):
+                raise ValueError("project floor values must be finite in [0, 1]")
+            cleaned[key] = floor
+        return cleaned
+
+    @field_validator("latency_evidence")
+    @classmethod
+    def validate_latency_evidence(cls, value: dict[str, float]) -> dict[str, float]:
+        cleaned: dict[str, float] = {}
+        for raw_key, raw_ms in value.items():
+            key = str(raw_key).strip()
+            if not key or "/" not in key or len(key) > 768:
+                raise ValueError("latency evidence keys must be provider/model identities")
+            ms = float(raw_ms)
+            if not math.isfinite(ms) or ms < 0:
+                raise ValueError("latency evidence values must be finite and ≥0")
+            cleaned[key] = ms
+        return cleaned
+
+    @field_validator("exploration_projects")
+    @classmethod
+    def validate_exploration_projects(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for item in value:
+            key = str(item).strip()
+            if not key or len(key) > 256:
+                raise ValueError("exploration project names must be nonempty and ≤256 characters")
+            cleaned.append(key)
+        return cleaned
 
 
 class ServiceConfig(Model):

@@ -243,3 +243,74 @@ def test_payload_drops_raw_credentials_before_features():
     value["request"]["raw"] = {"secret": "discard-me"}
     normalized = Payload.model_validate(value).model_dump()
     assert "discard-me" not in json.dumps(normalized)
+
+
+def test_project_floor_latency_cache_and_bounded_labels():
+    config = ServiceConfig.model_validate(
+        {
+            "groups": {
+                "test-staging": {
+                    "quality_floor": 0.8,
+                    "floors_by_project": {"demo-strict": 0.95},
+                    "latency_p95_ms_max": 1000,
+                    "latency_metric": "duration",
+                    "unknown_latency": "allow",
+                    "latency_evidence": {"synthetic/cheap": 5000},
+                }
+            }
+        }
+    )
+    app, _, runtime = create_apps(config, FakeBundle(), auth="synthetic-test-auth", enable_admin=True)
+    client = TestClient(app)
+    try:
+        # Static evidence excludes cheap (p95 5000 > 1000); strong remains.
+        result = client.post("/route", json=body(), headers=AUTH).json()
+        assert result["targetIndex"] == 1
+        assert result["classLabel"].startswith("lrp:caf")
+        assert len(result["classLabel"]) <= 64
+
+        strict = body()
+        strict["caller"]["project"] = "demo-strict"
+        # Strong quality 0.99 meets 0.95; cheap excluded by latency anyway.
+        assert client.post("/route", json=strict, headers=AUTH).json()["targetIndex"] == 1
+
+        # Feedback updates ledger; after many fast samples for cheap, still need
+        # p95 under the cap. Seed enough low samples to pull p95 down.
+        for _ in range(64):
+            assert (
+                client.post(
+                    "/feedback",
+                    json={
+                        "schemaVersion": "external_policy.feedback.v1",
+                        "requestId": "req_example",
+                        "group": "test-staging",
+                        "status": 200,
+                        "selectedTarget": {"provider": "synthetic", "model": "cheap"},
+                        "latencyMs": 10,
+                        "ttfbMs": 5,
+                    },
+                    headers=AUTH,
+                ).status_code
+                == 204
+            )
+        after = client.post("/route", json=body(), headers=AUTH).json()
+        assert after["targetIndex"] == 2
+
+        cached = body()
+        cached["targets"][2]["cachedInputPricePerMillionUsd"] = 0.1
+        cached["context"]["promptCacheState"] = "hit"
+        explanation = client.post("/explain", json=cached, headers=AUTH).json()
+        assert explanation["cache_state"] == "hit"
+        assert explanation["floor"] == 0.8
+        assert explanation["group_floor"] == 0.8
+        assert explanation["project_floor_override"] is False
+        assert "SYNTHETIC PRIVATE CANARY" not in json.dumps(explanation)
+
+        # Pin context alone does not invent cache hits.
+        pinned_only = body()
+        pinned_only["targets"][2]["cachedInputPricePerMillionUsd"] = 0.1
+        pinned_only["context"]["systemChars"] = 80000
+        assert client.post("/explain", json=pinned_only, headers=AUTH).json()["cache_state"] == "unknown"
+    finally:
+        runtime.pool.shutdown()
+

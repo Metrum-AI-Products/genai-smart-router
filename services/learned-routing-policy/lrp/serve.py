@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import os
 import random
 import signal
@@ -17,7 +18,7 @@ import stat
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -32,7 +33,16 @@ from fastapi.responses import JSONResponse, Response
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest
 from pydantic import ValidationError
 
-from lrp.policy import Decision, Prediction, decide, estimated_cost, safe_label
+from lrp.policy import (
+    Decision,
+    Prediction,
+    decide,
+    effective_quality_floor,
+    estimated_cost,
+    metric_label,
+    resolve_cache_estimate,
+    safe_label,
+)
 from lrp.schemas import FeedbackPayload, Payload, ServiceConfig, TargetKey
 
 LOG = logging.getLogger("lrp")
@@ -75,6 +85,99 @@ class Pins:
             self.rows[key] = time.monotonic() + ttl, target
             while len(self.rows) > self.limit:
                 self.rows.popitem(last=False)
+
+
+class LatencyLedger:
+    """Bounded in-memory rolling latency samples from authenticated feedback.
+
+    Stores sanitized (group, provider, model) → recent duration/TTFB milliseconds.
+    Used only for optional selection constraints; never stores prompts or tokens.
+    """
+
+    def __init__(self, limit_keys: int = 4096, window_per_key: int = 64) -> None:
+        self.limit_keys = limit_keys
+        self.window_per_key = window_per_key
+        self.duration: OrderedDict[tuple[str, str, str], list[float]] = OrderedDict()
+        self.ttfb: OrderedDict[tuple[str, str, str], list[float]] = OrderedDict()
+        self.lock = threading.Lock()
+
+    def observe(
+        self,
+        group: str,
+        provider: str,
+        model: str,
+        *,
+        duration_ms: float | None,
+        ttfb_ms: float | None,
+    ) -> None:
+        key = (group.strip(), provider.strip(), model.strip())
+        if not all(key) or max(len(part) for part in key) > 512:
+            return
+        with self.lock:
+            if duration_ms is not None and math.isfinite(duration_ms) and duration_ms >= 0:
+                self._append(self.duration, key, float(duration_ms))
+            if ttfb_ms is not None and math.isfinite(ttfb_ms) and ttfb_ms >= 0:
+                self._append(self.ttfb, key, float(ttfb_ms))
+
+    def _append(
+        self,
+        store: OrderedDict[tuple[str, str, str], list[float]],
+        key: tuple[str, str, str],
+        value: float,
+    ) -> None:
+        samples = store.pop(key, [])
+        samples.append(value)
+        if len(samples) > self.window_per_key:
+            samples = samples[-self.window_per_key :]
+        store[key] = samples
+        while len(store) > self.limit_keys:
+            store.popitem(last=False)
+
+    def p95(
+        self, group: str, provider: str, model: str, *, metric: str
+    ) -> float | None:
+        key = (group.strip(), provider.strip(), model.strip())
+        with self.lock:
+            store = self.ttfb if metric == "ttfb" else self.duration
+            samples = store.get(key)
+            if not samples:
+                return None
+            ordered = sorted(samples)
+            index = max(0, min(len(ordered) - 1, math.ceil(0.95 * len(ordered)) - 1))
+            return ordered[index]
+
+
+def parse_latency_evidence_key(raw: str) -> TargetKey | None:
+    text = raw.strip()
+    if "/" not in text:
+        return None
+    provider, model = text.split("/", 1)
+    provider, model = provider.strip(), model.strip()
+    if not provider or not model:
+        return None
+    return provider, model
+
+
+def merge_latency_evidence(
+    group: str,
+    cfg: Any,
+    targets: Sequence[Any],
+    ledger: LatencyLedger,
+) -> dict[TargetKey, float]:
+    """Combine static config evidence with rolling feedback p95 values."""
+    merged: dict[TargetKey, float] = {}
+    for raw_key, ms in cfg.latency_evidence.items():
+        parsed = parse_latency_evidence_key(raw_key)
+        if parsed is not None:
+            merged[parsed] = float(ms)
+    for target in targets:
+        observed = ledger.p95(
+            group, target.provider, target.model, metric=cfg.latency_metric
+        )
+        if observed is not None:
+            # Live feedback supersedes static seed for the same identity.
+            merged[target.key] = observed
+    return merged
 
 
 def session_key(payload: Payload) -> str | None:
@@ -128,6 +231,7 @@ class Runtime:
         self.auth = auth.encode()
         self.config, self.bundle, self.bundle_path = config, bundle, bundle_path
         self.pins = Pins(config.max_pins)
+        self.latency_ledger = LatencyLedger()
         self.pool = ThreadPoolExecutor(
             max_workers=config.inference_workers, thread_name_prefix="lrp-inference"
         )
@@ -288,6 +392,15 @@ def create_apps(
                         if identity not in runtime.warned_targets and len(runtime.warned_targets) < 1024:
                             runtime.warned_targets.add(identity)
                             LOG.warning("unknown or excluded model identity: %s", identity)
+                pin_active = pin is not None
+                cache = resolve_cache_estimate(payload.context, pinned=pin_active)
+                latency_map = (
+                    merge_latency_evidence(
+                        payload.group, cfg, payload.targets, runtime.latency_ledger
+                    )
+                    if cfg.latency_p95_ms_max is not None
+                    else {}
+                )
                 decision = decide(
                     payload.targets,
                     predictions,
@@ -296,6 +409,9 @@ def create_apps(
                     input_tokens=float(payload.context.get("estimatedTokens", 0)),
                     pin=pin,
                     exploration_allowed=(payload.caller.project in cfg.exploration_projects),
+                    project=payload.caller.project,
+                    latency_evidence=latency_map or None,
+                    cache=cache,
                 )
                 if degradation:
                     runtime.degraded.labels(degradation).inc()
@@ -304,7 +420,7 @@ def create_apps(
                     )
                 if key and not explain:
                     runtime.pins.put(key, payload.targets[decision.primary].key, cfg.pin_ttl_s)
-            runtime.total.labels(decision.label).inc()
+            runtime.total.labels(metric_label(decision.label)).inc()
             for target in payload.targets:
                 prediction = predictions.get(target.key)
                 if prediction is not None:
@@ -313,6 +429,15 @@ def create_apps(
                     runtime.quality.labels(metric_key).observe(prediction.quality)
             if not explain:
                 return JSONResponse(decision.response())
+            floor = effective_quality_floor(cfg, payload.caller.project)
+            cache_for_explain = resolve_cache_estimate(payload.context, pinned=pin is not None)
+            latency_for_explain = (
+                merge_latency_evidence(
+                    payload.group, cfg, payload.targets, runtime.latency_ledger
+                )
+                if cfg.latency_p95_ms_max is not None
+                else {}
+            )
             explained = []
             for index, target in enumerate(payload.targets):
                 pred = predictions.get(target.key)
@@ -324,16 +449,29 @@ def create_apps(
                         "quality": pred.quality if pred else None,
                         "out_tokens": pred.out_tokens if pred else None,
                         "est_cost": estimated_cost(
-                            target, pred, float(payload.context.get("estimatedTokens", 0)), cfg
+                            target,
+                            pred,
+                            float(payload.context.get("estimatedTokens", 0)),
+                            cfg,
+                            cache=cache_for_explain,
                         )
                         if pred
                         else None,
                         "excluded_reason": None if pred else "unknown_or_undertrained",
                         "feature_importances": contributions.get(target.key, []),
+                        "latency_p95_ms": latency_for_explain.get(target.key),
                     }
                 )
             return JSONResponse(
-                {**decision.response(), "targets": explained, "floor": cfg.quality_floor}
+                {
+                    **decision.response(),
+                    "targets": explained,
+                    "floor": floor,
+                    "group_floor": cfg.quality_floor,
+                    "project_floor_override": payload.caller.project in cfg.floors_by_project,
+                    "cache_state": cache_for_explain.state,
+                    "latency_p95_ms_max": cfg.latency_p95_ms_max,
+                }
             )
         except Exception:  # noqa: BLE001 - sanitize all exceptions at the HTTP boundary
             LOG.error("policy request failed: internal_error")
@@ -347,8 +485,8 @@ def create_apps(
 
     @app.post("/feedback")
     async def feedback_endpoint(request: Request) -> Response:
-        # Consume-only acknowledgement of router completion feedback.
-        # Selection behavior is unchanged; payloads are validated and discarded.
+        # Authenticated completion feedback updates the optional latency ledger
+        # and acknowledges. Selection still does not persist prompts or tokens.
         if not authenticated(request):
             return Response(status_code=401)
         raw = bytearray()
@@ -357,9 +495,26 @@ def create_apps(
             if len(raw) > MAX_BODY:
                 return JSONResponse({"error": "body_too_large"}, status_code=413)
         try:
-            FeedbackPayload.model_validate_json(raw)
+            feedback = FeedbackPayload.model_validate_json(raw)
         except (ValidationError, ValueError):
             return JSONResponse({"error": "invalid_request"}, status_code=400)
+        selected = feedback.selected_target or {}
+        provider = selected.get("provider") if isinstance(selected, dict) else None
+        model = selected.get("model") if isinstance(selected, dict) else None
+        if (
+            feedback.group
+            and isinstance(provider, str)
+            and isinstance(model, str)
+            and provider.strip()
+            and model.strip()
+        ):
+            runtime.latency_ledger.observe(
+                feedback.group,
+                provider,
+                model,
+                duration_ms=feedback.latency_ms if feedback.latency_ms > 0 else None,
+                ttfb_ms=feedback.ttfb_ms,
+            )
         return Response(status_code=204)
 
     @admin.get("/healthz")
