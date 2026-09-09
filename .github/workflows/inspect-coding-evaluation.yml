@@ -35,7 +35,7 @@ jobs:
       EVAL_USAGE_CONFIG_YAML: ${{ secrets.EVAL_USAGE_CONFIG_YAML }}
       EVAL_USAGE_CALLER_ID: ${{ vars.EVAL_USAGE_CALLER_ID }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: python3 scripts/inspect_coding_eval_test.py
       - name: Install Inspect AI
         if: ${{ env.EVAL_BASE_URL != '' && env.EVAL_API_KEY != '' && env.EVAL_MODEL != '' }}
@@ -68,7 +68,7 @@ jobs:
       EVAL_USAGE_CONFIG_YAML: ${{ secrets.EVAL_USAGE_CONFIG_YAML }}
       EVAL_USAGE_CALLER_ID: ${{ vars.EVAL_USAGE_CALLER_ID }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Install Inspect AI
         run: python3 -m pip install 'inspect-ai==0.3.242' 'inspect-evals==0.15.0'
       - name: Run deployment-owned full suite

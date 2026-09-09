@@ -36,11 +36,13 @@ jobs:
           format: cyclonedx-json
           output-file: source-sbom.cdx.json
           upload-artifact: true
+      # Fail closed on High/Critical findings. No vulnerability allowlist is
+      # checked in; introduce and document one before relaxing this gate.
       - name: Scan source dependencies
         uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e
         with:
           path: .
-          fail-build: false
+          fail-build: true
           severity-cutoff: high
           output-format: sarif
           output-file: source-vulnerabilities.sarif

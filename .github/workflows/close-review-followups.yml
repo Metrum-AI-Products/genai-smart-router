@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check out closure automation
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Verify cascade behavior
         run: python3 scripts/close_review_followups_test.py
       - name: Close linked review follow-ups
