@@ -37,6 +37,10 @@ server:
     fail_open_for_dev: false
 ```
 
+Operator-generated verification keys use `server.license.public_keys` as in
+[Self-Managed Licensing](../licensing/) and `config.minimal.example.yaml`. The
+catalog sample may omit `public_keys` and fall back to embedded runtime keys.
+
 ## Schema
 
 `server.license.path` points at the signed runtime license. `state_path` stores safe local license state. The instance-fingerprint fields are mutually exclusive inputs for deployments with instance-bound licenses. Leave revocation disabled unless the operator maintains a signed revocation bundle with the same trust boundary.
@@ -49,4 +53,4 @@ Runtime YAML cannot disable licensing in normal packaged deployments. To recover
 
 ## Related
 
-See [License-Protected Deployments](../operations/license-protected-deployments), [Self-Managed Licensing](../licensing/), and [Router Configuration](./router-config).
+See [License-Protected Deployments](../operations/license-protected-deployments), [Self-Managed Licensing](../licensing/), [Local Quickstart](../getting-started/local-quickstart), and [Router Configuration](./router-config).

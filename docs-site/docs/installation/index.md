@@ -18,9 +18,25 @@ back up, upgrade, and troubleshoot.
 Release packages support Linux `amd64` and `arm64`. Use immutable versioned
 artifacts; do not deploy `latest`.
 
+For a laptop or workstation trial, use the
+[Local Quickstart](../getting-started/local-quickstart) instead of a release
+package.
+
+```mermaid
+flowchart LR
+  Local[Local quickstart clone]
+  Bin[Linux binary package]
+  Compose[Docker Compose package]
+  K8s[Kubernetes]
+  Local --- Bin
+  Local --- Compose
+  Compose --- K8s
+```
+
 ## Required Inputs
 
-- `config.yaml`, based on the shipped `config.example.yaml`;
+- `config.yaml`, based on `config.minimal.example.yaml` for local trials or
+  the shipped `config.example.yaml` for production-shaped catalogs;
 - protected `env.json` or equivalent secret injection for provider keys;
 - an operator-generated `license.json` and its configured public key;
 - at least one caller token and allowed deployment-defined model group;

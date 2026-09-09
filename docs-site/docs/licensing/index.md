@@ -34,6 +34,57 @@ server:
         path: /app/config/license.pub
 ```
 
+```mermaid
+flowchart LR
+  OpHost[Operator host]
+  Priv[license.key mode 0600]
+  Pub[license.pub]
+  Lic[license.json]
+  Runtime[Router runtime]
+  OpHost --> Priv
+  OpHost --> Pub
+  OpHost --> Lic
+  Pub --> Runtime
+  Lic --> Runtime
+```
+
+Private signing keys stay on the operator host. They are not copied into
+containers, Kubernetes, logs, or this repository.
+
+## Issue A Runtime License
+
+Use the packaged `metrum-genai-smartrouter-license` (or `go run ./cmd/metrum-genai-smartrouter-license` from a source checkout). Operator-generated keys are not embedded in release binaries, so `issue` needs `--allow-unknown-runtime-key` plus `--public-key`.
+
+A local trial can run [Local Quickstart](../getting-started/local-quickstart) instead of these flags. For a manual issue:
+
+```bash
+metrum-genai-smartrouter-license generate-keypair \
+  --public-key-out license.pub \
+  --private-key-out license.key
+
+metrum-genai-smartrouter-license issue \
+  --catalog docs/enterprise-license-skus.json \
+  --entitlement docs/entitlement.local-dev.example.json \
+  --key license.key \
+  --public-key license.pub \
+  --allow-unknown-runtime-key \
+  --valid-for 8760h \
+  --out license.json
+
+metrum-genai-smartrouter-license verify \
+  --license license.json \
+  --public-key license.pub
+
+metrum-genai-smartrouter-license safe-summary \
+  --license license.json
+```
+
+`docs/entitlement.local-dev.example.json` uses SKU `oss-self-managed` and
+`signing.key_id: self-managed`. It is a generic example, not a customer
+payload. Production entitlements stay in operator-protected storage.
+
+## Automated Helm Installation
+
 ## Automated Helm Installation
 
 Use the generated deployment wrapper. It generates a local keypair on first use, issues a license with the requested validity, atomically refreshes the runtime Secret, and installs or upgrades Helm:

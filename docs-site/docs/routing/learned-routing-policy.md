@@ -110,11 +110,11 @@ approved workload dataset
 ```
 
 The CLI exposes `collect`, `fanout`, `judge`, `featurize`, `train`, `eval`,
-`validate` and `serve`. After installing the service project with uv, each command
+`validate` and `serve`. Copy-paste command blocks, router YAML, sidecar notes,
+and the checked-in synthetic evidence tables are in
+[Train And Serve Learned Routing Policy](lrp-train-and-serve.md).
+After installing the service project with uv, each command
 can be invoked as `uv run --project services/learned-routing-policy --locked lrp COMMAND`.
-Operators keep datasets, responses, judgments, features and bundles in protected
-storage. The [operator runbook](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/LEARNED_ROUTING_POLICY.md)
-provides the full commands, candidate schema and deployment sequence.
 
 Each target needs at least 200 training rows to participate in learned selection.
 This is a minimum sample count, not a guarantee of workload coverage. Inspect
@@ -201,7 +201,9 @@ evidence-based cache estimates, and bounded labels) are described for callers in
 
 Deploy the service over loopback in the router's network namespace, such as a
 sidecar in the same pod. A separate private service on a custom port does not
-satisfy the router's current egress rules. Policy requests are authenticated;
+satisfy the router's current egress rules. Step-by-step train, serve, and
+evidence tables: [Train And Serve Learned Routing Policy](lrp-train-and-serve.md).
+Policy requests are authenticated;
 diagnostics use a separate loopback listener, with authenticated explain/reload
 disabled initially. Router global metrics continue to require metrics-admin
 access. See [Customer-Controlled Routing](customer-controlled-routing.md) for

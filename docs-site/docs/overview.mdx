@@ -24,7 +24,30 @@ usage accounting.
 - Enforce RPM, TPM, concurrency, and token/cost budgets before upstream calls.
 - Preserve sanitized request IDs, attempts, latency, token, fallback, and
   request-time cost evidence for operations.
-- Combine external providers with private OpenAI-compatible upstreams.
+- Combine private OpenAI-compatible servers (vLLM, SGLang, on-prem GPUs)
+  with commercial and frontier APIs behind one caller token, model-group
+  contract, runtime license, and usage database.
+
+## Where It Runs
+
+Operators run the router on-prem, in a customer cloud or VPC, or hybrid. The
+product is self-managed: you keep keys, licenses, and traces. Applications
+do not call providers directly.
+
+```mermaid
+flowchart LR
+  Apps[Apps and coding agents]
+  Router[GenAI Smart Router]
+  Priv[Private vLLM SGLang GPUs]
+  SaaS[Commercial and frontier APIs]
+  LRP[Optional LRP sidecar]
+  Usage[(Usage and diagnostics)]
+  Apps --> Router
+  Router --> Priv
+  Router --> SaaS
+  Router --> LRP
+  Router --> Usage
+```
 
 ## Request Flow
 
@@ -46,13 +69,16 @@ Limitations](/docs/reference/architecture-limitations).
 
 ## Start Here
 
-1. Choose [Docker Compose, binary, or Kubernetes](/docs/installation/).
-2. Create deployment-owned configuration and protected provider credentials.
-3. Generate the self-managed runtime-policy license and caller token.
-4. Discover the caller's allowed groups through
-   [`/v1/models`](/docs/getting-started/available-models).
-5. Run the [quickstart](/docs/getting-started/hosted-quickstart) and the exact
-   Chat, Responses, Messages, tool, image, or streaming shapes your clients use.
+1. Follow the [Local Quickstart](/docs/getting-started/local-quickstart) for a
+   ten-minute laptop path (bootstrap, license, caller, one Chat request).
+2. Choose [Docker Compose, binary, or Kubernetes](/docs/installation/) for a
+   durable deployment.
+3. Generate or renew the self-managed runtime-policy license as in
+   [Self-Managed Licensing](/docs/licensing/).
+4. Discover allowed groups with [`/v1/models`](/docs/getting-started/available-models).
+5. Use the [API Quickstart](/docs/getting-started/hosted-quickstart) against the
+   running endpoint, then the exact Chat, Responses, Messages, tool, image,
+   or streaming shapes your clients use.
 6. Review [security boundaries](/docs/security-governance/overview),
    [observability](/docs/operations/observability), and the [upgrade
    guide](/docs/release-notes/upgrade-guide) before production traffic.

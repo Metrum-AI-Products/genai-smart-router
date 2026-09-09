@@ -1,0 +1,100 @@
+# Local/dev starter only. Not a production catalog.
+# Copy via scripts/local_dev_bootstrap.py; do not commit filled config.yaml,
+# env.json, license.json, or license.key.
+#
+# Production operators should start from config.example.yaml and
+# server.usage_db.migration_policy: deployment-job.
+server:
+  listen: :8080
+  default_model_group: local
+  cache:
+    enabled: false
+    max_bytes: 134217728
+    default_ttl: 15m
+  logging:
+    path: requests.jsonl
+    rotate_mb: 64
+    keep: 7
+  usage_db:
+    enabled: true
+    driver: sqlite
+    path: usage.sqlite
+    migration_policy: auto-safe
+  license:
+    enabled: true
+    path: license.json
+    state_path: license-state.json
+    public_keys:
+      - key_id: self-managed
+        path: license.pub
+    instance_fingerprint: ""
+    instance_fingerprint_file: ""
+    instance_fingerprint_env: ""
+    recheck_interval: 1h
+    grace_period_on_validation_error: 24h
+    revocation:
+      mode: off
+      path: revocations.json
+      require_current_bundle: false
+      fail_closed_on_bundle_error: true
+    fail_open_for_dev: false
+  diagnostics:
+    enabled: true
+    retention_days: 7
+    store_sanitized_upstream_errors: true
+    max_error_bytes: 2048
+  retention:
+    enabled: false
+  admin_auth:
+    basic:
+      enabled: false
+      users: []
+
+state_path: router-state.json
+
+providers:
+  openai:
+    dialect: openai-chat
+    base_url: https://api.openai.com/v1
+    api_key: ${OPENAI_API_KEY}
+    api_key_env: OPENAI_API_KEY
+    key_id: openai-local
+    models:
+      gpt-4o-mini:
+        model: gpt-4o-mini
+        input_price_per_million_usd: 0.15
+        output_price_per_million_usd: 0.60
+        pricing_source: placeholder-for-local-dev
+        pricing_updated_at: "2026-09-09"
+        pricing_notes: Local starter metadata only. Refresh from current OpenAI
+          pricing before production routing.
+        input_modalities: [text]
+        output_modalities: [text]
+        tool_support:
+          openai_chat: [tools, tool_choice]
+
+models:
+  local:
+    strategy: static
+    targets:
+      - provider: openai
+        model_ref: gpt-4o-mini
+
+users:
+  - id: local-dev
+    name: Local Developer
+    type: service_account
+    status: active
+
+projects:
+  - id: example-project
+    name: Example Project
+    status: active
+
+project_memberships:
+  - user_id: local-dev
+    project: example-project
+    role: developer
+    status: active
+
+callers: []
