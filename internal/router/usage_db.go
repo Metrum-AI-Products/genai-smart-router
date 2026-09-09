@@ -275,6 +275,7 @@ type usageRow struct {
 	TargetProvider                     string
 	TargetModel                        string
 	TargetDialect                      string
+	TargetRegion                       string
 	Stream                             bool
 	Cache                              string
 	Status                             int
@@ -428,6 +429,7 @@ type usageRecord struct {
 	TargetProvider                     string                             `gorm:"column:target_provider;type:text;not null;index:idx_request_usage_provider_model,priority:1"`
 	TargetModel                        string                             `gorm:"column:target_model;type:text;not null;index:idx_request_usage_provider_model,priority:2"`
 	TargetDialect                      string                             `gorm:"column:target_dialect;type:text;not null"`
+	TargetRegion                       string                             `gorm:"column:target_region;type:text;not null;default:''"`
 	Stream                             bool                               `gorm:"column:stream;not null"`
 	Cache                              string                             `gorm:"column:cache;type:text;not null"`
 	Status                             int                                `gorm:"column:status;not null"`
@@ -1584,6 +1586,10 @@ func OpenUsageStorePath(path string) (*usageStore, error) {
 		_ = store.Close()
 		return nil, err
 	}
+	if err := applyUsageTargetRegionDiagnosticsMigration(db); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
 	return store, nil
 }
 
@@ -1741,17 +1747,23 @@ func applyUsageExplicitBaseline(db *gorm.DB) error {
 		created[stmt.Schema.Table] = true
 	}
 	// The model structs intentionally describe the latest contract, while this
-	// immutable baseline is schema version 1. Remove only the fixed v2 fields
-	// from tables created by this invocation so 2026072301 remains the sole
-	// owner of its expansion. Existing installations are adopted unchanged and
-	// must already satisfy their recorded ledger state.
-	for table, columns := range usageReasoningTelemetryColumns {
-		if !created[table] {
-			continue
-		}
-		for column := range columns {
-			if err := db.Exec("ALTER TABLE " + table + " DROP COLUMN " + column).Error; err != nil {
-				return fmt.Errorf("freeze usage baseline column %s.%s: %w", table, column, err)
+	// immutable baseline is schema version 1. Remove fields owned by later
+	// migrations from tables created by this invocation so each expansion
+	// remains owned by its immutable migration definition. Existing
+	// installations are adopted unchanged and must already satisfy their
+	// recorded ledger state.
+	for _, laterColumns := range []map[string]map[string]struct{}{
+		usageReasoningTelemetryColumns,
+		usageTargetRegionDiagnosticsColumns,
+	} {
+		for table, columns := range laterColumns {
+			if !created[table] {
+				continue
+			}
+			for column := range columns {
+				if err := db.Exec("ALTER TABLE " + table + " DROP COLUMN " + column).Error; err != nil {
+					return fmt.Errorf("freeze usage baseline column %s.%s: %w", table, column, err)
+				}
 			}
 		}
 	}
@@ -2514,15 +2526,31 @@ var usageContentCaptureEncryptionColumns = map[string]map[string]struct{}{
 	},
 }
 
+var usageTargetRegionDiagnosticsColumns = map[string]map[string]struct{}{
+	"request_usage": {"target_region": {}},
+}
+
+func mergeUsageExcludedColumns(groups ...map[string]map[string]struct{}) map[string]map[string]struct{} {
+	merged := map[string]map[string]struct{}{}
+	for _, group := range groups {
+		for table, columns := range group {
+			if merged[table] == nil {
+				merged[table] = map[string]struct{}{}
+			}
+			for column := range columns {
+				merged[table][column] = struct{}{}
+			}
+		}
+	}
+	return merged
+}
+
 func verifyUsageLegacyBaseline(db *gorm.DB) error {
-	excluded := map[string]map[string]struct{}{}
-	for table, columns := range usageReasoningTelemetryColumns {
-		excluded[table] = columns
-	}
-	for table, columns := range usageContentCaptureEncryptionColumns {
-		excluded[table] = columns
-	}
-	return ensureUsageRelationalSchemaExcept(db, excluded)
+	return ensureUsageRelationalSchemaExcept(db, mergeUsageExcludedColumns(
+		usageReasoningTelemetryColumns,
+		usageContentCaptureEncryptionColumns,
+		usageTargetRegionDiagnosticsColumns,
+	))
 }
 
 func applyUsageReasoningTelemetryMigration(db *gorm.DB) error {
@@ -2546,7 +2574,10 @@ func applyUsageReasoningTelemetryMigration(db *gorm.DB) error {
 }
 
 func verifyUsageReasoningTelemetryMigration(db *gorm.DB) error {
-	return ensureUsageRelationalSchemaExcept(db, usageContentCaptureEncryptionColumns)
+	return ensureUsageRelationalSchemaExcept(db, mergeUsageExcludedColumns(
+		usageContentCaptureEncryptionColumns,
+		usageTargetRegionDiagnosticsColumns,
+	))
 }
 
 func applyUsageContentCaptureEncryptionMigration(db *gorm.DB) error {
@@ -2571,6 +2602,19 @@ func applyUsageContentCaptureEncryptionMigration(db *gorm.DB) error {
 }
 
 func verifyUsageContentCaptureEncryptionMigration(db *gorm.DB) error {
+	return ensureUsageRelationalSchemaExcept(db, usageTargetRegionDiagnosticsColumns)
+}
+
+func applyUsageTargetRegionDiagnosticsMigration(db *gorm.DB) error {
+	if !db.Migrator().HasColumn(&usageRecord{}, "TargetRegion") {
+		if err := db.Migrator().AddColumn(&usageRecord{}, "TargetRegion"); err != nil {
+			return fmt.Errorf("add selected target region diagnostics column: %w", err)
+		}
+	}
+	return verifyUsageTargetRegionDiagnosticsMigration(db)
+}
+
+func verifyUsageTargetRegionDiagnosticsMigration(db *gorm.DB) error {
 	return ensureUsageRelationalSchema(db)
 }
 
@@ -3096,6 +3140,7 @@ func rowFromRecord(rec logRecord) usageRow {
 		TargetProvider:                     rec.TargetProvider,
 		TargetModel:                        rec.TargetModel,
 		TargetDialect:                      rec.TargetDialect,
+		TargetRegion:                       rec.TargetRegion,
 		Stream:                             rec.Stream,
 		Cache:                              defaultString(rec.Cache, "bypass"),
 		Status:                             rec.Status,
@@ -3218,6 +3263,7 @@ func recordFromRow(row usageRow) *usageRecord {
 		TargetProvider:                     row.TargetProvider,
 		TargetModel:                        row.TargetModel,
 		TargetDialect:                      row.TargetDialect,
+		TargetRegion:                       row.TargetRegion,
 		Stream:                             row.Stream,
 		Cache:                              row.Cache,
 		Status:                             row.Status,
@@ -3321,6 +3367,7 @@ func rowFromUsageRecord(record usageRecord) (usageRow, error) {
 		TargetProvider:                     record.TargetProvider,
 		TargetModel:                        record.TargetModel,
 		TargetDialect:                      record.TargetDialect,
+		TargetRegion:                       record.TargetRegion,
 		Stream:                             record.Stream,
 		Cache:                              record.Cache,
 		Status:                             record.Status,

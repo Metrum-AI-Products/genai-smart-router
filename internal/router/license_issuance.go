@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"smart-llmrouter/internal/licensecontract"
 	"sort"
 	"strings"
 	"time"
@@ -79,23 +80,7 @@ type LicenseRenderOptions struct {
 	Now         time.Time
 }
 
-type LicenseSafeSummary struct {
-	SchemaVersion int               `json:"schema_version"`
-	LicenseID     string            `json:"license_id"`
-	CustomerID    string            `json:"customer_id"`
-	CustomerName  string            `json:"customer_name,omitempty"`
-	Product       string            `json:"product"`
-	SKU           string            `json:"sku"`
-	Features      []string          `json:"features"`
-	Limits        LicenseLimits     `json:"limits,omitempty"`
-	Deployment    LicenseDeployment `json:"deployment,omitempty"`
-	IssuedAt      string            `json:"issued_at"`
-	NotBefore     string            `json:"not_before"`
-	ExpiresAt     string            `json:"expires_at"`
-	GraceUntil    string            `json:"grace_until,omitempty"`
-	KeyID         string            `json:"key_id"`
-	Issuer        string            `json:"issuer"`
-}
+type LicenseSafeSummary = licensecontract.SafeSummary
 
 func LoadLicenseSKUCatalog(path string) (LicenseSKUCatalog, error) {
 	raw, err := os.ReadFile(path)

@@ -51,6 +51,15 @@ Use these pages as the canonical homes for each configuration area:
 
 Change config with structured YAML tooling, validate the result, run the relevant smoke tests, and keep deployment-facing guidance current when behavior changes. For a strategy-by-strategy ownership guide that ties caller access, group-local routing, validation, policy services, and rollback evidence together, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
 
+An active model-group target may set an optional bounded `region` scalar, for
+example `region: deployment-region-a`. The router records the region of the
+target that actually served the request after fallback. The value is
+operator-declared metadata, not a legal or provider-behavior guarantee; validate
+it through the deployment's provider and infrastructure controls. Adding this
+field requires the current usage-schema migration before serving. Roll back the
+config by removing the field; package rollback across the additive diagnostics
+migration follows the restore-required migration contract.
+
 For managed configuration sources, keep exactly one validated active revision
 per runtime scope. Do not let a deployment select arbitrarily between competing
 active revisions: the loader samples at most two matching records and refuses

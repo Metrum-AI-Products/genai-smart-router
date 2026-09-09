@@ -54,6 +54,7 @@ type logRecord struct {
 	TargetProvider                     string                           `json:"target_provider"`
 	TargetModel                        string                           `json:"target_model"`
 	TargetDialect                      string                           `json:"target_dialect"`
+	TargetRegion                       string                           `json:"target_region,omitempty"`
 	Stream                             bool                             `json:"stream"`
 	Cache                              string                           `json:"cache"`
 	Status                             int                              `json:"status"`

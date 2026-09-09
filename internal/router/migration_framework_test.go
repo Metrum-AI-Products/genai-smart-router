@@ -1129,7 +1129,8 @@ func TestUsageHistoricalValidationRequiresMultipleCheckpointsBeforeDeploymentJob
 		t.Fatal(err)
 	}
 	for i := 0; i < 101; i++ {
-		if err := store.db.Create(&usageRecord{RequestID: fmt.Sprintf("historical-row-%03d", i), TS: "2026-08-05T00:00:00Z"}).Error; err != nil {
+		row := usageRecord{RequestID: fmt.Sprintf("historical-row-%03d", i), TS: "2026-08-05T00:00:00Z"}
+		if err := store.db.Omit("TargetRegion").Create(&row).Error; err != nil {
 			_ = store.Close()
 			t.Fatalf("create synthetic historical usage row %d: %v", i, err)
 		}
@@ -1674,9 +1675,12 @@ func TestUsageReasoningTelemetryMigrationAddsColumnsToAdoptedSchema(t *testing.T
 	if err := verifyUsageContentCaptureEncryptionMigration(runner.db); err != nil {
 		t.Fatalf("content-capture encryption migration postcondition: %v", err)
 	}
+	if err := verifyUsageTargetRegionDiagnosticsMigration(runner.db); err != nil {
+		t.Fatalf("target-region diagnostics migration postcondition: %v", err)
+	}
 	status, err := runner.Verify()
-	if err != nil || !status.Compatible || status.SchemaVersion != 3 || status.DataVersion != 0 || status.State != "pending" || len(status.Jobs) != 1 || status.Jobs[0].Key != "historical-usage-validation-v1" || status.Jobs[0].State != migrationDataJobPending {
-		t.Fatalf("schema migrations must reach v3 while the later non-serving data job remains pending: status=%+v err=%v", status, err)
+	if err != nil || !status.Compatible || status.SchemaVersion != 4 || status.DataVersion != 0 || status.State != "pending" || len(status.Jobs) != 1 || status.Jobs[0].Key != "historical-usage-validation-v1" || status.Jobs[0].State != migrationDataJobPending {
+		t.Fatalf("schema migrations must reach v4 while the later non-serving data job remains pending: status=%+v err=%v", status, err)
 	}
 	previousBinary, err := NewMigrationRunner(runner.db, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, usageMigrationDefinitions[:1])
 	if err != nil {
@@ -1685,6 +1689,37 @@ func TestUsageReasoningTelemetryMigrationAddsColumnsToAdoptedSchema(t *testing.T
 	previousStatus, err := previousBinary.Status()
 	if err != nil || previousStatus.Compatible || previousStatus.State != "incompatible" {
 		t.Fatalf("previous binary must reject the newer ledger and require restore before downgrade: status=%+v err=%v", previousStatus, err)
+	}
+}
+
+func TestUsageTargetRegionMigrationOwnsColumnAfterV1Baseline(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "target-region-ownership.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+
+	if err := applyUsageExplicitBaseline(db); err != nil {
+		t.Fatalf("apply v1 baseline: %v", err)
+	}
+	if db.Migrator().HasColumn(&usageRecord{}, "TargetRegion") {
+		t.Fatal("schema v1 baseline must not create request_usage.target_region")
+	}
+	if err := applyUsageReasoningTelemetryMigration(db); err != nil {
+		t.Fatalf("apply reasoning migration: %v", err)
+	}
+	if err := applyUsageContentCaptureEncryptionMigration(db); err != nil {
+		t.Fatalf("apply content-capture migration: %v", err)
+	}
+	if err := applyUsageTargetRegionDiagnosticsMigration(db); err != nil {
+		t.Fatalf("apply target-region migration: %v", err)
+	}
+	if !db.Migrator().HasColumn(&usageRecord{}, "TargetRegion") {
+		t.Fatal("migration 2026090901 did not create request_usage.target_region")
 	}
 }
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import tarfile
 import tempfile
 from pathlib import Path
@@ -36,6 +37,17 @@ def markdown_section(document: str, heading: str) -> str:
 
 def assert_offline_package_documentation_contract() -> None:
     repository = Path(__file__).resolve().parent.parent
+    makefile = (repository / "Makefile").read_text(encoding="utf-8")
+    match = re.search(r"^FLEET_ONLY_BINARIES := (.+)$", makefile, re.MULTILINE)
+    if match is None:
+        raise AssertionError("Makefile: missing FLEET_ONLY_BINARIES")
+    make_fleet_binaries = set(match.group(1).split())
+    if make_fleet_binaries != validate_package_contents.FLEET_ONLY_BINARY_NAMES:
+        raise AssertionError(
+            "package validator Fleet-only binary set differs from Makefile: "
+            f"{make_fleet_binaries ^ validate_package_contents.FLEET_ONLY_BINARY_NAMES}"
+        )
+
     binary_manifest_sources = {
         repository / "docs/PACKAGE_README.md": "What Is Included",
         repository / "README.md": "Build And Package",
@@ -54,13 +66,7 @@ def assert_offline_package_documentation_contract() -> None:
         raise AssertionError("docs/PACKAGE_README.md: missing Docker Compose package manifest")
     docker_manifest = docker_section[docker_start:]
     for fleet_binary in (
-        "bin/metrum-genai-smartrouter-fleetctl",
-        "bin/metrum-genai-smartrouter-fleet-sign",
-        "bin/metrum-genai-smartrouter-license",
-        "bin/metrum-fleetctl",
-        "bin/metrum-smartrouterctl",
-        "bin/metrum-fleet-sign",
-        "bin/router-license",
+        f"bin/{name}" for name in validate_package_contents.FLEET_ONLY_BINARY_NAMES
     ):
         if fleet_binary in docker_manifest:
             raise AssertionError(f"docs/PACKAGE_README.md: Docker package manifest must omit {fleet_binary}")
@@ -97,15 +103,7 @@ def assert_offline_package_documentation_contract() -> None:
         expected_copy = f"COPY --from=build /out/{runtime_binary} /app/bin/{runtime_binary}"
         if expected_copy not in dockerfile:
             raise AssertionError(f"Dockerfile: missing runtime binary copy: {runtime_binary}")
-    for fleet_binary in (
-        "metrum-genai-smartrouter-fleetctl",
-        "metrum-genai-smartrouter-fleet-sign",
-        "metrum-genai-smartrouter-license",
-        "metrum-fleetctl",
-        "metrum-smartrouterctl",
-        "metrum-fleet-sign",
-        "router-license",
-    ):
+    for fleet_binary in validate_package_contents.FLEET_ONLY_BINARY_NAMES:
         if f"/out/{fleet_binary}" in dockerfile or f"/app/bin/{fleet_binary}" in dockerfile:
             raise AssertionError(f"Dockerfile: standard image must not include {fleet_binary}")
 
@@ -273,6 +271,42 @@ def main() -> int:
         good_docker = root / "smart-llmrouter-v1.0.0-docker-linux-amd64.tar.gz"
         write_tar(good_docker, docker_package_files())
         expect_ok(good_docker, allowlist)
+
+        for fleet_binary in sorted(validate_package_contents.FLEET_ONLY_BINARY_NAMES):
+            forbidden_image = root / f"forbidden-image-{fleet_binary}.tar.gz"
+            forbidden_image_files = docker_package_files()
+            image_path = (
+                "smart-llmrouter-v1.0.0-docker-linux-amd64/"
+                "images/smart-llmrouter-v1.0.0-linux-amd64.tar"
+            )
+            forbidden_image_files[image_path] = docker_image_tar(
+                {f"app/bin/{fleet_binary}": elf(62)}
+            )
+            write_tar(forbidden_image, forbidden_image_files)
+            expect_errors(
+                forbidden_image,
+                allowlist,
+                [f"forbidden fleet lifecycle binary /app/bin/{fleet_binary}"],
+            )
+
+        relocated_fleet_binary = root / "relocated-fleet-binary.tar.gz"
+        relocated_files = docker_package_files()
+        relocated_image_path = (
+            "smart-llmrouter-v1.0.0-docker-linux-amd64/"
+            "images/smart-llmrouter-v1.0.0-linux-amd64.tar"
+        )
+        relocated_files[relocated_image_path] = docker_image_tar(
+            {"usr/local/bin/metrum-genai-smartrouter-fleetctl": elf(62)}
+        )
+        write_tar(relocated_fleet_binary, relocated_files)
+        expect_errors(
+            relocated_fleet_binary,
+            allowlist,
+            [
+                "forbidden fleet lifecycle binary "
+                "/usr/local/bin/metrum-genai-smartrouter-fleetctl"
+            ],
+        )
 
         wrong_image_arch = root / "smart-llmrouter-v1.0.0-docker-linux-amd64.tar.gz"
         wrong_image_arch_files = docker_package_files()

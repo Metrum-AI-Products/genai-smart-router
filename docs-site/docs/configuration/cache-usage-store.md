@@ -13,7 +13,7 @@ This example is a partial subset of `config.example.yaml`; the shipped sample co
 server:
   default_model_group: default
   cache:
-    enabled: true
+    enabled: false
     max_bytes: 134217728
     default_ttl: 15m
   usage_db:

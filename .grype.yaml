@@ -1,0 +1,15 @@
+# Temporary, advisory-specific exceptions for Docusaurus's build-only
+# image-size dependency. No fixed image-size release exists as of 2026-09-09.
+# Remove both rules when https://github.com/Metrum-AI-Products/genai-smart-router/issues/17
+# is resolved.
+ignore:
+  - vulnerability: GHSA-5p2g-fcmc-qvqq
+    package:
+      name: image-size
+      version: 2.0.2
+      type: npm
+  - vulnerability: GHSA-w3rx-r6r6-pgpr
+    package:
+      name: image-size
+      version: 2.0.2
+      type: npm

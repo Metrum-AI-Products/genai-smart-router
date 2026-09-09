@@ -133,6 +133,26 @@ Add or update `providers.<provider>.models.<model_ref>` with structured metadata
 
 Keep routing weights only under `models.<group>.targets[]`. Keep unavailable or unentitled models catalog-only.
 
+The `gemini-generate-content` dialect is limited to unary text generation. A
+Gemini catalog entry may omit `activation_evidence`, but an active model-group
+target using that dialect must bind evidence to the exact model and dialect:
+
+```yaml
+activation_evidence:
+  exact_model: <exact-provider-model-id>
+  dialect: gemini-generate-content
+  direct_text_passed: true
+  router_text_passed: true
+  validated_at: YYYY-MM-DD
+```
+
+Set the two pass flags only after the same exact model first passes a direct
+`generateContent` text request and then a router `/v1/chat/completions` text
+request through a restricted group. The codec rejects tools, images,
+structured output, reasoning controls, and streaming; do not advertise or
+activate those shapes without a separately implemented codec and exact direct
+plus router evidence.
+
 Catalog metadata is not active routing eligibility by itself. If one upstream model is exposed through multiple provider skins, add and validate each skin as a separate provider or target dialect before expecting callers to use it. For example, `tool_support.openai_responses` on a catalog entry inherited by an `openai-chat` target documents metadata for that model, but Responses clients will not select that target unless an `openai-responses` skin or an explicitly validated bridge target is active in the requested group. Before promotion, check `/admin/reports/api/provider-catalog-status` and confirm each intended group shows the right `activeEligibilitySkin`, nonempty `effectiveToolSupport`, and no surprising `inactiveToolSupport` for the caller surface being validated.
 
 ## 6. Add A Restricted Smoke Group

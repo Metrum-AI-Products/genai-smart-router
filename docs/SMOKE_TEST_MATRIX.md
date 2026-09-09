@@ -550,7 +550,7 @@ Before activating an image-capable target in a broad coding or VLM group, run bo
 | Direct upstream image smoke | Exact upstream API path accepts the intended image shape and returns a useful answer with `max_tokens` or equivalent at least `512` |
 | Router-level image smoke | Same workload through the intended model group selects the expected image-capable target and records request ID, provider/model/dialect, latency, attempts, usage, and fallback state |
 | Payload shape | OpenAI Chat `image_url`, OpenAI Responses `input_image`, and Anthropic Messages `image.source` shapes are validated when the group serves those clients |
-| URL safety | Loopback, link-local, RFC1918/private, multicast, unspecified, malformed schemes, and redirect-to-private image URLs fail before upstream and no provider key is used |
+| URL safety | Loopback, link-local, RFC1918/private, multicast, unspecified, malformed schemes, DNS failures, and bounded DNS timeouts fail before upstream and no provider key is used; deployment egress controls separately cover redirects and DNS rebinding because the router does not dereference accepted image URLs |
 | Private URL override | `server.upstream.allow_private_image_urls: true` is tested only for deployments that intentionally allow private VLM dereference |
 | Cost and telemetry | Usage rows include `input_has_image`, `input_image_count`, upstream image tokens when reported, calculated image cost, and upstream-reported billed costs when present |
 | Cap behavior | Tiny explicit caps are forwarded exactly; targets marked `honors_max_tokens: false` are skipped for capped requests |

@@ -1784,6 +1784,11 @@ models:
         min_observations: 20
         observation_window_seconds: 600
         max_score_adjustment_percent: 70
+        # Prefix affinity is enabled by default. Pins are process-local,
+        # caller-isolated, and honored only while the target remains eligible.
+        affinity:
+          ttl_seconds: 600
+          max_entries: 10000
         hard_filters:
           require_requested_api_skin: true
           require_input_modalities: true
@@ -1908,6 +1913,9 @@ models:
     strategy: external
     external_policy:
       url: http://127.0.0.1:18090/route
+      # shadow records a validated recommendation while serving configured order.
+      # Promote with enforce; roll back without a policy call with baseline.
+      mode: shadow
       allow_hosts:
       - 127.0.0.1
       timeout_ms: 500
@@ -1917,6 +1925,8 @@ models:
     targets:
     - provider: baseten
       model_ref: gpt-oss-120b
+      # Optional deployment-defined processing-location label; not a legal guarantee.
+      region: deployment-region-a
       weight: 70
       tier: cheap
     - provider: minimax

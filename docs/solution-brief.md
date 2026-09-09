@@ -321,7 +321,7 @@ For advanced policy, a model group can delegate selection to a TypeScript script
 
 Admins configure this with `strategy: script` on a model group and a script path such as `scripts/router.ts`. Proxy users still request the model group name; the script chooses one configured backing target internally.
 
-Script policy can be split across local TypeScript helper files and bundled at router startup. Deployments that need third-party helpers package locked dependencies or a pre-bundled artifact with the routing script. External policy-service calls are available only when the model group enables `script_http` with deployment-owned allowed hosts, timeouts, and response-size limits.
+Script policy can be split across local TypeScript helper files and bundled at router startup. Each decision runs in a fresh isolated VM; `script_max_concurrent` bounds concurrent VMs per model group (default `16`, maximum `256`) without pooling mutable script state, and queued decisions honor caller cancellation. Deployments that need third-party helpers package locked dependencies or a pre-bundled artifact with the routing script. External policy-service calls are available only when the model group enables `script_http` with deployment-owned allowed hosts, timeouts, and response-size limits.
 
 For teams that want policy to live outside the router process, a model group can use `strategy: external`. The router sends normalized request context, safe caller metadata, eligible target metadata, pricing, tools, and modalities to a standalone external routing policy service. The service returns a target decision, and the router validates that decision against the configured eligible targets before calling any provider.
 

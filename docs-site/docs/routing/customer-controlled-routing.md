@@ -49,7 +49,7 @@ These mechanisms can be combined carefully. For example, a group can use `dynami
 | Caller/user/project access | `callers[].allow`, users, projects, memberships, admin policy | Which teams can see and request each group through `/v1/models` |
 | Quotas and rate limits | Caller and token budget config | How much traffic a key, owner, project, or environment may send |
 | Capabilities and validation metadata | Provider catalog, target overrides, `validation`, `contract` | Which request shapes and quality gates a target may satisfy |
-| PII filtering | `models.<group>.pii_filter` | Whether text is redacted, restored, or blocked before routing policy and upstream calls |
+| PII filtering | `models.<group>.pii_filter` | Whether text is redacted, restored for buffered responses, or blocked before routing policy and upstream calls; native streams preserve placeholders |
 | Cache behavior | Server cache config and request cache controls | Which responses may be reused and which requests bypass cache |
 | Retention policy | Usage DB, logs, rollups, retention settings | How long safe scalar telemetry and reports are kept |
 | Reports and evaluation labels | Usage reporting, decision telemetry, validation harness labels | Which evidence supports promotion, rollback, and cost allocation |

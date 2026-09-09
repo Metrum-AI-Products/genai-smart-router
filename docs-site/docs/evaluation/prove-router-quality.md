@@ -88,6 +88,14 @@ The matrix should declare the task set, reward/verifier, clients, model groups, 
 
 The gate report is safe to share when populated from safe result and usage rows: it includes task/run counts, pass rate with confidence interval, reward, cost, latency, fallback/error rates, selected upstream distribution, and request IDs. It intentionally excludes raw router tokens, token hashes, provider keys, prompts, images, tool outputs, and full deployment config.
 
+The source distribution also includes a preregistered OCR-style fixed-model
+baseline example. Its strict JSON contract accepts only model/run identifiers,
+aggregate case/pass/error counts, p95 latency, and total cost. Unknown fields
+are rejected, and a candidate regression beyond the declared tolerance returns
+a nonzero status. Live images, prompts, extracted text, and responses remain in
+the deployment's protected evaluation system rather than the example or gate
+artifact.
+
 ## Non-Harbor Examples
 
 | Workload | Objective evidence |

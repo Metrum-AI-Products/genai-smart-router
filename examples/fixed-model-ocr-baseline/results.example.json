@@ -1,0 +1,24 @@
+{
+  "schema_version": "fixed-model-outcome-gate/v1",
+  "preregistration_id": "example-ocr-exact-match-v1",
+  "arms": [
+    {
+      "role": "fixed_model",
+      "model_id": "deployment-fixed-model",
+      "total_cases": 20,
+      "passed_cases": 19,
+      "error_count": 0,
+      "p95_latency_ms": 1800,
+      "total_cost_usd": 0.4
+    },
+    {
+      "role": "candidate",
+      "model_id": "deployment-router-group",
+      "total_cases": 20,
+      "passed_cases": 19,
+      "error_count": 0,
+      "p95_latency_ms": 1600,
+      "total_cost_usd": 0.3
+    }
+  ]
+}

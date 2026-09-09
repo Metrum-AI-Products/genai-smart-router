@@ -21,6 +21,7 @@ models:
     strategy: external
     external_policy:
       url: https://routing-policy.internal.example/route
+      mode: shadow
       allow_hosts: [routing-policy.internal.example]
       timeout_ms: 500
       max_response_bytes: 65536
@@ -36,6 +37,12 @@ models:
 ```
 
 `on_error` defaults to `fail_closed`. Use `fallback` only when the group is allowed to use the normal configured target order if the policy service is unavailable or returns an invalid decision.
+
+`mode` defaults to `enforce` for backward compatibility. New adaptive policies
+should begin with `shadow`: the router validates and records the recommendation
+but serves normal eligible target order. Promote by changing the reviewed
+configuration to `enforce`. Roll back to `baseline` to serve normal eligible
+order without calling the policy service. Shadow failures never affect serving.
 
 Policy URLs use HTTPS by default. Plain HTTP is accepted only for trusted loopback hosts such as `localhost`, `127.0.0.1`, and `::1`, or when `external_policy.allow_http: true` is explicitly set for a trusted non-local endpoint. Redirects are revalidated before they are followed; every hop must keep an allowed `http`/`https` scheme and an exact hostname from `allow_hosts`.
 
@@ -119,7 +126,14 @@ By default, the policy request does not include raw prompt text, normalized mess
 
 If a deployment needs a trusted policy service to inspect request content, set `external_policy.include_request: true`. That opt-in adds `request` and `text` fields to the policy body. When the model group has `pii_filter` enabled, those fields are built from the redacted request object; placeholder mappings stay in router memory for the current request and are not sent to the policy service. Without `pii_filter`, `include_request: true` can send raw prompts/messages, image references or data, tool schemas, and tool outputs to the external service.
 
-`targets` contains only targets already eligible for the request shape. For example, image requests only include image-capable targets, tool requests only include compatible tool targets, reasoning or thinking requests only include compatible reasoning targets, and capped requests skip targets marked as not honoring max tokens. Each target includes safe capability metadata such as modalities, tool support, structured-output support, reasoning support, validation status, prices, and configured key identifiers.
+`targets` contains only targets already eligible for the request shape. Filtered
+targets are not sent in another policy-request field. For example, image
+requests only include image-capable targets, tool requests only include
+compatible tool targets, reasoning or thinking requests only include compatible
+reasoning targets, and capped requests skip targets marked as not honoring max
+tokens. Each target includes safe capability metadata such as modalities, tool
+support, structured-output support, reasoning support, validation status,
+prices, and configured key identifiers.
 
 When the group has a model-group contract, the policy body includes safe `contract` metadata and target `validation` metadata. `targets[]` is already filtered by the contract, and policy responses are validated against that eligible list. The policy service cannot select a contract-ineligible fallback.
 
@@ -182,6 +196,7 @@ models:
     strategy: external
     external_policy:
       url: http://127.0.0.1:18090/route
+      mode: shadow
       allow_hosts: [127.0.0.1]
       timeout_ms: 500
       max_response_bytes: 65536
@@ -202,11 +217,12 @@ Names such as `external-policy-demo`, `cheap`, and `heavy` are examples. Deploym
 - Use HTTPS for non-local policy services. Use `external_policy.allow_http: true` only for an approved trusted internal endpoint; loopback HTTP is reserved for local demos and sidecars.
 - Treat redirects as policy-service egress: a redirect to a non-allowlisted hostname fails before the redirected service is reached.
 - Put policy-service authentication in `external_policy.headers`, not in application requests.
-- Keep `timeout_ms` low because routing happens before any upstream model call.
+- Keep `timeout_ms` low because routing happens before any upstream model call. The router creates one concurrency-safe policy HTTP client per model group at startup, reuses its connection pool, propagates caller cancellation, and defaults the client timeout to 500 ms when the field is unset.
+- Start new adaptive policies in `shadow`, compare recommendation and served-target outcomes, promote with `enforce`, and use `baseline` for immediate policy-call rollback.
 - Use `fail_closed` for sensitive routing policy. Use `fallback` only when the configured target order is an acceptable default.
 - Treat `routing-policy-error` as a deployment/configuration issue. The response means the policy service failed, timed out, returned non-JSON, returned non-2xx, or selected an invalid target.
 
-When decision telemetry is enabled, external-policy executions write safe scalar policy rows. Successful policy decisions record outcome, selected candidate index, fallback count, and safe class label. Fail-closed policy errors before selection record an execution row even when no routing-decision row exists, with policy kind, outcome, duration, eligible/all target counts, safe error class, and terminal error type. `on_error: fallback` records the configured fallback outcome and then normal routing/fallback telemetry explains the selected target. These rows do not store the policy request body, policy response JSON, prompt text, tool schemas, bearer tokens, provider keys, token hashes, raw URLs, policy headers, or full config.
+When decision telemetry is enabled, external-policy executions write safe scalar policy rows. Successful enforced policy decisions record outcome, selected candidate index, fallback count, and safe class label. Shadow decisions record `shadow_recommended` plus a `shadow_recommended_candidate` routing signal while the routing-decision row continues to identify the baseline target actually served. Baseline mode records its bounded outcome without calling the policy. Fail-closed policy errors before enforced selection record an execution row even when no routing-decision row exists, with policy kind, outcome, duration, eligible/all target counts, safe error class, and terminal error type. `on_error: fallback` records the configured fallback outcome and then normal routing/fallback telemetry explains the selected target. These rows do not store the policy request body, policy response JSON, prompt text, tool schemas, bearer tokens, provider keys, token hashes, raw URLs, policy headers, or full config.
 
 ## Outcome-Calibrated Example
 

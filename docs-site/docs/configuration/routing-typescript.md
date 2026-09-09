@@ -20,6 +20,8 @@ models:
   adaptive:
     strategy: script
     script: scripts/router.ts
+    # Each admitted decision gets a fresh isolated VM. Zero/unset defaults to 16.
+    script_max_concurrent: 16
     targets:
       - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
@@ -232,7 +234,7 @@ export function route(ctx: RouteContext) {
 
 ## External Policy Calls
 
-Scripts run synchronously inside the router process after TypeScript transpilation. Keep policy fast and deterministic. If a script returns `classLabel`, treat it as a telemetry token only: use at most 64 characters from letters, numbers, `_`, `-`, `.`, and `:`. Do not echo prompt text, secrets, HTML, or user input into `classLabel`; unsafe values are stored as `unsafe_class_label`. External calls use the router-provided `router.fetchJSON(url, options)` helper, not browser `fetch`, and only work when `script_http.enabled` is true for that model group.
+Scripts run synchronously inside the router process after TypeScript transpilation. Each decision uses a fresh Goja VM so mutable JavaScript globals cannot cross request boundaries; VMs are not pooled. `script_max_concurrent` caps simultaneously executing VMs per model group, defaults to `16` when unset or zero, and accepts values through `256`. Requests waiting for a slot honor caller cancellation. Keep policy fast and deterministic. If a script returns `classLabel`, treat it as a telemetry token only: use at most 64 characters from letters, numbers, `_`, `-`, `.`, and `:`. Do not echo prompt text, secrets, HTML, or user input into `classLabel`; unsafe values are stored as `unsafe_class_label`. External calls use the router-provided `router.fetchJSON(url, options)` helper, not browser `fetch`, and only work when `script_http.enabled` is true for that model group.
 
 ```typescript
 export function route(ctx: RouteContext) {

@@ -319,6 +319,7 @@ type ProviderModel struct {
 	HonorsMaxTokens                    *bool                 `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
 	ForceStoreFalse                    bool                  `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
 	OutputTokenField                   string                `yaml:"output_token_field" json:"outputTokenField,omitempty"`
+	ActivationEvidence                 ActivationEvidence    `yaml:"activation_evidence" json:"activationEvidence,omitempty"`
 	TrafficShape                       TrafficShapeConfig    `yaml:"traffic_shape" json:"trafficShape,omitempty"`
 	RequestShapeSupport                RequestShapeSupport   `yaml:"request_shape_support" json:"requestShapeSupport,omitempty"`
 	ResponsesToChat                    ResponsesToChatBridge `yaml:"responses_to_chat" json:"responsesToChat,omitempty"`
@@ -338,6 +339,16 @@ type ToolSupport struct {
 	ProviderHosted    []string `yaml:"provider_hosted" json:"providerHosted,omitempty"`
 }
 
+// ActivationEvidence records the exact text-only provider and router stages
+// required before a catalogued dialect may become an active group target.
+type ActivationEvidence struct {
+	ExactModel       string `yaml:"exact_model" json:"exactModel,omitempty"`
+	Dialect          string `yaml:"dialect" json:"dialect,omitempty"`
+	DirectTextPassed bool   `yaml:"direct_text_passed" json:"directTextPassed,omitempty"`
+	RouterTextPassed bool   `yaml:"router_text_passed" json:"routerTextPassed,omitempty"`
+	ValidatedAt      string `yaml:"validated_at" json:"validatedAt,omitempty"`
+}
+
 type ReasoningSupport struct {
 	Supported                     bool   `yaml:"supported" json:"supported,omitempty"`
 	Mode                          string `yaml:"mode" json:"mode,omitempty"`
@@ -354,15 +365,16 @@ type ReasoningSupport struct {
 }
 
 type ModelGroup struct {
-	Strategy           string                   `yaml:"strategy"`
-	Script             string                   `yaml:"script"`
-	ScriptHTTP         ScriptHTTPConfig         `yaml:"script_http"`
-	ExternalPolicy     ExternalPolicyConfig     `yaml:"external_policy"`
-	IntelligentRouting IntelligentRoutingConfig `yaml:"intelligent_routing"`
-	RoutingPolicy      RoutingPolicyConfig      `yaml:"routing_policy"`
-	Contract           *ModelGroupContract      `yaml:"contract" json:"contract,omitempty"`
-	PIIFilter          PIIFilterConfig          `yaml:"pii_filter"`
-	ContentCapture     ContentCaptureConfig     `yaml:"content_capture"`
+	Strategy            string                   `yaml:"strategy"`
+	Script              string                   `yaml:"script"`
+	ScriptMaxConcurrent int                      `yaml:"script_max_concurrent" json:"scriptMaxConcurrent,omitempty"`
+	ScriptHTTP          ScriptHTTPConfig         `yaml:"script_http"`
+	ExternalPolicy      ExternalPolicyConfig     `yaml:"external_policy"`
+	IntelligentRouting  IntelligentRoutingConfig `yaml:"intelligent_routing"`
+	RoutingPolicy       RoutingPolicyConfig      `yaml:"routing_policy"`
+	Contract            *ModelGroupContract      `yaml:"contract" json:"contract,omitempty"`
+	PIIFilter           PIIFilterConfig          `yaml:"pii_filter"`
+	ContentCapture      ContentCaptureConfig     `yaml:"content_capture"`
 	// SpendCeiling optionally caps semantic/dynamic_score escalation for this group.
 	// Weighted and other strategies ignore it. Merge with caller spend_ceiling when both set.
 	SpendCeiling     SpendCeilingConfig `yaml:"spend_ceiling" json:"spend_ceiling,omitempty"`
@@ -430,16 +442,23 @@ type RoutingPolicyConfig struct {
 }
 
 type DynamicScoreConfig struct {
-	ColdStartPolicy           string                    `yaml:"cold_start_policy" json:"coldStartPolicy,omitempty"`
-	MinObservations           int                       `yaml:"min_observations" json:"minObservations,omitempty"`
-	ObservationWindowSeconds  int                       `yaml:"observation_window_seconds" json:"observationWindowSeconds,omitempty"`
-	MaxScoreAdjustmentPercent float64                   `yaml:"max_score_adjustment_percent" json:"maxScoreAdjustmentPercent,omitempty"`
-	LowConfidenceFallback     string                    `yaml:"low_confidence_fallback" json:"lowConfidenceFallback,omitempty"`
-	HardFilters               DynamicScoreHardFilters   `yaml:"hard_filters" json:"hardFilters,omitempty"`
-	Signals                   DynamicScoreSignals       `yaml:"signals" json:"signals,omitempty"`
-	ScoreTerms                []DynamicScoreTerm        `yaml:"score_terms" json:"scoreTerms,omitempty"`
-	Thresholds                DynamicScoreThresholds    `yaml:"thresholds" json:"thresholds,omitempty"`
-	EvaluationMetadata        []DynamicEvaluationTarget `yaml:"evaluation_metadata" json:"evaluationMetadata,omitempty"`
+	ColdStartPolicy           string                     `yaml:"cold_start_policy" json:"coldStartPolicy,omitempty"`
+	MinObservations           int                        `yaml:"min_observations" json:"minObservations,omitempty"`
+	ObservationWindowSeconds  int                        `yaml:"observation_window_seconds" json:"observationWindowSeconds,omitempty"`
+	MaxScoreAdjustmentPercent float64                    `yaml:"max_score_adjustment_percent" json:"maxScoreAdjustmentPercent,omitempty"`
+	LowConfidenceFallback     string                     `yaml:"low_confidence_fallback" json:"lowConfidenceFallback,omitempty"`
+	Affinity                  DynamicScoreAffinityConfig `yaml:"affinity" json:"affinity,omitempty"`
+	HardFilters               DynamicScoreHardFilters    `yaml:"hard_filters" json:"hardFilters,omitempty"`
+	Signals                   DynamicScoreSignals        `yaml:"signals" json:"signals,omitempty"`
+	ScoreTerms                []DynamicScoreTerm         `yaml:"score_terms" json:"scoreTerms,omitempty"`
+	Thresholds                DynamicScoreThresholds     `yaml:"thresholds" json:"thresholds,omitempty"`
+	EvaluationMetadata        []DynamicEvaluationTarget  `yaml:"evaluation_metadata" json:"evaluationMetadata,omitempty"`
+}
+
+type DynamicScoreAffinityConfig struct {
+	Enabled    *bool `yaml:"enabled" json:"enabled,omitempty"`
+	TTLSeconds int   `yaml:"ttl_seconds" json:"ttlSeconds,omitempty"`
+	MaxEntries int   `yaml:"max_entries" json:"maxEntries,omitempty"`
 }
 
 type DynamicScoreHardFilters struct {
@@ -569,6 +588,7 @@ type ScriptHTTPConfig struct {
 type ExternalPolicyConfig struct {
 	URL              string            `yaml:"url" json:"url"`
 	Method           string            `yaml:"method" json:"method"`
+	Mode             string            `yaml:"mode" json:"mode"`
 	AllowHosts       []string          `yaml:"allow_hosts" json:"allowHosts"`
 	AllowHTTP        bool              `yaml:"allow_http" json:"allowHttp"`
 	TimeoutMS        int               `yaml:"timeout_ms" json:"timeoutMs"`
@@ -611,6 +631,7 @@ type Target struct {
 	Model                              string                `yaml:"model" json:"model"`
 	ModelRef                           string                `yaml:"model_ref" json:"modelRef,omitempty"`
 	Dialect                            string                `yaml:"dialect" json:"dialect"`
+	Region                             string                `yaml:"region" json:"region,omitempty"`
 	DisplayName                        string                `yaml:"display_name" json:"displayName,omitempty"`
 	ContextTokens                      int                   `yaml:"context_tokens" json:"contextTokens,omitempty"`
 	ToolOnly                           bool                  `yaml:"tool_only" json:"toolOnly,omitempty"`
@@ -636,6 +657,7 @@ type Target struct {
 	HonorsMaxTokens                    *bool                 `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
 	ForceStoreFalse                    bool                  `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
 	OutputTokenField                   string                `yaml:"output_token_field" json:"outputTokenField,omitempty"`
+	ActivationEvidence                 ActivationEvidence    `yaml:"activation_evidence" json:"activationEvidence,omitempty"`
 	Validation                         *TargetValidation     `yaml:"validation" json:"validation,omitempty"`
 	TrafficShape                       TrafficShapeConfig    `yaml:"traffic_shape" json:"trafficShape,omitempty"`
 	RequestShapeSupport                RequestShapeSupport   `yaml:"request_shape_support" json:"requestShapeSupport,omitempty"`
@@ -1164,6 +1186,9 @@ func (c *Config) Validate() error {
 			if err := validateOutputTokenField(model.OutputTokenField); err != nil {
 				return fmt.Errorf("provider %s model %s has invalid output_token_field: %w", name, ref, err)
 			}
+			if err := validateActivationEvidence(fmt.Sprintf("provider %s model %s", name, ref), model.ActivationEvidence, model.Model, model.Dialect, p.Dialect, false); err != nil {
+				return err
+			}
 			if err := validateRequestShapeSupport(fmt.Sprintf("provider %s model %s", name, ref), model.RequestShapeSupport); err != nil {
 				return err
 			}
@@ -1190,6 +1215,12 @@ func (c *Config) Validate() error {
 		if strings.EqualFold(m.Strategy, "script") && m.Script == "" {
 			return fmt.Errorf("model group %s uses script strategy but has no script path", name)
 		}
+		if m.ScriptMaxConcurrent < 0 || m.ScriptMaxConcurrent > scriptMaxConcurrentLimit {
+			return fmt.Errorf("model group %s script_max_concurrent must be between 0 and %d", name, scriptMaxConcurrentLimit)
+		}
+		if m.ScriptMaxConcurrent != 0 && !strings.EqualFold(m.Strategy, "script") {
+			return fmt.Errorf("model group %s configures script_max_concurrent but does not use script strategy", name)
+		}
 		if strings.EqualFold(m.Strategy, "external") {
 			if strings.TrimSpace(m.ExternalPolicy.URL) == "" {
 				return fmt.Errorf("model group %s uses external strategy but has no external_policy.url", name)
@@ -1212,6 +1243,11 @@ func (c *Config) Validate() error {
 			}
 			if m.ExternalPolicy.Method != "" && strings.ToUpper(strings.TrimSpace(m.ExternalPolicy.Method)) != http.MethodGet && strings.ToUpper(strings.TrimSpace(m.ExternalPolicy.Method)) != http.MethodPost {
 				return fmt.Errorf("model group %s external_policy method must be GET or POST", name)
+			}
+			switch strings.ToLower(strings.TrimSpace(m.ExternalPolicy.Mode)) {
+			case "", "enforce", "shadow", "baseline":
+			default:
+				return fmt.Errorf("model group %s external_policy mode must be enforce, shadow, or baseline", name)
 			}
 			if m.ExternalPolicy.TimeoutMS < 0 {
 				return fmt.Errorf("model group %s has negative external_policy timeout_ms", name)
@@ -1308,6 +1344,9 @@ func (c *Config) Validate() error {
 			if resolved.ContextTokens < 0 {
 				return fmt.Errorf("model group %s target %s context_tokens cannot be negative", name, resolved.Model)
 			}
+			if err := validateTargetRegion(resolved.Region); err != nil {
+				return fmt.Errorf("model group %s target %s has invalid region: %w", name, resolved.Model, err)
+			}
 			if err := validateToolSupport(resolved.ToolSupport); err != nil {
 				return fmt.Errorf("model group %s target %s has invalid tool_support: %w", name, resolved.Model, err)
 			}
@@ -1322,6 +1361,9 @@ func (c *Config) Validate() error {
 			}
 			if err := validateOutputTokenField(resolved.OutputTokenField); err != nil {
 				return fmt.Errorf("model group %s target %s has invalid output_token_field: %w", name, resolved.Model, err)
+			}
+			if err := validateActivationEvidence(fmt.Sprintf("model group %s target %s", name, resolved.Model), resolved.ActivationEvidence, resolved.Model, resolved.Dialect, c.Provider[resolved.Provider].Dialect, normalizeDialect(targetDialect(c.Provider[resolved.Provider], resolved)) == "gemini-generate-content"); err != nil {
+				return err
 			}
 			if err := validateRequestShapeSupport(fmt.Sprintf("model group %s target %s", name, resolved.Model), resolved.RequestShapeSupport); err != nil {
 				return err
@@ -2308,6 +2350,12 @@ func validateDynamicScorePolicy(group string, cfg DynamicScoreConfig) error {
 	if cfg.MaxScoreAdjustmentPercent < 0 || cfg.MaxScoreAdjustmentPercent > 100 {
 		return fmt.Errorf("model group %s dynamic_score max_score_adjustment_percent must be between 0 and 100", group)
 	}
+	if cfg.Affinity.TTLSeconds < 0 {
+		return fmt.Errorf("model group %s dynamic_score affinity.ttl_seconds cannot be negative", group)
+	}
+	if cfg.Affinity.MaxEntries < 0 {
+		return fmt.Errorf("model group %s dynamic_score affinity.max_entries cannot be negative", group)
+	}
 	switch strings.ToLower(strings.TrimSpace(cfg.LowConfidenceFallback)) {
 	case "", "configured_weight", "weighted":
 	default:
@@ -2516,6 +2564,9 @@ func (c *Config) resolveTarget(group string, target Target) (Target, error) {
 	}
 	if target.OutputTokenField == "" {
 		target.OutputTokenField = catalog.OutputTokenField
+	}
+	if activationEvidenceEmpty(target.ActivationEvidence) {
+		target.ActivationEvidence = catalog.ActivationEvidence
 	}
 	target.Bridges = mergeBridgeSupport(catalog.Bridges, target.Bridges)
 	target.RequestShapeSupport = mergeRequestShapeSupport(catalog.RequestShapeSupport, target.RequestShapeSupport)
@@ -2990,6 +3041,43 @@ func validTargetValidationStatus(status string) bool {
 	}
 }
 
+func activationEvidenceEmpty(evidence ActivationEvidence) bool {
+	return strings.TrimSpace(evidence.ExactModel) == "" &&
+		strings.TrimSpace(evidence.Dialect) == "" &&
+		!evidence.DirectTextPassed &&
+		!evidence.RouterTextPassed &&
+		strings.TrimSpace(evidence.ValidatedAt) == ""
+}
+
+func validateActivationEvidence(prefix string, evidence ActivationEvidence, model, modelDialect, providerDialect string, required bool) error {
+	if activationEvidenceEmpty(evidence) {
+		if required {
+			return fmt.Errorf("%s requires activation_evidence with exact passing direct and router text stages", prefix)
+		}
+		return nil
+	}
+	dialect := modelDialect
+	if strings.TrimSpace(dialect) == "" {
+		dialect = providerDialect
+	}
+	if strings.TrimSpace(evidence.ExactModel) != strings.TrimSpace(model) {
+		return fmt.Errorf("%s activation_evidence.exact_model must match the active model", prefix)
+	}
+	if normalizeDialect(evidence.Dialect) != normalizeDialect(dialect) {
+		return fmt.Errorf("%s activation_evidence.dialect must match the active dialect", prefix)
+	}
+	if strings.TrimSpace(evidence.ValidatedAt) == "" {
+		return fmt.Errorf("%s activation_evidence.validated_at is required", prefix)
+	}
+	if _, err := time.Parse("2006-01-02", strings.TrimSpace(evidence.ValidatedAt)); err != nil {
+		return fmt.Errorf("%s activation_evidence.validated_at must be YYYY-MM-DD", prefix)
+	}
+	if required && (!evidence.DirectTextPassed || !evidence.RouterTextPassed) {
+		return fmt.Errorf("%s requires activation_evidence direct_text_passed and router_text_passed", prefix)
+	}
+	return nil
+}
+
 func (c *Config) validateModelGroupContract(group string, model ModelGroup) error {
 	contract := model.Contract
 	if contract == nil {
@@ -3129,6 +3217,7 @@ func toolSupportEmpty(ts ToolSupport) bool {
 func externalPolicyEmpty(cfg ExternalPolicyConfig) bool {
 	return strings.TrimSpace(cfg.URL) == "" &&
 		strings.TrimSpace(cfg.Method) == "" &&
+		strings.TrimSpace(cfg.Mode) == "" &&
 		len(cfg.AllowHosts) == 0 &&
 		!cfg.AllowHTTP &&
 		cfg.TimeoutMS == 0 &&
@@ -3136,6 +3225,18 @@ func externalPolicyEmpty(cfg ExternalPolicyConfig) bool {
 		len(cfg.Headers) == 0 &&
 		strings.TrimSpace(cfg.OnError) == "" &&
 		!cfg.IncludeRequest
+}
+
+var targetRegionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,63}$`)
+
+func validateTargetRegion(region string) error {
+	if region == "" {
+		return nil
+	}
+	if region != strings.TrimSpace(region) || !targetRegionPattern.MatchString(region) {
+		return fmt.Errorf("must be a 1-64 character deployment-defined scalar using letters, numbers, '.', '_', ':', '/', or '-'")
+	}
+	return nil
 }
 
 func intelligentRoutingEmpty(cfg IntelligentRoutingConfig) bool {
@@ -3192,6 +3293,8 @@ func normalizeDialect(d string) string {
 		return "openai-responses"
 	case "replicate":
 		return "replicate"
+	case "gemini", "gemini-generate-content", "generate-content":
+		return "gemini-generate-content"
 	default:
 		return ""
 	}

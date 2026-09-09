@@ -239,6 +239,16 @@ func (s *Service) recordRoutingDecisionTelemetry(rc *requestContext, dec decisio
 		ClassLabel:             dec.ClassLabel,
 	})
 	rc.rec.RoutingSignals = append(rc.rec.RoutingSignals, dec.RoutingSignals...)
+	if dec.ShadowRecommended != nil {
+		rc.rec.RoutingSignals = append(rc.rec.RoutingSignals, routingSignalLogRecord{
+			Seq:            len(rc.rec.RoutingSignals) + 1,
+			Strategy:       dec.Strategy,
+			SignalName:     "shadow_recommended_candidate",
+			Source:         "external_policy",
+			CandidateIndex: candidateIndexForTarget(rc.rec.DecisionCandidates, *dec.ShadowRecommended),
+			BoolValue:      true,
+		})
+	}
 	for i := range dec.DynamicScoreTerms {
 		if dec.DynamicScoreTerms[i].CandidateIndex < 0 {
 			dec.DynamicScoreTerms[i].CandidateIndex = candidateIndexForProviderModel(rc.rec.DecisionCandidates, dec.DynamicScoreTerms[i].Provider, dec.DynamicScoreTerms[i].Model)
@@ -546,6 +556,7 @@ func routingPolicyFingerprint(cfg *Config, groupName string, group ModelGroup) s
 	case "external":
 		payload["external_policy"] = map[string]any{
 			"method":             strings.ToUpper(strings.TrimSpace(group.ExternalPolicy.Method)),
+			"mode":               defaultString(strings.ToLower(strings.TrimSpace(group.ExternalPolicy.Mode)), "enforce"),
 			"allow_hosts_count":  len(group.ExternalPolicy.AllowHosts),
 			"allow_http":         group.ExternalPolicy.AllowHTTP,
 			"timeout_ms":         group.ExternalPolicy.TimeoutMS,
@@ -591,6 +602,7 @@ func redactedModelGroupFingerprintPayload(groupName string, group ModelGroup, in
 			"model":                        target.Model,
 			"model_ref":                    target.ModelRef,
 			"dialect":                      normalizeDialect(target.Dialect),
+			"region":                       target.Region,
 			"weight":                       target.Weight,
 			"tool_only":                    target.ToolOnly,
 			"rpm":                          target.RPM,

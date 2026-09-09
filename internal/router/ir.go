@@ -58,6 +58,7 @@ type IRResponse struct {
 	Usage       Usage             `json:"usage"`
 	Raw         map[string]any    `json:"raw,omitempty"`
 	RawResponse bool              `json:"raw_response,omitempty"`
+	Streamed    bool              `json:"-"`
 	Warnings    []string          `json:"warnings,omitempty"`
 	Headers     map[string]string `json:"headers,omitempty"`
 }

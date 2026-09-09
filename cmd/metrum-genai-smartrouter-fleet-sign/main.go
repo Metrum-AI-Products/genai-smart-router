@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"smart-llmrouter/internal/buildinfo"
-	"smart-llmrouter/internal/router"
+	"smart-llmrouter/internal/fleet"
 )
 
 func main() {
@@ -62,7 +62,7 @@ func signIntent(args []string) {
 		die("intent: <key.b64> <intent_id> <profile_ref> <manifest.json> <out.json> <lifetime_hours>")
 	}
 	key := loadSeed(args[0])
-	var manifest router.TenantDeploymentManifest
+	var manifest fleet.TenantDeploymentManifest
 	data, err := os.ReadFile(args[3])
 	if err != nil {
 		die("read manifest: %v", err)
@@ -75,8 +75,8 @@ func signIntent(args []string) {
 		die("lifetime: %v", err)
 	}
 	now := time.Now().UTC().Truncate(time.Second)
-	intent := router.TenantDeploymentIntent{
-		APIVersion: router.TenantDeploymentIntentAPIVersion,
+	intent := fleet.TenantDeploymentIntent{
+		APIVersion: fleet.TenantDeploymentIntentAPIVersion,
 		IntentID:   args[1],
 		IssuerRole: "fleet-lifecycle-admin",
 		IssuedAt:   now,
@@ -84,7 +84,7 @@ func signIntent(args []string) {
 		ProfileRef: args[2],
 		Manifest:   manifest,
 	}
-	payload, err := router.TenantDeploymentIntentSigningPayload(intent)
+	payload, err := fleet.TenantDeploymentIntentSigningPayload(intent)
 	if err != nil {
 		die("payload: %v", err)
 	}
@@ -106,8 +106,8 @@ func signAdmission(args []string) {
 	key := loadSeed(args[0])
 	now := time.Now().UTC().Truncate(time.Second)
 	doc := map[string]any{
-		"api_version":      router.TenantDeploymentRDSAdmissionAPIVersion,
-		"action":           router.TenantDeploymentRDSAdmissionActionDisposableE2E,
+		"api_version":      fleet.TenantDeploymentRDSAdmissionAPIVersion,
+		"action":           fleet.TenantDeploymentRDSAdmissionActionDisposableE2E,
 		"approval_id":      args[1],
 		"issuer_role":      "fleet-lifecycle-admin",
 		"profile_id":       args[2],
@@ -174,7 +174,7 @@ func signDelete(args []string) {
 		RetainDatabase bool      `json:"retain_database"`
 		Nonce          string    `json:"nonce"`
 	}{
-		APIVersion: router.TenantDeletionApprovalAPIVersion, JobID: args[1], Action: "delete",
+		APIVersion: fleet.TenantDeletionApprovalAPIVersion, JobID: args[1], Action: "delete",
 		IssuerRole: "fleet-lifecycle-admin", ExpiresAt: now.Add(12 * time.Hour),
 		RetainPVC: retainPVC, RetainDatabase: retainDB, Nonce: args[2],
 	})
@@ -182,7 +182,7 @@ func signDelete(args []string) {
 		die("payload: %v", err)
 	}
 	doc := map[string]any{
-		"api_version":     router.TenantDeletionApprovalAPIVersion,
+		"api_version":     fleet.TenantDeletionApprovalAPIVersion,
 		"job_id":          args[1],
 		"action":          "delete",
 		"issuer_role":     "fleet-lifecycle-admin",

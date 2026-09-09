@@ -142,6 +142,20 @@ func TestUsageSchemaContractRejectsRequiredColumnAndIndexDrift(t *testing.T) {
 	}
 }
 
+func TestUsageTargetRegionDiagnosticsMigrationVerifiesRequiredColumn(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := applyUsageTargetRegionDiagnosticsMigration(store.db); err != nil {
+		t.Fatal(err)
+	}
+	if !store.db.Migrator().HasColumn(&usageRecord{}, "TargetRegion") {
+		t.Fatal("target_region column missing after migration")
+	}
+}
+
 func TestUsagePostgresIndexMetadataVerificationRejectsSemanticDrift(t *testing.T) {
 	stmt := &gorm.Statement{DB: openUsageSchemaContractDB(t)}
 	if err := stmt.Parse(&usageRecord{}); err != nil {
