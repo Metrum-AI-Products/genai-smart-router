@@ -214,6 +214,8 @@ Adapt `services/learned-routing-policy/targets.example.yaml` into protected
 ```bash
 lrp collect --dataset "$LRP_DATA_DIR/seed.ndjson" --approved-content --out "$LRP_DATA_DIR/requests.ndjson"
 lrp collect --router-log "$LRP_DATA_DIR/requests.jsonl" --content-capture "$LRP_DATA_DIR/approved-export.ndjson" --approved-content --out "$LRP_DATA_DIR/requests.ndjson"
+lrp import-usage --db "$USAGE_DSN" --out "$LRP_DATA_DIR/explore-meta.ndjson"
+lrp collect --usage-db "$USAGE_DSN" --content-capture "$LRP_DATA_DIR/approved-export.ndjson" --approved-content --out "$LRP_DATA_DIR/requests.ndjson"
 lrp fanout --requests "$LRP_DATA_DIR/requests.ndjson" --targets "$LRP_DATA_DIR/targets.yaml" --via router --base-url http://127.0.0.1:8080/v1 --refresh-pricing --approved-content --out "$LRP_DATA_DIR/responses.ndjson"
 lrp judge --requests "$LRP_DATA_DIR/requests.ndjson" --responses "$LRP_DATA_DIR/responses.ndjson" --anchor-provider openrouter --anchor anthropic/claude-sonnet-4.6 --judge anthropic/claude-sonnet-4.6 --approved-content --sandbox-rootfs "$LRP_VERIFIER_ROOTFS" --out "$LRP_DATA_DIR/judgments.ndjson"
 lrp featurize --requests "$LRP_DATA_DIR/requests.ndjson" --embedding-model "$LRP_DATA_DIR/embed/model.onnx" --tokenizer "$LRP_DATA_DIR/embed/tokenizer.json" --out "$LRP_DATA_DIR/features.parquet"
@@ -226,7 +228,11 @@ lrp serve --bundle "$LRP_BUNDLE_DIR" --config "$LRP_DATA_DIR/lrp.yaml" --port 18
 
 Router JSONL contains metadata only. It cannot supply prompts or automatically
 replay explore-tagged requests. Content capture is governed encrypted storage;
-an operator must supply an approved export. Non-synthetic collection, fanout and
+an operator must supply an approved export. The read-only
+[usage import](LRP_USAGE_IMPORT.md) joins `request_usage` and
+`request_policy_executions` for explore labels such as `lrp:explore`; it still
+cannot invent content and must be paired with an approved content join.
+Non-synthetic collection, fanout and
 judging require `--approved-content` after the operator approves that transfer.
 Judging sends request and candidate/anchor content to a third-party model.
 Use an appropriately authorized judge and data-retention policy. Prefer a judge
