@@ -53,6 +53,15 @@ python3 examples/external-routing-policy/prompt_size_policy.py
 
 The sample `external-policy-demo` group in `config.example.yaml` points at `http://127.0.0.1:18090/route`. It routes requests with `context.textChars > 8000` to targets tagged `tier: heavy` and shorter requests to targets tagged `tier: cheap`.
 
+For observed-signal scoring, conversation pins, cache-hit exclusion, and serving-target fallback attribution, run the adaptive reference:
+
+```bash
+python3 scripts/run_adaptive_signal_policy_demo.py
+# or: make adaptive-signal-policy-demo
+```
+
+That example is a trusted deployment-owned policy service, not built-in router state and not provider-backed quality evidence.
+
 ## Validation Checklist
 
 - Validate YAML with `rtk go test ./internal/router -run 'ExternalRoutingPolicy|Config'`.

@@ -19,8 +19,9 @@ Use this glossary for short canonical definitions. For the request flow and mode
 | caller token | A router-issued bearer token with allow lists, caller metadata, limits, a public token ID for reporting, and optional admin privileges. | [Available Models And Access](../getting-started/available-models) |
 | content-admin | An operator subject authorized for governed content-capture maintenance actions such as delete or purge. | [Admin Authorization](../configuration/admin-authorization) |
 | contract | A model-group capability and quality promise enforced before target selection. | [Model Group Contracts](../configuration/model-group-contracts) |
-| decision telemetry | Safe scalar routing evidence recorded for policy, eligibility, fallback, score, and filter decisions. | [Usage Reporting](../operations/usage-reporting) |
+| decision telemetry | Safe scalar routing evidence recorded for policy, eligibility, fallback, score, and filter decisions. Reports explain decisions; they do not drive the hot-path selector. | [Usage Reporting](../operations/usage-reporting) |
 | dialect | A provider or caller API shape used to translate requests and responses without changing the caller contract. | [API Compatibility](../reference/api-compatibility) |
+| dynamic_score | Built-in strategy that blends configured weights with in-process rolling observations for latency, throughput, reliability, catalog cost, and evaluation metadata. | [Dynamic Score Routing](../configuration/dynamic-score-routing) |
 | effort enum | A reasoning-control value such as low, medium, or high when a provider supports effort-style reasoning selection. | [Reasoning Routing](../configuration/reasoning-routing) |
 | eligibility | The request-shape and policy checks a target must pass before it can be selected. | [Routing Strategy Decision Tree](../routing/strategy-decision-tree) |
 | fallback | A retry path to another eligible target after a retryable upstream failure or configured failover order. | [Customer-Controlled Routing](../routing/customer-controlled-routing) |
@@ -42,10 +43,12 @@ Use this glossary for short canonical definitions. For the request flow and mode
 | reasoning mode | A target's validated reasoning behavior, such as supported effort levels or thinking controls. | [Reasoning Routing](../configuration/reasoning-routing) |
 | request shape feature | A safe request property such as API skin, tools, image input, reasoning, output cap, prompt size, or structured-output request. | [Dynamic Score Routing](../configuration/dynamic-score-routing) |
 | reservation | A quota or traffic-shaping hold based on estimated input and requested output budget before upstream completion. | [Error Reference](../reference/errors) |
-| route strategy | The configured mechanism that selects a target: static, failover, weighted, dynamic score, script, external, or contract-backed. | [Routing Strategy Decision Tree](../routing/strategy-decision-tree) |
+| route strategy | The configured mechanism that selects a target: static, failover, weighted, dynamic_score, script, or external. An optional contract is a pre-filter, not a selector. | [Routing Strategy Decision Tree](../routing/strategy-decision-tree) |
 | router endpoint | The deployment URL callers use instead of direct provider endpoints. | [API Quickstart](../getting-started/hosted-quickstart) |
 | routing policy | The deployment-owned rules and strategy that choose among eligible targets inside one requested model group. | [Customer-Controlled Routing](../routing/customer-controlled-routing) |
+| savings | Hypothetical spend difference versus an explicit baseline price; calculated from stored request-time costs, not from re-pricing history with current catalog prices. | [Cost Governance](../evaluation/cost-governance) |
 | skin | A client compatibility surface, such as OpenAI Chat, OpenAI Responses, or Anthropic Messages. | [API Compatibility](../reference/api-compatibility) |
+| stateful session | Optional Chat-to-Responses bridge continuation that stores upstream `previous_response_id` under a caller session header. This is not sticky provider/model selection for prompt-cache affinity. | [API Compatibility](../reference/api-compatibility) |
 | target | One configured upstream/provider model entry inside a model group. | [Concepts](../concepts) |
 | target selection | The process of filtering eligible targets and choosing one according to the model group's strategy. | [Routing Strategy Decision Tree](../routing/strategy-decision-tree) |
 | target-level context eligibility | A target-specific check that skips targets unable to satisfy the request context, such as max-token or modality requirements. | [Router Configuration](../configuration/router-config) |

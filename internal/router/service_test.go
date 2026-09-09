@@ -1,4 +1,4 @@
-// Copyright 2006 Metrum AI
+// Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
 package router
@@ -7435,6 +7435,94 @@ export function route(ctx: Ctx) {
 	}
 }
 
+func TestTypeScriptRequestShapeExampleRoutesBySafeContext(t *testing.T) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime caller unavailable")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	scriptPath := filepath.Join(repoRoot, "examples", "typescript-request-shape", "router.ts")
+
+	cfg := testConfig(t, "http://example.invalid", "provider-key", t.TempDir())
+	cfg.Models["script-request-shape"] = ModelGroup{
+		Strategy: "script",
+		Script:   scriptPath,
+		Targets: []Target{
+			{Provider: "mock", Model: "cheap-model", Tier: "cheap", Weight: 70, ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}},
+			{Provider: "mock", Model: "heavy-model", Tier: "heavy", Weight: 20, ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}, Reasoning: ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum}},
+			{Provider: "mock", Model: "tool-model", Tier: "tool", Weight: 10, ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}},
+			{Provider: "mock", Model: "vision-model", Tier: "vision", Weight: 5, InputModalities: []string{"text", "image"}, ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}},
+			{Provider: "mock", Model: "reasoning-model", Tier: "reasoning", Weight: 5, ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}, Reasoning: ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum}},
+		},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "script-request-shape")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	short, err := svc.pick(nil, "script-request-shape", cfg.Models["script-request-shape"], &IRRequest{
+		Model:    "script-request-shape",
+		Messages: []IRMessage{{Role: "user", Content: "short question"}},
+	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
+	if err != nil {
+		t.Fatalf("short request-shape pick: %v", err)
+	}
+	if short.Target.Model != "cheap-model" {
+		t.Fatalf("short request-shape selected %q", short.Target.Model)
+	}
+	if short.ClassLabel == nil || *short.ClassLabel != "request-shape:chat" {
+		t.Fatalf("short class label=%v", short.ClassLabel)
+	}
+
+	long, err := svc.pick(nil, "script-request-shape", cfg.Models["script-request-shape"], &IRRequest{
+		Model:    "script-request-shape",
+		Messages: []IRMessage{{Role: "user", Content: strings.Repeat("large prompt ", 900)}},
+	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
+	if err != nil {
+		t.Fatalf("long request-shape pick: %v", err)
+	}
+	if long.Target.Model != "heavy-model" {
+		t.Fatalf("long request-shape selected %q", long.Target.Model)
+	}
+	if long.ClassLabel == nil || *long.ClassLabel != "request-shape:long-context" {
+		t.Fatalf("long class label=%v", long.ClassLabel)
+	}
+
+	tools, err := svc.pick(nil, "script-request-shape", cfg.Models["script-request-shape"], &IRRequest{
+		Model:    "script-request-shape",
+		Messages: []IRMessage{{Role: "user", Content: "use a tool"}},
+		Tools: []map[string]any{
+			{"type": "function", "function": map[string]any{"name": "lookup"}},
+		},
+	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
+	if err != nil {
+		t.Fatalf("tools request-shape pick: %v", err)
+	}
+	if tools.Target.Model != "tool-model" {
+		t.Fatalf("tools request-shape selected %q", tools.Target.Model)
+	}
+	if tools.ClassLabel == nil || *tools.ClassLabel != "request-shape:tools" {
+		t.Fatalf("tools class label=%v", tools.ClassLabel)
+	}
+
+	reasoning, err := svc.pick(nil, "script-request-shape", cfg.Models["script-request-shape"], &IRRequest{
+		Model:     "script-request-shape",
+		Messages:  []IRMessage{{Role: "user", Content: "think carefully"}},
+		Reasoning: ReasoningIntent{Requested: true, Kind: "effort", Effort: "medium", Source: "openai_chat.reasoning_effort"},
+	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
+	if err != nil {
+		t.Fatalf("reasoning request-shape pick: %v", err)
+	}
+	if reasoning.Target.Model != "reasoning-model" {
+		t.Fatalf("reasoning request-shape selected %q", reasoning.Target.Model)
+	}
+	if reasoning.ClassLabel == nil || *reasoning.ClassLabel != "request-shape:reasoning" {
+		t.Fatalf("reasoning class label=%v", reasoning.ClassLabel)
+	}
+}
+
 func TestTypeScriptPIIPolicyExampleRoutesSensitiveWithoutLeakingPII(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -12471,6 +12559,9 @@ func TestUpstreamQuotaExhaustionFallsBackAndRecordsAttempt(t *testing.T) {
 	if len(rows) != 1 || rows[0].Status != http.StatusOK || !rows[0].FallbackUsed || rows[0].Attempts != 2 || rows[0].Error != "" {
 		t.Fatalf("unexpected usage rows: %#v", rows)
 	}
+	if rows[0].TargetModel != "healthy-model" || rows[0].TargetProvider != "mock" {
+		t.Fatalf("usage terminal target=%s/%s, want mock/healthy-model after fallback", rows[0].TargetProvider, rows[0].TargetModel)
+	}
 	var errors []requestErrorRecord
 	if err := svc.usage.db.Find(&errors).Error; err != nil {
 		t.Fatal(err)
@@ -12489,6 +12580,123 @@ func TestUpstreamQuotaExhaustionFallsBackAndRecordsAttempt(t *testing.T) {
 	if transition.AttemptIndex != 1 || transition.FailedCandidateIndex != 0 || transition.FallbackCandidateIndex != 1 ||
 		transition.FallbackReason != "upstream_quota_exhausted" || !transition.Retryable || !transition.FallbackSucceeded {
 		t.Fatalf("unexpected fallback transition: %#v", transition)
+	}
+}
+
+func TestFallbackAttributesServingTargetPricingCostsCacheAndObservations(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		diagnostics *bool
+	}{
+		{name: "diagnostics-on", diagnostics: boolPtr(true)},
+		{name: "diagnostics-off", diagnostics: boolPtr(false)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatal(err)
+				}
+				switch stringValue(body["model"]) {
+				case "primary-expensive":
+					writeJSON(w, http.StatusBadGateway, map[string]any{"error": map[string]any{"message": "temporary upstream failure"}})
+				case "fallback-cheap":
+					writeJSON(w, http.StatusOK, map[string]any{
+						"id": "up_fallback_success",
+						"choices": []map[string]any{{
+							"message":       map[string]any{"role": "assistant", "content": "served by fallback"},
+							"finish_reason": "stop",
+						}},
+						"usage": map[string]any{"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500},
+					})
+				default:
+					t.Fatalf("unexpected upstream model %v", body["model"])
+				}
+			}))
+			defer upstream.Close()
+
+			dir := t.TempDir()
+			cfg := testConfig(t, upstream.URL, "provider-key", dir)
+			cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
+			cfg.Server.Diagnostics.Enabled = tc.diagnostics
+			cfg.Server.Cache.DefaultTTL = time.Minute
+			cfg.Models["default"] = ModelGroup{
+				Strategy: "failover",
+				Targets: []Target{
+					{
+						Provider:                 "mock",
+						Model:                    "primary-expensive",
+						InputPricePerMillionUSD:  1.0,
+						OutputPricePerMillionUSD: 2.0,
+						PricingSource:            "test-primary",
+						PricingUpdatedAt:         "2026-09-08",
+					},
+					{
+						Provider:                 "mock",
+						Model:                    "fallback-cheap",
+						InputPricePerMillionUSD:  0.10,
+						OutputPricePerMillionUSD: 0.40,
+						PricingSource:            "test-fallback",
+						PricingUpdatedAt:         "2026-09-08",
+					},
+				},
+			}
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
+
+			reqBody := `{"model":"default","messages":[{"role":"user","content":"attribute fallback"}]}`
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqBody))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+
+			var rows []usageRecord
+			if err := svc.usage.db.Find(&rows).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 1 {
+				t.Fatalf("usage rows=%d: %#v", len(rows), rows)
+			}
+			row := rows[0]
+			if row.TargetModel != "fallback-cheap" || row.TargetProvider != "mock" {
+				t.Fatalf("terminal target=%s/%s, want mock/fallback-cheap", row.TargetProvider, row.TargetModel)
+			}
+			wantCost := roundUSD(1000*0.10/1_000_000 + 500*0.40/1_000_000)
+			if row.TotalCostUSD != wantCost {
+				t.Fatalf("total_cost_usd=%v, want serving-target cost %v (primary would be %v)", row.TotalCostUSD, wantCost, roundUSD(1000*1.0/1_000_000+500*2.0/1_000_000))
+			}
+			if row.PricingSource != "test-fallback" {
+				t.Fatalf("pricing_source=%q, want test-fallback", row.PricingSource)
+			}
+
+			primaryStats := svc.observations.stats(dynamicObservationKey("default", "mock", "primary-expensive"), defaultDynamicObservationWindow)
+			fallbackStats := svc.observations.stats(dynamicObservationKey("default", "mock", "fallback-cheap"), defaultDynamicObservationWindow)
+			if primaryStats.Count != 1 || primaryStats.ErrorRate != 1 {
+				t.Fatalf("primary observation stats=%#v, want one failed observation even with diagnostics=%v", primaryStats, *tc.diagnostics)
+			}
+			if fallbackStats.Count != 1 || fallbackStats.ErrorRate != 0 {
+				t.Fatalf("fallback observation stats=%#v, want one success observation even with diagnostics=%v", fallbackStats, *tc.diagnostics)
+			}
+
+			decoded, err := decodeRequest("openai-chat", []byte(reqBody), http.Header{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			primaryKey := cacheKey(decoded, Target{Provider: "mock", Model: "primary-expensive"})
+			fallbackKey := cacheKey(decoded, Target{Provider: "mock", Model: "fallback-cheap"})
+			if _, ok := svc.cache.Get(primaryKey); ok {
+				t.Fatal("fallback response stored under failed primary cache key")
+			}
+			if cached, ok := svc.cache.Get(fallbackKey); !ok || cached == nil || cached.Text != "served by fallback" {
+				t.Fatalf("fallback response missing under serving-target cache key: ok=%v cached=%#v", ok, cached)
+			}
+		})
 	}
 }
 

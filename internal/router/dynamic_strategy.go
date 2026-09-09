@@ -1,4 +1,4 @@
-// Copyright 2006 Metrum AI
+// Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
 package router
@@ -60,6 +60,12 @@ func newDynamicObservationStore() *dynamicObservationStore {
 
 func (s *Service) recordDynamicObservation(rec logRecord) {
 	if s == nil || s.observations == nil || rec.ResolvedGroup == "" {
+		return
+	}
+	// Router response-cache hits measure local cache latency, not upstream
+	// performance. Exclude them so dynamic_score cannot treat a cheap cache hit
+	// as evidence that a target is fast.
+	if strings.EqualFold(strings.TrimSpace(rec.Cache), "hit") {
 		return
 	}
 	retention := s.dynamicObservationRetention(rec.ResolvedGroup)

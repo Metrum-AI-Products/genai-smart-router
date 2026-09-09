@@ -36,7 +36,10 @@ The router does not select targets from another group just because they are chea
 | Dynamic score | The router should adapt within the group using cost, latency, throughput, reliability, request shape, and validation signals. | See [Dynamic Score Routing](../configuration/dynamic-score-routing). |
 | TypeScript policy | Routing policy should be deployment-local and programmable inside the router process. | See [TypeScript Routing Policy](../configuration/routing-typescript). |
 | External policy | Routing policy should live in a trusted standalone service with its own deployment and observability. | See [External Routing Policy Service](../configuration/external-routing-policy). |
-| Model-group contract | A group needs explicit workload requirements, quality floors, and validation gates before strategy selection. | See [Model Group Contracts](../configuration/model-group-contracts). |
+
+Use an optional model-group `contract` together with one of the strategies above when the group needs explicit workload requirements, quality floors, and validation gates before selection. A contract is a pre-filter, not a seventh selector. See [Model Group Contracts](../configuration/model-group-contracts).
+
+Legacy compatibility selectors named `latency`, `cost`, and `semantic` still parse for older configs, but they rank configured RPM/cost integers or stub keyword classes rather than live observations. Prefer `dynamic_score`, `script`, or `external` for adaptive or programmable decisions.
 
 ## Capability Filtering
 
@@ -111,6 +114,10 @@ The operator can later add, remove, or reweight targets without changing the cli
 Fallback stays inside the requested group. The router can retry after retryable upstream failures such as transient network errors, selected upstream timeouts, provider overload responses, provider rate limits, provider quota or billing exhaustion, and 5xx responses. Ordinary non-retryable upstream 4xx responses, including malformed-request, policy, and authorization errors, stop fallback so the same caller payload is not replayed to another provider. Non-retryable caller errors, authentication errors, forbidden model groups, caller quota failures, and license failures stop before upstream routing.
 
 For deterministic fallback, configure a failover-style group or a strategy-specific fallback order. For weighted or dynamic groups, keep every fallback target validated for the same API skins and workload requirements that callers depend on.
+
+When a fallback target answers successfully, terminal usage and request-time cost fields record that serving target and its prices. Per-attempt rows still preserve the failed primary. Router response-cache entries for the successful response use the serving target's cache key.
+
+Current upstream streaming is buffered and then re-encoded for the caller dialect. The router does not use live mid-stream TTFT or tokens-per-second to change the selected target during a request. Fallback retries are for retryable attempt failures before a successful response is returned, not for mid-stream rerouting after the first successful upstream body.
 
 ## Validation Checklist
 

@@ -1,7 +1,7 @@
 [project]
 name = "smart-llmrouter-harbor-agentic"
 version = "0.1.0"
-description = "Harbor agentic coding case-study helpers for Smart LLM Router model-group comparisons."
+description = "Harbor agentic coding case-study helpers for GenAI Smart Router model-group comparisons."
 license = "Apache-2.0"
 license-files = []
 classifiers = ["License :: OSI Approved :: Apache Software License"]

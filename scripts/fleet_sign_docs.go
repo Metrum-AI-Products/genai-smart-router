@@ -1,6 +1,6 @@
 //go:build ignore
 
-// Copyright 2006 Metrum AI
+// Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
 // Deprecated entrypoint. Fleet document signing ships only as the packaged

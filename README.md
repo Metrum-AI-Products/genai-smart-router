@@ -36,7 +36,7 @@ Current MVP capabilities:
 - Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses ingress.
 - Anthropic token-count estimate endpoint for Claude Code startup.
 - Bearer-token auth using configured SHA-256 token hashes.
-- Config-driven model groups and static, weighted, failover, generic dynamic-score, script, external-policy, latency, cost, and stub semantic routing.
+- Config-driven model groups with shipped strategies: `static`, `weighted`, `failover`, `dynamic_score`, TypeScript `script`, and `external` policy services. Optional model-group `contract` gates run before strategy selection. Legacy selectors named `latency`, `cost`, and `semantic` remain for compatibility only (configured RPM/cost ranks and stub keyword classification); they are not observed-signal routers. `strategy: intelligent` is a licensed baseline-only config contract, not an active decision-model picker.
 - TypeScript routing scripts for custom model-selection logic inside the Go router.
 - External routing policy services for standalone web-service target selection with safe request, caller, target, pricing, tool, and modality context.
 - Separate caller dialects from upstream provider adapters: callers can use Anthropic/OpenAI wire formats while targets route to Anthropic, OpenAI-compatible providers, or Replicate.
@@ -244,7 +244,7 @@ In a packaged deployment, put provider keys in `config/env.json` beside `config/
 ## Runtime Policy License Enforcement
 
 All GenAI Smart Router first-party content is licensed under the Apache License
-2.0. Copyright 2006 Metrum AI. The Apache license grants the rights to use,
+2.0. Copyright 2026 Metrum AI. The Apache license grants the rights to use,
 modify, and distribute those materials; no EULA acceptance or runtime-policy
 file is a condition of those rights.
 
@@ -692,13 +692,18 @@ The default `scripts/router.ts` does three things:
 - Applies named regex rules against safe caller-key metadata and safe target-key metadata.
 - Falls back to weighted random routing across eligible targets, using group target weights as relative probabilities.
 
+For checked-in request-shape routing (prompt size, tools, images, structured
+outputs, and reasoning signals), use
+`examples/typescript-request-shape/router.ts` instead of assuming
+`scripts/router.ts` implements that policy.
+
 ## PII Filtering
 
 Model groups can configure `pii_filter` rules to replace matched text with typed placeholders before target selection, cache-key generation, routing-policy inputs, and upstream provider calls. The redacted request object is the source of truth for TypeScript script `ctx.request.raw` and for external policy `request`/`text` only when `external_policy.include_request: true` is explicitly enabled; external policy services otherwise receive safe derived context without raw request mirrors. Modes support `redact_only`, `redact_and_restore`, and `fail_on_match`. If a request exceeds `max_replacements_per_request`, the router fails closed with `pii-filter-blocked` before any upstream call. Usage logs and the usage database store only safe scalar metadata such as applied flag, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings remain in memory for the request lifecycle by default.
 
 See `docs/PII_FILTERING.md` and the Docusaurus PII Filtering page for configuration examples and smoke-test guidance.
 
-Prompt-size routing example:
+Prompt-size / request-shape routing example (`examples/typescript-request-shape/router.ts`):
 
 ```ts
 type Target = {

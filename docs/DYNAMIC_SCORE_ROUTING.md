@@ -95,7 +95,9 @@ Use request logs, usage DB, and trace events. The `routing_decision` trace event
 
 Diagnostics must not include raw prompts, images, tool outputs, router tokens, token hashes, provider keys, full upstream headers, or full config contents.
 
-When a selected target fails and the router tries a fallback, failed attempts update the in-memory observation store used by later dynamic-score requests. With decision telemetry enabled, `request_fallback_transitions` also records the failed candidate, fallback candidate, safe error class, retryable flag, and whether the fallback attempt succeeded.
+When a selected target fails and the router tries a fallback, failed attempts update the in-memory observation store used by later dynamic-score requests. Router response-cache hits are excluded from that store. After a successful fallback, terminal usage and cost fields attribute the serving target while attempt detail preserves the failed primary. With decision telemetry enabled, `request_fallback_transitions` also records the failed candidate, fallback candidate, safe error class, retryable flag, and whether the fallback attempt succeeded.
+
+Dynamic score does not read the usage database or decision-telemetry reports while selecting a target. Those surfaces explain past decisions; the hot path uses process-local observation windows only.
 
 ## Rollout And Rollback
 

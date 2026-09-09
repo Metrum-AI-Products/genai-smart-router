@@ -9,9 +9,9 @@ GenAI Smart Router records usage as operational evidence, not just a billing sum
 
 ## What The Router Records
 
-Each completed request stores safe scalar fields such as caller identity, public token ID, requested model group, selected upstream/provider model, token counts, cache status, latency, throughput, fallback behavior, terminal status, and request-time cost values. Historical cost reports use stored request-time values instead of recalculating old usage from current provider pricing.
+Each completed request stores safe scalar fields such as caller identity, public token ID, requested model group, selected upstream/provider model, token counts, cache status, latency, throughput, fallback behavior, terminal status, and request-time cost values. After a successful fallback, the parent usage row attributes the serving target and its request-time prices; failed hops remain on attempt rows. Historical cost reports use stored request-time values instead of recalculating old usage from current provider pricing.
 
-Diagnostics use relational child rows for attempts, trace events, errors, and decision telemetry. They do not store raw prompts, images, tool outputs, provider keys, raw router tokens, token hashes, or full runtime configuration.
+Diagnostics use relational child rows for attempts, trace events, errors, and decision telemetry. They do not store raw prompts, images, tool outputs, provider keys, raw router tokens, token hashes, or full runtime configuration. Usage and decision-telemetry reports explain past decisions; they do not drive `dynamic_score` selection on the hot path.
 
 ## Report Questions
 
