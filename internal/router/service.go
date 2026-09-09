@@ -817,7 +817,10 @@ func (s *Service) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 	rc.rec.KeyState = ad.KeyState
 	tokens := estimateTokens(req)
 	rc.rec.Usage = Usage{InputTokens: tokens, TotalTokens: tokens}
-	s.quota.RecordTokens(rc.caller, ad.Reservation, rc.rec.Usage)
+	if _, _, err := s.quota.RecordTokens(rc.caller, ad.Reservation, rc.rec.Usage); err != nil {
+		s.writeError(w, rc, http.StatusServiceUnavailable, "quota-state-error")
+		return
+	}
 	s.license.RecordTokens(licRes, rc.rec.Usage)
 	defer s.finish(rc, http.StatusOK, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"input_tokens": tokens})
@@ -1140,7 +1143,11 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		if piiRestoreEnabled(group.PIIFilter) {
 			restorePIIPlaceholders(resp, piiResult)
 		}
-		quotaState, keyState := s.quota.RecordTokens(rc.caller, resAd.Reservation, resp.Usage)
+		quotaState, keyState, qerr := s.quota.RecordTokens(rc.caller, resAd.Reservation, resp.Usage)
+		if qerr != nil {
+			s.writeError(w, rc, http.StatusServiceUnavailable, "quota-state-error")
+			return
+		}
 		s.license.RecordTokens(licRes, resp.Usage)
 		rc.rec.QuotaState = quotaState
 		rc.rec.KeyState = keyState

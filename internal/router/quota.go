@@ -6,11 +6,16 @@ package router
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"sync"
 	"time"
 )
+
+// errQuotaStatePersist is returned when durable quota state cannot be written.
+// Callers must fail closed and must not treat spend or exhaustion as recorded.
+var errQuotaStatePersist = errors.New("quota-state-error")
 
 type quotaStore struct {
 	mu      sync.Mutex
@@ -19,6 +24,8 @@ type quotaStore struct {
 	key     []byte
 	callers map[string]*callerRuntime
 	state   persistentState
+	// saveFault, when set, forces saveLocked to return without writing. Tests only.
+	saveFault error
 }
 
 type callerRuntime struct {
@@ -146,8 +153,9 @@ func (q *quotaStore) Admit(c *callerRuntime, estTokens int) admission {
 	q.resetWindows(st, now)
 	keyState := q.keyState(c.cfg, st, 0)
 	if st.Disabled || keyState == "exhausted" {
-		st.Disabled = true
-		_ = q.saveLocked()
+		if ad := q.persistExhaustedLocked(st); !ad.OK {
+			return ad
+		}
 		return admission{Status: http.StatusForbidden, Reason: "key-exhausted", QuotaState: "ok", KeyState: "exhausted"}
 	}
 	if c.cfg.Rate.Concurrent > 0 && c.inFlight >= c.cfg.Rate.Concurrent {
@@ -201,8 +209,9 @@ func (q *quotaStore) ReserveTokens(c *callerRuntime, estTokens int) admission {
 	keyState := q.keyState(c.cfg, st, c.inFlightReservedTokens)
 	actualKeyState := q.keyState(c.cfg, st, 0)
 	if st.Disabled || actualKeyState == "exhausted" {
-		st.Disabled = true
-		_ = q.saveLocked()
+		if ad := q.persistExhaustedLocked(st); !ad.OK {
+			return ad
+		}
 		return admission{Status: http.StatusForbidden, Reason: "key-exhausted", QuotaState: "ok", KeyState: "exhausted"}
 	}
 	if keyState == "exhausted" {
@@ -217,7 +226,7 @@ func (q *quotaStore) ReserveTokens(c *callerRuntime, estTokens int) admission {
 	return admission{OK: true, Status: http.StatusOK, QuotaState: quotaState, KeyState: q.keyState(c.cfg, st, reservedEstimate), WarningText: warning, Reservation: res}
 }
 
-func (q *quotaStore) RecordTokens(c *callerRuntime, reservation *quotaReservation, usage Usage) (string, string) {
+func (q *quotaStore) RecordTokens(c *callerRuntime, reservation *quotaReservation, usage Usage) (string, string, error) {
 	total := usage.TotalTokens
 	if total == 0 {
 		total = usage.InputTokens + usage.OutputTokens
@@ -228,6 +237,9 @@ func (q *quotaStore) RecordTokens(c *callerRuntime, reservation *quotaReservatio
 	now := time.Now().UTC()
 	st := q.stateFor(c.cfg.ID, now)
 	q.resetWindows(st, now)
+	prevDay, prevMonth, prevLife := st.DayTokens, st.MonthTokens, st.LifetimeTokens
+	prevDisabled := st.Disabled
+	prevTokenTimes := len(c.tokenTimes)
 	st.DayTokens += int64(total)
 	st.MonthTokens += int64(total)
 	st.LifetimeTokens += int64(total)
@@ -236,9 +248,33 @@ func (q *quotaStore) RecordTokens(c *callerRuntime, reservation *quotaReservatio
 	if keyState == "exhausted" {
 		st.Disabled = true
 	}
-	_ = q.saveLocked()
+	if err := q.saveLocked(); err != nil {
+		st.DayTokens = prevDay
+		st.MonthTokens = prevMonth
+		st.LifetimeTokens = prevLife
+		st.Disabled = prevDisabled
+		c.tokenTimes = c.tokenTimes[:prevTokenTimes]
+		return "", "", fmt.Errorf("%w: %v", errQuotaStatePersist, err)
+	}
 	quotaState, _ := q.quotaState(c.cfg, st, 0)
-	return quotaState, keyState
+	return quotaState, keyState, nil
+}
+
+// persistExhaustedLocked marks a caller exhausted and persists that flag.
+// On save failure it rolls back Disabled and returns a fail-closed admission.
+func (q *quotaStore) persistExhaustedLocked(st *callerState) admission {
+	wasDisabled := st.Disabled
+	st.Disabled = true
+	if err := q.saveLocked(); err != nil {
+		st.Disabled = wasDisabled
+		return admission{
+			Status:     http.StatusServiceUnavailable,
+			Reason:     "quota-state-error",
+			QuotaState: "error",
+			KeyState:   "error",
+		}
+	}
+	return admission{OK: true}
 }
 
 func (q *quotaStore) releaseReservationLocked(c *callerRuntime, reservation *quotaReservation) {
@@ -359,6 +395,9 @@ func (q *quotaStore) keyState(cfg CallerConfig, st *callerState, est int64) stri
 func (q *quotaStore) saveLocked() error {
 	if q.path == "" {
 		return nil
+	}
+	if q.saveFault != nil {
+		return q.saveFault
 	}
 	raw, err := marshalIntegrityState(q.state, q.keyID, q.key)
 	if err != nil {

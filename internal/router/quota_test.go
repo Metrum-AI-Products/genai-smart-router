@@ -1,0 +1,237 @@
+// Copyright 2026 Metrum AI
+// SPDX-License-Identifier: Apache-2.0
+
+package router
+
+import (
+	"errors"
+	"net/http"
+	"path/filepath"
+	"sync"
+	"testing"
+)
+
+// QD-1: save failure on RecordTokens must not treat spend as durably recorded.
+func TestQuotaRecordTokensSaveFailureFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	path := filepath.Join(dir, "state.json")
+	qs, err := newQuotaStore(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := qs.callers["alice"]
+	if _, _, err := qs.RecordTokens(caller, nil, Usage{TotalTokens: 3}); err != nil {
+		t.Fatalf("seed record: %v", err)
+	}
+	before := qs.state.Callers["alice"].LifetimeTokens
+
+	qs.saveFault = errors.New("injected save failure")
+	quotaState, keyState, err := qs.RecordTokens(caller, nil, Usage{TotalTokens: 9})
+	if !errors.Is(err, errQuotaStatePersist) {
+		t.Fatalf("err=%v quota=%q key=%q, want errQuotaStatePersist", err, quotaState, keyState)
+	}
+	if qs.state.Callers["alice"].LifetimeTokens != before {
+		t.Fatalf("lifetime_tokens=%d, want rolled back to %d", qs.state.Callers["alice"].LifetimeTokens, before)
+	}
+	if qs.state.Callers["alice"].DayTokens != before || qs.state.Callers["alice"].MonthTokens != before {
+		t.Fatalf("day/month tokens not rolled back: day=%d month=%d", qs.state.Callers["alice"].DayTokens, qs.state.Callers["alice"].MonthTokens)
+	}
+
+	qs.saveFault = nil
+	qs2, err := newQuotaStore(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := qs2.state.Callers["alice"].LifetimeTokens; got != before {
+		t.Fatalf("restart after failed save lifetime=%d, want durable %d", got, before)
+	}
+}
+
+// QD-2: exhaust persist path fails closed when save fails.
+func TestQuotaExhaustSaveFailureFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Callers[0].Key.LifetimeTokens = 10
+	path := filepath.Join(dir, "state.json")
+	qs, err := newQuotaStore(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := qs.callers["alice"]
+	if _, _, err := qs.RecordTokens(caller, nil, Usage{TotalTokens: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if !qs.state.Callers["alice"].Disabled {
+		t.Fatal("expected caller disabled after lifetime exhaustion")
+	}
+
+	qs.state.Callers["alice"].Disabled = false
+	qs.saveFault = errors.New("injected exhaust save failure")
+	ad := qs.ReserveTokens(caller, 1)
+	if ad.OK || ad.Status != http.StatusServiceUnavailable || ad.Reason != "quota-state-error" {
+		t.Fatalf("reserve on exhaust save fault=%#v, want 503 quota-state-error", ad)
+	}
+	if qs.state.Callers["alice"].Disabled {
+		t.Fatal("Disabled must roll back when exhaust save fails")
+	}
+
+	admit := qs.Admit(caller, 0)
+	if admit.OK || admit.Status != http.StatusServiceUnavailable || admit.Reason != "quota-state-error" {
+		t.Fatalf("admit on exhaust save fault=%#v, want 503 quota-state-error", admit)
+	}
+	if qs.state.Callers["alice"].Disabled {
+		t.Fatal("Disabled must roll back when admit exhaust save fails")
+	}
+}
+
+// QD-3: ReleaseReservation restores reserved tokens.
+func TestQuotaReleaseReservationRestoresReservedTokens(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Callers[0].Quota.Day.Tokens = 1000
+	qs, err := newQuotaStore(filepath.Join(dir, "state.json"), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := qs.callers["alice"]
+	res := qs.ReserveTokens(caller, 40)
+	if !res.OK || res.Reservation == nil {
+		t.Fatalf("reserve=%#v", res)
+	}
+	if caller.inFlightReservedTokens != 40 {
+		t.Fatalf("reserved=%d, want 40", caller.inFlightReservedTokens)
+	}
+	qs.ReleaseReservation(caller, res.Reservation)
+	if caller.inFlightReservedTokens != 0 {
+		t.Fatalf("after release reserved=%d, want 0", caller.inFlightReservedTokens)
+	}
+	if res.Reservation.active {
+		t.Fatal("reservation should be inactive after release")
+	}
+	again := qs.ReserveTokens(caller, 40)
+	if !again.OK {
+		t.Fatalf("re-reserve after cancel failed: %#v", again)
+	}
+	qs.ReleaseReservation(caller, again.Reservation)
+}
+
+// QD-4: failed upstream path still releases via ReleaseReservation (unit-level).
+func TestQuotaReleaseReservationAfterFailedUpstreamPath(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Callers[0].Quota.Day.Tokens = 50
+	qs, err := newQuotaStore(filepath.Join(dir, "state.json"), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := qs.callers["alice"]
+
+	// Simulate handleLLM: reserve, upstream fails, defer ReleaseReservation.
+	res := qs.ReserveTokens(caller, 40)
+	if !res.OK {
+		t.Fatalf("first reserve=%#v", res)
+	}
+	qs.ReleaseReservation(caller, res.Reservation)
+	if caller.inFlightReservedTokens != 0 {
+		t.Fatalf("leak after failed-upstream release: %d", caller.inFlightReservedTokens)
+	}
+	second := qs.ReserveTokens(caller, 40)
+	if !second.OK {
+		t.Fatalf("second reserve after failure release=%#v", second)
+	}
+	qs.ReleaseReservation(caller, second.Reservation)
+}
+
+// QD-5: restart restores successful saves; failed save does not apply a silent newer counter.
+func TestQuotaRestartSemanticsSuccessfulAndFailedSave(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	path := filepath.Join(dir, "state.json")
+	qs, err := newQuotaStore(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := qs.callers["alice"]
+	if _, _, err := qs.RecordTokens(caller, nil, Usage{TotalTokens: 5}); err != nil {
+		t.Fatal(err)
+	}
+	if err := qs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded, err := newQuotaStore(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reloaded.state.Callers["alice"].LifetimeTokens; got != 5 {
+		t.Fatalf("restart after success lifetime=%d, want 5", got)
+	}
+
+	reloaded.saveFault = errors.New("injected save failure")
+	if _, _, err := reloaded.RecordTokens(reloaded.callers["alice"], nil, Usage{TotalTokens: 7}); !errors.Is(err, errQuotaStatePersist) {
+		t.Fatalf("expected persist error, got %v", err)
+	}
+	if got := reloaded.state.Callers["alice"].LifetimeTokens; got != 5 {
+		t.Fatalf("in-memory after failed save lifetime=%d, want 5", got)
+	}
+
+	again, err := newQuotaStore(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := again.state.Callers["alice"].LifetimeTokens; got != 5 {
+		t.Fatalf("restart after failed save lifetime=%d, want durable 5 (not 12)", got)
+	}
+}
+
+// QD-6: concurrent Admit/Record on one caller does not double-count spend.
+func TestQuotaConcurrentAdmitRecordNoDoubleCount(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Callers[0].Rate.Concurrent = 32
+	cfg.Callers[0].Quota.Day.Tokens = 1_000_000
+	cfg.Callers[0].Quota.Month.Tokens = 1_000_000
+	qs, err := newQuotaStore(filepath.Join(dir, "state.json"), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := qs.callers["alice"]
+
+	const workers = 20
+	const tokensEach = 3
+	var wg sync.WaitGroup
+	errs := make(chan error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ad := qs.Admit(caller, 0)
+			if !ad.OK {
+				errs <- errors.New("admit failed")
+				return
+			}
+			defer qs.Release(caller)
+			res := qs.ReserveTokens(caller, tokensEach)
+			if !res.OK {
+				errs <- errors.New("reserve failed")
+				return
+			}
+			if _, _, err := qs.RecordTokens(caller, res.Reservation, Usage{TotalTokens: tokensEach}); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+	want := int64(workers * tokensEach)
+	if got := qs.state.Callers["alice"].LifetimeTokens; got != want {
+		t.Fatalf("lifetime_tokens=%d, want %d (no double-count)", got, want)
+	}
+	if caller.inFlightReservedTokens != 0 {
+		t.Fatalf("reserved leak after concurrent records: %d", caller.inFlightReservedTokens)
+	}
+}
