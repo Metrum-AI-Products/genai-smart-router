@@ -14,10 +14,17 @@ this page. The version banner, `/docs/releases`, and `/version` are the
 authoritative sources for its exact router version and build timestamp; do not
 infer the running version from a date written in documentation.
 
-## Next Package - Version Assigned At Packaging
+## v1.1.0 - 2026-09-09
 
 ### Highlights
 
+- Learned Routing Policy (LRP) adds a separate Python/uv service that trains
+  calibrated quality and output-token models and selects the cheapest eligible
+  target predicted to meet a workload's quality floor. Training, evaluation,
+  bundle validation, authenticated inference and explanation are documented in
+  the [worked case study](/docs/evaluation/learned-routing-case-study).
+- The LRP deadline defaults to 200 ms and accepts 1–4,500 ms through YAML or
+  `lrp serve --deadline-ms`; allow additional headroom in the router timeout.
 - Same-dialect OpenAI Chat and Anthropic Messages requests proxy native
   upstream SSE, including tool and usage events. Responses and cross-dialect
   streaming remain router-encoded after a unary upstream call.
@@ -38,6 +45,18 @@ infer the running version from a date written in documentation.
 
 ### Operator Impact
 
+- LRP is opt-in trusted deployment infrastructure using `strategy: external`.
+  Install its locked uv project from the v1.1.0 source archive, following the
+  [LRP guide](/docs/routing/learned-routing-policy). Router binary and Docker
+  packages do not start a policy service or contain trained bundles. No provider
+  or model group is activated by installing this release.
+- Synthetic training and routing evidence passed, but the example saves only
+  0.685% against its anchor and fails its cost promotion gate. Real BGE tests
+  failed the embedding/full-feature budgets at 512 tokens on the shared test
+  host. Default one-thread median full-feature latency exceeded 200 ms; size
+  deadlines for the intended workload and expect fallback while timed-out
+  inference retains its bounded worker slot. These results do not establish
+  production quality, concurrency capacity or HTTP/router latency.
 - Config: review `dynamic_score.affinity`, `script_max_concurrent`,
   `external_policy.mode`, and optional `targets[].region`. New external
   policies should begin in `shadow`; `baseline` skips policy calls.
@@ -63,6 +82,10 @@ infer the running version from a date written in documentation.
 
 ### Validation
 
+- LRP validation records 79 Python tests with zero skips, 11 real-binary/HTTP
+  synthetic checks and 526 Go tests. Sanitized training, inference and benchmark
+  evidence is linked from the case study. Before enabling enforcement, run real
+  workload quality/cost gates and staging shadow validation for your targets.
 - Run the documented native Chat and Messages text/tool/usage/cancellation
   smokes, plus Responses and bridge regressions.
 - Exercise affinity hit, miss, expiry, ineligible replacement, caller
