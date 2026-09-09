@@ -69,6 +69,13 @@ Router API compatibility is protected by deterministic release validation in add
 
 This suite uses mock upstreams and does not prove a real provider/model is entitled, fast, accurate, or compatible with every workload. Activating an upstream still requires direct provider smokes and router-level smokes for the exact provider, model, dialect, tools, images, structured-output, reasoning, and max-token behavior being advertised.
 
+The outbound `gemini-generate-content` adapter is intentionally narrower than
+the caller-facing APIs: it supports non-streaming text requests only and has no
+caller-facing Gemini endpoint. Unknown dialect dispatch and unsupported Gemini
+tools, images, structured output, reasoning, or streaming fail closed. Gemini
+models may remain catalog-only; an active target additionally requires
+configuration evidence for exact-model direct and router text passes.
+
 Agent compatibility should also be validated with realistic synthetic request shapes. A complete smoke matrix should exercise Codex Responses reasoning/tools, Cursor Chat tools and bridge shapes, Claude Code Messages thinking/tools, opencode/aider Chat flows, large tool schemas, provider-skin mismatch, no-eligible diagnostics, and upstream error classification. Run it against a dedicated smoke group, for example `reasoning-bridge-smoke`, with a caller token that is explicitly allowed to that group.
 
 The smoke emits safe scalar proof only: request IDs, API surface, status, selected provider/model/dialect, bridge direction when recorded, translated reasoning control when recorded, and request-shape buckets.
@@ -133,7 +140,7 @@ credential.
 | Capability | Chat Completions | Responses | Messages |
 |---|---|---|---|
 | Text input/output | Supported | Supported | Supported |
-| Streaming | Caller SSE after unary upstream (not live token streaming) | Caller SSE after unary upstream (not live token streaming) | Caller SSE after unary upstream (not live token streaming) |
+| Streaming | Same-dialect native upstream SSE is proxied incrementally | Caller SSE after unary upstream | Same-dialect native upstream SSE is proxied incrementally |
 | Tool calls | Requires `tool_support.openai_chat` | Requires `tool_support.openai_responses` | Requires `tool_support.anthropic_messages` |
 | Structured outputs | `response_format` requires `tool_support.openai_chat: [structured_outputs]` | `text.format` requires `tool_support.openai_responses: [structured_outputs]` | No OpenAI structured-output equivalent |
 | Reasoning/thinking | `reasoning_effort` requires target `reasoning` metadata | `reasoning` requires target `reasoning` metadata | `thinking` requires target `reasoning` metadata or validated target default thinking |
@@ -142,7 +149,7 @@ credential.
 | Cache eligibility | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests |
 | Usage and cost rows | Recorded | Recorded | Recorded |
 
-Caller `stream: true` requests receive dialect-correct SSE framing after the router completes a unary upstream call and re-encodes the final response. Treat the Streaming row as caller-facing stream compatibility, not a claim of live mid-generation token streaming from the upstream. Clients that need provider-native incremental tokens should not assume the router forwards an upstream SSE byte stream.
+For same-dialect OpenAI Chat and Anthropic Messages targets, caller `stream: true` requests set upstream streaming and proxy native SSE events incrementally, including compatible tool and usage events. Once any event is committed downstream, the router does not replay the request to a fallback target; caller cancellation cancels the upstream request. OpenAI Responses and cross-dialect bridges remain unary upstream calls with dialect-correct synthesized caller SSE.
 
 If a request includes tools, structured-output fields, images, or an explicit max-token cap, the router filters the model group's target list before policy selection. Targets that do not satisfy the request shape are skipped. If no compatible target remains, the router returns `502 no-eligible-target` before sending an upstream request.
 
@@ -299,7 +306,7 @@ OpenAI Responses provider-hosted tools such as Fireworks-documented `mcp` and `s
 
 The router controls upstream persistence policy for OpenAI-compatible requests. Same-dialect Chat Completions and Responses passthrough strip caller-supplied provider `metadata`; they send `store:false` upstream only when the resolved target sets `force_store_false: true`. Translated Responses calls use the same flag. Chat passthrough also honors target encoding metadata such as `output_token_field: max_completion_tokens` for upstreams that require `max_completion_tokens` instead of `max_tokens`.
 
-For OpenAI Chat tool passthrough, the router calls upstreams with `stream:false` and synthesizes downstream SSE when the caller requested streaming. Streaming-only Chat fields such as `stream_options` are not forwarded to the unary upstream request. If a provider/model still rejects a caller shape that includes `stream_options`, configure `request_shape_support.unsupported_request_features: [stream_options]` for that target until the exact client, provider, model, dialect, and router path pass direct and router-level smokes.
+For same-dialect OpenAI Chat tool passthrough, the router forwards caller streaming upstream and proxies native SSE tool-call deltas. Caller `stream_options`, including `include_usage`, are forwarded for compatible targets. If a provider/model rejects that caller shape, configure `request_shape_support.unsupported_request_features: [stream_options]` for that target until the exact client, provider, model, dialect, and router path pass direct and router-level smokes.
 
 Large OpenAI Chat coding-agent payload compatibility is a separate claim from ordinary text or tool support. Before a provider/model/dialect joins broad IDE or agent routes, validate representative request bytes, message count, serialized tool-schema size, explicit output cap, token scale, and router translation path with a synthetic fixture. If the target is not validated for that shape, keep it in a smoke group or configure `request_shape_support` limits so incompatible large requests skip it before upstream.
 

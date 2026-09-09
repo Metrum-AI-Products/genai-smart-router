@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"smart-llmrouter/internal/router"
+	"smart-llmrouter/internal/fleet"
 )
 
 func customerList(args []string) {
@@ -24,7 +24,7 @@ func customerList(args []string) {
 
 	registryPath := sharedRegistryPath()
 	if fileExists(registryPath) {
-		store, err := router.OpenTenantDeploymentStoreReadOnly(registryPath)
+		store, err := fleet.OpenTenantDeploymentStoreReadOnly(registryPath)
 		if err != nil {
 			die("open deployment registry: %v", err)
 		}

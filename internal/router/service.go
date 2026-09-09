@@ -36,6 +36,9 @@ type Service struct {
 	cfg                *Config
 	mux                *http.ServeMux
 	httpClient         *http.Client
+	externalPolicies   map[string]*externalPolicyStrategy
+	imageURLLookup     egressLookupIPFunc
+	imageURLDNSTimeout time.Duration
 	callersBySum       map[string]*callerRuntime
 	adminBasic         map[string]adminBasicRuntime
 	adminOIDC          *adminOIDCRuntime
@@ -52,6 +55,7 @@ type Service struct {
 	bridgeSessions     *bridgeSessionBackends
 	scripts            map[string]*scriptStrategy
 	observations       *dynamicObservationStore
+	affinity           *dynamicAffinityStore
 	shaping            *upstreamShapeManager
 	contentCaptureKeys contentCaptureKeyResolver
 	reportCursor       [32]byte
@@ -68,6 +72,7 @@ type adminBasicRuntime struct {
 type decision struct {
 	Target            Target
 	Fallbacks         []Target
+	ShadowRecommended *Target
 	ClassLabel        *string
 	Strategy          string
 	GroupName         string
@@ -93,6 +98,7 @@ func (e routingEligibilityError) Error() string {
 type requestContext struct {
 	id                   string
 	start                time.Time
+	ctx                  context.Context
 	caller               *callerRuntime
 	dialect              string
 	client               string
@@ -114,6 +120,7 @@ type upstreamError struct {
 	Fallbackable bool
 	TimedOut     bool
 	Canceled     bool
+	Committed    bool
 	ResponseLen  int64
 	RetryAfter   time.Duration
 	Details      []upstreamErrorDetailLogRecord
@@ -170,6 +177,9 @@ func New(cfg *Config) (*Service, error) {
 		cfg:                cfg,
 		mux:                http.NewServeMux(),
 		httpClient:         newUpstreamHTTPClient(cfg.Server.Upstream),
+		externalPolicies:   map[string]*externalPolicyStrategy{},
+		imageURLLookup:     defaultEgressLookupIP,
+		imageURLDNSTimeout: 500 * time.Millisecond,
 		callersBySum:       map[string]*callerRuntime{},
 		adminBasic:         map[string]adminBasicRuntime{},
 		adminSession:       newAdminSessionStore(cfg.Server.AdminAuth.Sessions),
@@ -182,6 +192,7 @@ func New(cfg *Config) (*Service, error) {
 		bridgeSessions:     bridgeSessions,
 		scripts:            map[string]*scriptStrategy{},
 		observations:       newDynamicObservationStore(),
+		affinity:           newDynamicAffinityStore(),
 		shaping:            newUpstreamShapeManager(),
 		contentCaptureKeys: contentCaptureKeys,
 	}
@@ -233,6 +244,7 @@ func New(cfg *Config) (*Service, error) {
 		bridgeSessions.Close()
 		return nil, err
 	}
+	s.loadExternalPolicies()
 	for _, rt := range quota.callers {
 		s.callersBySum[strings.ToLower(rt.cfg.TokenSHA256)] = rt
 	}
@@ -1009,6 +1021,16 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	s.recordRequestTokenEstimateTelemetry(rc, req, dialect, len(body))
 	s.recordDecisionShape(rc, req, dialect)
 	s.recordEligibilityTelemetry(rc, req.Model, group, req, dialect)
+	if err := s.validateImageURLsForUpstream(r.Context(), req); err != nil {
+		class := imageURLValidationErrorClass(err)
+		s.writeUpstreamFailureError(w, rc, req, decision{}, 0, upstreamError{
+			Class:     class,
+			Message:   err.Error(),
+			Retryable: false,
+			Err:       err,
+		}, captureDecision)
+		return
+	}
 	dec, err := s.pick(rc, req.Model, group, req, dialect, rc.caller, rc.rec.TokenID)
 	if err != nil {
 		var shapeErr upstreamCapacityThrottledError
@@ -1039,6 +1061,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.TargetProvider = dec.Target.Provider
 	rc.rec.TargetModel = dec.Target.Model
 	rc.rec.TargetDialect = targetDialect(s.cfg.Provider[dec.Target.Provider], dec.Target)
+	rc.rec.TargetRegion = dec.Target.Region
 	if group.Contract != nil {
 		rc.rec.ContractBucket = "passed"
 	}
@@ -1135,12 +1158,23 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 
 	upstreamStart := time.Now()
 	rc.trace("upstream_start", "", dec.Target, 0, 0, "", false, 0)
-	resp, attempts, fallbackUsed, err := s.callUpstreams(r.Context(), rc, dialect, req, dec)
+	resp, attempts, fallbackUsed, err := s.callUpstreams(r.Context(), w, rc, dialect, req, dec)
 	upstreamMS := durationMillis(time.Since(upstreamStart))
 	rc.rec.UpstreamMS = &upstreamMS
 	rc.rec.Attempts = attempts
 	rc.rec.FallbackUsed = fallbackUsed
 	if err != nil {
+		if committedStreamError(err) {
+			classified := classifyError(err)
+			rc.rec.ErrorClass = classified.Class
+			code := streamErrorCode(err)
+			status := http.StatusBadGateway
+			if classified.Canceled {
+				status = 499
+			}
+			s.finish(rc, status, &code)
+			return
+		}
 		s.writeUpstreamFailureError(w, rc, req, dec, attempts, err, captureDecision)
 		return
 	}
@@ -1163,10 +1197,23 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		}
 		s.captureResponseContent(rc, resp, captureDecision)
 		if piiRestoreEnabled(group.PIIFilter) {
-			restorePIIPlaceholders(resp, piiResult)
+			if resp.Streamed {
+				// Native streams have already been committed as provider SSE.
+				// Restoring placeholders after proxying cannot affect the caller,
+				// while rewriting individual frames could corrupt placeholders
+				// split across arbitrary upstream chunk boundaries.
+				resp.Warnings = appendWarning(resp.Warnings, "pii-response-restoration-skipped-native-stream")
+			} else {
+				restorePIIPlaceholders(resp, piiResult)
+			}
 		}
 		quotaState, keyState, qerr := s.quota.RecordTokens(rc.caller, resAd.Reservation, resp.Usage)
 		if qerr != nil {
+			if resp.Streamed {
+				code := "quota-state-error"
+				s.finish(rc, http.StatusServiceUnavailable, &code)
+				return
+			}
 			s.writeError(w, rc, http.StatusServiceUnavailable, "quota-state-error")
 			return
 		}
@@ -1179,7 +1226,9 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		rc.rec.UpstreamReportedOutputCostUSD = resp.Usage.UpstreamReportedOutputCostUSD
 		rc.rec.UpstreamReportedTotalCostUSD = resp.Usage.UpstreamReportedTotalCostUSD
 		rc.rec.Warnings = append(rc.rec.Warnings, resp.Warnings...)
-		s.writeIR(w, dialect, resp, req.Stream, rc)
+		if !resp.Streamed {
+			s.writeIR(w, dialect, resp, req.Stream, rc)
+		}
 		s.finish(rc, http.StatusOK, nil)
 	}
 }
@@ -1211,6 +1260,7 @@ func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) 
 	rc := &requestContext{
 		id:                   id,
 		start:                time.Now(),
+		ctx:                  r.Context(),
 		caller:               caller,
 		dialect:              dialect,
 		client:               inferClient(r),
@@ -1325,6 +1375,7 @@ func (s *Service) applyServingTargetRecord(rc *requestContext, served Target) {
 	}
 	rc.rec.TargetProvider = served.Provider
 	rc.rec.TargetModel = served.Model
+	rc.rec.TargetRegion = served.Region
 	if s != nil && s.cfg != nil {
 		rc.rec.TargetDialect = targetDialect(s.cfg.Provider[served.Provider], served)
 	} else if strings.TrimSpace(served.Dialect) != "" {
@@ -1666,15 +1717,19 @@ func (s *Service) pick(rc *requestContext, groupName string, group ModelGroup, r
 			return decision{}, policyFailure(groupName, "script", "typescript", "load_error", err, 0, len(targets), len(group.Targets))
 		}
 		start := time.Now()
-		dec, err := strat.Pick(groupName, req, group.Contract, targets, s.cfg.Provider, caller, tokenID)
+		dec, err := strat.Pick(requestContextOrBackground(rc), groupName, req, group.Contract, targets, s.cfg.Provider, caller, tokenID)
 		if err != nil {
 			return decision{}, policyFailure(groupName, "script", "typescript", "", err, time.Since(start).Milliseconds(), len(targets), len(group.Targets))
 		}
 		dec.DynamicScoreTerms = append(dec.DynamicScoreTerms, policyOutputRankingTelemetry(dec.Strategy, dec.Target, dec.Fallbacks, s.cfg.Provider)...)
 		return dec, nil
 	case "external":
-		strat := externalPolicyStrategy{cfg: group.ExternalPolicy}
-		dec, err := strat.Pick(groupName, req, group.Contract, targets, group.Targets, s.cfg.Provider, caller, tokenID, callerDialect)
+		strat := s.externalPolicies[groupName]
+		if strat == nil {
+			err := fmt.Errorf("external policy strategy %s not loaded", groupName)
+			return decision{}, policyFailure(groupName, "external", "external", "load_error", err, 0, len(targets), len(group.Targets))
+		}
+		dec, err := strat.Pick(requestContextOrBackground(rc), groupName, req, group.Contract, targets, group.Targets, s.cfg.Provider, caller, tokenID, callerDialect)
 		if err != nil {
 			return decision{}, err
 		}
@@ -1720,13 +1775,28 @@ func (s *Service) loadScripts() error {
 		if !strings.EqualFold(group.Strategy, "script") {
 			continue
 		}
-		strat, err := loadScriptStrategy(s.cfg.baseDir, group.Script, group.ScriptHTTP)
+		strat, err := loadScriptStrategy(s.cfg.baseDir, group.Script, group.ScriptMaxConcurrent, group.ScriptHTTP)
 		if err != nil {
 			return fmt.Errorf("load script for model group %s: %w", name, err)
 		}
 		s.scripts[name] = strat
 	}
 	return nil
+}
+
+func (s *Service) loadExternalPolicies() {
+	for name, group := range s.cfg.Models {
+		if strings.EqualFold(group.Strategy, "external") {
+			s.externalPolicies[name] = newExternalPolicyStrategy(group.ExternalPolicy)
+		}
+	}
+}
+
+func requestContextOrBackground(rc *requestContext) context.Context {
+	if rc != nil && rc.ctx != nil {
+		return rc.ctx
+	}
+	return context.Background()
 }
 
 func shapeInputForRequest(req *IRRequest, callerDialect string) shapeReservationInput {
@@ -1881,7 +1951,7 @@ func (s *Service) recordShapeFilterReason(rc *requestContext, target Target, rea
 	})
 }
 
-func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerDialect string, req *IRRequest, dec decision) (*IRResponse, int, bool, error) {
+func (s *Service) callUpstreams(ctx context.Context, w http.ResponseWriter, rc *requestContext, callerDialect string, req *IRRequest, dec decision) (*IRResponse, int, bool, error) {
 	targets := append([]Target{dec.Target}, dec.Fallbacks...)
 	var lastErr error
 	skippedByShape := 0
@@ -1903,7 +1973,7 @@ func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerD
 			continue
 		}
 		attemptIndex := len(rc.rec.AttemptsDetail) + 1
-		resp, attempt, err := s.callOne(ctx, rc, callerDialect, req, dec.GroupName, tgt, attemptIndex)
+		resp, attempt, err := s.callOne(ctx, w, rc, callerDialect, req, dec.GroupName, tgt, attemptIndex)
 		if attempt.ErrorMessage != "" {
 			attempt.ErrorMessage = s.sanitizeDiagnosticError(attempt.ErrorMessage)
 		}
@@ -1918,16 +1988,16 @@ func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerD
 		}
 		classified := classifyError(err)
 		s.recordAdaptiveTrafficBackoff(rc, dec.GroupName, tgt, classified, shapeInput)
-		if i < len(targets)-1 {
+		canFallback := classified.Retryable || classified.Fallbackable
+		if !classified.Canceled && !classified.Committed && i < len(targets)-1 {
 			attempt.FallbackReason = classified.Class
 		}
 		rc.rec.AttemptsDetail = append(rc.rec.AttemptsDetail, attempt)
 		rc.trace("upstream_attempt_failed", classified.Message, tgt, attemptIndex, attempt.StatusCode, classified.Class, classified.Retryable, attempt.DurationMS)
 		lastErr = err
-		if classified.Canceled {
+		if classified.Canceled || classified.Committed {
 			break
 		}
-		canFallback := classified.Retryable || classified.Fallbackable
 		if !canFallback {
 			rc.trace("fallback_stopped", classified.Message, tgt, attemptIndex, attempt.StatusCode, classified.Class, false, attempt.DurationMS)
 			break
@@ -1957,7 +2027,7 @@ func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerD
 	return nil, len(rc.rec.AttemptsDetail), len(rc.rec.AttemptsDetail) > 1, lastErr
 }
 
-func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect string, req *IRRequest, groupName string, target Target, attemptIndex int) (*IRResponse, attemptLogRecord, error) {
+func (s *Service) callOne(ctx context.Context, w http.ResponseWriter, rc *requestContext, callerDialect string, req *IRRequest, groupName string, target Target, attemptIndex int) (*IRResponse, attemptLogRecord, error) {
 	provider := s.cfg.Provider[target.Provider]
 	outDialect := targetDialect(provider, target)
 	attempt := attemptLogRecord{
@@ -1972,14 +2042,10 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 	passthrough := requestShapePassthrough(callerDialect, outDialect, req)
 	bridge := isResponsesToChatBridge(callerDialect, outDialect, target)
 	chatResponsesBridge := isChatToResponsesBridge(callerDialect, outDialect, target)
+	nativeStream := nativeStreamEligible(req, callerDialect, outDialect)
 	chatResponsesSession := bridgeSessionLookup{}
 	var upReqBody []byte
 	var err error
-	if err := s.validateImageURLsForUpstream(ctx, req); err != nil {
-		attempt.ErrorClass = "image_url_forbidden"
-		attempt.ErrorMessage = err.Error()
-		return nil, attempt, upstreamError{Class: "image_url_forbidden", Message: err.Error(), Retryable: false, Err: err}
-	}
 	if bridge {
 		upReqBody, err = encodeResponsesToChatBridge(target.Model, req, target)
 	} else if passthrough {
@@ -1999,7 +2065,20 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 		attempt.ErrorMessage = err.Error()
 		return nil, attempt, upstreamError{Class: "encode_error", Message: err.Error(), Err: err}
 	}
-	endpoint := upstreamEndpoint(provider.BaseURL, outDialect, target)
+	if nativeStream {
+		upReqBody, err = enableNativeUpstreamStream(upReqBody, req, outDialect)
+		if err != nil {
+			attempt.ErrorClass = "encode_error"
+			attempt.ErrorMessage = err.Error()
+			return nil, attempt, upstreamError{Class: "encode_error", Message: err.Error(), Err: err}
+		}
+	}
+	endpoint, err := upstreamEndpoint(provider.BaseURL, outDialect, target)
+	if err != nil {
+		attempt.ErrorClass = "endpoint_error"
+		attempt.ErrorMessage = err.Error()
+		return nil, attempt, upstreamError{Class: "endpoint_error", Message: err.Error(), Err: err}
+	}
 	s.recordTranslationShapeTelemetry(rc, req, target, provider, outDialect, endpoint, attemptIndex, upReqBody)
 	retriedStateless := false
 sendUpstream:
@@ -2028,6 +2107,8 @@ sendUpstream:
 		case "x-api-key":
 			httpReq.Header.Set("X-API-Key", provider.APIKey)
 			httpReq.Header.Set("Anthropic-Version", "2023-06-01")
+		case "x-goog-api-key":
+			httpReq.Header.Set("X-Goog-Api-Key", provider.APIKey)
 		case "replicate":
 			httpReq.Header.Set("Authorization", "Bearer "+provider.APIKey)
 			httpReq.Header.Set("Prefer", "wait=60")
@@ -2108,6 +2189,31 @@ sendUpstream:
 		attempt.ErrorDetails = upErr.Details
 		upErr.ResponseLen = attempt.ResponseBytes
 		return nil, attempt, upErr
+	}
+	if nativeStream {
+		maxResponseBytes := int64(s.cfg.Server.Upstream.MaxResponseBytes)
+		if maxResponseBytes <= 0 {
+			maxResponseBytes = 32 << 20
+		}
+		streamResult, streamErr := proxyNativeSSE(attemptCtx, w, httpResp.Body, outDialect, target.Model, maxResponseBytes, rc)
+		_ = httpResp.Body.Close()
+		if cancel != nil {
+			cancel()
+		}
+		attempt.DurationMS = durationMillis(time.Since(start))
+		attempt.ResponseBytes = streamResult.Bytes
+		attempt.ReasoningTokens = streamResult.Response.Usage.ReasoningTokens
+		if streamErr != nil {
+			upErr := classifyError(streamErr)
+			upErr.Committed = streamResult.Committed
+			attempt.ErrorClass = upErr.Class
+			attempt.ErrorMessage = upErr.Message
+			attempt.Retryable = upErr.Retryable
+			attempt.TimedOut = upErr.TimedOut
+			attempt.ClientCanceled = upErr.Canceled
+			return nil, attempt, upErr
+		}
+		return streamResult.Response, attempt, nil
 	}
 	raw, oversized, err := s.readUpstreamSuccessBody(httpResp.Body)
 	_ = httpResp.Body.Close()
@@ -2213,8 +2319,17 @@ func (s *Service) validateImageURLsForUpstream(ctx context.Context, req *IRReque
 	if s == nil || s.cfg == nil || s.cfg.Server.Upstream.AllowPrivateImageURLs || req == nil {
 		return nil
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	timeout := s.imageURLDNSTimeout
+	if timeout <= 0 {
+		timeout = 500 * time.Millisecond
+	}
+	resolveCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	for _, imageURL := range requestImageURLs(req) {
-		if err := validateImageURL(ctx, imageURL); err != nil {
+		if err := validateImageURL(resolveCtx, imageURL, s.imageURLLookup); err != nil {
 			return err
 		}
 	}
@@ -2240,51 +2355,68 @@ func requestImageURLs(req *IRRequest) []string {
 	return out
 }
 
-func validateImageURL(ctx context.Context, raw string) error {
+func validateImageURL(ctx context.Context, raw string, lookup egressLookupIPFunc) error {
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("image URL is invalid")
+		return imageURLValidationError{class: "image_url_forbidden", message: "image URL is invalid"}
 	}
-	return validateImageURLAddress(ctx, parsed)
+	return validateImageURLAddress(ctx, parsed, lookup)
 }
 
-func validateImageURLAddress(ctx context.Context, parsed *url.URL) error {
+func validateImageURLAddress(ctx context.Context, parsed *url.URL, lookup egressLookupIPFunc) error {
 	switch strings.ToLower(parsed.Scheme) {
 	case "data":
 		return nil
 	case "http", "https":
 	default:
-		return fmt.Errorf("image URL scheme is not allowed")
+		return imageURLValidationError{class: "image_url_forbidden", message: "image URL scheme is not allowed"}
 	}
 	host := parsed.Hostname()
 	if host == "" {
-		return fmt.Errorf("image URL host is required")
+		return imageURLValidationError{class: "image_url_forbidden", message: "image URL host is required"}
 	}
 	if strings.EqualFold(host, "localhost") {
-		return fmt.Errorf("image URL host is not allowed")
+		return imageURLValidationError{class: "image_url_forbidden", message: "image URL host is not allowed"}
 	}
 	if ip := net.ParseIP(host); ip != nil {
 		if privateImageIP(ip) {
-			return fmt.Errorf("image URL host is not allowed")
+			return imageURLValidationError{class: "image_url_forbidden", message: "image URL host is not allowed"}
 		}
 		return nil
 	}
-	resolveCtx := ctx
-	cancel := func() {}
-	if _, ok := ctx.Deadline(); !ok {
-		resolveCtx, cancel = context.WithTimeout(ctx, 2*time.Second)
+	if lookup == nil {
+		lookup = defaultEgressLookupIP
 	}
-	defer cancel()
-	addrs, err := net.DefaultResolver.LookupIPAddr(resolveCtx, host)
+	addrs, err := lookup(ctx, host)
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return imageURLValidationError{class: "image_url_dns_timeout", message: "image URL host resolution timed out"}
+	}
 	if err != nil || len(addrs) == 0 {
-		return fmt.Errorf("image URL host could not be resolved")
+		return imageURLValidationError{class: "image_url_dns_failure", message: "image URL host could not be resolved"}
 	}
 	for _, addr := range addrs {
-		if privateImageIP(addr.IP) {
-			return fmt.Errorf("image URL host resolves to a private or reserved address")
+		if privateImageIP(addr) {
+			return imageURLValidationError{class: "image_url_forbidden", message: "image URL host resolves to a private or reserved address"}
 		}
 	}
 	return nil
+}
+
+type imageURLValidationError struct {
+	class   string
+	message string
+}
+
+func (e imageURLValidationError) Error() string {
+	return e.message
+}
+
+func imageURLValidationErrorClass(err error) string {
+	var validationErr imageURLValidationError
+	if errors.As(err, &validationErr) && validationErr.class != "" {
+		return validationErr.class
+	}
+	return "image_url_forbidden"
 }
 
 func privateImageIP(ip net.IP) bool {
@@ -2682,6 +2814,10 @@ func targetHonorsExplicitMaxTokens(target Target, req *IRRequest) bool {
 func targetSupportsCallerDialect(target Target, req *IRRequest, callerDialect, outDialect string) bool {
 	if callerDialect == outDialect {
 		return true
+	}
+	if normalizeDialect(outDialect) == "gemini-generate-content" {
+		return normalizeDialect(callerDialect) == "openai-chat" &&
+			geminiGenerateContentTextEligible(req)
 	}
 	if anthropicInboundDialectFilterReason(target, callerDialect, outDialect) != "" {
 		return false
@@ -3668,6 +3804,12 @@ func callerUpstreamFailureReason(class string) (string, string) {
 		return class, "upstream provider quota, credits, or billing were exhausted"
 	case "upstream_timeout":
 		return class, "upstream timed out"
+	case "image_url_dns_timeout":
+		return class, "image URL hostname resolution timed out"
+	case "image_url_dns_failure":
+		return class, "image URL hostname could not be resolved"
+	case "image_url_forbidden":
+		return class, "image URL destination is not allowed"
 	default:
 		return "", ""
 	}
@@ -3749,6 +3891,8 @@ func upstreamAuthScheme(provider ProviderConfig, dialect string) string {
 	switch dialect {
 	case "anthropic":
 		return "x-api-key"
+	case "gemini-generate-content":
+		return "x-goog-api-key"
 	case "replicate":
 		return "replicate"
 	default:
@@ -3756,14 +3900,20 @@ func upstreamAuthScheme(provider ProviderConfig, dialect string) string {
 	}
 }
 
-func upstreamEndpoint(base, dialect string, target Target) string {
+func upstreamEndpoint(base, dialect string, target Target) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil {
-		return base
+		return "", err
 	}
 	switch dialect {
 	case "anthropic":
 		u.Path = joinPath(u.Path, "/v1/messages")
+	case "gemini-generate-content":
+		model := strings.Trim(strings.TrimSpace(target.Model), "/")
+		if model == "" || strings.Contains(model, ":") {
+			return "", fmt.Errorf("gemini generateContent target has invalid model")
+		}
+		u.Path = joinPath(u.Path, "/v1beta/models/"+url.PathEscape(model)+":generateContent")
 	case "replicate":
 		owner, name, ok := strings.Cut(strings.Trim(target.Model, "/"), "/")
 		if ok && owner != "" && name != "" {
@@ -3773,10 +3923,12 @@ func upstreamEndpoint(base, dialect string, target Target) string {
 		}
 	case "openai-responses":
 		u.Path = joinPath(u.Path, "/responses")
-	default:
+	case "openai-chat":
 		u.Path = joinPath(u.Path, "/chat/completions")
+	default:
+		return "", fmt.Errorf("unsupported upstream dialect %q", dialect)
 	}
-	return u.String()
+	return u.String(), nil
 }
 
 func joinPath(basePath, suffix string) string {

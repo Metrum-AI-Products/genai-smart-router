@@ -71,3 +71,10 @@ or durable-state changes need a separately rehearsed compatibility and recovery
 plan; they are never an implicit consequence of a traffic rollback. For the
 full quality evidence model, see [Deployment Readiness](../evaluation/deployment-readiness)
 and [Operational Acceptance](../evaluation/operational-acceptance).
+
+For an adaptive external policy, begin with `external_policy.mode: shadow`.
+Compare the safe recommendation signal with the target actually served and
+confirm that authorization, request-shape, and contract filters remain
+unchanged. Promote the reviewed config to `mode: enforce` only after those
+checks pass. Roll back policy influence immediately with `mode: baseline`,
+which preserves eligible configured order and does not call the policy service.

@@ -409,7 +409,10 @@ func responsesToChatEvidenceCapabilities(target Target, dialect string) []string
 }
 
 func capabilityEndpointIdentity(provider ProviderConfig, target Target, dialect string) (string, string, error) {
-	endpoint := upstreamEndpoint(provider.BaseURL, dialect, target)
+	endpoint, err := upstreamEndpoint(provider.BaseURL, dialect, target)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid upstream endpoint")
+	}
 	parsed, err := url.Parse(endpoint)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.EscapedPath() == "" || parsed.User != nil {
 		return "", "", fmt.Errorf("invalid upstream endpoint")

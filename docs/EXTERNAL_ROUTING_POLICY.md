@@ -25,6 +25,7 @@ models:
     strategy: external
     external_policy:
       url: https://routing-policy.internal.example/route
+      mode: shadow
       allow_hosts: [routing-policy.internal.example]
       timeout_ms: 500
       max_response_bytes: 65536
@@ -37,7 +38,14 @@ models:
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 
-The external routing policy service receives safe derived request context, safe caller metadata, eligible targets, pricing metadata, tool support metadata, modalities, and max-token requirements. By default it does not receive prompt text, message bodies, image URLs/data, tool schemas, tool outputs, or `request.raw`; route on fields such as `context.textChars`, `context.estimatedTokens`, `context.imageCount`, and `context.toolCount`. Set `external_policy.include_request: true` only when the service is trusted to receive request content. If the model group enables `pii_filter`, that opt-in request mirror is built from the redacted request object and placeholder mappings remain request-local. The service must be treated as trusted infrastructure. It never receives raw router tokens, caller token hashes, provider API keys, or full router config.
+The external routing policy service receives safe derived request context, safe caller metadata, and only targets that remain eligible after request-shape and model-group contract filtering. It receives pricing, tool, modality, and max-token metadata for those eligible targets, but no separate list of filtered targets. By default it does not receive prompt text, message bodies, image URLs/data, tool schemas, tool outputs, or `request.raw`; route on fields such as `context.textChars`, `context.estimatedTokens`, `context.imageCount`, and `context.toolCount`. Set `external_policy.include_request: true` only when the service is trusted to receive request content. If the model group enables `pii_filter`, that opt-in request mirror is built from the redacted request object and placeholder mappings remain request-local. The service must be treated as trusted infrastructure. It never receives raw router tokens, caller token hashes, provider API keys, or full router config.
+
+`external_policy.mode` controls reversible activation. Omitted mode keeps the
+backward-compatible `enforce` behavior. In `shadow`, the router calls the
+policy, validates and records its recommendation, and still serves configured
+eligible target order. Promote by changing reviewed config to `enforce`. Roll
+back to `baseline` to preserve eligible configured order without calling the
+policy. Shadow failures never affect the served target.
 
 Policy URLs should use HTTPS. Plain HTTP is accepted only for trusted loopback hosts such as `localhost`, `127.0.0.1`, and `::1`, or when `external_policy.allow_http: true` is explicitly configured for a trusted non-local endpoint. `allow_hosts` is exact-host matching, not a suffix or wildcard rule. Redirects are revalidated before each hop; a redirect to any host outside `allow_hosts`, including a loopback address that was not listed, fails before the redirected service is reached.
 
@@ -73,17 +81,19 @@ That example is a trusted deployment-owned policy service, not built-in router s
 - Run an image or tool request when the group supports VLM/tool traffic and confirm the default policy payload contains only derived counts/requirements plus eligible target metadata, not image URLs/data, tool schemas, or tool outputs.
 - If `external_policy.include_request: true` is approved, confirm the policy payload is redacted as expected for groups with `pii_filter` and document why the external service may receive request content.
 - Confirm errors are clear: policy timeout, non-2xx, invalid JSON, and invalid target should return `502 routing-policy-error` unless `on_error: fallback` is explicitly configured.
+- Confirm caller cancellation reaches the policy request. One concurrency-safe policy HTTP client is created per external-policy group at startup and reused; an unset timeout defaults to 500 ms.
 - With decision telemetry enabled, confirm policy success, fail-closed error, and configured `on_error: fallback` requests write safe `request_policy_executions` rows and do not store policy request/response JSON, prompt text, tool schemas, provider keys, token hashes, policy headers, or full config.
+- In `shadow`, confirm `request_policy_executions.outcome=shadow_recommended`, a `shadow_recommended_candidate` routing signal, and a routing decision for the baseline target actually served.
 
 ## Production Rollout
 
-- Add the policy-backed group catalog-only or with a private caller first.
+- Add the policy-backed group with a private caller and `mode: shadow` first.
 - Keep policy egress on HTTPS. If plaintext HTTP is required for trusted internal infrastructure, document the reason for `external_policy.allow_http: true`.
 - Keep `timeout_ms` small, typically 200-500 ms.
 - Prefer `on_error: fail_closed` for policy-sensitive traffic.
 - Use `on_error: fallback` only when the configured target order is explicitly approved as the default policy.
 - After rollout, monitor `request_usage.error_class`, `request_trace_events`, `request_policy_executions`, selected provider/model, latency, and class labels.
-- Document rollback as either disabling the policy group, switching the group back to `weighted`/`static`, or setting `on_error: fallback` if approved.
+- Promote with `mode: enforce` only after shadow evidence passes. Roll back policy influence with `mode: baseline`; switching to `weighted`/`static` remains a broader policy rollback.
 
 ## Outcome-Calibrated Reference
 

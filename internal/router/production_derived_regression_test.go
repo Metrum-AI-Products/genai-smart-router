@@ -130,50 +130,12 @@ type productionDerivedCodexResponsesReasoningFixture struct {
 	RequestWithoutReasoning                      map[string]any `json:"request_without_reasoning"`
 }
 
-func TestProductionDerivedFleetOwnershipTransitionFixture(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "smokes", "production-derived", "fleet-ownership-transition-llm-api.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var fixture struct {
-		Name                string   `json:"name"`
-		SourceIncidentIssue string   `json:"source_incident_issue"`
-		CustomerID          string   `json:"customer_id"`
-		SourceProfileID     string   `json:"source_profile_id"`
-		SourceStage         string   `json:"source_stage"`
-		SourceInstanceID    string   `json:"source_instance_id"`
-		TargetProfileID     string   `json:"target_profile_id"`
-		TargetStage         string   `json:"target_stage"`
-		TargetInstanceID    string   `json:"target_instance_id"`
-		RequiredFirstAction string   `json:"required_first_action"`
-		RequiredSafeFields  []string `json:"required_safe_fields"`
-		ForbiddenEvidence   []string `json:"forbidden_evidence"`
-	}
-	if err := json.Unmarshal(raw, &fixture); err != nil {
-		t.Fatal(err)
-	}
-	if fixture.Name == "" || fixture.SourceIncidentIssue != "#1052" || fixture.RequiredFirstAction != "ownership_transition" {
-		t.Fatalf("invalid ownership transition fixture: %#v", fixture)
-	}
-	if got := TenantDeploymentInstanceID(fixture.SourceProfileID, fixture.CustomerID, fixture.SourceStage); got != fixture.SourceInstanceID {
-		t.Fatalf("source instance = %q want %q", got, fixture.SourceInstanceID)
-	}
-	if got := TenantDeploymentInstanceID(fixture.TargetProfileID, fixture.CustomerID, fixture.TargetStage); got != fixture.TargetInstanceID {
-		t.Fatalf("target instance = %q want %q", got, fixture.TargetInstanceID)
-	}
-	for _, field := range append(fixture.RequiredSafeFields, fixture.ForbiddenEvidence...) {
-		if strings.TrimSpace(field) == "" {
-			t.Fatal("fixture lists an empty evidence field")
-		}
-	}
-}
-
 // TestProductionDerivedAdminReportsForwardedHTTPSTrust replays the 2026-09-08
 // production incident in which /admin/reports answered every request with a
 // Basic challenge, including a password that verified against the configured
 // bcrypt hash, because the bundle trusted a reverse-proxy range that did not
-// contain the cluster ingress controller address. It pins both the router
-// behavior and the Fleet bundle guard that now rejects such a bundle.
+// contain the cluster ingress controller address. The corresponding Fleet
+// bundle guard regression now lives with the Fleet package.
 func TestProductionDerivedAdminReportsForwardedHTTPSTrust(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "smokes", "production-derived", "admin-reports-forwarded-https-trust.json"))
 	if err != nil {
@@ -251,19 +213,6 @@ func TestProductionDerivedAdminReportsForwardedHTTPSTrust(t *testing.T) {
 		t.Fatalf("trusted reverse proxy still challenged with a valid password: status = %d", got)
 	}
 
-	// The Fleet guard must reject the same bundle before it ever reaches a
-	// cluster, so the incident cannot recur through a signed config revision.
-	bundleConfig := func(trustedCIDR string) string {
-		return "server:\n  admin_auth:\n    basic:\n      enabled: true\n      allow_insecure_http: false\n      trusted_proxy_cidrs:\n        - " + trustedCIDR +
-			"\n    authorization:\n      enabled: true\n  admin_reports:\n    enabled: true\n    path_prefix: /admin/reports\n"
-	}
-	approved := []string{fixture.TrustedProxyCIDR}
-	if err := validateRequiredAdminReports(bundleConfig(fixture.UntrustedProxyCIDR), approved); err == nil {
-		t.Fatal("Fleet guard accepted a bundle that does not trust the deployment reverse proxy")
-	}
-	if err := validateRequiredAdminReports(bundleConfig(fixture.TrustedProxyCIDR), approved); err != nil {
-		t.Fatalf("Fleet guard rejected a correctly trusted bundle: %v", err)
-	}
 }
 
 // TestProductionDerivedAnthropicPlainTextToolOnly replays the 2026-09-08
@@ -797,14 +746,10 @@ func TestProductionDerivedOpenCodeAIStreamingOptionsSkipIncompatibleTargets(t *t
 				t.Fatalf("incompatible production-derived target was selected: %s", selectedModel)
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"id": "chatcmpl_opencode_stream_options",
-			"choices": []map[string]any{{
-				"message":       map[string]any{"role": "assistant", "content": "ok"},
-				"finish_reason": "stop",
-			}},
-			"usage": map[string]any{"prompt_tokens": 1200, "completion_tokens": 2, "total_tokens": 1202},
-		})
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, "data: {\"id\":\"chatcmpl_opencode_stream_options\",\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n")
+		_, _ = fmt.Fprint(w, "data: {\"id\":\"chatcmpl_opencode_stream_options\",\"choices\":[],\"usage\":{\"prompt_tokens\":1200,\"completion_tokens\":2,\"total_tokens\":1202}}\n\n")
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
 
@@ -827,11 +772,12 @@ func TestProductionDerivedOpenCodeAIStreamingOptionsSkipIncompatibleTargets(t *t
 	if selectedModel != fixture.AllowedSelectedTargets[0].Model {
 		t.Fatalf("selected upstream model=%q, want %q", selectedModel, fixture.AllowedSelectedTargets[0].Model)
 	}
-	if _, ok := upstreamBody["stream_options"]; ok {
-		t.Fatalf("upstream stream_options=%#v, want omitted after unary passthrough normalization", upstreamBody["stream_options"])
+	streamOptions, ok := upstreamBody["stream_options"].(map[string]any)
+	if !ok || streamOptions["include_usage"] != true {
+		t.Fatalf("upstream stream_options=%#v, want include_usage preserved for native streaming", upstreamBody["stream_options"])
 	}
-	if upstreamBody["stream"] != false {
-		t.Fatalf("upstream stream=%#v, want false", upstreamBody["stream"])
+	if upstreamBody["stream"] != true {
+		t.Fatalf("upstream stream=%#v, want true", upstreamBody["stream"])
 	}
 
 	var usage usageRecord

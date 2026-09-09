@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"smart-llmrouter/internal/router"
+	"smart-llmrouter/internal/fleet"
 )
 
-func requiresDisposableRDSAdmission(manifest router.TenantDeploymentManifest) bool {
+func requiresDisposableRDSAdmission(manifest fleet.TenantDeploymentManifest) bool {
 	return manifest.DatabaseProfile != ""
 }
 
@@ -33,7 +33,7 @@ func TestDisposableEKSReleasePackageCoreLifecycle(t *testing.T) {
 		t.Skip("set EKS_E2E_INTENT, EKS_E2E_DELETE_APPROVAL_FILE, EKS_E2E_PACKAGE_DIR, and EKS_E2E_REGISTRY for disposable EKS release-package E2E")
 	}
 
-	intent, _, err := router.LoadTenantDeploymentIntent(intentPath, time.Now().UTC())
+	intent, _, err := fleet.LoadTenantDeploymentIntent(intentPath, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("load disposable EKS intent: %v", err)
 	}

@@ -117,7 +117,7 @@ For deterministic fallback, configure a failover-style group or a strategy-speci
 
 When a fallback target answers successfully, terminal usage and request-time cost fields record that serving target and its prices. Per-attempt rows still preserve the failed primary. Router response-cache entries for the successful response use the serving target's cache key.
 
-Current upstream calls are unary. When a caller requests streaming, the router buffers the completed upstream response and then synthesizes dialect-correct SSE for the caller. This is not live mid-generation token streaming and is not used for mid-stream TTFT or tokens-per-second target changes. Fallback retries are for retryable attempt failures before a successful response is returned, not for mid-stream rerouting after the first successful upstream body.
+Same-dialect OpenAI Chat and Anthropic Messages streaming requests proxy native upstream SSE incrementally. OpenAI Responses and cross-dialect bridges remain unary upstream calls with synthesized dialect-correct caller SSE. Fallback retries apply only before the first native event is committed; the router never reroutes or replays a request after streaming output begins.
 
 ## Validation Checklist
 

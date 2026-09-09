@@ -17,7 +17,7 @@ GenAI Smart Router supports model-group-level PII filtering through `models.<gro
 ## Modes
 
 - `redact_only`: replace configured matches with placeholders before upstream calls.
-- `redact_and_restore`: redact before upstream and restore placeholders in downstream text responses.
+- `redact_and_restore`: redact before upstream and restore placeholders in buffered downstream text responses. Same-dialect native OpenAI Chat and Anthropic Messages streams preserve placeholders in caller-visible SSE; the router does not buffer native streams or attempt unsafe per-chunk restoration when a placeholder may span upstream chunks.
 - `fail_on_match`: reject matching requests before target selection and upstream calls.
 
 `fail_on_match: true` forces blocking behavior regardless of mode.
@@ -48,8 +48,9 @@ Before rollout:
 5. Confirm usage DB, JSONL logs, diagnostics, and metrics contain only safe metadata.
 6. Confirm TypeScript payload captures contain placeholders in `ctx.request.raw`, not raw matched values. For external policies, confirm the default payload omits request mirrors; if `external_policy.include_request: true` is approved, confirm external policy `request` and `text` contain placeholders.
 7. Confirm cached redacted responses restore to the current request's placeholders and do not leak previous caller values.
-8. Confirm requests over `max_replacements_per_request` return `pii-filter-blocked` and make no upstream attempt.
+8. Confirm same-dialect native Chat and Messages streams preserve placeholders, record `pii-response-restoration-skipped-native-stream`, and do not expose raw matched values.
+9. Confirm requests over `max_replacements_per_request` return `pii-filter-blocked` and make no upstream attempt.
 
 ## Limitations
 
-Regex filtering is not complete PII detection. Customer deployments should review each expression, set `max_replacements_per_request`, and use external DLP/privacy services for high-assurance detection. Keep external services trusted. Router-managed TypeScript contexts receive the redacted request after model-group PII filtering; external routing policy services receive raw/redacted request mirrors only with `external_policy.include_request: true`. Placeholder mappings remain request-local and are not sent to policy code or persisted.
+Regex filtering is not complete PII detection. Customer deployments should review each expression, set `max_replacements_per_request`, and use external DLP/privacy services for high-assurance detection. Keep external services trusted. Router-managed TypeScript contexts receive the redacted request after model-group PII filtering; external routing policy services receive raw/redacted request mirrors only with `external_policy.include_request: true`. Placeholder mappings remain request-local and are not sent to policy code or persisted. Native stream placeholder preservation is a transport limitation, not a guarantee about provider privacy, residency, retention, or training.

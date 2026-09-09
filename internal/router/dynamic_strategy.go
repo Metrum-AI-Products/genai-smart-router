@@ -268,9 +268,12 @@ func (s *Service) pickDynamicScore(rc *requestContext, groupName string, group M
 	coldStart := totalObservations < minObservations
 	if coldStart {
 		ordered := configuredWeightOrder(candidates)
+		var affinitySignal routingSignalLogRecord
+		ordered, affinitySignal = s.applyDynamicAffinity(cfg, caller, groupName, callerDialect, req, ordered)
 		trace := dynamicDecisionTrace(cfg, req, ordered, true, "configured_weight")
 		trace = annotateSpendCeilingTrace(trace, ceiling)
 		signals := dynamicRoutingSignalTelemetry(cfg, "dynamic_score")
+		signals = appendDynamicAffinitySignal(signals, affinitySignal)
 		terms := dynamicColdStartRankingTelemetry(ordered, groupName)
 		return decision{Target: ordered[0].Target, Fallbacks: dynamicFallbacks(ordered[1:]), Strategy: "dynamic_score", GroupName: groupName, TargetIndex: ordered[0].Index, DecisionTrace: trace, RoutingSignals: signals, DynamicScoreTerms: terms}, nil
 	}
@@ -315,9 +318,12 @@ func (s *Service) pickDynamicScore(rc *requestContext, groupName string, group M
 		}
 		return candidates[i].Index < candidates[j].Index
 	})
+	var affinitySignal routingSignalLogRecord
+	candidates, affinitySignal = s.applyDynamicAffinity(cfg, caller, groupName, callerDialect, req, candidates)
 	trace := dynamicDecisionTrace(cfg, req, candidates, false, "score")
 	trace = annotateSpendCeilingTrace(trace, ceiling)
 	signals := dynamicRoutingSignalTelemetry(cfg, "dynamic_score")
+	signals = appendDynamicAffinitySignal(signals, affinitySignal)
 	scoreTerms := dynamicScoreTermTelemetry(candidates, terms, groupName)
 	return decision{Target: candidates[0].Target, Fallbacks: dynamicFallbacks(candidates[1:]), Strategy: "dynamic_score", GroupName: groupName, TargetIndex: candidates[0].Index, DecisionTrace: trace, RoutingSignals: signals, DynamicScoreTerms: scoreTerms}, nil
 }

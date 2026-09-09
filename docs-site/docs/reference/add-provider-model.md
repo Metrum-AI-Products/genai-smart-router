@@ -40,6 +40,17 @@ Record:
 
 Keep unavailable or unvalidated provider models catalog-only. Move a model into active routing after the deployment has entitlement and validation evidence for the API shapes it will serve.
 
+`gemini-generate-content` is available as a catalog and unary text codec. It
+maps an eligible OpenAI Chat text request to Gemini `generateContent` and uses
+the exact model-specific `/v1beta/models/<model>:generateContent` endpoint.
+Catalog-only entries need no activation flags. Before referencing one from a
+model group, record `activation_evidence` with the exact model ID, the
+`gemini-generate-content` dialect, a validation date, and both
+`direct_text_passed: true` and `router_text_passed: true`. Configuration fails
+closed when either stage is missing or does not match. Tools, images,
+structured output, reasoning controls, and streaming are not enabled by this
+codec and must not be claimed from catalog metadata.
+
 Treat provider access failures as activation prerequisites. A direct smoke returning `401`, entitlement-shaped `403`, generic access `403`, or model-access `404` means the target should not receive ordinary traffic until the exact provider credential, account/project/region, model ID, dialect, and request shape are fixed and retested. Router-level smokes should show sanitized access-failure classes and never expose provider keys or raw upstream bodies.
 
 ## 2. Run Direct Provider Smokes

@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"smart-llmrouter/internal/router"
+	"smart-llmrouter/internal/fleet"
 	"strings"
 	"time"
 )
@@ -19,8 +19,8 @@ type deploymentCommandFlags struct {
 }
 
 type deploymentInput struct {
-	plan       router.TenantDeploymentPlan
-	profile    router.TenantDeploymentProfile
+	plan       fleet.TenantDeploymentPlan
+	profile    fleet.TenantDeploymentProfile
 	profileRef string
 	intentID   string
 }
@@ -52,11 +52,11 @@ func loadDeploymentInput(flags deploymentCommandFlags) deploymentInput {
 	if strings.TrimSpace(*flags.intent) == "" {
 		die("intent is required")
 	}
-	intent, profile, err := router.LoadTenantDeploymentIntent(*flags.intent, time.Now().UTC())
+	intent, profile, err := fleet.LoadTenantDeploymentIntent(*flags.intent, time.Now().UTC())
 	if err != nil {
 		die("load signed deployment intent: %v", err)
 	}
-	plan, err := router.BuildTenantDeploymentPlan(profile, intent.Manifest, intent.IntentID)
+	plan, err := fleet.BuildTenantDeploymentPlan(profile, intent.Manifest, intent.IntentID)
 	if err != nil {
 		die("build deployment plan: %v", err)
 	}
@@ -84,12 +84,12 @@ func deploymentDeploy(args []string) {
 	if err != nil {
 		die("configure AWS/EKS deployment adapters: %v", err)
 	}
-	store, err := router.OpenTenantDeploymentStore(*flags.registry)
+	store, err := fleet.OpenTenantDeploymentStore(*flags.registry)
 	if err != nil {
 		die("open deployment registry: %v", err)
 	}
 	defer store.Close()
-	engine, err := router.NewTenantDeploymentEngine(store, adapters)
+	engine, err := fleet.NewTenantDeploymentEngine(store, adapters)
 	if err != nil {
 		die("configure deployment engine: %v", err)
 	}
@@ -113,11 +113,11 @@ func deploymentStatus(args []string) {
 		die("profile-ref and job are required for deployment status")
 	}
 	requireProtectedFleetProfileReference(*profileRef)
-	profile, err := router.LoadTenantDeploymentProfile(*profileRef)
+	profile, err := fleet.LoadTenantDeploymentProfile(*profileRef)
 	if err != nil {
 		die("load protected profile: %v", err)
 	}
-	store, err := router.OpenTenantDeploymentStoreReadOnly(*registry)
+	store, err := fleet.OpenTenantDeploymentStoreReadOnly(*registry)
 	if err != nil {
 		die("open deployment registry: %v", err)
 	}
@@ -126,7 +126,7 @@ func deploymentStatus(args []string) {
 	if err != nil {
 		die("read deployment status: %v", err)
 	}
-	status, err = router.ObserveTenantDeployment(context.Background(), profile, status)
+	status, err = fleet.ObserveTenantDeployment(context.Background(), profile, status)
 	if err != nil {
 		die("observe EKS deployment status: %v", err)
 	}
@@ -145,7 +145,7 @@ func deploymentDelete(args []string) {
 	}
 	input := loadDeploymentInput(flags)
 	requireProtectedFleetProfileReference(input.profileRef)
-	approval, approvalSHA256, err := router.LoadTenantDeletionApproval(*confirmFile, input.profile, time.Now().UTC())
+	approval, approvalSHA256, err := fleet.LoadTenantDeletionApproval(*confirmFile, input.profile, time.Now().UTC())
 	if err != nil {
 		die("load deletion approval: %v", err)
 	}
@@ -154,12 +154,12 @@ func deploymentDelete(args []string) {
 	if err != nil {
 		die("configure AWS/EKS deployment adapters: %v", err)
 	}
-	store, err := router.OpenTenantDeploymentStore(*flags.registry)
+	store, err := fleet.OpenTenantDeploymentStore(*flags.registry)
 	if err != nil {
 		die("open deployment registry: %v", err)
 	}
 	defer store.Close()
-	engine, err := router.NewTenantDeploymentEngine(store, adapters)
+	engine, err := fleet.NewTenantDeploymentEngine(store, adapters)
 	if err != nil {
 		die("configure deployment engine: %v", err)
 	}
@@ -173,30 +173,30 @@ func deploymentDelete(args []string) {
 	writeJSON(status)
 }
 
-func deploymentAdaptersForPlan(ctx context.Context, profile router.TenantDeploymentProfile, profileRef string, plan router.TenantDeploymentPlan, admissionFile string, requireRDSAdmission bool) (*router.EKSTenantDeploymentAdapters, router.TenantDeploymentAdapters, error) {
+func deploymentAdaptersForPlan(ctx context.Context, profile fleet.TenantDeploymentProfile, profileRef string, plan fleet.TenantDeploymentPlan, admissionFile string, requireRDSAdmission bool) (*fleet.EKSTenantDeploymentAdapters, fleet.TenantDeploymentAdapters, error) {
 	if plan.DatabaseID == "" {
 		if strings.TrimSpace(admissionFile) != "" {
-			return nil, router.TenantDeploymentAdapters{}, errors.New("rds-admission-file is only valid for a dedicated RDS deployment")
+			return nil, fleet.TenantDeploymentAdapters{}, errors.New("rds-admission-file is only valid for a dedicated RDS deployment")
 		}
-		return router.NewEKSTenantDeploymentAdapters(ctx, profile)
+		return fleet.NewEKSTenantDeploymentAdapters(ctx, profile)
 	}
 	if !requireRDSAdmission {
 		if strings.TrimSpace(admissionFile) != "" {
-			return nil, router.TenantDeploymentAdapters{}, errors.New("rds-admission-file is not needed when the dedicated RDS is retained")
+			return nil, fleet.TenantDeploymentAdapters{}, errors.New("rds-admission-file is not needed when the dedicated RDS is retained")
 		}
-		return router.NewEKSTenantDeploymentAdapters(ctx, profile)
+		return fleet.NewEKSTenantDeploymentAdapters(ctx, profile)
 	}
 	if strings.TrimSpace(admissionFile) == "" {
-		return nil, router.TenantDeploymentAdapters{}, errors.New("rds-admission-file is required for dedicated RDS mutation")
+		return nil, fleet.TenantDeploymentAdapters{}, errors.New("rds-admission-file is required for dedicated RDS mutation")
 	}
 	if !strings.HasPrefix(profileRef, "aws-ssm:///") {
-		return nil, router.TenantDeploymentAdapters{}, errors.New("dedicated RDS mutation requires a protected aws-ssm profile reference")
+		return nil, fleet.TenantDeploymentAdapters{}, errors.New("dedicated RDS mutation requires a protected aws-ssm profile reference")
 	}
-	admission, _, err := router.LoadTenantDeploymentRDSAdmission(admissionFile, profile, plan, time.Now().UTC())
+	admission, _, err := fleet.LoadTenantDeploymentRDSAdmission(admissionFile, profile, plan, time.Now().UTC())
 	if err != nil {
-		return nil, router.TenantDeploymentAdapters{}, errors.New("load dedicated RDS admission")
+		return nil, fleet.TenantDeploymentAdapters{}, errors.New("load dedicated RDS admission")
 	}
-	return router.NewApprovedEKSTenantDeploymentAdapters(ctx, profile, admission)
+	return fleet.NewApprovedEKSTenantDeploymentAdapters(ctx, profile, admission)
 }
 
 func fleetDatabases(args []string) {

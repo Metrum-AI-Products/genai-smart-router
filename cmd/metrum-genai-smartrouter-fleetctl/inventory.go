@@ -6,7 +6,7 @@ package main
 import (
 	"context"
 	"flag"
-	"smart-llmrouter/internal/router"
+	"smart-llmrouter/internal/fleet"
 	"strings"
 )
 
@@ -48,7 +48,7 @@ func fleetTenantsList(args []string) {
 	output := fs.String("output", "json", "safe output format (json)")
 	fs.Parse(args)
 	requireJSONOutput(*output)
-	store, err := router.OpenTenantDeploymentStoreReadOnly(*registry)
+	store, err := fleet.OpenTenantDeploymentStoreReadOnly(*registry)
 	if err != nil {
 		die("open deployment registry: %v", err)
 	}
@@ -73,7 +73,7 @@ func fleetTenantsGet(args []string) {
 	if strings.TrimSpace(*customerID) == "" {
 		die("customer-id is required")
 	}
-	store, err := router.OpenTenantDeploymentStoreReadOnly(*registry)
+	store, err := fleet.OpenTenantDeploymentStoreReadOnly(*registry)
 	if err != nil {
 		die("open deployment registry: %v", err)
 	}
@@ -91,7 +91,7 @@ func fleetTenantsSync(args []string) {
 	output := fs.String("output", "json", "safe output format (json)")
 	fs.Parse(args)
 	requireJSONOutput(*output)
-	store, err := router.OpenTenantDeploymentStore(*registry)
+	store, err := fleet.OpenTenantDeploymentStore(*registry)
 	if err != nil {
 		die("open deployment registry: %v", err)
 	}
@@ -118,7 +118,7 @@ func fleetLicensesList(args []string) {
 	output := fs.String("output", "json", "safe output format (json)")
 	fs.Parse(args)
 	requireJSONOutput(*output)
-	store, err := router.OpenTenantDeploymentStoreReadOnly(*registry)
+	store, err := fleet.OpenTenantDeploymentStoreReadOnly(*registry)
 	if err != nil {
 		die("open deployment registry: %v", err)
 	}
@@ -143,7 +143,7 @@ func fleetLicensesGet(args []string) {
 	if strings.TrimSpace(*licenseID) == "" {
 		die("license-id is required")
 	}
-	store, err := router.OpenTenantDeploymentStoreReadOnly(*registry)
+	store, err := fleet.OpenTenantDeploymentStoreReadOnly(*registry)
 	if err != nil {
 		die("open deployment registry: %v", err)
 	}
@@ -167,11 +167,11 @@ func fleetLicensesRegister(args []string) {
 	if strings.TrimSpace(*summaryFile) == "" {
 		die("summary-file is required")
 	}
-	summary, err := router.LoadFleetLicenseSafeSummaryFile(*summaryFile)
+	summary, err := fleet.LoadFleetLicenseSafeSummaryFile(*summaryFile)
 	if err != nil {
 		die("load license summary: %v", err)
 	}
-	store, err := router.OpenTenantDeploymentStore(*registry)
+	store, err := fleet.OpenTenantDeploymentStore(*registry)
 	if err != nil {
 		die("open deployment registry: %v", err)
 	}

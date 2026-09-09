@@ -2450,6 +2450,88 @@ func TestValidateExternalPolicyIncludeRequestRequiresExternalStrategy(t *testing
 	}
 }
 
+func TestTargetRegionYAMLRoundTripAndValidation(t *testing.T) {
+	original := Target{Provider: "mock", Model: "mock-model", Region: "eu-west/customer-a"}
+	raw, err := yaml.Marshal(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roundTripped Target
+	if err := yaml.Unmarshal(raw, &roundTripped); err != nil {
+		t.Fatal(err)
+	}
+	if roundTripped.Region != original.Region {
+		t.Fatalf("target region round trip=%q, want %q", roundTripped.Region, original.Region)
+	}
+
+	cfg := minimalConfig(t)
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{roundTripped}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid target region rejected: %v", err)
+	}
+	if got := cfg.Models["default"].Targets[0].Region; got != original.Region {
+		t.Fatalf("resolved target region=%q, want %q", got, original.Region)
+	}
+
+	for _, invalid := range []string{" leading", "trailing ", strings.Repeat("a", 65), "eu west", "eu\nwest"} {
+		t.Run(regexp.QuoteMeta(invalid), func(t *testing.T) {
+			candidate := minimalConfig(t)
+			candidate.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "mock-model", Region: invalid}}}
+			if err := candidate.Validate(); err == nil || !strings.Contains(err.Error(), "invalid region") {
+				t.Fatalf("Validate() region=%q error=%v", invalid, err)
+			}
+		})
+	}
+}
+
+func TestTargetRegionPublicDocsHaveTypeAndAvoidLegalGuarantees(t *testing.T) {
+	for _, path := range []string{
+		"../../docs-site/docs/reference/model-metadata.md",
+		"../../docs-site/docs/privacy.md",
+	} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := strings.ToLower(string(raw))
+		if !strings.Contains(text, "doc_type:") || !strings.Contains(text, "region") {
+			t.Fatalf("%s must contain doc_type frontmatter and target-region guidance", path)
+		}
+		for _, claim := range []string{"guaranteed data residency", "never trains", "zero retention guarantee"} {
+			if strings.Contains(text, claim) {
+				t.Fatalf("%s contains unsupported legal claim %q", path, claim)
+			}
+		}
+	}
+}
+
+func TestExternalPolicyModeValidationAndBackwardCompatibleDefault(t *testing.T) {
+	for _, mode := range []string{"", "enforce", "shadow", "baseline"} {
+		t.Run(defaultString(mode, "omitted"), func(t *testing.T) {
+			cfg := minimalConfig(t)
+			cfg.Models["default"] = ModelGroup{
+				Strategy: "external",
+				ExternalPolicy: ExternalPolicyConfig{
+					URL: "http://127.0.0.1:18090/route", AllowHosts: []string{"127.0.0.1"}, Mode: mode,
+				},
+				Targets: []Target{{Provider: "mock", Model: "mock-model"}},
+			}
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("Validate() mode=%q error=%v", mode, err)
+			}
+		})
+	}
+	cfg := minimalConfig(t)
+	cfg.Models["default"] = ModelGroup{
+		Strategy:       "external",
+		ExternalPolicy: ExternalPolicyConfig{URL: "http://127.0.0.1:18090/route", AllowHosts: []string{"127.0.0.1"}, Mode: "promote"},
+		Targets:        []Target{{Provider: "mock", Model: "mock-model"}},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "mode must be enforce, shadow, or baseline") {
+		t.Fatalf("Validate() invalid external mode error=%v", err)
+	}
+}
+
 func TestIntelligentRoutingConfigValidation(t *testing.T) {
 	cfg := minimalConfig(t)
 	provider := cfg.Provider["mock"]

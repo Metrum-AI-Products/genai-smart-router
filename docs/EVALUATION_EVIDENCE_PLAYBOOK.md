@@ -111,6 +111,21 @@ python3 scripts/evaluate_workload_gate.py \
 
 The matrix must define the reward/verifier, clients, model groups, attempts/seeds, fixed-model or previous-policy controls where practical, pass/fail criteria, cost and latency thresholds, and rollback criteria. A gate failure should block promotion unless the reviewer explicitly records why the failure is outside the changed route scope.
 
+For a second, non-agent baseline, use the preregistered OCR-style example in
+`examples/fixed-model-ocr-baseline/`. It compares one candidate with one named
+fixed-model control using aggregate counts, p95 latency, and total cost:
+
+```bash
+python3 scripts/fixed_model_outcome_gate.py \
+  --preregistration examples/fixed-model-ocr-baseline/preregistration.json \
+  --results examples/fixed-model-ocr-baseline/results.example.json
+```
+
+The schema rejects unknown fields, including prompt or response fields. A
+quality regression beyond the preregistered tolerance exits nonzero. Copy the
+example into a protected validation environment for live runs; the example's
+`live-results/` and `live-output/` paths are ignored and must not be committed.
+
 ## Metrics To Inspect
 
 Report:

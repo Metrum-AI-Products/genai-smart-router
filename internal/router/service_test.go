@@ -4554,29 +4554,11 @@ func TestOpenAIChatToolPassthroughPreservesToolsAndStreamsToolCalls(t *testing.T
 		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
 			t.Fatal(err)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"id":      "chatcmpl_tool",
-			"object":  "chat.completion",
-			"created": 1710000000,
-			"model":   "chat-tool",
-			"choices": []map[string]any{{
-				"index": 0,
-				"message": map[string]any{
-					"role":    "assistant",
-					"content": nil,
-					"tool_calls": []map[string]any{{
-						"id":   "call_weather",
-						"type": "function",
-						"function": map[string]any{
-							"name":      "get_weather",
-							"arguments": `{"location":"San Francisco"}`,
-						},
-					}},
-				},
-				"finish_reason": "tool_calls",
-			}},
-			"usage": map[string]any{"prompt_tokens": 17, "completion_tokens": 5, "total_tokens": 22},
-		})
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, `data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","created":1710000000,"model":"chat-tool","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_weather","type":"function","function":{"name":"get_weather","arguments":"{\"location\":\"San Francisco\"}"}}]},"finish_reason":null}]}`+"\n\n")
+		fmt.Fprint(w, `data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","created":1710000000,"model":"chat-tool","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`+"\n\n")
+		fmt.Fprint(w, `data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","created":1710000000,"model":"chat-tool","choices":[],"usage":{"prompt_tokens":17,"completion_tokens":5,"total_tokens":22}}`+"\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
 
@@ -4614,11 +4596,11 @@ func TestOpenAIChatToolPassthroughPreservesToolsAndStreamsToolCalls(t *testing.T
 	if upstreamBody["model"] != "chat-tool" {
 		t.Fatalf("upstream model=%q", upstreamBody["model"])
 	}
-	if upstreamBody["stream"] != false {
-		t.Fatalf("upstream stream=%#v, want false", upstreamBody["stream"])
+	if upstreamBody["stream"] != true {
+		t.Fatalf("upstream stream=%#v, want true", upstreamBody["stream"])
 	}
-	if _, ok := upstreamBody["stream_options"]; ok {
-		t.Fatalf("upstream stream_options=%#v, want omitted for synthesized unary passthrough", upstreamBody["stream_options"])
+	if options, ok := upstreamBody["stream_options"].(map[string]any); !ok || options["include_usage"] != true {
+		t.Fatalf("upstream stream_options=%#v, want include_usage", upstreamBody["stream_options"])
 	}
 	if tools, ok := upstreamBody["tools"].([]any); !ok || len(tools) != 1 {
 		t.Fatalf("tools not preserved upstream: %#v", upstreamBody)
@@ -4649,18 +4631,10 @@ func TestCursorOpenAIChatToolsAndImageRequiresSingleCombinedTarget(t *testing.T)
 		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
 			t.Fatal(err)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"id":      "chatcmpl_cursor_mixed",
-			"object":  "chat.completion",
-			"created": 1710000000,
-			"model":   "chat-tools-image",
-			"choices": []map[string]any{{
-				"index":         0,
-				"message":       map[string]any{"role": "assistant", "content": "ok"},
-				"finish_reason": "stop",
-			}},
-			"usage": map[string]any{"prompt_tokens": 24000, "completion_tokens": 1, "total_tokens": 24001},
-		})
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, "data: {\"id\":\"chatcmpl_cursor_mixed\",\"object\":\"chat.completion.chunk\",\"created\":1710000000,\"model\":\"chat-tools-image\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n")
+		_, _ = fmt.Fprint(w, "data: {\"id\":\"chatcmpl_cursor_mixed\",\"object\":\"chat.completion.chunk\",\"created\":1710000000,\"model\":\"chat-tools-image\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":24000,\"completion_tokens\":1,\"total_tokens\":24001}}\n\n")
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
 
@@ -4686,8 +4660,8 @@ func TestCursorOpenAIChatToolsAndImageRequiresSingleCombinedTarget(t *testing.T)
 	if upstreamBody["model"] != "chat-tools-image" {
 		t.Fatalf("upstream model=%#v body=%#v", upstreamBody["model"], upstreamBody)
 	}
-	if upstreamBody["stream"] != false {
-		t.Fatalf("upstream stream=%#v, want synthesized unary upstream", upstreamBody["stream"])
+	if upstreamBody["stream"] != true {
+		t.Fatalf("upstream stream=%#v, want native streaming upstream", upstreamBody["stream"])
 	}
 	if tools, ok := upstreamBody["tools"].([]any); !ok || len(tools) != 19 {
 		t.Fatalf("tools not preserved upstream: %#v", upstreamBody["tools"])
@@ -5416,21 +5390,13 @@ func TestAnthropicToolPassthroughPreservesToolsAndStreamsToolUse(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
 			t.Fatal(err)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"id":            "msg_tool_1",
-			"type":          "message",
-			"role":          "assistant",
-			"model":         "claude-tool",
-			"stop_reason":   "tool_use",
-			"stop_sequence": nil,
-			"content": []map[string]any{{
-				"type":  "tool_use",
-				"id":    "toolu_1",
-				"name":  "Bash",
-				"input": map[string]any{"command": "cat > /app/solver.py"},
-			}},
-			"usage": map[string]any{"input_tokens": 13, "output_tokens": 9},
-		})
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: message_start\n"+`data: {"type":"message_start","message":{"id":"msg_tool_1","type":"message","role":"assistant","model":"claude-tool","content":[],"stop_reason":null,"usage":{"input_tokens":13,"output_tokens":0}}}`+"\n\n")
+		fmt.Fprint(w, "event: content_block_start\n"+`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"Bash","input":{}}}`+"\n\n")
+		fmt.Fprint(w, "event: content_block_delta\n"+`data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"cat > /app/solver.py\"}"}}`+"\n\n")
+		fmt.Fprint(w, "event: content_block_stop\n"+`data: {"type":"content_block_stop","index":0}`+"\n\n")
+		fmt.Fprint(w, "event: message_delta\n"+`data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":9}}`+"\n\n")
+		fmt.Fprint(w, "event: message_stop\n"+`data: {"type":"message_stop"}`+"\n\n")
 	}))
 	defer upstream.Close()
 
@@ -5462,8 +5428,8 @@ func TestAnthropicToolPassthroughPreservesToolsAndStreamsToolUse(t *testing.T) {
 	if upstreamBody["model"] != "claude-tool" {
 		t.Fatalf("upstream model=%q", upstreamBody["model"])
 	}
-	if upstreamBody["stream"] != false {
-		t.Fatalf("upstream stream=%#v, want false", upstreamBody["stream"])
+	if upstreamBody["stream"] != true {
+		t.Fatalf("upstream stream=%#v, want true", upstreamBody["stream"])
 	}
 	if upstreamBody["max_tokens"] != float64(256) {
 		t.Fatalf("upstream max_tokens=%#v, want 256", upstreamBody["max_tokens"])
@@ -14964,6 +14930,238 @@ func TestIntelligentRoutingServesEligibleBaselineInFoundationIncrement(t *testin
 	}
 	if decision.Target.Model != "first" || decision.Strategy != "intelligent" || len(decision.PolicyExecutions) != 1 || decision.PolicyExecutions[0].Outcome != "baseline_only" {
 		t.Fatalf("decision = %#v", decision)
+	}
+}
+
+func TestExternalRoutingPolicyCannotBypassCallerAuthorizationOrEligibility(t *testing.T) {
+	policyCalls := 0
+	var policyPayload map[string]any
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		policyCalls++
+		if err := json.NewDecoder(r.Body).Decode(&policyPayload); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"target": map[string]any{"provider": "mock", "model": "blocked-model"}})
+	}))
+	defer policy.Close()
+	policyURL, err := url.Parse(policy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Models["external-denied"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL: policy.URL, AllowHosts: []string{policyURL.Hostname()}, Mode: "enforce",
+		},
+		Targets: []Target{
+			{Provider: "mock", Model: "blocked-model", ToolOnly: true},
+			{Provider: "mock", Model: "eligible-model"},
+		},
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"external-denied","messages":[{"role":"user","content":"hello"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden || policyCalls != 0 {
+		t.Fatalf("unauthorized external group status=%d policy_calls=%d body=%s", rr.Code, policyCalls, rr.Body.String())
+	}
+
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "external-denied")
+	authorized, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer authorized.Close()
+	_, err = authorized.pick(nil, "external-denied", authorized.cfg.Models["external-denied"], &IRRequest{}, "openai-chat", nil, "")
+	if err == nil {
+		t.Fatal("external policy selected a request-shape-filtered target")
+	}
+	if policyCalls != 1 {
+		t.Fatalf("policy calls=%d, want 1 authorized call", policyCalls)
+	}
+	targets, _ := policyPayload["targets"].([]any)
+	if len(targets) != 1 || policyPayload["allTargets"] != nil {
+		t.Fatalf("policy received non-eligible targets: %#v", policyPayload)
+	}
+}
+
+func TestExternalRoutingPolicyCannotSelectContractFilteredTarget(t *testing.T) {
+	var policyPayload map[string]any
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&policyPayload); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"target": map[string]any{"provider": "mock", "model": "unapproved-model"}})
+	}))
+	defer policy.Close()
+	policyURL, err := url.Parse(policy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Models["contract-policy"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL: policy.URL, AllowHosts: []string{policyURL.Hostname()}, Mode: "enforce",
+		},
+		Contract: &ModelGroupContract{QualityFloor: ContractQualityFloor{RequireTags: []string{"approved"}}},
+		Targets: []Target{
+			{Provider: "mock", Model: "unapproved-model"},
+			{Provider: "mock", Model: "approved-model", Tags: []string{"approved"}},
+		},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "contract-policy")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	_, err = svc.pick(nil, "contract-policy", svc.cfg.Models["contract-policy"], &IRRequest{}, "openai-chat", nil, "")
+	if err == nil {
+		t.Fatal("external policy selected a contract-filtered target")
+	}
+	targets, _ := policyPayload["targets"].([]any)
+	if len(targets) != 1 || policyPayload["allTargets"] != nil {
+		t.Fatalf("policy received contract-filtered targets: %#v", policyPayload)
+	}
+}
+
+func TestExternalRoutingPolicyShadowPromotionAndRollbackModes(t *testing.T) {
+	policyCalls := 0
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		policyCalls++
+		writeJSON(w, http.StatusOK, map[string]any{"targetIndex": 1, "classLabel": "adaptive:second"})
+	}))
+	defer policy.Close()
+	policyURL, err := url.Parse(policy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newService := func(mode string) *Service {
+		dir := t.TempDir()
+		cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+		enabled := true
+		cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"), &enabled)
+		cfg.Server.DecisionTelemetry.Enabled = true
+		cfg.Models["adaptive"] = ModelGroup{
+			Strategy: "external",
+			ExternalPolicy: ExternalPolicyConfig{
+				URL: policy.URL, AllowHosts: []string{policyURL.Hostname()}, Mode: mode,
+			},
+			Targets: []Target{{Provider: "mock", Model: "first"}, {Provider: "mock", Model: "second"}},
+		}
+		cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "adaptive")
+		svc, err := New(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(svc.Close)
+		return svc
+	}
+
+	shadow := newService("shadow")
+	rc := &requestContext{}
+	shadow.recordEligibilityTelemetry(rc, "adaptive", shadow.cfg.Models["adaptive"], &IRRequest{}, "openai-chat")
+	shadowDecision, err := shadow.pick(rc, "adaptive", shadow.cfg.Models["adaptive"], &IRRequest{}, "openai-chat", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shadowDecision.Target.Model != "first" || shadowDecision.ShadowRecommended == nil || shadowDecision.ShadowRecommended.Model != "second" ||
+		len(shadowDecision.PolicyExecutions) != 1 || shadowDecision.PolicyExecutions[0].Outcome != "shadow_recommended" {
+		t.Fatalf("shadow decision=%#v", shadowDecision)
+	}
+	shadow.recordRoutingDecisionTelemetry(rc, shadowDecision)
+	if len(rc.rec.RoutingSignals) != 1 || rc.rec.RoutingSignals[0].SignalName != "shadow_recommended_candidate" || rc.rec.RoutingSignals[0].CandidateIndex != 1 {
+		t.Fatalf("shadow recommendation telemetry=%#v", rc.rec.RoutingSignals)
+	}
+
+	enforce := newService("enforce")
+	enforced, err := enforce.pick(nil, "adaptive", enforce.cfg.Models["adaptive"], &IRRequest{}, "openai-chat", nil, "")
+	if err != nil || enforced.Target.Model != "second" {
+		t.Fatalf("enforce decision=%#v err=%v", enforced, err)
+	}
+	backwardCompatible := newService("")
+	legacy, err := backwardCompatible.pick(nil, "adaptive", backwardCompatible.cfg.Models["adaptive"], &IRRequest{}, "openai-chat", nil, "")
+	if err != nil || legacy.Target.Model != "second" {
+		t.Fatalf("omitted mode decision=%#v err=%v", legacy, err)
+	}
+
+	beforeBaselineCalls := policyCalls
+	baseline := newService("baseline")
+	rolledBack, err := baseline.pick(nil, "adaptive", baseline.cfg.Models["adaptive"], &IRRequest{}, "openai-chat", nil, "")
+	if err != nil || rolledBack.Target.Model != "first" || rolledBack.PolicyExecutions[0].Outcome != "baseline" {
+		t.Fatalf("baseline decision=%#v err=%v", rolledBack, err)
+	}
+	if policyCalls != beforeBaselineCalls {
+		t.Fatalf("baseline mode called policy: before=%d after=%d", beforeBaselineCalls, policyCalls)
+	}
+
+	if routingPolicyFingerprint(shadow.cfg, "adaptive", shadow.cfg.Models["adaptive"]) ==
+		routingPolicyFingerprint(enforce.cfg, "adaptive", enforce.cfg.Models["adaptive"]) {
+		t.Fatal("external policy mode did not change routing policy fingerprint")
+	}
+}
+
+func TestTargetRegionPersistsForServedFailoverTarget(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["model"] == "primary-model" {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"message": "synthetic failure"}})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "region_failover",
+			"choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "ok"}}},
+			"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	enabled := true
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"), &enabled)
+	cfg.Models["region-failover"] = ModelGroup{
+		Strategy: "failover",
+		Targets: []Target{
+			{Provider: "mock", Model: "primary-model", Region: "deployment-region-a"},
+			{Provider: "mock", Model: "fallback-model", Region: "deployment-region-b"},
+		},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "region-failover")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"region-failover","messages":[{"role":"user","content":"hello"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var rows []usageRecord
+	if err := svc.usage.db.Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].TargetModel != "fallback-model" || rows[0].TargetRegion != "deployment-region-b" {
+		t.Fatalf("served target diagnostics=%#v", rows)
 	}
 }
 

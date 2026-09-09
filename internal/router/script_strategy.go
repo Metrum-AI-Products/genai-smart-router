@@ -5,6 +5,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,10 +19,17 @@ import (
 	"github.com/evanw/esbuild/pkg/api"
 )
 
+const (
+	scriptDefaultMaxConcurrent = 16
+	scriptMaxConcurrentLimit   = 256
+)
+
 type scriptStrategy struct {
-	path       string
-	program    *goja.Program
-	httpConfig ScriptHTTPConfig
+	path           string
+	program        *goja.Program
+	httpConfig     ScriptHTTPConfig
+	slots          chan struct{}
+	runtimeFactory func() *goja.Runtime
 }
 
 type scriptInput struct {
@@ -112,7 +120,7 @@ type scriptOutput struct {
 	ClassLabel         string `json:"classLabel"`
 }
 
-func loadScriptStrategy(baseDir, scriptPath string, httpConfig ScriptHTTPConfig) (*scriptStrategy, error) {
+func loadScriptStrategy(baseDir, scriptPath string, maxConcurrent int, httpConfig ScriptHTTPConfig) (*scriptStrategy, error) {
 	if scriptPath == "" {
 		return nil, fmt.Errorf("missing script path")
 	}
@@ -152,17 +160,39 @@ func loadScriptStrategy(baseDir, scriptPath string, httpConfig ScriptHTTPConfig)
 	if err != nil {
 		return nil, err
 	}
-	return &scriptStrategy{path: resolved, program: program, httpConfig: httpConfig}, nil
+	if maxConcurrent <= 0 {
+		maxConcurrent = scriptDefaultMaxConcurrent
+	}
+	return &scriptStrategy{
+		path:           resolved,
+		program:        program,
+		httpConfig:     httpConfig,
+		slots:          make(chan struct{}, maxConcurrent),
+		runtimeFactory: goja.New,
+	}, nil
 }
 
-func (s *scriptStrategy) Pick(group string, req *IRRequest, contract *ModelGroupContract, targets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID string) (decision, error) {
+func (s *scriptStrategy) Pick(ctx context.Context, group string, req *IRRequest, contract *ModelGroupContract, targets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID string) (decision, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	start := time.Now()
-	vm := goja.New()
+	select {
+	case s.slots <- struct{}{}:
+		defer func() { <-s.slots }()
+	case <-ctx.Done():
+		return decision{}, fmt.Errorf("script routing canceled before execution: %w", ctx.Err())
+	}
+	vm := s.runtimeFactory()
 	timer := time.AfterFunc(s.timeout(), func() {
 		vm.Interrupt("script routing timed out")
 	})
 	defer timer.Stop()
-	if err := s.installRouterAPI(vm); err != nil {
+	stopContextInterrupt := context.AfterFunc(ctx, func() {
+		vm.Interrupt("script routing canceled")
+	})
+	defer stopContextInterrupt()
+	if err := s.installRouterAPI(ctx, vm); err != nil {
 		return decision{}, err
 	}
 	if _, err := vm.RunProgram(s.program); err != nil {
@@ -241,7 +271,7 @@ func (s *scriptStrategy) timeout() time.Duration {
 	return timeout
 }
 
-func (s *scriptStrategy) installRouterAPI(vm *goja.Runtime) error {
+func (s *scriptStrategy) installRouterAPI(ctx context.Context, vm *goja.Runtime) error {
 	routerAPI := vm.NewObject()
 	if err := routerAPI.Set("fetchJSON", func(call goja.FunctionCall) goja.Value {
 		if !s.httpConfig.Enabled {
@@ -254,7 +284,7 @@ func (s *scriptStrategy) installRouterAPI(vm *goja.Runtime) error {
 				panic(vm.NewTypeError("router.fetchJSON options must be an object"))
 			}
 		}
-		resp, err := s.fetchJSON(rawURL, options)
+		resp, err := s.fetchJSON(ctx, rawURL, options)
 		if err != nil {
 			panic(vm.NewTypeError("router.fetchJSON: %s", err.Error()))
 		}
@@ -265,7 +295,7 @@ func (s *scriptStrategy) installRouterAPI(vm *goja.Runtime) error {
 	return vm.Set("router", routerAPI)
 }
 
-func (s *scriptStrategy) fetchJSON(rawURL string, options map[string]any) (map[string]any, error) {
+func (s *scriptStrategy) fetchJSON(ctx context.Context, rawURL string, options map[string]any) (map[string]any, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL")
@@ -288,7 +318,7 @@ func (s *scriptStrategy) fetchJSON(rawURL string, options map[string]any) (map[s
 		}
 		body = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, u.String(), body)
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}

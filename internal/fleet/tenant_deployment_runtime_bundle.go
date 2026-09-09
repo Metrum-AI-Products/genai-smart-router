@@ -1,7 +1,7 @@
 // Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
-package router
+package fleet
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ import (
 const (
 	tenantDeploymentSQLiteUsageDBPath = "/var/lib/smart-llmrouter/usage.sqlite"
 	tenantDeploymentUsageDSNEnvKey    = "ROUTER_USAGE_DB_DSN"
+	usageDBMigrationPolicyAutoSafe    = "auto-safe"
 )
 
 var errInvalidTenantDeploymentRuntimeBundle = errors.New("invalid protected runtime bundle")

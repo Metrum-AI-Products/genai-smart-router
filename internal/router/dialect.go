@@ -167,7 +167,9 @@ func encodeUpstreamForTarget(dialect, model string, req *IRRequest, target Targe
 			body["input"].(map[string]any)["temperature"] = *req.Temperature
 		}
 		return json.Marshal(body)
-	default:
+	case "gemini-generate-content":
+		return encodeGeminiGenerateContent(req)
+	case "openai-chat":
 		msgs := []map[string]any{}
 		if req.System != "" {
 			msgs = append(msgs, map[string]any{"role": "system", "content": req.System})
@@ -192,7 +194,77 @@ func encodeUpstreamForTarget(dialect, model string, req *IRRequest, target Targe
 			return nil, err
 		}
 		return json.Marshal(body)
+	default:
+		return nil, fmt.Errorf("unsupported upstream dialect %q", dialect)
 	}
+}
+
+func encodeGeminiGenerateContent(req *IRRequest) ([]byte, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gemini generateContent request is required")
+	}
+	if !geminiGenerateContentTextEligible(req) {
+		return nil, fmt.Errorf("gemini generateContent codec supports non-streaming text requests only")
+	}
+	contents := make([]map[string]any, 0, len(req.Messages)+1)
+	for _, message := range req.Messages {
+		role := message.Role
+		switch role {
+		case "assistant":
+			role = "model"
+		case "user":
+		default:
+			return nil, fmt.Errorf("gemini generateContent codec does not support message role %q", message.Role)
+		}
+		text := message.Content
+		if text == "" {
+			text = textFromIRParts(message.Parts)
+		}
+		if text != "" {
+			contents = append(contents, map[string]any{"role": role, "parts": []map[string]any{{"text": text}}})
+		}
+	}
+	if len(contents) == 0 && req.Input != "" {
+		contents = append(contents, map[string]any{"role": "user", "parts": []map[string]any{{"text": req.Input}}})
+	}
+	if len(contents) == 0 {
+		return nil, fmt.Errorf("gemini generateContent request has no text content")
+	}
+	body := map[string]any{"contents": contents}
+	if req.System != "" {
+		body["systemInstruction"] = map[string]any{"parts": []map[string]any{{"text": req.System}}}
+	}
+	generationConfig := map[string]any{}
+	if req.MaxTokens > 0 {
+		generationConfig["maxOutputTokens"] = req.MaxTokens
+	}
+	if req.Temperature != nil {
+		generationConfig["temperature"] = *req.Temperature
+	}
+	if len(req.Stop) > 0 {
+		generationConfig["stopSequences"] = req.Stop
+	}
+	if len(generationConfig) > 0 {
+		body["generationConfig"] = generationConfig
+	}
+	return json.Marshal(body)
+}
+
+func geminiGenerateContentTextEligible(req *IRRequest) bool {
+	if req == nil || req.Stream || len(req.Tools) > 0 || requestHasImages(req) || requestHasStructuredOutput(req) || requestRequiresReasoning(req) {
+		return false
+	}
+	for _, message := range req.Messages {
+		if message.Role != "user" && message.Role != "assistant" {
+			return false
+		}
+		for _, part := range message.Parts {
+			if part.Type != "" && part.Type != "text" {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func encodeResponsesPassthrough(model string, req *IRRequest, target Target) ([]byte, error) {
@@ -473,7 +545,17 @@ func decodeUpstreamResponse(dialect string, raw []byte, model string) (*IRRespon
 		resp.Text = replicateOutputText(m["output"])
 		resp.StopReason = "stop"
 		resp.Usage = Usage{InputTokens: 0, OutputTokens: 0, TotalTokens: 0}
-	default:
+	case "gemini-generate-content":
+		candidates := valueAsSlice(m["candidates"])
+		if len(candidates) == 0 {
+			return nil, fmt.Errorf("gemini generateContent response has no candidates")
+		}
+		candidate, _ := candidates[0].(map[string]any)
+		content, _ := candidate["content"].(map[string]any)
+		resp.Text = textFromGeminiParts(valueAsSlice(content["parts"]))
+		resp.StopReason = geminiStopReason(stringValue(candidate["finishReason"]))
+		resp.Usage = geminiUsageFromMap(m["usageMetadata"])
+	case "openai-chat":
 		if choices, ok := m["choices"].([]any); ok && len(choices) > 0 {
 			if ch, ok := choices[0].(map[string]any); ok {
 				if msg, ok := ch["message"].(map[string]any); ok {
@@ -483,11 +565,47 @@ func decodeUpstreamResponse(dialect string, raw []byte, model string) (*IRRespon
 			}
 		}
 		resp.Usage = usageFromMap(m["usage"])
+	default:
+		return nil, fmt.Errorf("unsupported upstream dialect %q", dialect)
 	}
 	if resp.Usage.TotalTokens == 0 {
 		resp.Usage.TotalTokens = resp.Usage.InputTokens + resp.Usage.OutputTokens
 	}
 	return resp, nil
+}
+
+func textFromGeminiParts(parts []any) string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if value, ok := part.(map[string]any); ok {
+			if text := stringValue(value["text"]); text != "" {
+				out = append(out, text)
+			}
+		}
+	}
+	return strings.Join(out, "")
+}
+
+func geminiStopReason(reason string) string {
+	switch strings.ToUpper(strings.TrimSpace(reason)) {
+	case "STOP":
+		return "stop"
+	case "MAX_TOKENS":
+		return "length"
+	default:
+		return strings.ToLower(strings.TrimSpace(reason))
+	}
+}
+
+func geminiUsageFromMap(value any) Usage {
+	usage, _ := value.(map[string]any)
+	input, _ := numberAsInt(usage["promptTokenCount"])
+	output, _ := numberAsInt(usage["candidatesTokenCount"])
+	total, _ := numberAsInt(usage["totalTokenCount"])
+	if total == 0 {
+		total = input + output
+	}
+	return Usage{InputTokens: input, OutputTokens: output, TotalTokens: total}
 }
 
 func decodeResponsesPassthrough(raw []byte, model string) (*IRResponse, error) {

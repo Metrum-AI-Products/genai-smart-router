@@ -5,6 +5,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,7 +19,19 @@ import (
 const externalPolicyDefaultTimeoutMS = 500
 
 type externalPolicyStrategy struct {
-	cfg ExternalPolicyConfig
+	cfg    ExternalPolicyConfig
+	client *http.Client
+}
+
+func newExternalPolicyStrategy(cfg ExternalPolicyConfig) *externalPolicyStrategy {
+	timeout := time.Duration(cfg.TimeoutMS) * time.Millisecond
+	if timeout <= 0 {
+		timeout = externalPolicyDefaultTimeoutMS * time.Millisecond
+	}
+	return &externalPolicyStrategy{
+		cfg:    cfg,
+		client: newEgressHTTPClient(timeout, cfg.AllowHosts, cfg.AllowHTTP, "external policy"),
+	}
 }
 
 type externalPolicyInput struct {
@@ -89,9 +102,28 @@ func (e routingPolicyError) Unwrap() error {
 	return e.Err
 }
 
-func (s externalPolicyStrategy) Pick(group string, req *IRRequest, contract *ModelGroupContract, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
+func (s *externalPolicyStrategy) Pick(ctx context.Context, group string, req *IRRequest, contract *ModelGroupContract, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
 	start := time.Now()
-	dec, err := s.pick(group, req, contract, eligibleTargets, allTargets, providers, caller, tokenID, callerDialect)
+	mode := strings.ToLower(strings.TrimSpace(s.cfg.Mode))
+	if mode == "" {
+		mode = "enforce"
+	}
+	if mode == "baseline" {
+		return externalBaselineDecision(group, eligibleTargets, "baseline", nil, 0, len(allTargets)), nil
+	}
+	dec, err := s.pick(ctx, group, req, contract, eligibleTargets, allTargets, providers, caller, tokenID, callerDialect)
+	if mode == "shadow" {
+		if err != nil {
+			return externalBaselineDecision(group, eligibleTargets, "shadow_error", err, time.Since(start).Milliseconds(), len(allTargets)), nil
+		}
+		baseline := externalBaselineDecision(group, eligibleTargets, "shadow_recommended", nil, time.Since(start).Milliseconds(), len(allTargets))
+		recommended := dec.Target
+		baseline.ShadowRecommended = &recommended
+		if dec.ClassLabel != nil {
+			baseline.PolicyExecutions[0].ClassLabel = dec.ClassLabel
+		}
+		return baseline, nil
+	}
 	if err == nil {
 		dec.PolicyExecutions = append(dec.PolicyExecutions, policyExecutionLogRecord{
 			Seq:                    len(dec.PolicyExecutions) + 1,
@@ -137,14 +169,43 @@ func (s externalPolicyStrategy) Pick(group string, req *IRRequest, contract *Mod
 	return decision{}, policyFailure(group, "external", "external", "", err, time.Since(start).Milliseconds(), len(eligibleTargets), len(allTargets))
 }
 
-func (s externalPolicyStrategy) pick(group string, req *IRRequest, contract *ModelGroupContract, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
+func externalBaselineDecision(group string, eligibleTargets []Target, outcome string, policyErr error, durationMS int64, allTargetCount int) decision {
+	label := "external-policy:" + outcome
+	execution := policyExecutionLogRecord{
+		Seq:                    1,
+		Strategy:               "external",
+		PolicyKind:             "external",
+		Outcome:                outcome,
+		DurationMS:             durationMS,
+		EligibleTargetCount:    len(eligibleTargets),
+		AllTargetCount:         allTargetCount,
+		SelectedCandidateIndex: 0,
+		FallbackCount:          len(eligibleTargets) - 1,
+		ClassLabel:             &label,
+	}
+	if policyErr != nil {
+		execution.ErrorClass = policyErrorClass(policyErr, "external")
+		execution.ErrorMessage = safePolicyExecutionMessage(execution.ErrorClass)
+		execution.TerminalErrorType = "external-policy-shadow-error"
+	}
+	return decision{
+		Target:           eligibleTargets[0],
+		Fallbacks:        eligibleTargets[1:],
+		ClassLabel:       &label,
+		Strategy:         "external",
+		GroupName:        group,
+		TargetIndex:      0,
+		PolicyExecutions: []policyExecutionLogRecord{execution},
+	}
+}
+
+func (s *externalPolicyStrategy) pick(ctx context.Context, group string, req *IRRequest, contract *ModelGroupContract, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
 	input := externalPolicyInput{
 		Group:           group,
 		Context:         buildRequestSummary(req, callerDialect),
 		Contract:        buildScriptContract(contract),
 		Requirements:    routingRequirements(req, callerDialect),
 		Targets:         buildScriptTargets(eligibleTargets, providers),
-		AllTargets:      buildScriptTargets(allTargets, providers),
 		Caller:          buildScriptCaller(caller, tokenID),
 		InputModalities: requestInputModalities(req),
 		Now:             time.Now().UTC().Format(time.RFC3339),
@@ -157,7 +218,7 @@ func (s externalPolicyStrategy) pick(group string, req *IRRequest, contract *Mod
 	if err != nil {
 		return decision{}, err
 	}
-	raw, err := s.call(body)
+	raw, err := s.call(ctx, body)
 	if err != nil {
 		return decision{}, err
 	}
@@ -191,7 +252,10 @@ func (s externalPolicyStrategy) pick(group string, req *IRRequest, contract *Mod
 	}, nil
 }
 
-func (s externalPolicyStrategy) call(body []byte) ([]byte, error) {
+func (s *externalPolicyStrategy) call(ctx context.Context, body []byte) ([]byte, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	u, err := url.Parse(s.cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid external_policy.url")
@@ -206,7 +270,7 @@ func (s externalPolicyStrategy) call(body []byte) ([]byte, error) {
 	if method != http.MethodGet && method != http.MethodPost {
 		return nil, fmt.Errorf("external_policy method %s is not allowed", method)
 	}
-	httpReq, err := http.NewRequest(method, u.String(), bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("build external policy request: %w", err)
 	}
@@ -218,12 +282,7 @@ func (s externalPolicyStrategy) call(body []byte) ([]byte, error) {
 		}
 		httpReq.Header.Set(name, value)
 	}
-	timeout := time.Duration(s.cfg.TimeoutMS) * time.Millisecond
-	if timeout <= 0 {
-		timeout = externalPolicyDefaultTimeoutMS * time.Millisecond
-	}
-	client := newEgressHTTPClient(timeout, s.cfg.AllowHosts, s.cfg.AllowHTTP, "external policy")
-	resp, err := client.Do(httpReq)
+	resp, err := s.client.Do(httpReq)
 	if err != nil {
 		return nil, auditSafeHTTPError(err, "external policy request failed")
 	}

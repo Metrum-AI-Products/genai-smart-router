@@ -36,6 +36,10 @@ models:
         min_observations: 20
         observation_window_seconds: 600
         max_score_adjustment_percent: 70
+        affinity:
+          # enabled defaults to true
+          ttl_seconds: 600
+          max_entries: 10000
         hard_filters:
           require_requested_api_skin: true
           require_input_modalities: true
@@ -93,16 +97,28 @@ After eligibility, `dynamic_score` applies configured thresholds and score terms
 
 Cold start is deterministic. Until `min_observations` is reached, targets are ordered by configured group-local weight. After that, score terms are blended with configured weights according to `max_score_adjustment_percent`, so operators can cap how far live signals move traffic away from the declared mix.
 
+## Conversation Affinity
+
+Dynamic-score routing pins the first selected target for requests that share a conversation prefix. Affinity is enabled by default, isolated by caller, expires after 600 seconds by default, and is bounded to 10,000 process-local entries by default. Set `affinity.enabled: false` to disable it, or configure `ttl_seconds` and `max_entries`.
+
+The router retains only a SHA-256 key derived from caller identity, model group, inbound API dialect, system context, and the first user message. It does not retain the raw prefix. Current eligibility always wins: if the pinned target no longer supports the request's tools, modality, API shape, spend ceiling, or health threshold, the router reselects and replaces the pin.
+
+Chat-to-Responses stateful sessions are separate and unchanged. Their explicit session header and `previous_response_id` behavior do not share dynamic-score affinity state.
+
+## Streaming
+
+Same-dialect OpenAI Chat and Anthropic Messages requests proxy native upstream SSE and flush complete events incrementally, including tool-call/tool-use and usage events. Canceling the client request cancels the upstream request. After the first event is written, the router does not fallback or replay output from another target.
+
+Cross-dialect bridges and OpenAI Responses retain unary upstream behavior and translated/synthesized downstream responses.
+
 ## Operations
 
 The strategy uses in-memory rolling observations for latency, upstream duration, TTFB, output throughput, status, timeout class, error class, and fallback use. It does not read the usage database while routing. Historical usage tables and decision-telemetry reports remain useful for offline validation; they do not select the next target on the hot path.
 
 Router response-cache hits are excluded from adaptive observations so local cache latency cannot make a target look artificially fast. After a successful fallback, terminal usage/cost fields and later observations attribute the serving target; failed primary attempts still update reliability signals through attempt detail.
 
-Decision traces and telemetry rows are safe scalar diagnostics. They include fields such as strategy, cold-start mode, enabled signal names, request-shape buckets, selected provider/model, score bucket, observation count, candidate count, normalized reasoning fields when a caller explicitly requested reasoning or thinking, and fallback-transition rows after upstream failures. Failed attempts update the same in-memory observation store used by later dynamic-score decisions, so provider 429s, 5xxs, timeouts, decode errors, and client cancellations affect future reliability/timeout/fallback signals according to the configured scoring policy. These rows do not include raw prompts, raw images, raw tool outputs, router tokens, token hashes, provider keys, full upstream headers, or full config contents.
+Decision traces and telemetry rows are safe scalar diagnostics. They include fields such as strategy, cold-start mode, enabled signal names, request-shape buckets, selected provider/model, score bucket, observation count, candidate count, normalized reasoning fields when a caller explicitly requested reasoning or thinking, affinity outcome, and fallback-transition rows after pre-commit upstream failures. Failed attempts update the same in-memory observation store used by later dynamic-score decisions, so provider 429s, 5xxs, timeouts, decode errors, and client cancellations affect future reliability/timeout/fallback signals according to the configured scoring policy. These rows do not include raw prompts, raw images, raw tool outputs, router tokens, token hashes, provider keys, full upstream headers, or full config contents.
 
 When decision telemetry is enabled, usage and admin reports expose safe dynamic-score buckets for operations: enabled signal names, score/value/final-score buckets, threshold/filter buckets, max-token cap filtering, max-token buckets, large input-token buckets, and quota/admission reason buckets. Daily rollups preserve those buckets in normalized rows so operators can keep commercial reporting after raw request-level detail expires.
 
-Upstream calls are unary. Caller streaming is synthesized as dialect SSE after the completed upstream response, so dynamic score uses completed-attempt observations rather than live mid-stream TTFT rerouting. Session stickiness for provider prompt caches is not a built-in `dynamic_score` feature; use a trusted TypeScript or external policy when a deployment needs conversation pins.
-
-Roll out on a deployment-defined test group with interchangeable validated targets before enabling broad production traffic. Test simple text, code/debug prompts, tool requests, forced tool requests, image requests where supported, structured-output requests where supported, reasoning or thinking requests where supported, and low explicit max-token caps. Roll back by changing the group strategy to `weighted`, removing unsafe reasoning metadata, or disabling strict thresholds and score terms.
+Roll out on a deployment-defined test group with interchangeable validated targets before enabling broad production traffic. Test simple text, code/debug prompts, multi-turn affinity, TTL expiry, caller isolation, tool requests, forced tool requests, image requests where supported, structured-output requests where supported, reasoning or thinking requests where supported, streaming cancellation, and low explicit max-token caps. Roll back affinity with `affinity.enabled: false`; restarting clears process-local pins. The full strategy rollback is to change the group to `weighted`, remove unsafe reasoning metadata, or disable strict thresholds and score terms.

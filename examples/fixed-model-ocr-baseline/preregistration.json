@@ -1,0 +1,12 @@
+{
+  "schema_version": "fixed-model-outcome-gate/v1",
+  "preregistration_id": "example-ocr-exact-match-v1",
+  "workload_style": "ocr",
+  "case_count": 20,
+  "fixed_model_id": "deployment-fixed-model",
+  "candidate_id": "deployment-router-group",
+  "max_pass_rate_regression": 0.05,
+  "max_error_rate_increase": 0.0,
+  "max_latency_ratio": 1.25,
+  "max_cost_ratio": 1.0
+}

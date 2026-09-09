@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"smart-llmrouter/internal/router"
+	"smart-llmrouter/internal/fleet"
 )
 
-func writeSignedFleetIntent(t *testing.T, directory string, manifest router.TenantDeploymentManifest, intentID string) string {
+func writeSignedFleetIntent(t *testing.T, directory string, manifest fleet.TenantDeploymentManifest, intentID string) string {
 	t.Helper()
 	root := filepath.Join("..", "..", "testdata", "tenant-deployment")
 	profileBytes, err := os.ReadFile(filepath.Join(root, "profile.yaml"))
@@ -28,15 +28,15 @@ func writeSignedFleetIntent(t *testing.T, directory string, manifest router.Tena
 	return writeSignedFleetIntentWithProfile(t, directory, profileBytes, manifest, intentID)
 }
 
-func writeSignedFleetIntentWithProfile(t *testing.T, directory string, profileBytes []byte, manifest router.TenantDeploymentManifest, intentID string) string {
+func writeSignedFleetIntentWithProfile(t *testing.T, directory string, profileBytes []byte, manifest fleet.TenantDeploymentManifest, intentID string) string {
 	t.Helper()
 	profilePath := filepath.Join(directory, "profile.yaml")
 	if err := os.WriteFile(profilePath, profileBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	intent := router.TenantDeploymentIntent{
-		APIVersion: router.TenantDeploymentIntentAPIVersion,
+	intent := fleet.TenantDeploymentIntent{
+		APIVersion: fleet.TenantDeploymentIntentAPIVersion,
 		IntentID:   intentID,
 		IssuerRole: "fleet-lifecycle-admin",
 		IssuedAt:   now.Add(-time.Minute),
@@ -44,7 +44,7 @@ func writeSignedFleetIntentWithProfile(t *testing.T, directory string, profileBy
 		ProfileRef: "file://" + profilePath,
 		Manifest:   manifest,
 	}
-	payload, err := router.TenantDeploymentIntentSigningPayload(intent)
+	payload, err := fleet.TenantDeploymentIntentSigningPayload(intent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestFleetPlanRejectsSplitLifecycleInputs(t *testing.T) {
 
 func TestTenantDeploymentCLIPlanIsReadOnly(t *testing.T) {
 	root := filepath.Join("..", "..", "testdata", "tenant-deployment")
-	manifest, err := router.LoadTenantDeploymentManifest(filepath.Join(root, "manifest.yaml"), nil)
+	manifest, err := fleet.LoadTenantDeploymentManifest(filepath.Join(root, "manifest.yaml"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,26 +131,26 @@ func TestTenantDeploymentCLIPlanIsReadOnly(t *testing.T) {
 }
 
 func TestFleetE2ERequiresRDSAdmissionOnlyForDedicatedRDSManifest(t *testing.T) {
-	if requiresDisposableRDSAdmission(router.TenantDeploymentManifest{}) {
+	if requiresDisposableRDSAdmission(fleet.TenantDeploymentManifest{}) {
 		t.Fatal("SQLite Fleet E2E unexpectedly requires an RDS admission")
 	}
-	if !requiresDisposableRDSAdmission(router.TenantDeploymentManifest{DatabaseProfile: "postgres-dedicated-small"}) {
+	if !requiresDisposableRDSAdmission(fleet.TenantDeploymentManifest{DatabaseProfile: "postgres-dedicated-small"}) {
 		t.Fatal("dedicated-RDS Fleet E2E does not require an RDS admission")
 	}
 }
 
 func TestTenantDeploymentCLIPlansIsolatedAcme2Namespace(t *testing.T) {
 	dir := t.TempDir()
-	manifest := router.TenantDeploymentManifest{
-		APIVersion:       router.TenantDeploymentManifestAPIVersion,
+	manifest := fleet.TenantDeploymentManifest{
+		APIVersion:       fleet.TenantDeploymentManifestAPIVersion,
 		CustomerID:       "acme2",
 		Stage:            "test",
-		Release:          router.TenantReleaseLatestApproved,
+		Release:          fleet.TenantReleaseLatestApproved,
 		ResourceProfile:  "small",
 		StateProfile:     "sqlite-rwo-small",
 		RuntimeBundleRef: "aws-secretsmanager:///smart-router/test/acme2/runtime-bundle",
 		ConfigRevision:   "revision-acme2",
-		License: router.TenantDeploymentLicense{
+		License: fleet.TenantDeploymentLicense{
 			RequestRef: "aws-ssm:///smart-router/test/acme2/license-request",
 			Validity:   "168h",
 		},
@@ -163,7 +163,7 @@ func TestTenantDeploymentCLIPlansIsolatedAcme2Namespace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acme2 Fleet CLI plan: %v: %s", err, output)
 	}
-	var plan router.TenantDeploymentPlan
+	var plan fleet.TenantDeploymentPlan
 	if err := json.Unmarshal(output, &plan); err != nil {
 		t.Fatalf("decode Acme2 Fleet CLI plan: %v: %s", err, output)
 	}
@@ -203,7 +203,7 @@ rds_proxy_disabled: true
 	if err := os.WriteFile(manifestPath, manifestBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := router.LoadTenantDeploymentManifest(manifestPath, nil)
+	manifest, err := fleet.LoadTenantDeploymentManifest(manifestPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,15 +252,15 @@ rds_proxy_disabled: true
 	if err := os.WriteFile(manifestPath, manifestBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	profile, err := router.LoadTenantDeploymentProfile("file://" + profilePath)
+	profile, err := fleet.LoadTenantDeploymentProfile("file://" + profilePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := router.LoadTenantDeploymentManifest(manifestPath, nil)
+	manifest, err := fleet.LoadTenantDeploymentManifest(manifestPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := router.BuildTenantDeploymentPlan(profile, manifest, "intent-rds-admission")
+	plan, err := fleet.BuildTenantDeploymentPlan(profile, manifest, "intent-rds-admission")
 	if err != nil {
 		t.Fatal(err)
 	}

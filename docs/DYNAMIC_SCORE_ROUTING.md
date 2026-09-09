@@ -37,6 +37,10 @@ models:
         min_observations: 20
         observation_window_seconds: 600
         max_score_adjustment_percent: 70
+        affinity:
+          # enabled defaults to true; set enabled: false for independent picks.
+          ttl_seconds: 600
+          max_entries: 10000
         signals:
           request_shape: { enabled: true }
           prompt_features:
@@ -81,6 +85,20 @@ Then run a fixed request matrix against the dynamic group:
 
 Drive enough traffic to pass `min_observations` and verify selection changes from deterministic configured-weight cold start to score-based selection.
 
+## Conversation Affinity
+
+Dynamic-score groups pin a conversation prefix to the first selected target by default. The key is a SHA-256 digest of the caller ID, model group, inbound dialect, system context, and first user message. Raw prompt content is not retained. Pins are process-local, expire after `affinity.ttl_seconds` (600 seconds by default), and are bounded by `affinity.max_entries` (10,000 by default).
+
+Affinity runs after request eligibility, spend ceilings, hard filters, and health thresholds. A pin is ignored and replaced if its target is no longer eligible for the current request shape. Different callers never share pins. Disable the behavior for a group with `affinity.enabled: false`.
+
+Chat-to-Responses stateful sessions remain a separate explicit bridge feature. Their caller-supplied session header, `previous_response_id`, backend, and TTL behavior are unchanged.
+
+## Streaming Behavior
+
+Streaming OpenAI Chat requests routed to OpenAI Chat targets and streaming Anthropic Messages requests routed to Anthropic targets use native upstream SSE. The router flushes complete events incrementally and preserves native text, tool-call/tool-use, and usage events. Client cancellation closes the upstream request. Once any event is sent downstream, the router never starts a fallback or replays the stream.
+
+Cross-dialect bridges remain unary upstream calls with translated downstream responses. OpenAI Responses streaming also retains its existing unary/synthesized behavior.
+
 ## Diagnostics
 
 Use request logs, usage DB, and trace events. The `routing_decision` trace event contains safe scalar metadata only:
@@ -95,7 +113,7 @@ Use request logs, usage DB, and trace events. The `routing_decision` trace event
 
 Diagnostics must not include raw prompts, images, tool outputs, router tokens, token hashes, provider keys, full upstream headers, or full config contents.
 
-When a selected target fails and the router tries a fallback, failed attempts update the in-memory observation store used by later dynamic-score requests. Router response-cache hits are excluded from that store. After a successful fallback, terminal usage and cost fields attribute the serving target while attempt detail preserves the failed primary. With decision telemetry enabled, `request_fallback_transitions` also records the failed candidate, fallback candidate, safe error class, retryable flag, and whether the fallback attempt succeeded.
+When a selected target fails before a stream is committed and the router tries a fallback, failed attempts update the in-memory observation store used by later dynamic-score requests. Router response-cache hits are excluded from that store. After a successful fallback, terminal usage and cost fields attribute the serving target while attempt detail preserves the failed primary. With decision telemetry enabled, `request_fallback_transitions` also records the failed candidate, fallback candidate, safe error class, retryable flag, and whether the fallback attempt succeeded. Affinity emits safe scalar `affinity_hit`, `affinity_miss`, `affinity_expired`, `affinity_ineligible`, or `affinity_disabled` routing signals.
 
 Dynamic score does not read the usage database or decision-telemetry reports while selecting a target. Those surfaces explain past decisions; the hot path uses process-local observation windows only.
 
@@ -103,4 +121,4 @@ Dynamic score does not read the usage database or decision-telemetry reports whi
 
 Roll out first on a dedicated test group with interchangeable validated targets and a non-sensitive caller token allowed only to that group. Compare p95 latency, error rate, fallbacks, cost, and selected target mix against the weighted baseline.
 
-Rollback is config-only: switch the model group `strategy` to `weighted`, lower strict thresholds, or remove score terms. After production config changes, follow the normal timestamped-backup, compose validation, restart, health check, authenticated smoke, and stale-doc search process.
+Rollback is config-only: set `affinity.enabled: false`, switch the model group `strategy` to `weighted`, lower strict thresholds, or remove score terms. Restarting also clears process-local pins. After production config changes, follow the normal timestamped-backup, compose validation, restart, health check, authenticated smoke, and stale-doc search process.

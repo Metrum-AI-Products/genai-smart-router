@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"smart-llmrouter/internal/router"
+	"smart-llmrouter/internal/fleet"
 )
 
 func customerRepair(args []string) {
@@ -98,7 +98,7 @@ func repairCustomerJobIfNeeded(ws customerWorkspace, fleetBin, intentPath string
 }
 
 func reconcileStaleDeploymentAttempts(registryPath, jobID string, maxAge time.Duration) (int, error) {
-	store, err := router.OpenTenantDeploymentStore(registryPath)
+	store, err := fleet.OpenTenantDeploymentStore(registryPath)
 	if err != nil {
 		return 0, err
 	}
@@ -113,17 +113,17 @@ func reconcileStaleDeploymentAttempts(registryPath, jobID string, maxAge time.Du
 	return 0, nil
 }
 
-func repairStuckJob(ctx context.Context, store *router.TenantDeploymentStore, jobID string, maxAge time.Duration) (router.TenantDeploymentStatus, bool, error) {
-	engine, err := router.NewTenantDeploymentEngine(store, noopTenantDeploymentAdapters())
+func repairStuckJob(ctx context.Context, store *fleet.TenantDeploymentStore, jobID string, maxAge time.Duration) (fleet.TenantDeploymentStatus, bool, error) {
+	engine, err := fleet.NewTenantDeploymentEngine(store, noopTenantDeploymentAdapters())
 	if err != nil {
-		return router.TenantDeploymentStatus{}, false, err
+		return fleet.TenantDeploymentStatus{}, false, err
 	}
 	return engine.RepairStuckDeployment(ctx, jobID, maxAge)
 }
 
-func noopTenantDeploymentAdapters() router.TenantDeploymentAdapters {
+func noopTenantDeploymentAdapters() fleet.TenantDeploymentAdapters {
 	noop := tenantDeploymentNoopAdapter{}
-	return router.TenantDeploymentAdapters{
+	return fleet.TenantDeploymentAdapters{
 		Namespace: noop, NetworkPolicy: noop, SecretBinding: noop, LicenseBinding: noop,
 		State: noop, Database: noop, Router: noop, Activation: noop, Hostname: noop,
 	}
@@ -131,57 +131,57 @@ func noopTenantDeploymentAdapters() router.TenantDeploymentAdapters {
 
 type tenantDeploymentNoopAdapter struct{}
 
-func (tenantDeploymentNoopAdapter) EnsureNamespace(context.Context, router.TenantDeploymentPlan) (string, error) {
+func (tenantDeploymentNoopAdapter) EnsureNamespace(context.Context, fleet.TenantDeploymentPlan) (string, error) {
 	return "", nil
 }
-func (tenantDeploymentNoopAdapter) DeleteNamespace(context.Context, router.TenantDeploymentPlan, string) error {
+func (tenantDeploymentNoopAdapter) DeleteNamespace(context.Context, fleet.TenantDeploymentPlan, string) error {
 	return nil
 }
-func (tenantDeploymentNoopAdapter) EnsureNetworkPolicy(context.Context, router.TenantDeploymentPlan) (string, error) {
+func (tenantDeploymentNoopAdapter) EnsureNetworkPolicy(context.Context, fleet.TenantDeploymentPlan) (string, error) {
 	return "", nil
 }
-func (tenantDeploymentNoopAdapter) DeleteNetworkPolicy(context.Context, router.TenantDeploymentPlan, string) error {
+func (tenantDeploymentNoopAdapter) DeleteNetworkPolicy(context.Context, fleet.TenantDeploymentPlan, string) error {
 	return nil
 }
-func (tenantDeploymentNoopAdapter) EnsureSecretBinding(context.Context, router.TenantDeploymentPlan) (string, error) {
+func (tenantDeploymentNoopAdapter) EnsureSecretBinding(context.Context, fleet.TenantDeploymentPlan) (string, error) {
 	return "", nil
 }
-func (tenantDeploymentNoopAdapter) DeleteSecretBinding(context.Context, router.TenantDeploymentPlan, string) error {
+func (tenantDeploymentNoopAdapter) DeleteSecretBinding(context.Context, fleet.TenantDeploymentPlan, string) error {
 	return nil
 }
-func (tenantDeploymentNoopAdapter) EnsureLicenseBinding(context.Context, router.TenantDeploymentPlan) (string, error) {
+func (tenantDeploymentNoopAdapter) EnsureLicenseBinding(context.Context, fleet.TenantDeploymentPlan) (string, error) {
 	return "", nil
 }
-func (tenantDeploymentNoopAdapter) DeleteLicenseBinding(context.Context, router.TenantDeploymentPlan, string) error {
+func (tenantDeploymentNoopAdapter) DeleteLicenseBinding(context.Context, fleet.TenantDeploymentPlan, string) error {
 	return nil
 }
-func (tenantDeploymentNoopAdapter) EnsureStatePVC(context.Context, router.TenantDeploymentPlan) (string, error) {
+func (tenantDeploymentNoopAdapter) EnsureStatePVC(context.Context, fleet.TenantDeploymentPlan) (string, error) {
 	return "", nil
 }
-func (tenantDeploymentNoopAdapter) DeleteStatePVC(context.Context, router.TenantDeploymentPlan, string) error {
+func (tenantDeploymentNoopAdapter) DeleteStatePVC(context.Context, fleet.TenantDeploymentPlan, string) error {
 	return nil
 }
-func (tenantDeploymentNoopAdapter) EnsureDedicatedRDS(context.Context, router.TenantDeploymentPlan) (string, error) {
+func (tenantDeploymentNoopAdapter) EnsureDedicatedRDS(context.Context, fleet.TenantDeploymentPlan) (string, error) {
 	return "", nil
 }
-func (tenantDeploymentNoopAdapter) DeleteDedicatedRDS(context.Context, router.TenantDeploymentPlan, string) error {
+func (tenantDeploymentNoopAdapter) DeleteDedicatedRDS(context.Context, fleet.TenantDeploymentPlan, string) error {
 	return nil
 }
-func (tenantDeploymentNoopAdapter) EnsureRouter(context.Context, router.TenantDeploymentPlan) (string, error) {
+func (tenantDeploymentNoopAdapter) EnsureRouter(context.Context, fleet.TenantDeploymentPlan) (string, error) {
 	return "", nil
 }
-func (tenantDeploymentNoopAdapter) DeleteRouter(context.Context, router.TenantDeploymentPlan, string) error {
+func (tenantDeploymentNoopAdapter) DeleteRouter(context.Context, fleet.TenantDeploymentPlan, string) error {
 	return nil
 }
-func (tenantDeploymentNoopAdapter) ValidateActivation(context.Context, router.TenantDeploymentPlan) (string, error) {
+func (tenantDeploymentNoopAdapter) ValidateActivation(context.Context, fleet.TenantDeploymentPlan) (string, error) {
 	return "", nil
 }
-func (tenantDeploymentNoopAdapter) DeleteActivation(context.Context, router.TenantDeploymentPlan, string) error {
+func (tenantDeploymentNoopAdapter) DeleteActivation(context.Context, fleet.TenantDeploymentPlan, string) error {
 	return nil
 }
-func (tenantDeploymentNoopAdapter) EnableHostname(context.Context, router.TenantDeploymentPlan) (string, error) {
+func (tenantDeploymentNoopAdapter) EnableHostname(context.Context, fleet.TenantDeploymentPlan) (string, error) {
 	return "", nil
 }
-func (tenantDeploymentNoopAdapter) DisableHostname(context.Context, router.TenantDeploymentPlan, string) error {
+func (tenantDeploymentNoopAdapter) DisableHostname(context.Context, fleet.TenantDeploymentPlan, string) error {
 	return nil
 }

@@ -74,6 +74,13 @@ the `router-migrate` plan/apply/verify-serving gate.
 
 Each release must publish its migration contract: migration ID and scope, online or maintenance execution mode, lock/timeout class, data-job requirement, backup evidence requirement, compatible schema/data window, and rollback class. Package rollback never performs a reverse migration; follow the release-specific restore requirement.
 
+The target-region diagnostics increment adds usage migration `2026090901`
+(`usage`, schema version 4). It adds the scalar, non-null
+`request_usage.target_region` column with an empty default. The migration is
+transactional, online, bounded, has no data job, and is `restore-required` for
+package rollback. Existing rows remain empty; new requests record only the
+deployment-defined region of the target that actually served the request.
+
 ```sh
 router-migrate --driver=sqlite --db=/app/state/usage.sqlite --action=verify-serving --json
 router-migrate --driver=sqlite --db=/app/state/usage.sqlite --action=status

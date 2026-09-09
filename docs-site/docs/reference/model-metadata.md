@@ -374,6 +374,7 @@ models:
     targets:
       - provider: baseten
         model_ref: gpt-oss-120b
+        region: deployment-region-a
         weight: 60
       - provider: internal_vllm
         model_ref: llama-70b
@@ -381,3 +382,13 @@ models:
 ```
 
 Model group names are deployment-defined. Use names that match the organization's policy and caller contracts.
+
+`targets[].region` is an optional, bounded deployment-defined processing-location
+label. It is preserved in selected-target diagnostics, including when a
+fallback serves the request. The router does not infer this value from a URL or
+cloud account, and the field by itself does not enforce data residency,
+retention, transfer, jurisdiction, or provider-training behavior. Operators
+must validate the target location and use reviewed eligibility or group policy
+when a workload requires region-specific routing. The caller-facing
+`/v1/models` response describes allowed model groups and does not expose
+per-target region inventory.

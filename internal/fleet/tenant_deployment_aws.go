@@ -1,7 +1,7 @@
 // Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
-package router
+package fleet
 
 // This file contains the only AWS integration used by the customer lifecycle.
 // It deliberately uses SDK clients: the packaged operator never shells out to
