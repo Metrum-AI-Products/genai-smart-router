@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -44,6 +45,7 @@ class Payload(Model):
     text: str | None = Field(default=None, max_length=1_100_000)
     caller: Caller = Field(default_factory=Caller)
     input_modalities: list[str] = Field(default_factory=list, alias="inputModalities")
+    verifier_hint: VerifierHint | None = Field(default=None, alias="verifierHint")
 
     @field_validator("request")
     @classmethod
@@ -74,6 +76,51 @@ class Payload(Model):
                 raise ValueError("ambiguous target identity across dialect or catalog aliases")
             seen[target.key] = skin
         return self
+
+
+class VerifierHint(Model):
+    """Caller-supplied offline evaluation metadata. Never an executable command."""
+
+    kind: Literal["none", "exact", "regex", "json_schema"] = "none"
+    version: str = Field(default="", max_length=64)
+    spec: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def bounded_spec(self) -> VerifierHint:
+        encoded = json.dumps(self.spec, separators=(",", ":"), sort_keys=True)
+        if len(encoded) > 65536:
+            raise ValueError("verifier hint spec exceeds size limit")
+        if self.kind == "none" and self.spec:
+            raise ValueError("verifier hint kind none must omit spec")
+        required = {
+            "none": set(),
+            "exact": {"expected"},
+            "regex": {"pattern"},
+            "json_schema": {"schema"},
+        }[self.kind]
+        if set(self.spec) != required:
+            raise ValueError("verifier hint spec keys are invalid")
+        return self
+
+
+class FeedbackPayload(Model):
+    """Bounded post-completion callback body from the router."""
+
+    schema_version: Literal["external_policy.feedback.v1"] = Field(
+        default="external_policy.feedback.v1", alias="schemaVersion"
+    )
+    request_id: str = Field(alias="requestId", min_length=1, max_length=128)
+    group: str = Field(default="", max_length=256)
+    conversation_key: str = Field(default="", alias="conversationKey", max_length=128)
+    status: int = Field(ge=0, le=599)
+    error_class: str = Field(default="", alias="errorClass", max_length=128)
+    selected_target: dict[str, Any] | None = Field(default=None, alias="selectedTarget")
+    usage: dict[str, Any] | None = None
+    cost_usd: dict[str, float] | None = Field(default=None, alias="costUsd")
+    latency_ms: float = Field(default=0, alias="latencyMs", ge=0)
+    ttfb_ms: float | None = Field(default=None, alias="ttfbMs", ge=0)
+    class_label: str = Field(default="", alias="classLabel", max_length=64)
+    completed_at: str = Field(default="", alias="completedAt", max_length=64)
 
 
 class GroupConfig(Model):

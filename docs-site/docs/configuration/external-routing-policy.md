@@ -31,6 +31,23 @@ models:
       # Off by default. Set true only for a trusted policy service that is allowed
       # to receive raw/redacted request content.
       include_request: false
+      # Optional deployment salt for pseudonymous context.conversationKey (#21).
+      # conversation_key:
+      #   salt: deployment-owned-salt
+      # Opt-in post-completion callback with request ID, selected target, status,
+      # stored usage/cost/latency only (#22). Default URL replaces /route with /feedback.
+      # feedback:
+      #   enabled: true
+      #   timeout_ms: 500
+      #   max_retries: 2
+      #   retry_backoff_ms: 100
+      #   on_delivery_failure: log
+      # Opt-in caller verifier-hint metadata for offline evaluation (#23).
+      # Never executable. Allowed kinds: none, exact, regex, json_schema.
+      # verifier_hints:
+      #   enabled: true
+      #   allowed_kinds: [exact, regex, json_schema]
+      #   max_spec_bytes: 4096
     targets:
       - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
@@ -56,6 +73,8 @@ firewall and service-mesh controls supplement those checks.
 
 [Learned Routing Policy](../routing/learned-routing-policy.md) provides an
 outcome-trained service and protected offline training CLI using this contract.
+For conversation keys, completion feedback, and verifier-hint metadata see
+[External Policy Context](./external-policy-context).
 
 Callers continue to use the model group name:
 

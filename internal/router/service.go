@@ -81,6 +81,7 @@ type decision struct {
 	RoutingSignals    []routingSignalLogRecord
 	DynamicScoreTerms []dynamicScoreTermLogRecord
 	PolicyExecutions  []policyExecutionLogRecord
+	ConversationKey   string
 }
 
 type routingEligibilityError struct {
@@ -110,6 +111,7 @@ type requestContext struct {
 	securityRecorded     bool
 	traceSeq             int
 	sanitizeTraceMessage func(string, string) string
+	conversationKey      string
 }
 
 type upstreamError struct {
@@ -290,6 +292,9 @@ func (s *Service) Close() {
 	_ = s.usage.Close()
 	s.bridgeSessions.Close()
 	s.license.close()
+	for _, policy := range s.externalPolicies {
+		policy.Close()
+	}
 }
 
 func (s *Service) routes() {
@@ -1056,6 +1061,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.ResolvedGroup = req.Model
 	rc.rec.Strategy = dec.Strategy
 	rc.rec.ClassLabel = dec.ClassLabel
+	rc.conversationKey = dec.ConversationKey
 	rc.rec.InputHasImage = requestHasImages(req)
 	rc.rec.InputImageCount = requestImageCount(req)
 	rc.rec.TargetProvider = dec.Target.Provider
@@ -1341,6 +1347,7 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 	s.metrics.Observe(rc.rec)
 	s.logger.Emit(rc.rec)
 	s.usage.Emit(rc.rec)
+	s.dispatchExternalPolicyFeedback(rc)
 	if !rc.securityRecorded {
 		codeText := ""
 		if rc.rec.Error != nil {
@@ -1349,6 +1356,21 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 		s.recordRequestSecurityAccess(rc, rc.rec.Status, codeText)
 		rc.securityRecorded = true
 	}
+}
+
+func (s *Service) dispatchExternalPolicyFeedback(rc *requestContext) {
+	if s == nil || rc == nil || !strings.EqualFold(rc.rec.Strategy, "external") {
+		return
+	}
+	group := strings.TrimSpace(rc.rec.ResolvedGroup)
+	if group == "" {
+		return
+	}
+	strat := s.externalPolicies[group]
+	if strat == nil || !strat.cfg.Feedback.Enabled {
+		return
+	}
+	strat.EnqueueFeedback(externalPolicyFeedbackFromLog(rc.rec, rc.conversationKey))
 }
 
 func selectedServingTarget(rc *requestContext, dec decision) (Target, bool) {

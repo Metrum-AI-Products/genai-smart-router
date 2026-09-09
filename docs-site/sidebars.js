@@ -34,6 +34,7 @@ const sidebars = {
         "configuration/dynamic-score-routing",
         "configuration/routing-typescript",
         "configuration/external-routing-policy",
+        "configuration/external-policy-context",
         "routing/lrp-signed-bundles",
         "configuration/image-analysis-vlm",
         "configuration/reasoning-routing",

@@ -33,7 +33,7 @@ from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, gene
 from pydantic import ValidationError
 
 from lrp.policy import Decision, Prediction, decide, estimated_cost, safe_label
-from lrp.schemas import Payload, ServiceConfig, TargetKey
+from lrp.schemas import FeedbackPayload, Payload, ServiceConfig, TargetKey
 
 LOG = logging.getLogger("lrp")
 MAX_BODY = 2 * 1024 * 1024
@@ -78,6 +78,13 @@ class Pins:
 
 
 def session_key(payload: Payload) -> str | None:
+    context_key = ""
+    if isinstance(payload.context, dict):
+        raw = payload.context.get("conversationKey") or payload.context.get("conversation_key")
+        if isinstance(raw, str):
+            context_key = raw.strip()
+    if context_key:
+        return hashlib.sha256(context_key.encode()).hexdigest()
     req = payload.request or {}
     first = ""
     for message in req.get("messages", []):
@@ -337,6 +344,23 @@ def create_apps(
     @app.post("/route")
     async def route_endpoint(request: Request) -> Response:
         return await route(request)
+
+    @app.post("/feedback")
+    async def feedback_endpoint(request: Request) -> Response:
+        # Consume-only acknowledgement of router completion feedback.
+        # Selection behavior is unchanged; payloads are validated and discarded.
+        if not authenticated(request):
+            return Response(status_code=401)
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > MAX_BODY:
+                return JSONResponse({"error": "body_too_large"}, status_code=413)
+        try:
+            FeedbackPayload.model_validate_json(raw)
+        except (ValidationError, ValueError):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        return Response(status_code=204)
 
     @admin.get("/healthz")
     async def health() -> Response:

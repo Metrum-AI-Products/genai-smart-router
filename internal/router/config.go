@@ -586,16 +586,50 @@ type ScriptHTTPConfig struct {
 }
 
 type ExternalPolicyConfig struct {
-	URL              string            `yaml:"url" json:"url"`
-	Method           string            `yaml:"method" json:"method"`
-	Mode             string            `yaml:"mode" json:"mode"`
-	AllowHosts       []string          `yaml:"allow_hosts" json:"allowHosts"`
-	AllowHTTP        bool              `yaml:"allow_http" json:"allowHttp"`
-	TimeoutMS        int               `yaml:"timeout_ms" json:"timeoutMs"`
-	MaxResponseBytes int64             `yaml:"max_response_bytes" json:"maxResponseBytes"`
-	Headers          map[string]string `yaml:"headers" json:"headers"`
-	OnError          string            `yaml:"on_error" json:"onError"`
-	IncludeRequest   bool              `yaml:"include_request" json:"includeRequest"`
+	URL              string                              `yaml:"url" json:"url"`
+	Method           string                              `yaml:"method" json:"method"`
+	Mode             string                              `yaml:"mode" json:"mode"`
+	AllowHosts       []string                            `yaml:"allow_hosts" json:"allowHosts"`
+	AllowHTTP        bool                                `yaml:"allow_http" json:"allowHttp"`
+	TimeoutMS        int                                 `yaml:"timeout_ms" json:"timeoutMs"`
+	MaxResponseBytes int64                               `yaml:"max_response_bytes" json:"maxResponseBytes"`
+	Headers          map[string]string                   `yaml:"headers" json:"headers"`
+	OnError          string                              `yaml:"on_error" json:"onError"`
+	IncludeRequest   bool                                `yaml:"include_request" json:"includeRequest"`
+	ConversationKey  ExternalPolicyConversationKeyConfig `yaml:"conversation_key" json:"conversationKey"`
+	Feedback         ExternalPolicyFeedbackConfig        `yaml:"feedback" json:"feedback"`
+	VerifierHints    ExternalPolicyVerifierHintsConfig   `yaml:"verifier_hints" json:"verifierHints"`
+}
+
+// ExternalPolicyConversationKeyConfig controls pseudonymous conversationKey derivation.
+// Keys are always emitted on external-policy requests; salt is optional.
+type ExternalPolicyConversationKeyConfig struct {
+	Salt string `yaml:"salt" json:"salt"`
+}
+
+// ExternalPolicyFeedbackConfig enables an authenticated post-completion callback.
+// Disabled by default. Payloads contain only safe scalars (request ID, target,
+// status, usage/cost/latency) and never prompts, tools, credentials, or config.
+type ExternalPolicyFeedbackConfig struct {
+	Enabled           bool              `yaml:"enabled" json:"enabled"`
+	URL               string            `yaml:"url" json:"url"`
+	AllowHosts        []string          `yaml:"allow_hosts" json:"allowHosts"`
+	AllowHTTP         bool              `yaml:"allow_http" json:"allowHttp"`
+	TimeoutMS         int               `yaml:"timeout_ms" json:"timeoutMs"`
+	MaxRetries        int               `yaml:"max_retries" json:"maxRetries"`
+	RetryBackoffMS    int               `yaml:"retry_backoff_ms" json:"retryBackoffMs"`
+	MaxRequestBytes   int64             `yaml:"max_request_bytes" json:"maxRequestBytes"`
+	Headers           map[string]string `yaml:"headers" json:"headers"`
+	OnDeliveryFailure string            `yaml:"on_delivery_failure" json:"onDeliveryFailure"`
+}
+
+// ExternalPolicyVerifierHintsConfig authorizes bounded caller verifier metadata.
+// Hints are never treated as executable commands; pytest/shell kinds are rejected.
+type ExternalPolicyVerifierHintsConfig struct {
+	Enabled       bool     `yaml:"enabled" json:"enabled"`
+	AllowedKinds  []string `yaml:"allowed_kinds" json:"allowedKinds"`
+	MaxSpecBytes  int      `yaml:"max_spec_bytes" json:"maxSpecBytes"`
+	MaxVersionLen int      `yaml:"max_version_len" json:"maxVersionLen"`
 }
 
 // IntelligentRoutingConfig is intentionally limited to the configuration
@@ -1267,6 +1301,15 @@ func (c *Config) Validate() error {
 				if !scriptConfigHeaderAllowed(header) {
 					return fmt.Errorf("model group %s external_policy header %s is not allowed", name, header)
 				}
+			}
+			if err := validateExternalPolicyConversationKey(name, m.ExternalPolicy.ConversationKey); err != nil {
+				return err
+			}
+			if err := validateExternalPolicyFeedback(name, m.ExternalPolicy); err != nil {
+				return err
+			}
+			if err := validateExternalPolicyVerifierHints(name, m.ExternalPolicy.VerifierHints); err != nil {
+				return err
 			}
 		} else if !externalPolicyEmpty(m.ExternalPolicy) {
 			return fmt.Errorf("model group %s configures external_policy but does not use external strategy", name)
@@ -3224,7 +3267,158 @@ func externalPolicyEmpty(cfg ExternalPolicyConfig) bool {
 		cfg.MaxResponseBytes == 0 &&
 		len(cfg.Headers) == 0 &&
 		strings.TrimSpace(cfg.OnError) == "" &&
-		!cfg.IncludeRequest
+		!cfg.IncludeRequest &&
+		strings.TrimSpace(cfg.ConversationKey.Salt) == "" &&
+		!cfg.Feedback.Enabled &&
+		strings.TrimSpace(cfg.Feedback.URL) == "" &&
+		len(cfg.Feedback.AllowHosts) == 0 &&
+		!cfg.Feedback.AllowHTTP &&
+		cfg.Feedback.TimeoutMS == 0 &&
+		cfg.Feedback.MaxRetries == 0 &&
+		cfg.Feedback.RetryBackoffMS == 0 &&
+		cfg.Feedback.MaxRequestBytes == 0 &&
+		len(cfg.Feedback.Headers) == 0 &&
+		strings.TrimSpace(cfg.Feedback.OnDeliveryFailure) == "" &&
+		!cfg.VerifierHints.Enabled &&
+		len(cfg.VerifierHints.AllowedKinds) == 0 &&
+		cfg.VerifierHints.MaxSpecBytes == 0 &&
+		cfg.VerifierHints.MaxVersionLen == 0
+}
+
+func validateExternalPolicyConversationKey(group string, cfg ExternalPolicyConversationKeyConfig) error {
+	salt := strings.TrimSpace(cfg.Salt)
+	if salt == "" {
+		return nil
+	}
+	if salt != cfg.Salt || len(salt) > 128 {
+		return fmt.Errorf("model group %s external_policy.conversation_key.salt must be 1-128 trimmed characters", group)
+	}
+	for _, r := range salt {
+		if r < 33 || r > 126 {
+			return fmt.Errorf("model group %s external_policy.conversation_key.salt must be printable ASCII without spaces", group)
+		}
+	}
+	return nil
+}
+
+func validateExternalPolicyFeedback(group string, policy ExternalPolicyConfig) error {
+	cfg := policy.Feedback
+	if !cfg.Enabled &&
+		strings.TrimSpace(cfg.URL) == "" &&
+		len(cfg.AllowHosts) == 0 &&
+		!cfg.AllowHTTP &&
+		cfg.TimeoutMS == 0 &&
+		cfg.MaxRetries == 0 &&
+		cfg.RetryBackoffMS == 0 &&
+		cfg.MaxRequestBytes == 0 &&
+		len(cfg.Headers) == 0 &&
+		strings.TrimSpace(cfg.OnDeliveryFailure) == "" {
+		return nil
+	}
+	if !cfg.Enabled {
+		return fmt.Errorf("model group %s configures external_policy.feedback but feedback.enabled is false", group)
+	}
+	feedbackURL := strings.TrimSpace(cfg.URL)
+	if feedbackURL == "" {
+		feedbackURL = defaultExternalPolicyFeedbackURL(policy.URL)
+	}
+	parsed, err := url.Parse(feedbackURL)
+	if err != nil || parsed.Hostname() == "" {
+		return fmt.Errorf("model group %s external_policy.feedback.url is invalid", group)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("model group %s external_policy.feedback.url scheme must be http or https", group)
+	}
+	allowHosts := cfg.AllowHosts
+	if len(allowHosts) == 0 {
+		allowHosts = policy.AllowHosts
+	}
+	if len(allowHosts) == 0 {
+		return fmt.Errorf("model group %s external_policy.feedback requires allow_hosts", group)
+	}
+	if !scriptHostAllowed(parsed.Hostname(), allowHosts) {
+		return fmt.Errorf("model group %s external_policy.feedback.url host %s is not in allow_hosts", group, parsed.Hostname())
+	}
+	allowHTTP := cfg.AllowHTTP || policy.AllowHTTP
+	if parsed.Scheme == "http" && !allowHTTP && !egressHostIsTrustedLocal(parsed.Hostname()) {
+		return fmt.Errorf("model group %s external_policy.feedback.url uses http; set feedback.allow_http or external_policy.allow_http for non-local plaintext callbacks", group)
+	}
+	if cfg.TimeoutMS < 0 {
+		return fmt.Errorf("model group %s has negative external_policy.feedback timeout_ms", group)
+	}
+	if cfg.TimeoutMS > 5000 {
+		return fmt.Errorf("model group %s external_policy.feedback timeout_ms must be <= 5000", group)
+	}
+	if cfg.MaxRetries < 0 || cfg.MaxRetries > 5 {
+		return fmt.Errorf("model group %s external_policy.feedback max_retries must be between 0 and 5", group)
+	}
+	if cfg.RetryBackoffMS < 0 || cfg.RetryBackoffMS > 5000 {
+		return fmt.Errorf("model group %s external_policy.feedback retry_backoff_ms must be between 0 and 5000", group)
+	}
+	if cfg.MaxRequestBytes < 0 {
+		return fmt.Errorf("model group %s has negative external_policy.feedback max_request_bytes", group)
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.OnDeliveryFailure)) {
+	case "", "log", "ignore":
+	default:
+		return fmt.Errorf("model group %s external_policy.feedback on_delivery_failure must be log or ignore", group)
+	}
+	for header := range cfg.Headers {
+		if !scriptConfigHeaderAllowed(header) {
+			return fmt.Errorf("model group %s external_policy.feedback header %s is not allowed", group, header)
+		}
+	}
+	return nil
+}
+
+func validateExternalPolicyVerifierHints(group string, cfg ExternalPolicyVerifierHintsConfig) error {
+	if !cfg.Enabled && len(cfg.AllowedKinds) == 0 && cfg.MaxSpecBytes == 0 && cfg.MaxVersionLen == 0 {
+		return nil
+	}
+	if !cfg.Enabled {
+		return fmt.Errorf("model group %s configures external_policy.verifier_hints but verifier_hints.enabled is false", group)
+	}
+	if cfg.MaxSpecBytes < 0 || cfg.MaxSpecBytes > 65536 {
+		return fmt.Errorf("model group %s external_policy.verifier_hints max_spec_bytes must be between 0 and 65536", group)
+	}
+	if cfg.MaxVersionLen < 0 || cfg.MaxVersionLen > 128 {
+		return fmt.Errorf("model group %s external_policy.verifier_hints max_version_len must be between 0 and 128", group)
+	}
+	for _, kind := range cfg.AllowedKinds {
+		normalized := strings.ToLower(strings.TrimSpace(kind))
+		if !externalPolicyVerifierKindAllowed(normalized) {
+			return fmt.Errorf("model group %s external_policy.verifier_hints allowed_kinds contains unsupported or executable kind %q", group, kind)
+		}
+	}
+	return nil
+}
+
+func externalPolicyVerifierKindAllowed(kind string) bool {
+	switch kind {
+	case "none", "exact", "regex", "json_schema":
+		return true
+	default:
+		return false
+	}
+}
+
+func defaultExternalPolicyFeedbackURL(policyURL string) string {
+	u, err := url.Parse(strings.TrimSpace(policyURL))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	path := strings.TrimSuffix(u.Path, "/")
+	if strings.HasSuffix(path, "/route") {
+		path = strings.TrimSuffix(path, "/route") + "/feedback"
+	} else if path == "" {
+		path = "/feedback"
+	} else {
+		path = path + "/feedback"
+	}
+	u.Path = path
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
 }
 
 var targetRegionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,63}$`)
