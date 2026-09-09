@@ -97,6 +97,16 @@ Package rollback never runs a reverse migration. Use database restore whenever t
 
 ## Most Recent Upgrade Flow
 
+For v1.1.0, review the migration and streaming changes in the release notes.
+LRP is optional: install the separate locked Python/uv service from the release
+source archive and validate its bundle before configuring a deployment-defined
+staging group with `strategy: external`. Begin in shadow mode, compare the
+recommendation with the served target, and require representative quality, cost
+and latency evidence before enforcement. Roll back LRP by restoring the prior
+strategy or using external-policy baseline mode; preserve the previous validated
+bundle and configuration. See the [LRP guide](/docs/routing/learned-routing-policy)
+for authenticated service setup, deadline tuning and the worked scenario.
+
 For a docs-only package update:
 
 1. Read the current release note and verify it calls out no config, database, license, model-group, or caller API changes.
