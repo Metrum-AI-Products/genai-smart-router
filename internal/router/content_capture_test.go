@@ -10,9 +10,44 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestContentCaptureLocalKeyRoundTrip(t *testing.T) {
+// CK-1: capture enabled without local key material fails closed with a non-secret error.
+func TestContentCaptureCK1MissingLocalKeyFailsClosed(t *testing.T) {
+	t.Setenv("CONTENT_CAPTURE_LOCAL_KEY", "")
+	t.Setenv("CONTENT_CAPTURE_KMS_KEY", "")
+	// Ambiguous provider/router env names must not satisfy content-store key loading.
+	t.Setenv("ROUTER_TOKEN", strings.Repeat("11", 32))
+	t.Setenv("OPENAI_API_KEY", strings.Repeat("22", 32))
+	t.Setenv("ANTHROPIC_API_KEY", strings.Repeat("33", 32))
+
+	_, err := envContentCaptureKeyResolver{}.ResolveContentCaptureKey("any-id")
+	if err == nil {
+		t.Fatal("ResolveContentCaptureKey() accepted missing content-capture key material")
+	}
+	if !strings.Contains(err.Error(), "CONTENT_CAPTURE_LOCAL_KEY is required") {
+		t.Fatalf("error=%v, want non-secret missing-key message", err)
+	}
+	msg := err.Error()
+	if strings.Contains(msg, strings.Repeat("11", 8)) || strings.Contains(msg, "ROUTER_TOKEN") || strings.Contains(msg, "OPENAI_API_KEY") {
+		t.Fatalf("error leaked key material or ambiguous env names: %v", err)
+	}
+}
+
+// CK-2: invalid key length/encoding is rejected with a non-secret error.
+func TestContentCaptureCK2InvalidLocalKeyFailsClosed(t *testing.T) {
+	t.Setenv("CONTENT_CAPTURE_LOCAL_KEY", "not-32-bytes")
+	t.Setenv("CONTENT_CAPTURE_KMS_KEY", "")
+	_, err := envContentCaptureKeyResolver{}.ResolveContentCaptureKey("any-id")
+	if err == nil {
+		t.Fatal("ResolveContentCaptureKey() accepted invalid key material")
+	}
+	if !strings.Contains(err.Error(), "CONTENT_CAPTURE_LOCAL_KEY must be 32-byte hex or base64") {
+		t.Fatalf("error=%v, want non-secret invalid-key message", err)
+	}
+}
+
+// CK-3: encrypt/decrypt round-trip with a test-only 32-byte key from process env.
+func TestContentCaptureCK3LocalKeyRoundTrip(t *testing.T) {
 	const localKeyID = "test-local-key"
-	// Test-only 32-byte key material supplied through process env (64 hex chars).
 	t.Setenv("CONTENT_CAPTURE_LOCAL_KEY", strings.Repeat("ab", 32))
 	t.Setenv("CONTENT_CAPTURE_KMS_KEY", "")
 
@@ -45,58 +80,8 @@ func TestContentCaptureLocalKeyRoundTrip(t *testing.T) {
 	}
 }
 
-func TestContentCaptureLocalKeyMissingFailsClosed(t *testing.T) {
-	t.Setenv("CONTENT_CAPTURE_LOCAL_KEY", "")
-	t.Setenv("CONTENT_CAPTURE_KMS_KEY", "")
-	_, err := envContentCaptureKeyResolver{}.ResolveContentCaptureKey("any-id")
-	if err == nil {
-		t.Fatal("ResolveContentCaptureKey() accepted missing key material")
-	}
-	if !strings.Contains(err.Error(), "CONTENT_CAPTURE_LOCAL_KEY is required") {
-		t.Fatalf("error=%v, want non-secret missing-key message", err)
-	}
-	msg := err.Error()
-	if strings.Contains(msg, strings.Repeat("ab", 8)) || strings.Contains(msg, "governed capture plaintext") {
-		t.Fatalf("error leaked key or content material: %v", err)
-	}
-}
-
-func TestContentCaptureLocalKeyInvalidFailsClosed(t *testing.T) {
-	t.Setenv("CONTENT_CAPTURE_LOCAL_KEY", "not-32-bytes")
-	t.Setenv("CONTENT_CAPTURE_KMS_KEY", "")
-	_, err := envContentCaptureKeyResolver{}.ResolveContentCaptureKey("any-id")
-	if err == nil {
-		t.Fatal("ResolveContentCaptureKey() accepted invalid key material")
-	}
-	if !strings.Contains(err.Error(), "CONTENT_CAPTURE_LOCAL_KEY must be 32-byte hex or base64") {
-		t.Fatalf("error=%v, want non-secret invalid-key message", err)
-	}
-}
-
-func TestContentCaptureLocalKeyEmptyIDFailsClosed(t *testing.T) {
-	t.Setenv("CONTENT_CAPTURE_LOCAL_KEY", strings.Repeat("cd", 32))
-	_, err := envContentCaptureKeyResolver{}.ResolveContentCaptureKey("  ")
-	if err == nil {
-		t.Fatal("ResolveContentCaptureKey() accepted empty local key id")
-	}
-	if !strings.Contains(err.Error(), "local key id is required") {
-		t.Fatalf("error=%v, want local key id required", err)
-	}
-}
-
-func TestContentCaptureDeprecatedKMSEnvAlias(t *testing.T) {
-	t.Setenv("CONTENT_CAPTURE_LOCAL_KEY", "")
-	t.Setenv("CONTENT_CAPTURE_KMS_KEY", strings.Repeat("ef", 32))
-	key, err := envContentCaptureKeyResolver{}.ResolveContentCaptureKey("legacy-id")
-	if err != nil {
-		t.Fatalf("ResolveContentCaptureKey() error=%v", err)
-	}
-	if len(key) != 32 {
-		t.Fatalf("key length=%d, want 32", len(key))
-	}
-}
-
-func TestContentCaptureEncryptionYAMLLocalKeyAndDeprecatedAlias(t *testing.T) {
+// CK-4: YAML loads local_key_id; deprecated kms_key_id remains a rollout alias only.
+func TestContentCaptureCK4YAMLLoadsLocalKeyID(t *testing.T) {
 	var current ContentCaptureEncryptionConfig
 	if err := yaml.Unmarshal([]byte("enabled: true\nlocal_key_id: current-id\n"), &current); err != nil {
 		t.Fatalf("Unmarshal current error=%v", err)
@@ -119,5 +104,29 @@ func TestContentCaptureEncryptionYAMLLocalKeyAndDeprecatedAlias(t *testing.T) {
 	}
 	if preferLocal.LocalKeyID != "preferred" {
 		t.Fatalf("preferLocal LocalKeyID=%q, want preferred", preferLocal.LocalKeyID)
+	}
+}
+
+// CK-5 companion: empty local key id fails closed even when key material is present.
+func TestContentCaptureCK5EmptyLocalKeyIDFailsClosed(t *testing.T) {
+	t.Setenv("CONTENT_CAPTURE_LOCAL_KEY", strings.Repeat("cd", 32))
+	_, err := envContentCaptureKeyResolver{}.ResolveContentCaptureKey("  ")
+	if err == nil {
+		t.Fatal("ResolveContentCaptureKey() accepted empty local key id")
+	}
+	if !strings.Contains(err.Error(), "local key id is required") {
+		t.Fatalf("error=%v, want local key id required", err)
+	}
+}
+
+func TestContentCaptureDeprecatedKMSEnvAlias(t *testing.T) {
+	t.Setenv("CONTENT_CAPTURE_LOCAL_KEY", "")
+	t.Setenv("CONTENT_CAPTURE_KMS_KEY", strings.Repeat("ef", 32))
+	key, err := envContentCaptureKeyResolver{}.ResolveContentCaptureKey("legacy-id")
+	if err != nil {
+		t.Fatalf("ResolveContentCaptureKey() error=%v", err)
+	}
+	if len(key) != 32 {
+		t.Fatalf("key length=%d, want 32", len(key))
 	}
 }
