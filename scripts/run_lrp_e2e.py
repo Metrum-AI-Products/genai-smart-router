@@ -372,6 +372,11 @@ def execute(args: argparse.Namespace, checks: list[dict[str, Any]]) -> dict[str,
                                     {"Authorization": "Bearer " + token})
             return status, body, rid, telemetry(db, rid)
 
+        def label_kind(label: str, *prefixes: str) -> bool:
+            """Match legacy exact classLabels or Wave-2 bounded lrp:<kind>… labels (#36)."""
+            value = str(label or "")
+            return any(value == prefix or value.startswith(prefix + ":") for prefix in prefixes)
+
         def record(case: str, passed: bool, **scalars: Any) -> None:
             checks.append({"case": case, "passed": bool(passed), **scalars})
             print(json.dumps(checks[-1], allow_nan=False), flush=True)
@@ -382,10 +387,10 @@ def execute(args: argparse.Namespace, checks: list[dict[str, Any]]) -> dict[str,
 
         status, _, rid, event = chat()
         record("E01", status == 200 and model_for(rid) == cheap["model"] and
-               event["class_label"] == "lrp:cheapest-above-floor", http_status=status)
+               label_kind(event["class_label"], "lrp:caf", "lrp:cheapest-above-floor"), http_status=status)
         status, _, rid, event = chat(text=LONG)
         record("E02", status == 200 and model_for(rid) == strong["model"] and
-               event["class_label"] == "lrp:cheapest-above-floor", http_status=status)
+               label_kind(event["class_label"], "lrp:caf", "lrp:cheapest-above-floor"), http_status=status)
         for case, group in (("E03", GROUPS[3]), ("E05", GROUPS[5])):
             before = len(upstream.calls)
             status, body, _, event = chat(group)
@@ -415,7 +420,7 @@ def execute(args: argparse.Namespace, checks: list[dict[str, Any]]) -> dict[str,
         status, _, rid, event = chat(GROUPS[2], messages=[{"role": "user", "content": SHORT},
                                   {"role": "assistant", "content": "4"}, {"role": "user", "content": LONG}])
         record("E08", first_status == status == 200 and model_for(first_rid) == model_for(rid) == cheap["model"]
-               and event["class_label"] == "lrp:pinned", http_status=status)
+               and label_kind(event["class_label"], "lrp:pinned"), http_status=status)
         status, _, rid, event = chat(GROUPS[6], text=LONG)
         recommended = rows(db, "SELECT c.provider, c.model FROM request_routing_signals s "
                            "JOIN request_target_candidates c ON c.request_id = s.request_id "
@@ -454,7 +459,7 @@ def execute(args: argparse.Namespace, checks: list[dict[str, Any]]) -> dict[str,
         valid = True
         for index in range(args.requests):
             status, _, rid, event = chat(text=SHORT if index % 2 == 0 else LONG)
-            valid &= status == 200 and event["outcome"] == "selected" and event["class_label"] == "lrp:cheapest-above-floor"
+            valid &= status == 200 and event["outcome"] == "selected" and label_kind(event["class_label"], "lrp:caf", "lrp:cheapest-above-floor")
             measured_ids.add(rid)
             durations.append(float(event["duration_ms"]))
             if (index + 1) % 100 == 0:
