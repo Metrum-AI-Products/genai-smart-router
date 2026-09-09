@@ -155,6 +155,49 @@ func TestAnthropicPassthroughPreservesImageAndText(t *testing.T) {
 	}
 }
 
+func TestAnthropicPassthroughPreservesFirstTurnTools(t *testing.T) {
+	// AF-6: first-turn tools survive encodeAnthropicPassthrough.
+	// SSE tool_use streaming remains covered by TestAnthropicToolPassthroughPreservesToolsAndStreamsToolUse.
+	req, err := decodeRequest("anthropic", []byte(`{
+		"model": "claude-tools-smoke",
+		"max_tokens": 128,
+		"stream": true,
+		"messages": [{"role": "user", "content": "list files"}],
+		"tools": [{"name": "Bash", "description": "run shell", "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}}}],
+		"tool_choice": {"type": "auto"}
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := encodeAnthropicPassthrough("claude-upstream", req, Target{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	tools, ok := body["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("tools=%#v, want one preserved tool", body["tools"])
+	}
+	tool := tools[0].(map[string]any)
+	if tool["name"] != "Bash" {
+		t.Fatalf("tool name=%#v, want Bash", tool["name"])
+	}
+	schema, ok := tool["input_schema"].(map[string]any)
+	if !ok || schema["type"] != "object" {
+		t.Fatalf("input_schema lost: %#v", tool["input_schema"])
+	}
+	if body["stream"] != false {
+		t.Fatalf("stream=%#v, want false for unary upstream", body["stream"])
+	}
+	msgs, ok := body["messages"].([]any)
+	if !ok || len(msgs) != 1 {
+		t.Fatalf("messages=%#v, want single user turn", body["messages"])
+	}
+}
+
 func TestAnthropicPassthroughInjectsDefaultThinkingWhenRawLacksIt(t *testing.T) {
 	// AF-7: thinking default injection still works when Raw lacks thinking.
 	req, err := decodeRequest("anthropic", []byte(`{
@@ -185,8 +228,35 @@ func TestAnthropicPassthroughInjectsDefaultThinkingWhenRawLacksIt(t *testing.T) 
 	}
 }
 
+func TestTranslatedEncodeUpstreamForwardsStop(t *testing.T) {
+	// AF-8: openai-chat translated encodeUpstream sets stop from req.Stop.
+	req, err := decodeRequest("openai-chat", []byte(`{
+		"model": "default",
+		"stop": ["###", "END"],
+		"messages": [{"role": "user", "content": "hi"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(req.Stop, []string{"###", "END"}) {
+		t.Fatalf("Stop=%#v, want [### END]", req.Stop)
+	}
+	raw, err := encodeUpstream("openai-chat", "chat-model", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := body["stop"].([]any)
+	if !ok || len(got) != 2 || got[0] != "###" || got[1] != "END" {
+		t.Fatalf("stop=%#v, want [### END]", body["stop"])
+	}
+}
+
 func TestTranslatedEncodeUpstreamForwardsStopSequences(t *testing.T) {
-	// AF-8: anthropic translated encodeUpstream sets stop_sequences from req.Stop.
+	// AF-9: anthropic translated encodeUpstream sets stop_sequences from req.Stop.
 	req, err := decodeRequest("anthropic", []byte(`{
 		"model": "default",
 		"max_tokens": 32,
@@ -210,33 +280,6 @@ func TestTranslatedEncodeUpstreamForwardsStopSequences(t *testing.T) {
 	got, ok := body["stop_sequences"].([]any)
 	if !ok || len(got) != 2 || got[0] != "END" || got[1] != "STOP" {
 		t.Fatalf("stop_sequences=%#v, want [END STOP]", body["stop_sequences"])
-	}
-}
-
-func TestTranslatedEncodeUpstreamForwardsStop(t *testing.T) {
-	// AF-9: openai-chat translated encodeUpstream sets stop from req.Stop.
-	req, err := decodeRequest("openai-chat", []byte(`{
-		"model": "default",
-		"stop": ["###", "END"],
-		"messages": [{"role": "user", "content": "hi"}]
-	}`), http.Header{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(req.Stop, []string{"###", "END"}) {
-		t.Fatalf("Stop=%#v, want [### END]", req.Stop)
-	}
-	raw, err := encodeUpstream("openai-chat", "chat-model", req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var body map[string]any
-	if err := json.Unmarshal(raw, &body); err != nil {
-		t.Fatal(err)
-	}
-	got, ok := body["stop"].([]any)
-	if !ok || len(got) != 2 || got[0] != "###" || got[1] != "END" {
-		t.Fatalf("stop=%#v, want [### END]", body["stop"])
 	}
 }
 
@@ -308,5 +351,62 @@ func TestChatAndResponsesPassthroughForwardRawStop(t *testing.T) {
 	responsesStop, ok := responsesBody["stop"].([]any)
 	if !ok || len(responsesStop) != 1 || responsesStop[0] != "END" {
 		t.Fatalf("responses passthrough stop=%#v", responsesBody["stop"])
+	}
+}
+
+func TestCacheKeyHashesDecodedStop(t *testing.T) {
+	// AF-11: cache key still hashes req.Stop when stop is decoded.
+	withStop, err := decodeRequest("openai-chat", []byte(`{
+		"model": "default",
+		"temperature": 0,
+		"stop": ["END"],
+		"messages": [{"role": "user", "content": "hi"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutStop, err := decodeRequest("openai-chat", []byte(`{
+		"model": "default",
+		"temperature": 0,
+		"messages": [{"role": "user", "content": "hi"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(withStop.Stop, []string{"END"}) {
+		t.Fatalf("decoded Stop=%#v, want [END]", withStop.Stop)
+	}
+	if len(withoutStop.Stop) != 0 {
+		t.Fatalf("decoded Stop without field=%#v, want empty", withoutStop.Stop)
+	}
+	target := Target{Provider: "mock", Model: "chat-model"}
+	withKey := cacheKey(withStop, target)
+	withoutKey := cacheKey(withoutStop, target)
+	if withKey == withoutKey {
+		t.Fatalf("cache key ignored decoded stop: %s", withKey)
+	}
+
+	otherStop, err := decodeRequest("anthropic", []byte(`{
+		"model": "default",
+		"max_tokens": 32,
+		"temperature": 0,
+		"stop_sequences": ["STOP"],
+		"messages": [{"role": "user", "content": "hi"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	samePromptNoStop, err := decodeRequest("anthropic", []byte(`{
+		"model": "default",
+		"max_tokens": 32,
+		"temperature": 0,
+		"messages": [{"role": "user", "content": "hi"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	anthropicTarget := Target{Provider: "anthropic", Model: "claude"}
+	if cacheKey(otherStop, anthropicTarget) == cacheKey(samePromptNoStop, anthropicTarget) {
+		t.Fatal("anthropic cache key ignored decoded stop_sequences")
 	}
 }
