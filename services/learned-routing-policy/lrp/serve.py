@@ -1,3 +1,6 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+
 """Authenticated policy service with bounded inference and atomic bundle reload."""
 
 from __future__ import annotations

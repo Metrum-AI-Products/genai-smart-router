@@ -1,3 +1,6 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+
 """Bounded, governed offline collection; router JSONL is metadata, never content."""
 
 from __future__ import annotations

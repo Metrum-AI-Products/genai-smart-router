@@ -1,3 +1,6 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+
 import concurrent.futures
 import json
 import time

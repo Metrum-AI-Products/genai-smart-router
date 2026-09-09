@@ -1,3 +1,6 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+
 # ruff: noqa: F811 -- pytest fixtures are imported from the owned training test module.
 import json
 

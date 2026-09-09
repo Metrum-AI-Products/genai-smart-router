@@ -1,3 +1,6 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+
 """Pure cheapest-above-floor selection. No content, credentials or I/O."""
 
 from __future__ import annotations

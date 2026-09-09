@@ -1,3 +1,6 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+
 """Offline training commands. Secrets are environment-only; errors omit input data."""
 
 from __future__ import annotations

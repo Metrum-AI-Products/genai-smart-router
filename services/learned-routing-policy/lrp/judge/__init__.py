@@ -1,3 +1,6 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+
 """Versioned, position-swapped judgments with content-bound protected caching."""
 
 from __future__ import annotations

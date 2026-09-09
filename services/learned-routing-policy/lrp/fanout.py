@@ -1,3 +1,6 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+
 """Protected, resumable OpenAI Chat replay with exact-model price evidence."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+
 """Bounded public contract; caller identifiers and unknown inventory are discarded."""
 
 from __future__ import annotations

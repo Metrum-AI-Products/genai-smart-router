@@ -1,3 +1,6 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+
 """Fail-closed verifier execution using a minimal operator-owned root filesystem."""
 
 from __future__ import annotations
