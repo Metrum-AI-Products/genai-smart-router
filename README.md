@@ -64,23 +64,28 @@ Current MVP capabilities:
 
 ## Quick Start From Source
 
-Prerequisites are Go as declared in `go.mod` and at least one upstream provider
-account for an end-to-end completion. Building, testing, starting the router,
-and browsing its health/docs surfaces require no private repository access.
+Hosted product docs: [docs.metrum.ai](https://docs.metrum.ai/docs/overview)
+(also served from a running router at `/docs/`).
+
+Prerequisites are Go as declared in `go.mod` and Python 3 for the local
+bootstrap. An OpenAI API key is enough for one Chat completion. Building and
+starting the router require no private repository access.
 
 ```bash
 git clone https://github.com/Metrum-AI-Products/genai-smart-router.git
 cd genai-smart-router
-cp config.example.yaml config.yaml
-cp env.example.json env.json
-go test ./...
-go run ./cmd/router --config config.yaml
+python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev
+# Set OPENAI_API_KEY in tmp/local-dev/env.json.
+go run ./cmd/router --config tmp/local-dev/config.yaml
 ```
 
-Add credentials only for providers you intend to activate, then generate a
-caller token and configure its generated hash/identity records as described in
-[Run From Source](#run-from-source). Confirm the caller's allowed groups with
-`GET /v1/models` before sending a completion.
+The bootstrap issues a local runtime `license.json` (SKU `oss-self-managed`)
+and a caller token file `tmp/local-dev/router.token`. It does not print secrets.
+Confirm `/readyz`, then `GET /v1/models` and one Chat request as in
+[Local Quickstart](docs-site/docs/getting-started/local-quickstart.md).
+
+`config.example.yaml` remains the full catalog reference. Do not copy it for a
+first local trial.
 
 For packaged installs, use the public [installation
 guide](docs-site/docs/installation/index.md). The documented deployment modes

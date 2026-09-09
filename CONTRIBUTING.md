@@ -42,3 +42,16 @@ right to submit it under the project's license, and that you understand the
 contribution and sign-off are public records.
 
 Keep each commit's sign-off intact when rebasing, squashing, or amending work.
+
+## Development
+
+```bash
+python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev
+go test ./cmd/... ./internal/...
+python3 scripts/local_dev_bootstrap_test.py
+rtk make docs-qa
+```
+
+Learned Routing Policy tests (Python, uv): `make lrp-test`. Do not commit
+`tmp/local-dev`, `env.json`, `license.json`, or `license.key`.
+

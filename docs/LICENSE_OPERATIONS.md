@@ -11,6 +11,11 @@ entitlement record, payment record, or hosted dependency is required.
 - The public key is safe to mount with `license.json` in the runtime Secret.
 - Back up the private key. Loss requires a trust rotation: new pair, replacement license, and replacement public key.
 
+Public copy-paste `generate-keypair` and `issue` flags are in
+[Self-Managed Licensing](../docs-site/docs/licensing/index.md). A laptop trial
+uses `python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev` and
+`docs/entitlement.local-dev.example.json`.
+
 ## Automated deployment
 
 Use `scripts/helm_install_with_license.sh`. It creates a keypair on first use, issues a time-bounded license, atomically refreshes the runtime Secret, and runs Helm. Only `license.json` and `license.pub` are uploaded to Kubernetes.

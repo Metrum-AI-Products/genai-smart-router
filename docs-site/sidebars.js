@@ -10,6 +10,7 @@ const sidebars = {
       label: "Tutorials",
       collapsed: false,
       items: [
+        "getting-started/local-quickstart",
         "getting-started/hosted-quickstart",
         "getting-started/codex-cli",
         "getting-started/claude-code-cli",
@@ -35,6 +36,7 @@ const sidebars = {
         "configuration/routing-typescript",
         "configuration/external-routing-policy",
         "configuration/external-policy-context",
+        "routing/lrp-train-and-serve",
         "routing/lrp-signed-bundles",
         "routing/lrp-selection-constraints",
         "routing/lrp-uncertainty",
@@ -78,7 +80,7 @@ const sidebars = {
     {
       type: "category",
       label: "Explanation",
-      collapsed: false,
+      collapsed: true,
       items: [
         "concepts",
         "routing/strategy-decision-tree",

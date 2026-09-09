@@ -1,0 +1,15 @@
+{
+  "customer_id": "cust_example_local_dev",
+  "customer_name": "Example Local Development",
+  "sku": "oss-self-managed",
+  "features": {},
+  "limits": {},
+  "deployment": {
+    "mode": "self_managed",
+    "instance_fingerprint_required": false
+  },
+  "signing": {
+    "key_id": "self-managed"
+  },
+  "notes": "Checked-in local/dev entitlement example. Operators generate their own Ed25519 keypair and issue license.json. Not a customer payload and not a copyright license."
+}

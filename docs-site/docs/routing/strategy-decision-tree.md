@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Routing Strategy Decision Tree
 
-Use this page as the single starting point for choosing a model-group routing strategy. A caller still requests one allowed model group from `/v1/models`; the strategy only chooses among eligible targets inside that group.
+Use this page as the single starting point for choosing a model-group routing strategy. A caller still requests one allowed model group from `/v1/models`; the strategy only chooses among eligible targets inside that group. For training and deploying the optional learned policy service, see [Train And Serve Learned Routing Policy](./lrp-train-and-serve).
 
 ```mermaid
 flowchart TD

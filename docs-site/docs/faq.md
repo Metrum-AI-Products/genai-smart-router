@@ -9,6 +9,11 @@ These short answers route integrators to the canonical documentation page.
 
 ## First Setup
 
+### How do I run the router locally from source?
+
+Use [Local Quickstart](./getting-started/local-quickstart) and
+`python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev`.
+
 ### Which base URL should my client use?
 
 Use the router deployment URL, not a direct provider URL. Start with [API Quickstart](./getting-started/hosted-quickstart) and [API Compatibility](./reference/api-compatibility).

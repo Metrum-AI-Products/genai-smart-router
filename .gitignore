@@ -25,6 +25,12 @@ ROUTER_TOKEN*.txt
 CHETAN_ROUTERKEY.env
 license.json
 **/license.json
+license.key
+**/license.key
+license.pub
+**/license.pub
+router.token
+**/router.token
 license-state.json
 **/license-state.json
 *license-state*.json

@@ -18,9 +18,11 @@ only the license plus verification public key into the router.
 
 The Kubernetes wrapper `scripts/helm_install_with_license.sh` automates local
 key generation, issuance, Secret refresh, and Helm install/upgrade. For other
-deployment shapes, use the packaged license CLI and configure
-`server.license.path`, `state_path`, and `public_keys` according to the shipped
-sample config.
+deployment shapes, use the packaged license CLI. Copy-paste
+`generate-keypair` and `issue` commands are on
+[Self-Managed Licensing](../licensing/). Configure `server.license.path`,
+`state_path`, and `public_keys` as in the sample or
+`config.minimal.example.yaml`.
 
 ## Renew, Rotate, And Recover
 
