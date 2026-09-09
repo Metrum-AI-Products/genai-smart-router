@@ -9473,7 +9473,7 @@ func TestContentCaptureResponseStoresPreRestorePIIPlaceholders(t *testing.T) {
 	}
 	defer svc.Close()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"Email jane.doe@example.com"}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","temperature":0,"messages":[{"role":"user","content":"Email jane.doe@example.com"}]}`))
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rr := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(rr, req)
@@ -9495,7 +9495,7 @@ func TestContentCaptureResponseStoresPreRestorePIIPlaceholders(t *testing.T) {
 		t.Fatalf("response capture missing placeholder after decrypt: %s", plaintext)
 	}
 
-	cacheReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"Email jane.alt@example.com"}]}`))
+	cacheReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","temperature":0,"messages":[{"role":"user","content":"Email jane.alt@example.com"}]}`))
 	cacheReq.Header.Set("Authorization", "Bearer "+testToken)
 	cacheRR := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(cacheRR, cacheReq)
