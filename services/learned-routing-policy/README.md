@@ -34,3 +34,6 @@ Dataset content, responses, judgments, embeddings and bundles are operator-owned
 protected artifacts. Commit only small explicitly synthetic fixtures.
 Optional [operator-signed bundles](../../docs/LRP_SIGNED_BUNDLES.md) add Ed25519
 manifest signatures and require-signed loading with operator-owned keys.
+[Selection constraints](../../docs/LRP_SELECTION_CONSTRAINTS.md) cover
+per-project floors, upstream latency gates, evidence-based cache cost estimates,
+and bounded explanation labels.

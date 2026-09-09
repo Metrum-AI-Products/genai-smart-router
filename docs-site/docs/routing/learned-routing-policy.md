@@ -195,6 +195,10 @@ Operators may optionally require Ed25519-signed model bundles before load or
 reload. Signing is deployment-owned and transparent to callers; see
 [Operator-signed LRP bundles](lrp-signed-bundles.md).
 
+Optional selection constraints (project floors, upstream latency gates,
+evidence-based cache estimates, and bounded labels) are described for callers in
+[LRP selection constraints](lrp-selection-constraints.md).
+
 Deploy the service over loopback in the router's network namespace, such as a
 sidecar in the same pod. A separate private service on a custom port does not
 satisfy the router's current egress rules. Policy requests are authenticated;
