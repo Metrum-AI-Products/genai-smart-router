@@ -231,7 +231,7 @@ Save the printed `token` value as the caller's bearer token, add the owner to `u
 
 Provider keys are read from `env.json` in this project before `${VAR}` references in `config.yaml` are expanded. Real `env.json` is gitignored; use `env.example.json` as the placeholder-only template. Do not paste production or personal provider keys into tracked examples; store real values in ignored `env.json`, the shell environment, or your deployment secret manager. Run `make secret-check` before publishing changes that touch tracked env examples.
 
-Stripe, commerce admin, and Fleet bootstrap secrets belong in ignored `commerce.env.json` (see `commerce.env.example.json` and `docs/COMMERCE_STRIPE.md`). Restic/backup and the work-dashboard port belong in ignored `ops.env.json` (see `ops.env.example.json`). Do not mix those into instance `env.json`; every deployment uses the same provider-only shape for instance secrets. Copy the example files locally (`cp commerce.env.example.json commerce.env.json`, same for ops) and fill values; never commit the ignored runtime files.
+Stripe, commerce admin, and Fleet bootstrap secrets belong in ignored `commerce.env.json` (see `commerce.env.example.json` and `docs/COMMERCE_STRIPE.md`). Restic/backup secrets belong in ignored `ops.env.json` (see `ops.env.example.json`). Do not mix those into instance `env.json`; every deployment uses the same provider-only shape for instance secrets. Copy the example files locally (`cp commerce.env.example.json commerce.env.json`, same for ops) and fill values; never commit the ignored runtime files.
 
 ```bash
 go run ./cmd/router --config config.yaml

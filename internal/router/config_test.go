@@ -86,7 +86,7 @@ func TestEnvExampleContainsOnlySafePlaceholders(t *testing.T) {
 
 	liveSecretRe := regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{16,}|sk-or-v1-[A-Za-z0-9_-]{16,}|xai-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9_]{16,}|[A-Za-z0-9_-]{32,})`)
 	for name, value := range values {
-		if strings.HasPrefix(name, "STRIPE_") || strings.HasPrefix(name, "RESTIC_") || strings.HasPrefix(name, "BACKUP_") || name == "WORK_ITEMS_DASHBOARD_PORT" || strings.HasPrefix(name, "COMMERCE_") {
+		if strings.HasPrefix(name, "STRIPE_") || strings.HasPrefix(name, "RESTIC_") || strings.HasPrefix(name, "BACKUP_") || strings.HasPrefix(name, "COMMERCE_") {
 			t.Fatalf("env.example.json must remain instance-only; move %s to commerce.env.example.json or ops.env.example.json", name)
 		}
 		if strings.HasSuffix(name, "_API_KEY") && value != "" {
