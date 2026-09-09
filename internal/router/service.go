@@ -141,7 +141,7 @@ func New(cfg *Config) (*Service, error) {
 	}
 	contentCaptureKeys := contentCaptureKeyResolver(envContentCaptureKeyResolver{})
 	if cfg.contentCaptureEnabled() {
-		if _, err := contentCaptureKeys.ResolveContentCaptureKey(configuredContentCaptureKMSKeyID(cfg)); err != nil {
+		if _, err := contentCaptureKeys.ResolveContentCaptureKey(configuredContentCaptureLocalKeyID(cfg)); err != nil {
 			return nil, fmt.Errorf("initialize content capture encryption: %w", err)
 		}
 	}

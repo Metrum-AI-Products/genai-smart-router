@@ -101,7 +101,7 @@ server:
         max_capture_bytes: 0
         encryption:
             enabled: false
-            kms_key_id: ""
+            local_key_id: ""
     retention:
         enabled: false
         dry_run: null
@@ -846,7 +846,7 @@ models:
             max_capture_bytes: 0
             encryption:
                 enabled: false
-                kms_key_id: ""
+                local_key_id: ""
         attempt_timeout_ms: 0
         targets:
             - provider: local-vllm-chat
@@ -1123,7 +1123,7 @@ models:
             max_capture_bytes: 0
             encryption:
                 enabled: false
-                kms_key_id: ""
+                local_key_id: ""
         attempt_timeout_ms: 0
         targets:
             - provider: local-vllm-coder
@@ -1400,7 +1400,7 @@ models:
             max_capture_bytes: 0
             encryption:
                 enabled: false
-                kms_key_id: ""
+                local_key_id: ""
         attempt_timeout_ms: 0
         targets:
             - provider: local-vllm-tiny
@@ -1592,7 +1592,7 @@ callers:
         max_capture_bytes: 0
         encryption:
             enabled: false
-            kms_key_id: ""
+            local_key_id: ""
       rate:
         rpm: 60
         tpm: 100000

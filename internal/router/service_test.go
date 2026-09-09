@@ -9218,7 +9218,7 @@ func TestContentCaptureResponseStoresPreRestorePIIPlaceholders(t *testing.T) {
 	if err := svc.usage.db.Where("request_id = ? AND scope = ?", rr.Header().Get("X-Request-Id"), contentCaptureScopeResponse).First(&row).Error; err != nil {
 		t.Fatal(err)
 	}
-	plaintext := testContentCapturePlaintext(t, row.ContentText, row.EncryptionNonce, row.EncryptionKMSKeyID)
+	plaintext := testContentCapturePlaintext(t, row.ContentText, row.EncryptionNonce, row.EncryptionLocalKeyID)
 	if strings.Contains(row.ContentText, "jane.doe@example.com") || strings.Contains(plaintext, "jane.doe@example.com") {
 		t.Fatalf("response capture stored restored PII: %s", row.ContentText)
 	}
@@ -9243,7 +9243,7 @@ func TestContentCaptureResponseStoresPreRestorePIIPlaceholders(t *testing.T) {
 	if err := svc.usage.db.Where("request_id = ? AND scope = ?", cacheRR.Header().Get("X-Request-Id"), contentCaptureScopeResponse).First(&cachedRow).Error; err != nil {
 		t.Fatal(err)
 	}
-	cachedPlaintext := testContentCapturePlaintext(t, cachedRow.ContentText, cachedRow.EncryptionNonce, cachedRow.EncryptionKMSKeyID)
+	cachedPlaintext := testContentCapturePlaintext(t, cachedRow.ContentText, cachedRow.EncryptionNonce, cachedRow.EncryptionLocalKeyID)
 	if strings.Contains(cachedRow.ContentText, "jane.alt@example.com") || strings.Contains(cachedPlaintext, "jane.alt@example.com") {
 		t.Fatalf("cached response capture stored restored PII: %s", cachedRow.ContentText)
 	}
@@ -13281,17 +13281,17 @@ func TestOmittedModelWithoutConfiguredDefaultReturnsMissingModel(t *testing.T) {
 
 func testContentCaptureEncryption(t *testing.T) ContentCaptureEncryptionConfig {
 	t.Helper()
-	t.Setenv("CONTENT_CAPTURE_KMS_KEY", strings.Repeat("11", 32))
-	return ContentCaptureEncryptionConfig{Enabled: true, KMSKeyID: "test-content-capture-key"}
+	t.Setenv("CONTENT_CAPTURE_LOCAL_KEY", strings.Repeat("11", 32))
+	return ContentCaptureEncryptionConfig{Enabled: true, LocalKeyID: "test-content-capture-key"}
 }
 
-func testContentCapturePlaintext(t *testing.T, ciphertext, nonce, kmsKeyID string) string {
+func testContentCapturePlaintext(t *testing.T, ciphertext, nonce, localKeyID string) string {
 	t.Helper()
 	key, err := hex.DecodeString(strings.Repeat("11", 32))
 	if err != nil {
 		t.Fatal(err)
 	}
-	plaintext, err := decryptContentCaptureValue(key, kmsKeyID, ciphertext, nonce)
+	plaintext, err := decryptContentCaptureValue(key, localKeyID, ciphertext, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -13299,6 +13299,7 @@ func testContentCapturePlaintext(t *testing.T, ciphertext, nonce, kmsKeyID strin
 }
 
 func TestContentCaptureEnabledRequiresKeyMaterialAtStartup(t *testing.T) {
+	t.Setenv("CONTENT_CAPTURE_LOCAL_KEY", "")
 	t.Setenv("CONTENT_CAPTURE_KMS_KEY", "")
 	dir := t.TempDir()
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
@@ -13306,12 +13307,12 @@ func TestContentCaptureEnabledRequiresKeyMaterialAtStartup(t *testing.T) {
 	cfg.Server.ContentCapture = ContentCaptureConfig{
 		Enabled:        true,
 		CaptureRequest: true,
-		Encryption:     ContentCaptureEncryptionConfig{Enabled: true, KMSKeyID: "missing-test-key"},
+		Encryption:     ContentCaptureEncryptionConfig{Enabled: true, LocalKeyID: "missing-test-key"},
 	}
 	if svc, err := New(cfg); err == nil {
 		svc.Close()
 		t.Fatal("New() accepted enabled content capture without key material")
-	} else if !strings.Contains(err.Error(), "CONTENT_CAPTURE_KMS_KEY is required") {
+	} else if !strings.Contains(err.Error(), "CONTENT_CAPTURE_LOCAL_KEY is required") {
 		t.Fatalf("New() error=%v", err)
 	}
 }
@@ -13435,8 +13436,8 @@ func TestContentCaptureStoresRedactedRequestResponseAndAllowedHeaders(t *testing
 		t.Fatalf("capture rows were not marked encrypted: %#v", rows)
 	}
 	joinedCiphertext := rows[0].ContentText + "\n" + rows[1].ContentText
-	joined := testContentCapturePlaintext(t, rows[0].ContentText, rows[0].EncryptionNonce, rows[0].EncryptionKMSKeyID) +
-		"\n" + testContentCapturePlaintext(t, rows[1].ContentText, rows[1].EncryptionNonce, rows[1].EncryptionKMSKeyID)
+	joined := testContentCapturePlaintext(t, rows[0].ContentText, rows[0].EncryptionNonce, rows[0].EncryptionLocalKeyID) +
+		"\n" + testContentCapturePlaintext(t, rows[1].ContentText, rows[1].EncryptionNonce, rows[1].EncryptionLocalKeyID)
 	for _, forbidden := range []string{testToken, cfg.Callers[0].TokenSHA256, "alice@example.com", "bob@example.com", "sk-test-secret", "rtr_should_not_store_secret", "do-not-store"} {
 		if strings.Contains(joinedCiphertext, forbidden) || strings.Contains(joined, forbidden) {
 			t.Fatalf("captured content leaked %q", forbidden)
@@ -13467,7 +13468,7 @@ func TestContentCaptureStoresRedactedRequestResponseAndAllowedHeaders(t *testing
 		if !h.Encrypted {
 			t.Fatalf("header was not encrypted: %#v", h)
 		}
-		headerText += h.Name + "=" + testContentCapturePlaintext(t, h.Value, h.EncryptionNonce, h.EncryptionKMSKeyID) + "\n"
+		headerText += h.Name + "=" + testContentCapturePlaintext(t, h.Value, h.EncryptionNonce, h.EncryptionLocalKeyID) + "\n"
 	}
 	if !strings.Contains(headerText, "User-Agent=capture-test") || !strings.Contains(headerText, "X-Trace-Id=trace-123") {
 		t.Fatalf("allowed headers not captured: %s", headerText)
@@ -13512,7 +13513,7 @@ func TestContentCaptureStoresSanitizedUpstreamError(t *testing.T) {
 	if row.SourceStatus != http.StatusBadGateway {
 		t.Fatalf("source status=%d", row.SourceStatus)
 	}
-	plaintext := testContentCapturePlaintext(t, row.ContentText, row.EncryptionNonce, row.EncryptionKMSKeyID)
+	plaintext := testContentCapturePlaintext(t, row.ContentText, row.EncryptionNonce, row.EncryptionLocalKeyID)
 	for _, forbidden := range []string{"sk-leaky-secret", "secret body"} {
 		if strings.Contains(row.ContentText, forbidden) || strings.Contains(plaintext, forbidden) {
 			t.Fatalf("upstream error capture leaked %q in %s", forbidden, row.ContentText)
