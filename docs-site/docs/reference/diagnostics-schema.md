@@ -488,6 +488,11 @@ This section is generated from the router usage and content-capture schema used 
 - Foreign keys: `request_id` joins `request_usage.request_id` when a usage row exists
 - Indexes: `idx_request_content_group`, `idx_request_content_request`, `idx_request_content_retention`, `idx_request_content_scope`, `idx_request_content_ts`, primary key
 
+`encryption_kms_key_id` is a **legacy column name**. It stores the deployment's
+local AES-256-GCM key id (`local_key_id` / material via
+`CONTENT_CAPTURE_LOCAL_KEY`). It does **not** imply AWS KMS, GCP KMS, or any
+cloud key-management service integration.
+
 | Column | Scalar type | Nullable | Populated when | Safe to log/share | Example or range |
 |---|---|---|---|---|---|
 | `id` | integer | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
@@ -505,7 +510,7 @@ This section is generated from the router usage and content-capture schema used 
 | `content_type` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
 | `content_text` | string | no | only when governed content capture is explicitly enabled | restricted; redacted and AES-256-GCM-encrypted governed content, not ordinary diagnostics | deployment-defined scalar value |
 | `encryption_nonce` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
-| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
+| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization; legacy name for local AES-256-GCM key id (`local_key_id` / `CONTENT_CAPTURE_LOCAL_KEY`), not cloud KMS | deployment-defined `local_key_id` scalar |
 | `encrypted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 | `content_bytes` | integer | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `0` or positive integer |
 | `truncated` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
@@ -533,7 +538,7 @@ This section is generated from the router usage and content-capture schema used 
 | `name` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
 | `value` | string | no | only when governed content capture is explicitly enabled | restricted; redacted and AES-256-GCM-encrypted governed content, not ordinary diagnostics | deployment-defined scalar value |
 | `encryption_nonce` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
-| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
+| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization; legacy name for local AES-256-GCM key id (`local_key_id` / `CONTENT_CAPTURE_LOCAL_KEY`), not cloud KMS | deployment-defined `local_key_id` scalar |
 | `encrypted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 | `redacted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 

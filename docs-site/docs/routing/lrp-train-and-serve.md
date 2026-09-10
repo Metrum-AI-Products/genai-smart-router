@@ -125,9 +125,12 @@ Holdout (113 requests, stored synthetic cost, billed coverage 0):
 | Always cheapest | 0.487 | 0.513 | 0.01518 |
 | Always anchor | 1.0 | 0 | 0.151829 |
 
-Learned matched the oracle on this **controlled** mix but saved only ~0.68% vs
-the expensive anchor, so `cost_vs_anchor` is **false** (need ≤ 0.60).
-`real_data_and_embedding` is also false. The bundle is **not promotable**.
+On this **controlled** synthetic holdout, learned matched the oracle but the
+cost delta versus the expensive anchor was only ~0.68% — far short of the
+promotion threshold (`cost_vs_anchor` requires ≤ 0.60 of anchor cost, so the
+gate is **false**). That figure is a failed-gate benchmark artifact, not a
+product or launch savings claim. `real_data_and_embedding` is also false. The
+bundle is **not promotable**.
 
 Worked inference (quality floor 0.8, `lrp:cheapest-above-floor`):
 
