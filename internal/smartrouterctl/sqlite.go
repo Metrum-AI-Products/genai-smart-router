@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/metrum-ai/router/internal/router"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"github.com/metrum-ai/router/internal/router"
 )
 
 // UsageBackupResult is a secret-free summary of a SQLite usage backup.

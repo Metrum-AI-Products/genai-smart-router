@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
 	"github.com/metrum-ai/router/internal/router"
+	"gopkg.in/yaml.v3"
 )
 
 // LoadConfigRaw reads router YAML without expanding environment expressions so
