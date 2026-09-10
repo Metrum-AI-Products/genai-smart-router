@@ -2121,6 +2121,8 @@ sendUpstream:
 		return nil, attempt, upstreamError{Class: "request_build_error", Message: err.Error(), Err: err}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	// Default outbound identity; provider.Headers User-Agent wins if set.
+	httpReq.Header.Set("User-Agent", "metrum-ai-router/"+buildinfo.Version)
 	for name, value := range provider.Headers {
 		httpReq.Header.Set(name, value)
 	}

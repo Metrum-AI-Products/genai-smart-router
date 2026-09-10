@@ -480,8 +480,6 @@ providers:
     api_key: ${CRUSOE_API_KEY}
     api_key_env: CRUSOE_API_KEY
     key_id: crusoe-default
-    headers:
-      User-Agent: smart-llmrouter
     models:
       gpt-oss-120b:
         model: openai/gpt-oss-120b
@@ -644,8 +642,6 @@ providers:
     api_key: ${FIREWORKS_API_KEY}
     api_key_env: FIREWORKS_API_KEY
     key_id: fireworks-default
-    headers:
-      User-Agent: smart-llmrouter
     models:
       gpt-oss-20b:
         model: accounts/fireworks/models/gpt-oss-20b
@@ -799,8 +795,6 @@ providers:
     api_key: ${FIREWORKS_API_KEY}
     api_key_env: FIREWORKS_API_KEY
     key_id: fireworks-responses-default
-    headers:
-      User-Agent: smart-llmrouter
     models:
       kimi-k2p7-code:
         model: accounts/fireworks/models/kimi-k2p7-code
@@ -864,8 +858,6 @@ providers:
     api_key: ${MINIMAX_API_KEY}
     api_key_env: MINIMAX_API_KEY
     key_id: minimax-responses-default
-    headers:
-      User-Agent: smart-llmrouter
     models:
       m3:
         model: MiniMax-M3
