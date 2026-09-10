@@ -9,7 +9,6 @@ This sanitized evidence record supports parent issue #961 and subissue #968 (rel
 - **2026-09-03 — `docs/DOCS_MAINTENANCE.md` (lines 47–66):** identifies the public release-notes and upgrade documentation as customer-safe material aligned with package/release scripts and internal operational sources. It defines the release-note workflow, required entry content, and prohibited sensitive content.
 - **2026-09-03 — `docs-site/docs/release-notes/index.md` (lines 8–15, 72–92):** describes the release-note purpose; identifies the documentation banner, releases index, and `/version` as the authoritative version/build-time sources; and defines validation and rollback expectations.
 - **2026-09-03 — `docs-site/docs/release-notes/upgrade-guide.md` (lines 8–24, 61–107):** assigns maintenance-window, approval, and rollback policy to the deployment operator; specifies pre-upgrade backup and migration-gate expectations; and defines post-upgrade validation and rollback steps.
-- **2026-09-03 — `AGENTS.md` (Google Workspace Announcements section, lines 441–447):** requires concise, caller-focused Google Workspace announcements for production rollouts and externally visible changes, with sensitive material excluded. It permits retaining only a non-secret message identifier and short summary after posting.
 - **2026-09-03 — supplied Google tracker/diagram reference:** anonymous access returned HTTP 401. No private Google content was accessed or retained.
 
 ## Demonstrated facts
@@ -18,12 +17,10 @@ This sanitized evidence record supports parent issue #961 and subissue #968 (rel
 - Public release notes are required to include available version/date/build information, applicable operational and caller-visible changes, validation evidence, and rollback guidance; they must exclude credentials, protected configuration, private signing details, customer-specific license data, and internal source-control workflow details.
 - The packaged documentation banner, releases index, and `/version` are the documented authoritative sources for the exact running router version and build timestamp; documentation dates alone are not sufficient.
 - The upgrade process requires an operator-defined maintenance window, approval process, and rollback policy, along with backups, migration gating where applicable, readiness/model/API validation, and rollback validation.
-- The repository process calls for Google Workspace announcements for production rollouts, newly supported functionality, externally visible behavior changes, and important validation results. Announcement content is constrained to safe, caller-focused details.
 
 ## Evidence gaps and compliance-owner handoff
 
 - No repository-visible approval ticket, change advisory record, release calendar entry, or signed deployment authorization establishes that a specific release passed organizational approval. The **change-management/control owner** should provide the approved change record, approver identity/role, implementation window, risk assessment, and closure decision through the governed system of record.
-- No repository-visible release announcement artifact establishes the audience, delivery time, message content, or acknowledgment for a specific rollout. The **communications/change-management owner** should provide a sanitized announcement export or non-secret message reference with audience, timestamp, release/change reference, and delivery status.
 - The supplied externally held Google tracker/diagram could not be inspected because anonymous access returned HTTP 401. The **Google Workspace artifact owner** should provide a sanitized export, access-controlled review, or a non-secret immutable reference and its access decision; do not place the diagram or private Google content in this record.
 - No standalone repository changelog was located during collection. The **release owner** should identify the authoritative changelog or release registry, if one exists outside the repository, and preserve a sanitized version/date/change reference.
 
