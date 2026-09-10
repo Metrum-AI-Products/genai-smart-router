@@ -99,7 +99,7 @@ func IssueLicenseFile(ctx context.Context, intent Intent, workDir string) (strin
 		"signing": map[string]string{
 			"key_id": intent.LicenseKeyID,
 		},
-		"notes": "issued by metrum-genai-customer-lifecycle after commerce entitlement",
+		"notes": "issued by metrum-genai-customer-lifecycle (payment out of band)",
 	}
 	if intent.LicenseKeyID == "" {
 		return "", fmt.Errorf("license_key_id is required for license issue")

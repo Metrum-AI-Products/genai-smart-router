@@ -61,8 +61,8 @@ contain `metrum-genai-smartrouterctl`, never `metrum-genai-smartrouter-fleetctl`
 Fleet lifecycle implementations and tests live under `internal/fleet`.
 Dependency-neutral license summaries and limits shared across boundaries live
 under `internal/licensecontract`. The serving command and request-path
-`internal/router` package must not import `internal/fleet` or
-`internal/commerce`; `internal/architecture/dependencies_test.go` enforces
+`internal/router` package must not import `internal/fleet`;
+`internal/architecture/dependencies_test.go` enforces
 that direction and confirms the Fleet CLI imports the Fleet package.
 
 Keep lifecycle adapters, Kubernetes/AWS clients, registry mutation, and Fleet

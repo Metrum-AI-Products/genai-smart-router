@@ -15,7 +15,6 @@
   "license_key_id": "REPLACE_WITH_RUNTIME_OR_SANDBOX_KEY_ID",
   "license_allow_unknown_runtime_key": false,
   "catalog": "docs/enterprise-license-skus.json",
-  "commerce_base_url": "http://127.0.0.1:8091",
   "byok_env_file": "/protected/acme/byok.env.json",
   "byok": {
     "provider": "openai",
@@ -23,7 +22,5 @@
     "model": "gpt-4o-mini"
   },
   "smoke_model": "default",
-  "token_out": "/protected/acme/CALLER_TOKEN.txt",
-  "success_url": "http://127.0.0.1:8091/success",
-  "cancel_url": "http://127.0.0.1:8091/cancel"
+  "token_out": "/protected/acme/CALLER_TOKEN.txt"
 }

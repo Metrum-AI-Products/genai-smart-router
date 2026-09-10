@@ -1,23 +1,21 @@
 # Customer Lifecycle CLI (`metrum-genai-customer-lifecycle`)
 
-Internal operator CLI that automates a **3-step customer onboard** from one JSON intent, then wraps day-2 Fleet verbs. It **composes** existing packaged binaries; it does **not** replace `#555` `metrum-genai-smartrouter-fleetctl`, and it does **not** put Stripe into the router.
+Internal operator CLI that automates a **customer onboard** from one JSON intent, then wraps day-2 Fleet verbs. It **composes** existing packaged binaries; it does **not** replace `#555` `metrum-genai-smartrouter-fleetctl`. Payment/checkout is **out of band** and is not performed by this CLI.
 
 Operators and production hosts **do not have source trees**. Acceptance and day-2 work must use release/package binaries only (for example under `dist/bin/` or a release tarball), with `PATH` and/or `METRUM_FLEET_BIN_DIR` pointing at that directory. Do not rely on `go run` or mid-flight `kubectl` secret/config patches.
 
 Related:
 
-- Purchase / entitlement: `#921`, [`COMMERCE_STRIPE.md`](COMMERCE_STRIPE.md)
 - Fleet mutation authority: `#555`, [`CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md`](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md)
-- Staging commerce Deploy remains `#929` (EKS commerce-pod). Local ShellFleet + this CLI is the operator acceptance path for sandbox paid onboard.
+- Package boundaries: [`ADR_FLEET_AND_CUSTOMER_CLI_BOUNDARIES.md`](ADR_FLEET_AND_CUSTOMER_CLI_BOUNDARIES.md)
 
 ## Ownership
 
 | Step | Binary / API | Notes |
 |---|---|---|
 | Collect / validate | `metrum-genai-customer-lifecycle` | Hostname + BYOK + fleet-eks durable path gates |
-| Pay | `metrum-genai-commerce` HTTP | Real Stripe Checkout is the pay gate; poll entitlement |
-| License | `metrum-genai-smartrouter-license` + SSM | Publish signed `license.json` to `license_ref` |
-| Provision | `metrum-genai-smartrouter-fleetctl customer bootstrap` | Explicit after paid+licensed |
+| License | `metrum-genai-smartrouter-license` + SSM | Publish signed `license.json` to `license_ref` (payment out of band) |
+| Provision | `metrum-genai-smartrouter-fleetctl customer bootstrap` | Explicit after licensed |
 | Status / smoke / update / delete | thin wrappers → fleetctl | Same refs as intent; update signs and redeploys |
 
 ## Packaged binaries
@@ -33,7 +31,6 @@ export PATH="${METRUM_FLEET_BIN_DIR}:${PATH}"
 #   metrum-genai-smartrouter-fleetctl
 #   metrum-genai-smartrouter-fleet-sign
 #   metrum-genai-smartrouter-license
-#   metrum-genai-commerce   # local pay gate only
 ```
 
 ## Intent JSON
@@ -46,7 +43,6 @@ Required fields:
 - `sku`, `customer_email`, `customer_alias`, `owner_user`, `project`
 - `profile_ref` (`aws-ssm:///…`), `license_ref` (`aws-ssm:///…`), `runtime_bundle_ref` (`aws-ssm:///…` or `aws-secretsmanager:///…`)
 - `config_file`, `sign_key` (Fleet lifecycle approval), `license_key`, `license_key_id`
-- `commerce_base_url`
 - **BYOK (required, fail-closed):**
   - `byok_env_file` — mode `0600` JSON of provider env vars (never committed)
   - `byok.provider`, `byok.api_key_env`, `byok.model`
@@ -61,20 +57,20 @@ Minimal instance config should route only the BYOK model (start from [`examples/
 - `server.diagnostics.retention_days` within the SKU `max_retention_days` (eval-72h is 7; the template sets 7 so readyz does not return `license-retention-limit-exceeded`)
 - `providers.<byok>.api_key: ${<api_key_env>}` plus matching `api_key_env` so LoadConfig expands the BYOK credential into Authorization
 - `project_memberships[].user_id` (not `user`) plus matching `users`/`projects` so the router account directory loads without CrashLoop
-`validate-intent` and `onboard` **fail closed** if these paths are missing, relative, or still under `/app/config` / `/app/state` (Fleet `--rewrite-paths fleet-eks` only remaps `/app/state` and `/app/logs`). Runtime `env.json` is built from the BYOK file plus `ROUTER_HTTP_REFERER=https://{hostname}` — never Stripe/restic/commerce admin, never a wholesale production-sync copy.
+`validate-intent` and `onboard` **fail closed** if these paths are missing, relative, or still under `/app/config` / `/app/state` (Fleet `--rewrite-paths fleet-eks` only remaps `/app/state` and `/app/logs`). Runtime `env.json` is built from the BYOK file plus `ROUTER_HTTP_REFERER=https://{hostname}` — never restic/ops admin secrets, never a wholesale production-sync copy.
 
 ## Commands
 
 ```bash
-# Structural + BYOK + fleet-eks path checks (no Stripe / AWS mutation)
+# Structural + BYOK + fleet-eks path checks (no AWS mutation)
 metrum-genai-customer-lifecycle validate-intent --intent /protected/acme/onboard.json
 
-# 3-step onboard: validate → real Checkout + license SSM → fleetctl bootstrap
+# Onboard: validate → license SSM → fleetctl bootstrap (payment out of band)
 metrum-genai-customer-lifecycle onboard --intent /protected/acme/onboard.json
 
-# Resume after Checkout completed in another terminal / browser
+# Resume after license published
 metrum-genai-customer-lifecycle onboard --intent /protected/acme/onboard.json \
-  --from-step pay --skip-checkout
+  --from-step provision
 
 metrum-genai-customer-lifecycle status --intent /protected/acme/onboard.json
 metrum-genai-customer-lifecycle smoke --intent /protected/acme/onboard.json
@@ -91,17 +87,15 @@ metrum-genai-customer-lifecycle delete --intent /protected/acme/onboard.json
 
 Safe scalar progress is stored under `~/.local/share/metrum-fleet/<customer_id>/customer-lifecycle-state.json` (mode `0600`).
 
-### Pay gate
+### Payment
 
-Step 2 creates a **real** Stripe Checkout session via `metrum-genai-commerce` and prints the URL. Entitlement advances only after Stripe marks the session paid and the verified webhook updates commerce state. Do not forge webhook signatures as acceptance proof. For `$0` eval SKUs, complete the hosted Checkout (browser or Stripe test payment APIs that still produce a genuine paid session + webhook).
+Payment and checkout are **out of band**. This CLI does not create Checkout sessions or poll a commerce entitlement API. `--from-step pay` fails closed with `payment is out of band`. Operators issue/publish the license after commercial entitlement is confirmed outside this tree.
 
 ### `update-config` / `--refresh-byok`
 
 Always: rebuild instance env when requested → `publish-runtime-bundle` (`--rewrite-paths fleet-eks`, **without** `--strip-callers` so day-2 BYOK refresh preserves granted callers) → optional `update-config` patch or `write-manifest` → **signed** `customer create --sign-with-key`. Publish-and-return without redeploy is not a successful day-2 update for operators without source.
 
-## License publish (step 2)
-
-After commerce entitlement reaches `active`, `provision_queued`, or `provisioned`:
+## License publish
 
 1. Render/sign with `metrum-genai-smartrouter-license issue` (existing signing root; no new key authority).
 2. `ssm:PutParameter` SecureString at `license_ref` (`aws-ssm:///…`) using **operator IAM**.
@@ -111,17 +105,8 @@ After commerce entitlement reaches `active`, `provision_queued`, or `provisioned
 
 Fleet `EnsureLicenseBinding` resolves that parameter into the tenant `router-license` Secret as `license.json`. Operator IAM must allow `PutParameter` on the customer license path.
 
-## Local ShellFleet vs EKS commerce-pod
-
-| Path | Purpose |
-|---|---|
-| Local packaged `metrum-genai-commerce` + `stripe listen` + this CLI | Operator sandbox E2E; explicit fleetctl bootstrap after pay+license |
-| `#929` commerce Deployment in `smartrouter-commerce` | Staging/production purchase pod; separate from this CLI acceptance path |
-
-Do not treat `COMMERCE_FLEET_MODE=shell` auto-fulfillment as the greenfield acceptance path for BYOK customers; prefer `onboard` → explicit bootstrap.
-
 ## Security
 
-- Never print/commit BYOK values, router tokens, license private keys, Stripe secrets, or full production config.
+- Never print/commit BYOK values, router tokens, license private keys, or full production config.
 - `export-usage` writes report JSON only into a mode-`0700` directory; it does not export BYOK.
 - Keep `/protected/**` and workspace token/license files out of git.

@@ -277,13 +277,13 @@ Set `FLEET_SQLITE_E2E_PROFILE_REF`, `FLEET_SQLITE_E2E_LICENSE_REF`,
 
 ### Metrum operator quick reference (SQLite Fleet customers)
 
-For **paid BYOK greenfield** (commerce Checkout → license SSM → bootstrap), use
+For **BYOK greenfield** (license SSM → bootstrap; payment out of band), use
 [`CUSTOMER_LIFECYCLE_CLI.md`](CUSTOMER_LIFECYCLE_CLI.md)
 (`metrum-genai-customer-lifecycle onboard`) with **packaged** Fleet/lifecycle
 binaries only (`METRUM_FLEET_BIN_DIR`). Instance config must already use
 top-level `state_path` under `/var/lib/smart-llmrouter` (not under `server:`)
 and `/etc/smart-llmrouter-license` license paths before publish. The block below remains the direct
-Fleet-only path when commerce/license are already satisfied.
+Fleet-only path when license refs are already satisfied.
 
 #### Disposable non-production customers (staging profile)
 

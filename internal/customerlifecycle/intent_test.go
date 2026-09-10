@@ -65,7 +65,6 @@ models:
 		SignKey:          signKey,
 		LicenseKey:       licenseKey,
 		LicenseKeyID:     "test-license-key",
-		CommerceBaseURL:  "http://127.0.0.1:8091",
 		BYOKEnvFile:      byokPath,
 		BYOK: BYOKSpec{
 			Provider:  "openai",
@@ -131,7 +130,6 @@ func TestValidateIntentRejectsEmbeddedSecrets(t *testing.T) {
 		"sign_key":           intent.SignKey,
 		"license_key":        intent.LicenseKey,
 		"license_key_id":     intent.LicenseKeyID,
-		"commerce_base_url":  intent.CommerceBaseURL,
 		"byok_env_file":      intent.BYOKEnvFile,
 		"byok":               intent.BYOK,
 		"api_key":            "sk-should-not-be-here",

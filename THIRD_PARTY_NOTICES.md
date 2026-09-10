@@ -71,7 +71,6 @@ GenAI Smart Router includes, builds with, or refers to the dependencies below. T
 | Go | github.com/munnerz/goautoneg | v0.0.0-20191010083416-a7dc8b61c822 | BSD-3-Clause | [project](https://github.com/munnerz/goautoneg) | shipped binary; packages imported by repository Go builds |
 | Go | github.com/redis/go-redis/v9 | v9.21.0 | BSD-2-Clause | [project](https://github.com/redis/go-redis) | shipped binary; packages imported by repository Go builds |
 | Go | github.com/remyoudompheng/bigfft | v0.0.0-20230129092748-24d4a6f8daec | BSD-3-Clause | [project](https://github.com/remyoudompheng/bigfft) | shipped binary; packages imported by repository Go builds |
-| Go | github.com/stripe/stripe-go/v82 | v82.5.1 | MIT | [project](https://github.com/stripe/stripe-go) | shipped binary; packages imported by repository Go builds |
 | Go | github.com/x448/float16 | v0.8.4 | MIT | [project](https://github.com/x448/float16) | shipped binary; packages imported by repository Go builds |
 | Go | go.uber.org/atomic | v1.11.0 | MIT | [project](https://pkg.go.dev/go.uber.org/atomic) | shipped binary; packages imported by repository Go builds |
 | Go | go.yaml.in/yaml/v2 | v2.4.3 | Apache-2.0 | [project](https://pkg.go.dev/go.yaml.in/yaml/v2) | shipped binary; packages imported by repository Go builds |
