@@ -1,6 +1,6 @@
 # Temporary, advisory-specific exceptions for Docusaurus's build-only
 # image-size dependency. No fixed image-size release exists as of 2026-09-09.
-# Remove both rules when https://github.com/Metrum-AI-Products/genai-smart-router/issues/17
+# Remove both rules when https://github.com/metrum-ai/router/issues/17
 # is resolved.
 ignore:
   - vulnerability: GHSA-5p2g-fcmc-qvqq
