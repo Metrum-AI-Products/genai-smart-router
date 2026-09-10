@@ -992,7 +992,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.QuotaState = ad.QuotaState
 	rc.rec.KeyState = ad.KeyState
 	if ad.WarningText != "" {
-		w.Header().Add("X-Router-Warning", ad.WarningText)
+		addRouterWarningHeaders(w.Header(), ad.WarningText)
 		rc.rec.Warnings = append(rc.rec.Warnings, ad.WarningText)
 	}
 	piiResult, err := applyPIIFilter(req, group.PIIFilter)
@@ -1139,7 +1139,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.QuotaState = resAd.QuotaState
 	rc.rec.KeyState = resAd.KeyState
 	if resAd.WarningText != "" {
-		w.Header().Add("X-Router-Warning", resAd.WarningText)
+		addRouterWarningHeaders(w.Header(), resAd.WarningText)
 		rc.rec.Warnings = append(rc.rec.Warnings, resAd.WarningText)
 	}
 	if shapeEnabled {
@@ -3387,6 +3387,30 @@ func appendWarning(warnings []string, warning string) []string {
 	return append(warnings, warning)
 }
 
+// Response header names. X-Router-* remain for a deprecation window; X-Metrum-* are the preferred aliases.
+const (
+	headerRouterWarning    = "X-Router-Warning"
+	headerMetrumWarning    = "X-Metrum-Warning"
+	headerRouterErrorClass = "X-Router-Error-Class"
+	headerMetrumErrorClass = "X-Metrum-Error-Class"
+)
+
+func addRouterWarningHeaders(h http.Header, warning string) {
+	if warning == "" || h == nil {
+		return
+	}
+	h.Add(headerRouterWarning, warning)
+	h.Add(headerMetrumWarning, warning)
+}
+
+func setRouterErrorClassHeaders(h http.Header, class string) {
+	if class == "" || h == nil {
+		return
+	}
+	h.Set(headerRouterErrorClass, class)
+	h.Set(headerMetrumErrorClass, class)
+}
+
 func roundUSD(v float64) float64 {
 	return math.Round(v*1_000_000_000) / 1_000_000_000
 }
@@ -3615,7 +3639,7 @@ func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestCo
 	reasonCode, reason := callerUpstreamFailureReason(classified.Class)
 	message := callerUpstreamFailureMessage(code, req.Model, attempts, reason)
 	if classified.Class != "" {
-		w.Header().Set("X-Router-Error-Class", classified.Class)
+		setRouterErrorClassHeaders(w.Header(), classified.Class)
 	}
 	if classified.StatusCode > 0 {
 		w.Header().Set("X-Upstream-Status", strconv.Itoa(classified.StatusCode))

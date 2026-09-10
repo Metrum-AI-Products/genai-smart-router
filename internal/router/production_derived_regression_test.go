@@ -958,7 +958,9 @@ func TestProductionDerivedUpstreamErrorClassificationIsCallerVisible(t *testing.
 			if rr.Code != scenario.ExpectedCallerStatus {
 				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 			}
-			if rr.Header().Get("X-Router-Error-Class") != scenario.ExpectedErrorClass || rr.Header().Get("X-Upstream-Status") == "" {
+			if rr.Header().Get("X-Router-Error-Class") != scenario.ExpectedErrorClass ||
+				rr.Header().Get("X-Metrum-Error-Class") != scenario.ExpectedErrorClass ||
+				rr.Header().Get("X-Upstream-Status") == "" {
 				t.Fatalf("missing upstream diagnostic headers: %#v", rr.Header())
 			}
 			details := decodeProductionDerivedErrorDetails(t, rr.Body.Bytes(), scenario.ExpectedErrorType)
