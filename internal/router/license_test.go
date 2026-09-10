@@ -160,38 +160,42 @@ func TestLicenseManagerReadinessRequestGateMetricsAndUsage(t *testing.T) {
 	}
 }
 
-func TestNormalBuildRequiresLicenseAndRejectsRuntimeBypass(t *testing.T) {
-	prev := licenseRequired
-	licenseRequired = true
-	t.Cleanup(func() { licenseRequired = prev })
-
+func TestLicenseDisabledByDefaultAndRejectsInvalidCombos(t *testing.T) {
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
 	cfg.Server.License = LicenseConfig{Enabled: false, FailOpenForDev: false}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "enabled=false is not allowed") {
-		t.Fatalf("disabled normal-build license err=%v", err)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("disabled license should validate: %v", err)
 	}
 
 	cfg = testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
-	cfg.Server.License = LicenseConfig{Enabled: true, FailOpenForDev: true, RecheckInterval: time.Hour}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "fail_open_for_dev is not allowed") {
-		t.Fatalf("fail-open normal-build license err=%v", err)
+	cfg.Server.License = LicenseConfig{Enabled: false, FailOpenForDev: true, RecheckInterval: time.Hour}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "fail_open_for_dev requires license enabled") {
+		t.Fatalf("fail-open with disabled license err=%v", err)
+	}
+
+	cfg = testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.License = LicenseConfig{Enabled: true, FailOpenForDev: true, Path: "license.json", RecheckInterval: time.Hour}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "fail_open_for_dev cannot be combined with a license path") {
+		t.Fatalf("fail-open with path err=%v", err)
 	}
 
 	cfg = testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
 	cfg.setDefaults()
-	if !cfg.Server.License.Enabled {
-		t.Fatal("normal-build defaults must enable license enforcement")
+	if cfg.Server.License.Enabled {
+		t.Fatal("defaults must leave license enforcement disabled")
 	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("default disabled license should validate: %v", err)
+	}
+
+	cfg = testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.License = LicenseConfig{Enabled: true, RecheckInterval: time.Hour}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "license path is required") {
-		t.Fatalf("missing normal-build license path err=%v", err)
+		t.Fatalf("enabled without path err=%v", err)
 	}
 }
 
-func TestNormalBuildRejectsExplicitDisabledLicenseDuringLoad(t *testing.T) {
-	prev := licenseRequired
-	licenseRequired = true
-	t.Cleanup(func() { licenseRequired = prev })
-
+func TestLoadConfigAllowsExplicitDisabledLicense(t *testing.T) {
 	dir := t.TempDir()
 	sum := sha256.Sum256([]byte(testToken))
 	configPath := filepath.Join(dir, "config.yaml")
@@ -225,28 +229,54 @@ callers:
 	if err := os.WriteFile(configPath, []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadConfig(configPath); err == nil || !strings.Contains(err.Error(), "enabled=false is not allowed") {
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
 		t.Fatalf("explicit disabled license load err=%v", err)
+	}
+	if cfg.Server.License.Enabled {
+		t.Fatal("loaded config should keep license disabled")
 	}
 }
 
-func TestDevNoLicenseCompileModeAllowsMissingLicense(t *testing.T) {
-	prev := licenseRequired
-	licenseRequired = false
-	t.Cleanup(func() { licenseRequired = prev })
-
+func TestDisabledLicenseAllowsMissingLicense(t *testing.T) {
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
 	cfg.Server.License = LicenseConfig{Enabled: false, RecheckInterval: time.Hour}
 	if err := cfg.Validate(); err != nil {
-		t.Fatalf("dev no-license config should validate: %v", err)
+		t.Fatalf("disabled license config should validate: %v", err)
 	}
 	m, err := newLicenseManager(cfg.Server.License, cfg, nil)
 	if err != nil {
-		t.Fatalf("dev no-license manager: %v", err)
+		t.Fatalf("disabled license manager: %v", err)
 	}
 	st := m.statusSnapshot()
-	if st.Code != "license-compile-disabled-dev" || !st.Ready || !st.Valid {
-		t.Fatalf("dev no-license status=%#v", st)
+	if st.Code != "license-disabled" || !st.Ready || !st.Valid || st.Enabled {
+		t.Fatalf("disabled license status=%#v", st)
+	}
+}
+
+func TestEnabledLicenseMissingFileFailsClosed(t *testing.T) {
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.License = LicenseConfig{
+		Enabled:         true,
+		Path:            filepath.Join(t.TempDir(), "missing-license.json"),
+		StatePath:       filepath.Join(t.TempDir(), "license-state.json"),
+		RecheckInterval: time.Hour,
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("enabled missing-file config should validate: %v", err)
+	}
+	pub, _, err := GenerateLicenseKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := newLicenseManager(cfg.Server.License, cfg, []LicensePublicKey{{KeyID: "test-license-key", Algorithm: "ed25519", PublicKey: pub}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.reload()
+	st := m.statusSnapshot()
+	if st.Ready || st.Valid || st.Code != "license-missing" {
+		t.Fatalf("enabled missing license status=%#v", st)
 	}
 }
 

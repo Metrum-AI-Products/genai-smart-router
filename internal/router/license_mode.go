@@ -1,13 +1,11 @@
-//go:build !dev_no_license
-
 // Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
 package router
 
-const licenseCompileMode = "required"
+const licenseCompileMode = "optional"
 
-var licenseRequired = true
+var licenseRequired = false
 
 func licenseEnforcementRequired() bool {
 	return licenseRequired

@@ -212,7 +212,7 @@ func newLicenseManager(cfg LicenseConfig, app *Config, keys []LicensePublicKey) 
 	if !cfg.Enabled && !licenseEnforcementRequired() {
 		m := &licenseManager{
 			cfg: cfg, app: app, keys: keys, now: time.Now, stop: make(chan struct{}), stopped: make(chan struct{}),
-			status:          licenseStatus{Enabled: false, Valid: true, Ready: true, Code: "license-compile-disabled-dev", Features: map[string]bool{}},
+			status:          licenseStatus{Enabled: false, Valid: true, Ready: true, Code: "license-disabled", Features: map[string]bool{}},
 			failureByReason: map[string]int64{},
 		}
 		close(m.stopped)
@@ -560,7 +560,7 @@ func (m *licenseManager) writeObservedStateLocked(status licenseStatus) error {
 
 func (m *licenseManager) statusSnapshot() licenseStatus {
 	if m == nil {
-		return licenseStatus{Valid: true, Ready: true, Code: "license-compile-disabled-dev", Features: map[string]bool{}}
+		return licenseStatus{Valid: true, Ready: true, Code: "license-disabled", Features: map[string]bool{}}
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
