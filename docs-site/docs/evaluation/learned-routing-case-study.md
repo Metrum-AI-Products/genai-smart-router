@@ -21,10 +21,10 @@ deployment or broad promotion is established by these results.
 
 | Artifact | What it contains |
 |---|---|
-| [public-training.json](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/evidence/learned-routing-policy/public-training.json) | Actual training duration, split/sample counts, package versions, calibration, six holdout baselines and every gate |
-| [public-inference.json](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/evidence/learned-routing-policy/public-inference.json) | E01–E10/native-shadow results plus two actual request decisions, predictions, estimated costs, feature contributions and successful upstream readback |
-| [public-bge-benchmark.json](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/evidence/learned-routing-policy/public-bge-benchmark.json) | Official model/tokenizer provenance and hashes, quantization, hardware/load qualifications and all four measured stage-latency scenarios |
-| [public-tests.json](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/evidence/learned-routing-policy/public-tests.json) | Locally verified aggregate result: 79 tests, zero failures/errors/skips, actual verifier isolation required |
+| [public-training.json](https://github.com/metrum-ai/router/blob/main/docs/evidence/learned-routing-policy/public-training.json) | Actual training duration, split/sample counts, package versions, calibration, six holdout baselines and every gate |
+| [public-inference.json](https://github.com/metrum-ai/router/blob/main/docs/evidence/learned-routing-policy/public-inference.json) | E01–E10/native-shadow results plus two actual request decisions, predictions, estimated costs, feature contributions and successful upstream readback |
+| [public-bge-benchmark.json](https://github.com/metrum-ai/router/blob/main/docs/evidence/learned-routing-policy/public-bge-benchmark.json) | Official model/tokenizer provenance and hashes, quantization, hardware/load qualifications and all four measured stage-latency scenarios |
+| [public-tests.json](https://github.com/metrum-ai/router/blob/main/docs/evidence/learned-routing-policy/public-tests.json) | Locally verified aggregate result: 79 tests, zero failures/errors/skips, actual verifier isolation required |
 
 Successful learned-routing validation workflows also attach the generated
 `public-training.log`, containing only projected scalar training events. Its

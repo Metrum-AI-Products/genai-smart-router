@@ -33,6 +33,6 @@ every answer will pass a workload verifier.
 Ordinary labels and metrics stay coarse. Rich per-target quality, cost, latency,
 and feature explanations require authenticated operator `/explain` access on the
 LRP admin surface. See the operator document
-[LRP selection constraints](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/LRP_SELECTION_CONSTRAINTS.md)
+[LRP selection constraints](https://github.com/metrum-ai/router/blob/main/docs/LRP_SELECTION_CONSTRAINTS.md)
 and the [learned routing policy](learned-routing-policy.md) overview. Contact
 [contact@metrum.ai](mailto:contact@metrum.ai) for deployment guidance.

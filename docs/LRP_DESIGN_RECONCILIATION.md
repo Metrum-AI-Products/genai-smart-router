@@ -1,6 +1,6 @@
 # Learned Routing Policy v1 design reconciliation
 
-Issue [#15](https://github.com/Metrum-AI-Products/genai-smart-router/issues/15)
+Issue [#15](https://github.com/metrum-ai/router/issues/15)
 was checked against `51450f5` on 2026-09-09 before implementation. These corrections
 supersede conflicting assumptions in the issue. The standalone Python 3.12
 service and training CLI require no router Go changes.

@@ -97,7 +97,7 @@ bootstrap. An OpenAI API key is enough for one Chat completion. Building and
 starting the router require no private repository access.
 
 ```bash
-git clone https://github.com/Metrum-AI-Products/genai-smart-router.git
+git clone https://github.com/metrum-ai/router.git
 cd genai-smart-router
 python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev
 # Set OPENAI_API_KEY in tmp/local-dev/env.json.

@@ -2,7 +2,7 @@
 
 **Status:** Internal operator reference  
 **Date:** 2026-09-02  
-**Primary evidence:** Merged [PR #954](https://github.com/sysadmin-metrum-ai/genai-smart-router/pull/954) (`2cf5a319`), issue #952  
+**Primary evidence:** Merged [PR #954](https://github.com/metrum-ai/router/pull/954) (`2cf5a319`), issue #952  
 **Companion runbook:** [K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md](K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md)  
 **Overlay:** [deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/](../deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/)
 

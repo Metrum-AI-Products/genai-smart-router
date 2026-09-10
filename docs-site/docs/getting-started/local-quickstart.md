@@ -39,7 +39,7 @@ sequenceDiagram
 ## Bootstrap
 
 From a clone of
-[Metrum-AI-Products/genai-smart-router](https://github.com/Metrum-AI-Products/genai-smart-router):
+[metrum-ai/router](https://github.com/metrum-ai/router):
 
 ```bash
 python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev

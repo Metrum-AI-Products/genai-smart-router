@@ -179,7 +179,7 @@ routing, model groups, and API behavior are unchanged from v1.0.1.
 
 - Embedded Docusaurus docs now link the navbar GitHub control and Source License
   footer entry to the public Apache-2.0 home at
-  `https://github.com/Metrum-AI-Products/genai-smart-router`.
+  `https://github.com/metrum-ai/router`.
 - The legal software-licenses page uses the same public repository LICENSE URL.
 
 ### Operator Impact
@@ -200,7 +200,7 @@ routing, model groups, and API behavior are unchanged from v1.0.1.
 
 - `/readyz` and `/version`: confirm `v1.0.2` and the new build timestamp.
 - `/docs/`: confirm navbar and footer GitHub hrefs use
-  `github.com/Metrum-AI-Products/genai-smart-router` and do not use
+  `github.com/metrum-ai/router` and do not use
   `sysadmin-metrum-ai`.
 - Completion smoke: run one request for an actively used model group.
 

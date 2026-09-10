@@ -1,7 +1,7 @@
 # LRP extensible isolated verifiers
 
 **Audience:** operators running the offline LRP training pipeline.
-**Related issues:** [#37](https://github.com/Metrum-AI-Products/genai-smart-router/issues/37).
+**Related issues:** [#37](https://github.com/metrum-ai/router/issues/37).
 
 Deterministic verifiers beat LLM judges when ground truth exists. GenAI Smart
 Router LRP runs them **only** inside the bubblewrap isolated worker described in

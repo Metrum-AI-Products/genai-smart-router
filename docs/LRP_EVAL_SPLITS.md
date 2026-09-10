@@ -1,7 +1,7 @@
 # LRP evaluation splits and serving-provider variance
 
-Operator notes for learned-routing-policy follow-ups [#31](https://github.com/Metrum-AI-Products/genai-smart-router/issues/31)
-and [#32](https://github.com/Metrum-AI-Products/genai-smart-router/issues/32).
+Operator notes for learned-routing-policy follow-ups [#31](https://github.com/metrum-ai/router/issues/31)
+and [#32](https://github.com/metrum-ai/router/issues/32).
 See the [learned routing policy runbook](./LEARNED_ROUTING_POLICY.md) for the full
 pipeline. Caller-facing behavior remains summarized in the
 [product routing guide](../docs-site/docs/routing/learned-routing-policy.md).

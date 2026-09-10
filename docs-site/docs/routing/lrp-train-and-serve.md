@@ -68,7 +68,7 @@ uv run --project services/learned-routing-policy --locked lrp serve \
 ```
 
 Full flags, verifier isolation, and promotion gates:
-[operator runbook](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/LEARNED_ROUTING_POLICY.md).
+[operator runbook](https://github.com/metrum-ai/router/blob/main/docs/LEARNED_ROUTING_POLICY.md).
 v1 fanout replays **OpenAI Chat** and OpenRouter prices. Other dialects need
 separate collection evidence.
 
@@ -107,7 +107,7 @@ the same as restoring previous weighted weights.
 ## Checked-in synthetic evidence (not promotion)
 
 Local snapshot **2026-09-09**. Files under
-[docs/evidence/learned-routing-policy](https://github.com/Metrum-AI-Products/genai-smart-router/tree/main/docs/evidence/learned-routing-policy):
+[docs/evidence/learned-routing-policy](https://github.com/metrum-ai/router/tree/main/docs/evidence/learned-routing-policy):
 
 | Artifact | What it records |
 |---|---|
