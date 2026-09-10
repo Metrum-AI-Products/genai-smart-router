@@ -117,8 +117,8 @@ the captured body.
 ## Validation
 
 ```bash
-rtk go test ./internal/router -run 'ExternalRoutingPolicy|Config|Conversation|Feedback|Verifier'
-rtk make lrp-test
+go test ./internal/router -run 'ExternalRoutingPolicy|Config|Conversation|Feedback|Verifier'
+make lrp-test
 ```
 
 Synthetic wiring evidence (httptest policy/feedback servers and LRP schema parse)

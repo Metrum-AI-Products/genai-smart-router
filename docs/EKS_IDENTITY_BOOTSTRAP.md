@@ -117,7 +117,7 @@ sessions. It also rejects another account, users outside
 A preflight makes no mutation:
 
 ```bash
-rtk python3 scripts/enroll_fleet_operator.py \
+python3 scripts/enroll_fleet_operator.py \
   --profile genai-smart-router-eks-staging-platform-iac \
   --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/smart-router-lifecycle/<operator>
 ```
@@ -126,7 +126,7 @@ After reviewing the sanitized `ready` result, perform the one group-membership
 mutation with the exact confirmation:
 
 ```bash
-rtk python3 scripts/enroll_fleet_operator.py \
+python3 scripts/enroll_fleet_operator.py \
   --profile genai-smart-router-eks-staging-platform-iac \
   --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/smart-router-lifecycle/<operator> \
   --apply \

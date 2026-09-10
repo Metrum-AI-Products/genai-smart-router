@@ -1,0 +1,4 @@
+# Default review path for Metrum Router.
+# Assign CODEOWNERS to a GitHub team once org permissions are finalized.
+# Example:
+# * @metrum-ai/maintainers

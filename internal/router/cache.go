@@ -64,6 +64,9 @@ func cacheKey(req *IRRequest, target Target, callerID, project string) string {
 		Reasoning          ReasoningIntent `json:"reasoning,omitempty"`
 		TopP               any             `json:"top_p,omitempty"`
 		Seed               any             `json:"seed,omitempty"`
+		FrequencyPenalty   any             `json:"frequency_penalty,omitempty"`
+		PresencePenalty    any             `json:"presence_penalty,omitempty"`
+		LogitBias          any             `json:"logit_bias,omitempty"`
 		PreviousResponseID string          `json:"previous_response_id,omitempty"`
 		ReasoningEffort    any             `json:"reasoning_effort,omitempty"`
 		Provider           string          `json:"provider"`
@@ -88,6 +91,9 @@ func cacheKey(req *IRRequest, target Target, callerID, project string) string {
 	if req.Raw != nil {
 		n.TopP = req.Raw["top_p"]
 		n.Seed = req.Raw["seed"]
+		n.FrequencyPenalty = req.Raw["frequency_penalty"]
+		n.PresencePenalty = req.Raw["presence_penalty"]
+		n.LogitBias = req.Raw["logit_bias"]
 		n.PreviousResponseID = strings.TrimSpace(stringValue(req.Raw["previous_response_id"]))
 		n.ReasoningEffort = req.Raw["reasoning_effort"]
 		if n.Thinking == nil {
@@ -95,13 +101,44 @@ func cacheKey(req *IRRequest, target Target, callerID, project string) string {
 				n.Thinking = thinking
 			}
 		}
-		if reasoning, ok := req.Raw["reasoning"].(map[string]any); ok && !req.Reasoning.Requested && !req.Reasoning.Disabled {
-			_ = reasoning
-		}
 	}
 	raw, _ := json.Marshal(n)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+// cacheRawFieldAllowlist enumerates Raw keys that are either represented in the
+// cache key or known to be safe to ignore for deterministic unary caching.
+var cacheRawFieldAllowlist = map[string]bool{
+	"model":                 true,
+	"messages":              true,
+	"input":                 true,
+	"system":                true,
+	"max_tokens":            true,
+	"max_completion_tokens": true,
+	"max_output_tokens":     true,
+	"temperature":           true,
+	"stop":                  true,
+	"stop_sequences":        true,
+	"stream":                true,
+	"tools":                 true,
+	"tool_choice":           true,
+	"response_format":       true,
+	"thinking":              true,
+	"reasoning":             true,
+	"reasoning_effort":      true,
+	"top_p":                 true,
+	"seed":                  true,
+	"frequency_penalty":     true,
+	"presence_penalty":      true,
+	"logit_bias":            true,
+	"previous_response_id":  true,
+	"metadata":              true,
+	"user":                  true,
+	"n":                     true,
+	"stream_options":        true,
+	// Caller/request identifiers must not affect cache identity.
+	"id": true,
 }
 
 func cacheable(req *IRRequest) bool {
@@ -111,6 +148,15 @@ func cacheable(req *IRRequest) bool {
 	// Omitted temperature must not be cached: providers may sample nondeterministically.
 	if req.Temperature == nil || *req.Temperature != 0 {
 		return false
+	}
+	// Bypass when the request carries behavior-changing Raw fields outside the
+	// supported cache contract. Unknown fields must not share a cached identity.
+	if req.Raw != nil {
+		for key := range req.Raw {
+			if !cacheRawFieldAllowlist[key] {
+				return false
+			}
+		}
 	}
 	return true
 }

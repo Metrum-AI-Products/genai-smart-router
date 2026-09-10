@@ -11,8 +11,8 @@ import (
 	"testing"
 )
 
-// QD-1: save failure on RecordTokens must not treat spend as durably recorded.
-func TestQuotaRecordTokensSaveFailureFailsClosed(t *testing.T) {
+// QD-1: save failure on RecordTokens keeps consumed usage as liability and latches admission.
+func TestQuotaRecordTokensSaveFailureKeepsLiability(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
 	path := filepath.Join(dir, "state.json")
@@ -31,20 +31,33 @@ func TestQuotaRecordTokensSaveFailureFailsClosed(t *testing.T) {
 	if !errors.Is(err, errQuotaStatePersist) {
 		t.Fatalf("err=%v quota=%q key=%q, want errQuotaStatePersist", err, quotaState, keyState)
 	}
-	if qs.state.Callers["alice"].LifetimeTokens != before {
-		t.Fatalf("lifetime_tokens=%d, want rolled back to %d", qs.state.Callers["alice"].LifetimeTokens, before)
+	want := before + 9
+	if qs.state.Callers["alice"].LifetimeTokens != want {
+		t.Fatalf("lifetime_tokens=%d, want outstanding liability %d", qs.state.Callers["alice"].LifetimeTokens, want)
 	}
-	if qs.state.Callers["alice"].DayTokens != before || qs.state.Callers["alice"].MonthTokens != before {
-		t.Fatalf("day/month tokens not rolled back: day=%d month=%d", qs.state.Callers["alice"].DayTokens, qs.state.Callers["alice"].MonthTokens)
+	if !qs.PersistenceUnhealthy() {
+		t.Fatal("expected persistence unhealthy latch after save failure")
+	}
+	blocked := qs.Admit(caller, 0)
+	if blocked.OK || blocked.Status != http.StatusServiceUnavailable || blocked.Reason != "quota-state-error" {
+		t.Fatalf("admit while unhealthy=%#v, want 503 quota-state-error", blocked)
 	}
 
 	qs.saveFault = nil
+	recovered := qs.Admit(caller, 0)
+	if !recovered.OK {
+		t.Fatalf("admit after storage recovery=%#v", recovered)
+	}
+	qs.Release(caller)
+	if qs.PersistenceUnhealthy() {
+		t.Fatal("persistence latch should clear after successful recovery save")
+	}
 	qs2, err := newQuotaStore(path, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := qs2.state.Callers["alice"].LifetimeTokens; got != before {
-		t.Fatalf("restart after failed save lifetime=%d, want durable %d", got, before)
+	if got := qs2.state.Callers["alice"].LifetimeTokens; got != want {
+		t.Fatalf("restart after recovery lifetime=%d, want durable liability %d", got, want)
 	}
 }
 
@@ -75,13 +88,13 @@ func TestQuotaExhaustSaveFailureFailsClosed(t *testing.T) {
 	if qs.state.Callers["alice"].Disabled {
 		t.Fatal("Disabled must roll back when exhaust save fails")
 	}
+	if !qs.PersistenceUnhealthy() {
+		t.Fatal("expected persistence unhealthy after exhaust save failure")
+	}
 
 	admit := qs.Admit(caller, 0)
 	if admit.OK || admit.Status != http.StatusServiceUnavailable || admit.Reason != "quota-state-error" {
 		t.Fatalf("admit on exhaust save fault=%#v, want 503 quota-state-error", admit)
-	}
-	if qs.state.Callers["alice"].Disabled {
-		t.Fatal("Disabled must roll back when admit exhaust save fails")
 	}
 }
 
@@ -143,7 +156,7 @@ func TestQuotaReleaseReservationAfterFailedUpstreamPath(t *testing.T) {
 	qs.ReleaseReservation(caller, second.Reservation)
 }
 
-// QD-5: restart restores successful saves; failed save does not apply a silent newer counter.
+// QD-5: restart restores successful saves; failed save keeps process-local liability latched.
 func TestQuotaRestartSemanticsSuccessfulAndFailedSave(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
@@ -172,8 +185,11 @@ func TestQuotaRestartSemanticsSuccessfulAndFailedSave(t *testing.T) {
 	if _, _, err := reloaded.RecordTokens(reloaded.callers["alice"], nil, Usage{TotalTokens: 7}); !errors.Is(err, errQuotaStatePersist) {
 		t.Fatalf("expected persist error, got %v", err)
 	}
-	if got := reloaded.state.Callers["alice"].LifetimeTokens; got != 5 {
-		t.Fatalf("in-memory after failed save lifetime=%d, want 5", got)
+	if got := reloaded.state.Callers["alice"].LifetimeTokens; got != 12 {
+		t.Fatalf("in-memory after failed save lifetime=%d, want outstanding 12", got)
+	}
+	if !reloaded.PersistenceUnhealthy() {
+		t.Fatal("expected unhealthy latch")
 	}
 
 	again, err := newQuotaStore(path, cfg)
@@ -181,7 +197,7 @@ func TestQuotaRestartSemanticsSuccessfulAndFailedSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := again.state.Callers["alice"].LifetimeTokens; got != 5 {
-		t.Fatalf("restart after failed save lifetime=%d, want durable 5 (not 12)", got)
+		t.Fatalf("restart without recovery write lifetime=%d, want durable 5", got)
 	}
 }
 
@@ -233,5 +249,64 @@ func TestQuotaConcurrentAdmitRecordNoDoubleCount(t *testing.T) {
 	}
 	if caller.inFlightReservedTokens != 0 {
 		t.Fatalf("reserved leak after concurrent records: %d", caller.inFlightReservedTokens)
+	}
+}
+
+// QD-7: Admit persists request counts; save failure fails closed without leaking slots.
+func TestQuotaAdmitPersistsRequestCounts(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Callers[0].Quota.Day.Requests = 10
+	path := filepath.Join(dir, "state.json")
+	qs, err := newQuotaStore(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := qs.callers["alice"]
+	ad := qs.Admit(caller, 0)
+	if !ad.OK {
+		t.Fatalf("admit=%#v", ad)
+	}
+	qs.Release(caller)
+	reloaded, err := newQuotaStore(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reloaded.state.Callers["alice"].DayRequests; got != 1 {
+		t.Fatalf("day_requests after restart=%d, want 1", got)
+	}
+
+	qs.saveFault = errors.New("admit save failure")
+	before := qs.state.Callers["alice"].DayRequests
+	fail := qs.Admit(caller, 0)
+	if fail.OK || fail.Reason != "quota-state-error" {
+		t.Fatalf("admit save fault=%#v", fail)
+	}
+	if qs.state.Callers["alice"].DayRequests != before {
+		t.Fatalf("day_requests=%d, want rolled back to %d for pre-upstream failure", qs.state.Callers["alice"].DayRequests, before)
+	}
+	if caller.inFlight != 0 {
+		t.Fatalf("inFlight leak=%d", caller.inFlight)
+	}
+}
+
+// QD-8: AcquireConcurrency propagates exhausted-state save failures.
+func TestQuotaAcquireConcurrencyExhaustSaveFailure(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Callers[0].Key.LifetimeTokens = 1
+	qs, err := newQuotaStore(filepath.Join(dir, "state.json"), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := qs.callers["alice"]
+	if _, _, err := qs.RecordTokens(caller, nil, Usage{TotalTokens: 1}); err != nil {
+		t.Fatal(err)
+	}
+	qs.state.Callers["alice"].Disabled = false
+	qs.saveFault = errors.New("acquire save failure")
+	ad := qs.AcquireConcurrency(caller)
+	if ad.OK || ad.Status != http.StatusServiceUnavailable || ad.Reason != "quota-state-error" {
+		t.Fatalf("acquire=%#v, want 503 quota-state-error", ad)
 	}
 }

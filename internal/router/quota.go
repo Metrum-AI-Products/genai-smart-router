@@ -50,7 +50,8 @@ type tokenEvent struct {
 }
 
 type persistentState struct {
-	Callers map[string]*callerState `json:"callers"`
+	Callers              map[string]*callerState `json:"callers"`
+	PersistenceUnhealthy bool                    `json:"persistence_unhealthy,omitempty"`
 }
 
 type callerState struct {
@@ -148,6 +149,9 @@ func newQuotaStore(path string, cfg *Config) (*quotaStore, error) {
 func (q *quotaStore) Admit(c *callerRuntime, estTokens int) admission {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if ad := q.persistenceGuardLocked(); !ad.OK {
+		return ad
+	}
 	now := time.Now().UTC()
 	st := q.stateFor(c.cfg.ID, now)
 	q.resetWindows(st, now)
@@ -177,6 +181,22 @@ func (q *quotaStore) Admit(c *callerRuntime, estTokens int) admission {
 	c.reqTimes = append(c.reqTimes, now)
 	st.DayRequests++
 	st.MonthRequests++
+	if err := q.saveLocked(); err != nil {
+		st.DayRequests--
+		st.MonthRequests--
+		if len(c.reqTimes) > 0 {
+			c.reqTimes = c.reqTimes[:len(c.reqTimes)-1]
+		}
+		c.inFlight--
+		q.releaseReservationLocked(c, res)
+		q.markPersistenceUnhealthyLocked()
+		return admission{
+			Status:     http.StatusServiceUnavailable,
+			Reason:     "quota-state-error",
+			QuotaState: "error",
+			KeyState:   "error",
+		}
+	}
 	reservedEstimate := c.inFlightReservedTokens
 	quotaState, warning := q.quotaState(c.cfg, st, reservedEstimate)
 	keyState = q.keyState(c.cfg, st, 0)
@@ -192,13 +212,17 @@ func (q *quotaStore) Admit(c *callerRuntime, estTokens int) admission {
 func (q *quotaStore) AcquireConcurrency(c *callerRuntime) admission {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if ad := q.persistenceGuardLocked(); !ad.OK {
+		return ad
+	}
 	now := time.Now().UTC()
 	st := q.stateFor(c.cfg.ID, now)
 	q.resetWindows(st, now)
 	keyState := q.keyState(c.cfg, st, 0)
 	if st.Disabled || keyState == "exhausted" {
-		st.Disabled = true
-		_ = q.saveLocked()
+		if ad := q.persistExhaustedLocked(st); !ad.OK {
+			return ad
+		}
 		return admission{Status: http.StatusForbidden, Reason: "key-exhausted", QuotaState: "ok", KeyState: "exhausted"}
 	}
 	if c.cfg.Rate.Concurrent > 0 && c.inFlight >= c.cfg.Rate.Concurrent {
@@ -225,6 +249,9 @@ func (q *quotaStore) ReleaseReservation(c *callerRuntime, reservation *quotaRese
 func (q *quotaStore) ReserveTokens(c *callerRuntime, estTokens int) admission {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if ad := q.persistenceGuardLocked(); !ad.OK {
+		return ad
+	}
 	now := time.Now().UTC()
 	st := q.stateFor(c.cfg.ID, now)
 	q.resetWindows(st, now)
@@ -259,9 +286,6 @@ func (q *quotaStore) RecordTokens(c *callerRuntime, reservation *quotaReservatio
 	now := time.Now().UTC()
 	st := q.stateFor(c.cfg.ID, now)
 	q.resetWindows(st, now)
-	prevDay, prevMonth, prevLife := st.DayTokens, st.MonthTokens, st.LifetimeTokens
-	prevDisabled := st.Disabled
-	prevTokenTimes := len(c.tokenTimes)
 	st.DayTokens += int64(total)
 	st.MonthTokens += int64(total)
 	st.LifetimeTokens += int64(total)
@@ -270,25 +294,27 @@ func (q *quotaStore) RecordTokens(c *callerRuntime, reservation *quotaReservatio
 	if keyState == "exhausted" {
 		st.Disabled = true
 	}
+	// Consumed upstream work remains an outstanding liability even when the
+	// durable write fails. Keep counters, latch persistence health, and refuse
+	// further paid admissions until a later save succeeds.
 	if err := q.saveLocked(); err != nil {
-		st.DayTokens = prevDay
-		st.MonthTokens = prevMonth
-		st.LifetimeTokens = prevLife
-		st.Disabled = prevDisabled
-		c.tokenTimes = c.tokenTimes[:prevTokenTimes]
+		q.markPersistenceUnhealthyLocked()
 		return "", "", fmt.Errorf("%w: %v", errQuotaStatePersist, err)
 	}
+	q.state.PersistenceUnhealthy = false
 	quotaState, _ := q.quotaState(c.cfg, st, 0)
 	return quotaState, keyState, nil
 }
 
 // persistExhaustedLocked marks a caller exhausted and persists that flag.
-// On save failure it rolls back Disabled and returns a fail-closed admission.
+// On save failure it rolls back Disabled, latches persistence health, and
+// returns a fail-closed admission.
 func (q *quotaStore) persistExhaustedLocked(st *callerState) admission {
 	wasDisabled := st.Disabled
 	st.Disabled = true
 	if err := q.saveLocked(); err != nil {
 		st.Disabled = wasDisabled
+		q.markPersistenceUnhealthyLocked()
 		return admission{
 			Status:     http.StatusServiceUnavailable,
 			Reason:     "quota-state-error",
@@ -296,7 +322,36 @@ func (q *quotaStore) persistExhaustedLocked(st *callerState) admission {
 			KeyState:   "error",
 		}
 	}
+	q.state.PersistenceUnhealthy = false
 	return admission{OK: true}
+}
+
+func (q *quotaStore) persistenceGuardLocked() admission {
+	if !q.state.PersistenceUnhealthy {
+		return admission{OK: true}
+	}
+	// Storage may have recovered. Persist outstanding liability before any new
+	// paid admission; fail closed until that write succeeds.
+	if err := q.saveLocked(); err != nil {
+		return admission{
+			Status:     http.StatusServiceUnavailable,
+			Reason:     "quota-state-error",
+			QuotaState: "error",
+			KeyState:   "error",
+		}
+	}
+	q.state.PersistenceUnhealthy = false
+	return admission{OK: true}
+}
+
+func (q *quotaStore) markPersistenceUnhealthyLocked() {
+	q.state.PersistenceUnhealthy = true
+}
+
+func (q *quotaStore) PersistenceUnhealthy() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.state.PersistenceUnhealthy
 }
 
 func (q *quotaStore) releaseReservationLocked(c *callerRuntime, reservation *quotaReservation) {

@@ -102,6 +102,32 @@ func TestSA4ChatToResponsesBridgeStickinessUnaffected(t *testing.T) {
 	}
 }
 
+func TestDynamicScoreAffinitySkipsIneligiblePinnedTarget(t *testing.T) {
+	svc, group, caller := dynamicAffinityTestSetup(t)
+	req := &IRRequest{Messages: []IRMessage{{Role: "user", Content: "pin then drop"}}}
+	if _, err := svc.pick(nil, "adaptive", group, req, "openai-chat", caller, ""); err != nil {
+		t.Fatal(err)
+	}
+	warmDynamicAffinityCandidates(svc)
+	// Drop the pinned target from eligibility by requiring tools the pin lacks.
+	group.Targets[0].ToolSupport = ToolSupport{}
+	group.Targets[1].ToolSupport = ToolSupport{OpenAIChat: []string{"tools"}}
+	toolReq := &IRRequest{
+		Messages: []IRMessage{{Role: "user", Content: "pin then drop"}, {Role: "assistant", Content: "ok"}, {Role: "user", Content: "with tools"}},
+		Tools:    []map[string]any{{"type": "function", "function": map[string]any{"name": "lookup"}}},
+	}
+	decision, err := svc.pick(nil, "adaptive", group, toolReq, "openai-chat", caller, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Target.Model != "cheapest" {
+		t.Fatalf("ineligible pin selected %q, want cheapest", decision.Target.Model)
+	}
+	if routingSignalsContain(decision.RoutingSignals, "affinity_hit") {
+		t.Fatalf("affinity must not widen eligibility: %#v", decision.RoutingSignals)
+	}
+}
+
 func TestDynamicScoreAffinityCanBeDisabled(t *testing.T) {
 	svc, group, caller := dynamicAffinityTestSetup(t)
 	disabled := false

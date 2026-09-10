@@ -17,6 +17,8 @@ FORBIDDEN_FIXTURES = [
     ".env",
     "env.json",
     "nested/env.json",
+    "commerce.env.json",
+    "nested/commerce.env.json",
     "config.production.yaml",
     "ROUTER_TOKEN.txt",
     "ROUTER_TOKENS_prod.txt",

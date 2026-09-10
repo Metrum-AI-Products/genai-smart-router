@@ -236,6 +236,44 @@ func TestST5CommittedToolChunkStopsFallback(t *testing.T) {
 	}
 }
 
+func TestST7TruncatedStreamSettlesEstimatedUsage(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		fmt.Fprint(w, "data: {\"id\":\"chat_trunc\",\"choices\":[{\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}\n\n")
+		flusher.Flush()
+		// End without terminal event after committing output.
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Provider["native"] = ProviderConfig{BaseURL: upstream.URL, Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["native-stream"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "native", Model: "native-chat"}}}
+	cfg.Callers[0].Allow = []string{"native-stream"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"native-stream","stream":true,"max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+
+	svc.quota.mu.Lock()
+	lifetime := svc.quota.state.Callers["alice"].LifetimeTokens
+	unhealthy := svc.quota.state.PersistenceUnhealthy
+	svc.quota.mu.Unlock()
+	if lifetime <= 0 {
+		t.Fatalf("truncated stream must settle nonzero usage liability, got %d", lifetime)
+	}
+	if unhealthy {
+		t.Fatal("successful settlement should leave persistence healthy")
+	}
+}
+
 func TestST6OpenAIChatIncludeUsageFinalChunk(t *testing.T) {
 	var upstreamBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

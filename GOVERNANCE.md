@@ -1,6 +1,6 @@
 # Project Governance
 
-GenAI Smart Router uses a maintainer-led governance model.
+Metrum Router uses a maintainer-led governance model.
 
 ## Roles
 

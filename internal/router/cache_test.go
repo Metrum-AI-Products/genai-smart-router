@@ -120,6 +120,46 @@ func TestCacheKeyIncludesCallerAndSamplingFields(t *testing.T) {
 	if cacheKey(base, target, "caller-a", "proj-1") == cacheKey(withThinking, target, "caller-a", "proj-1") {
 		t.Fatal("cache key must include thinking")
 	}
+	withFreq := &IRRequest{
+		Model:       base.Model,
+		Messages:    base.Messages,
+		Temperature: &zero,
+		Raw:         map[string]any{"frequency_penalty": 0.5},
+	}
+	if cacheKey(base, target, "caller-a", "proj-1") == cacheKey(withFreq, target, "caller-a", "proj-1") {
+		t.Fatal("cache key must include frequency_penalty")
+	}
+	withPresence := &IRRequest{
+		Model:       base.Model,
+		Messages:    base.Messages,
+		Temperature: &zero,
+		Raw:         map[string]any{"presence_penalty": 0.25},
+	}
+	if cacheKey(base, target, "caller-a", "proj-1") == cacheKey(withPresence, target, "caller-a", "proj-1") {
+		t.Fatal("cache key must include presence_penalty")
+	}
+	withBias := &IRRequest{
+		Model:       base.Model,
+		Messages:    base.Messages,
+		Temperature: &zero,
+		Raw:         map[string]any{"logit_bias": map[string]any{"42": 1}},
+	}
+	if cacheKey(base, target, "caller-a", "proj-1") == cacheKey(withBias, target, "caller-a", "proj-1") {
+		t.Fatal("cache key must include logit_bias")
+	}
+}
+
+func TestCacheBypassesUnknownBehaviorChangingRawFields(t *testing.T) {
+	zero := 0.0
+	req := &IRRequest{
+		Model:       "default",
+		Messages:    []IRMessage{{Role: "user", Content: "hi"}},
+		Temperature: &zero,
+		Raw:         map[string]any{"unknown_sampler": true},
+	}
+	if cacheable(req) {
+		t.Fatal("unknown behavior-changing Raw fields must bypass cache")
+	}
 }
 
 func TestOmittedTemperatureIsNotCacheable(t *testing.T) {

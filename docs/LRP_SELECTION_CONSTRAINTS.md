@@ -120,7 +120,7 @@ Degraded paths (`lrp:no-request-content`, `lrp:image-passthrough`,
 ## Validation
 
 ```bash
-rtk make lrp-test
+make lrp-test
 ```
 
 Synthetic unit/API tests cover project floors, latency cold-start/exclusion,

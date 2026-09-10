@@ -78,7 +78,7 @@ Use `required_capabilities.reasoning` when the group itself promises reasoning o
 
 Startup fails for unsupported API shapes, invalid modalities, negative thresholds, out-of-range scores/pass rates, invalid validation dates, impossible validation statuses, required tags no target has, declared API shapes no target serves, or contracts no target can satisfy.
 
-Use `rtk go test ./cmd/... ./internal/...` after contract edits. For production-bound changes, validate the sample config, the local production snapshot, and the live production config with structured YAML parsing before restart.
+Use `go test ./cmd/... ./internal/...` after contract edits. For production-bound changes, validate the sample config, the local production snapshot, and the live production config with structured YAML parsing before restart.
 
 ## Rollout And Rollback
 

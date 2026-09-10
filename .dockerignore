@@ -13,6 +13,8 @@ env.json
 **/env.json
 !env.example.json
 !**/env.example.json
+commerce.env.json
+**/commerce.env.json
 config.production.yaml
 ROUTER_TOKENS_*.txt
 ROUTER_TOKEN*.txt

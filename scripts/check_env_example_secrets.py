@@ -19,12 +19,24 @@ ROOT = Path(__file__).resolve().parents[1]
 LIVE_SECRET_PATTERNS = [
     re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bsk-or-v1-[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"\bsk_live_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bsk_test_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bpk_live_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bpk_test_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bwhsec_[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bxai-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\brtr_metrum_[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\b[A-Fa-f0-9]{64}\b"),
 ]
+
+# Local operator credential files that must remain untracked and out of Docker context.
+LOCAL_CREDENTIAL_IGNORE_PATHS = (
+    "commerce.env.json",
+    "nested/commerce.env.json",
+    "env.json",
+)
 
 SECRET_KEY_RE = re.compile(r"(API_KEY|TOKEN|SECRET|PASSWORD|PRIVATE_KEY)$")
 PLACEHOLDER_RE = re.compile(
@@ -101,6 +113,27 @@ def retired_agent_ignore_errors() -> Iterable[str]:
             yield f"unable to verify retired credential path {path}: {detail}"
 
 
+def local_credential_ignore_errors() -> Iterable[str]:
+    for path in LOCAL_CREDENTIAL_IGNORE_PATHS:
+        try:
+            result = subprocess.run(
+                ["git", "check-ignore", "--no-index", "--quiet", "--", path],
+                cwd=ROOT,
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except OSError as exc:
+            yield f"unable to verify local credential path {path}: {exc}"
+            continue
+        if result.returncode == 1:
+            yield f"local credential path is not ignored: {path}"
+        elif result.returncode != 0:
+            detail = result.stderr.strip() or f"git check-ignore exited {result.returncode}"
+            yield f"unable to verify local credential path {path}: {detail}"
+
+
 def main() -> int:
     paths = tracked_env_examples()
     if not paths:
@@ -118,6 +151,7 @@ def main() -> int:
             continue
         errors.extend(secret_key_errors(path, data))
     errors.extend(retired_agent_ignore_errors())
+    errors.extend(local_credential_ignore_errors())
     # Service fixtures are public too. Content-bearing runtime artifacts must
     # remain outside the product tree; scan tracked service sources and fixtures.
     service_files = subprocess.run(

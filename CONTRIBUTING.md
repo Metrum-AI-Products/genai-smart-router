@@ -1,4 +1,4 @@
-# Contributing to GenAI Smart Router
+# Contributing to Metrum Router
 
 Thank you for contributing.
 
@@ -45,13 +45,22 @@ Keep each commit's sign-off intact when rebasing, squashing, or amending work.
 
 ## Development
 
+Validate changes with the repository Make targets (no internal `rtk` wrapper
+required):
+
 ```bash
 python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev
-go test ./cmd/... ./internal/...
-python3 scripts/local_dev_bootstrap_test.py
-rtk make docs-qa
+make test
+make docs-qa
+make lrp-test
 ```
 
-Learned Routing Policy tests (Python, uv): `make lrp-test`. Do not commit
-`tmp/local-dev`, `env.json`, `license.json`, or `license.key`.
+PR checklist:
 
+1. `make test` passes for the change surface you touched.
+2. Docs or claim wording stays aligned with implemented behavior.
+3. No secrets (`env.json`, `commerce.env.json`, `license.json`, tokens) are added.
+4. Commits include `Signed-off-by`.
+
+Learned Routing Policy tests (Python, uv): `make lrp-test`. Do not commit
+`tmp/local-dev`, `env.json`, `commerce.env.json`, `license.json`, or `license.key`.

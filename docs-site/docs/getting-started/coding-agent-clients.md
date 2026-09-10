@@ -5,7 +5,7 @@ doc_type: reference
 
 # Coding-Agent Client Matrix
 
-GenAI Smart Router can serve coding-agent clients through deployment-defined model groups. Use `/v1/models` with your router token to see the groups your token may request; hosted examples may use names such as `big-coder`, but your deployment can choose different names.
+Metrum Router can serve coding-agent clients through deployment-defined model groups. Use `/v1/models` with your router token to see the groups your token may request; hosted examples may use names such as `big-coder`, but your deployment can choose different names.
 
 ## Compatibility Matrix
 

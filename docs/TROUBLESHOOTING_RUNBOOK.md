@@ -93,9 +93,9 @@ For a Kubernetes deployment, inspect workload state with the currently
 authenticated cluster session and deployment-owned namespace:
 
 ```bash
-rtk kubectl get pods -n <namespace> -o wide
-rtk kubectl rollout status deploy/router -n <namespace>
-rtk kubectl logs deploy/router -n <namespace> --tail=200
+kubectl get pods -n <namespace> -o wide
+kubectl rollout status deploy/router -n <namespace>
+kubectl logs deploy/router -n <namespace> --tail=200
 ```
 
 Release and configuration changes go through a new signed Fleet intent, never a
@@ -297,7 +297,7 @@ Use the exact caller token that Codex uses and call `/v1/models`. If the request
 Then run the repeatable proof:
 
 ```bash
-rtk python3 scripts/reasoning_smoke.py \
+python3 scripts/reasoning_smoke.py \
   --base-url https://<router-host> \
   --token-file <router-token-file> \
   --model <group> \
@@ -333,8 +333,8 @@ For successful bridged requests, usage and evidence should show inbound dialect 
 When the request ID matches a production-derived class such as large Cursor/OpenAI Chat tool payloads, Codex Responses reasoning/tools, Claude Code thinking/tools, provider-skin mismatch, no-eligible diagnostics, or upstream error classification, replay the sanitized fixture matrix before closeout:
 
 ```bash
-rtk go test ./internal/router -run 'ProductionDerived'
-rtk python3 scripts/prod_smoke_regressions.py --mode prod --fixture all --model-group reasoning-bridge-smoke
+go test ./internal/router -run 'ProductionDerived'
+python3 scripts/prod_smoke_regressions.py --mode prod --fixture all --model-group reasoning-bridge-smoke
 ```
 
 Use a deployment-defined smoke group and one reusable, scoped evaluation

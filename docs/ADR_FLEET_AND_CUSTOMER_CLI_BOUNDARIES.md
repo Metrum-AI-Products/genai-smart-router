@@ -71,9 +71,9 @@ sides should move to a small neutral package instead of making the router
 depend on Fleet. Run:
 
 ```bash
-rtk go test ./internal/architecture ./internal/fleet \
+go test ./internal/architecture ./internal/fleet \
   ./cmd/metrum-genai-smartrouter-fleetctl
-rtk python3 scripts/validate_package_contents_test.py
+python3 scripts/validate_package_contents_test.py
 ```
 
 The package-content check is independent defense: source package separation
@@ -140,6 +140,17 @@ duties. Production-stage operations authority remains the operator-owned
 protected profile plus the recorded security/operations review in
 [Customer instance operations](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md#recorded-security-and-operations-review).
 
+## Optional commerce and lifecycle boundary
+
+Fleet, commerce, licensing, and customer-lifecycle packages remain in this
+Apache-2.0 monorepo as **optional operator tooling**. They are not required to
+run Community Metrum Router. Request-path packages (`cmd/metrum-router`,
+`internal/router`, customer-local `metrum-routerctl`) must not import
+`internal/commerce`, `internal/fleet`, or `internal/customerlifecycle`.
+Customer Docker images continue to omit Fleet-only binaries. Local Stripe and
+operator credential files such as `commerce.env.json` stay untracked and out of
+Docker build context.
+
 ## Consequences
 
 - A customer cannot accidentally use a support CLI to provision or activate an
@@ -150,3 +161,5 @@ protected profile plus the recorded security/operations review in
   that remains a core Fleet deploy branch with an external admission only.
 - This ADR grants no DNS, secret, credential, or migration mutation authority
   outside the protected Fleet profile and signed-intent path.
+- Commerce/fleet code in-tree does not imply a Community requirement to run
+  payment or tenant-lifecycle services.

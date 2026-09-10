@@ -11,8 +11,8 @@ import (
 	"strings"
 	"text/template"
 
-	"gopkg.in/yaml.v3"
 	"github.com/metrum-ai/router/internal/router"
+	"gopkg.in/yaml.v3"
 )
 
 // RenderResult summarizes files emitted by blueprint render.

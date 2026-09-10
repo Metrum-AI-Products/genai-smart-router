@@ -104,7 +104,7 @@ That example is a trusted deployment-owned policy service, not built-in router s
 
 ## Validation Checklist
 
-- Validate YAML with `rtk go test ./internal/router -run 'ExternalRoutingPolicy|Config'`.
+- Validate YAML with `go test ./internal/router -run 'ExternalRoutingPolicy|Config'`.
 - Confirm policy service auth is configured through `external_policy.headers`, not source code.
 - Confirm `allow_hosts` contains exact hostnames only.
 - Confirm non-local policy URLs use HTTPS unless `external_policy.allow_http: true` was explicitly approved.

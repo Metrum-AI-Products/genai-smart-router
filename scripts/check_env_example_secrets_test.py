@@ -62,6 +62,18 @@ class SecretKeyErrorsTest(unittest.TestCase):
     def test_retired_agent_credential_paths_are_ignored(self) -> None:
         self.assertEqual([], list(checker.retired_agent_ignore_errors()))
 
+    def test_local_credential_paths_are_ignored(self) -> None:
+        self.assertEqual([], list(checker.local_credential_ignore_errors()))
+
+    def test_detects_stripe_secret_patterns(self) -> None:
+        errors = list(
+            checker.live_pattern_errors(
+                checker.ROOT / "commerce.env.json",
+                'STRIPE_SECRET_KEY=sk_test_51ExampleStripeTestKeyValueXXXX',
+            )
+        )
+        self.assertTrue(any("sk_test_" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()

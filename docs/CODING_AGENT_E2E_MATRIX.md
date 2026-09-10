@@ -7,7 +7,7 @@ Run coding-agent validation against a deployment-defined smoke or staging group 
 The deterministic harness is:
 
 ```bash
-rtk python3 scripts/coding_agent_matrix.py --mode mock --output-dir tmp/coding-agent-matrix
+python3 scripts/coding_agent_matrix.py --mode mock --output-dir tmp/coding-agent-matrix
 ```
 
 Mock mode does not call live providers, the router, or installed client binaries. It creates isolated fixture repositories under `tmp/` by default, runs file-diff and unit-test verifiers, and writes:
@@ -18,7 +18,7 @@ Mock mode does not call live providers, the router, or installed client binaries
 Use live mode only with a scoped router caller token in an ignored env file:
 
 ```bash
-rtk python3 scripts/coding_agent_matrix.py \
+python3 scripts/coding_agent_matrix.py \
   --mode live \
   --env-file tmp/router-client-smoke.env \
   --model-group '<allowed-coding-group>' \
@@ -123,7 +123,7 @@ Promotion rule: keep a target out of broad Claude Code routing when any required
 - Use the opencode API capability matrix before declaring provider/model support for opencode-style requests. It sends synthetic text, client-tool, and image requests through OpenAI Chat and Anthropic Messages shapes, records sanitized pass/fail evidence, and writes JSON plus Markdown artifacts under `tmp/`:
 
 ```bash
-rtk python3 scripts/opencode_api_matrix.py \
+python3 scripts/opencode_api_matrix.py \
   --base-url https://api.provider.example/v1 \
   --model provider-model-id \
   --api-key-env PROVIDER_API_KEY \
@@ -135,7 +135,7 @@ rtk python3 scripts/opencode_api_matrix.py \
 For direct Fireworks validation, use the Fireworks base URL and a protected `FIREWORKS_API_KEY` from the environment or ignored `env.json`:
 
 ```bash
-rtk python3 scripts/opencode_api_matrix.py \
+python3 scripts/opencode_api_matrix.py \
   --base-url https://api.fireworks.ai/inference/v1 \
   --model accounts/fireworks/models/deepseek-v4-flash \
   --api-key-env FIREWORKS_API_KEY \
@@ -148,7 +148,7 @@ rtk python3 scripts/opencode_api_matrix.py \
 Use failed rows as capability evidence, not as a harness failure. A model that passes text/tools but rejects images must remain text-only in routing metadata until direct and router-level image smokes pass for that exact skin.
 The command exits zero after writing evidence by default, even when a capability row fails. Add `--strict-exit` only for CI gates that should fail on any non-passing row. Text rows require the expected text, default `OK`; image rows require the expected receipt text, default `Rite Aid`, before they are marked as capability passes.
 
-The opencode API matrix is direct capability evidence, not large-payload closeout evidence. When a route will serve Cursor/OpenCode-style OpenAI Chat traffic with large message history and tool schemas, also run `scripts/large_payload_chat_smoke.py` at the direct upstream, local router, and production router layers when a safe production caller is available. For production-derived regressions, run `rtk go test ./internal/router -run 'ProductionDerived'` locally and `scripts/prod_smoke_regressions.py --fixture all` against the deployment so the same sanitized fixture set proves request-shape buckets, selected target, bridge direction, translated reasoning control, selected/must-not-select target behavior, and expected error classes. Use dedicated deployment smoke groups such as the reference `reasoning-bridge-smoke`, `responses-to-chat-bridge-smoke`, `large-openai-chat-tools-smoke`, or a scoped opencode stream-options smoke group; for caller-visible reference fixtures such as `high-gt1mb-openai-chat-tools`, use an existing scoped caller and confirm candidate filter evidence from safe reports. Grant one reusable, deployment-owned evaluation caller access before restricted smoke-group runs, and do not modify a broad production coding group just to execute bridge or large-payload fixtures. On 2026-06-30, Fireworks `accounts/fireworks/models/deepseek-v4-flash` passed the direct and local router 524 KB OpenAI Chat large-payload fixture with 24 tools and about 91K prompt tokens; a deployment rerun requires an operator-owned router URL and reusable safe caller token and should record only scalar helper output plus usage/report buckets. On 2026-07-09, production-derived opencode/AI SDK traffic with Chat `stream_options` produced upstream 400s on several broad Chat targets; keep that shape represented by the sanitized `opencode-ai-sdk-chat-stream-options` fixture and require explicit operator confirmation before changing broad coding-group composition.
+The opencode API matrix is direct capability evidence, not large-payload closeout evidence. When a route will serve Cursor/OpenCode-style OpenAI Chat traffic with large message history and tool schemas, also run `scripts/large_payload_chat_smoke.py` at the direct upstream, local router, and production router layers when a safe production caller is available. For production-derived regressions, run `go test ./internal/router -run 'ProductionDerived'` locally and `scripts/prod_smoke_regressions.py --fixture all` against the deployment so the same sanitized fixture set proves request-shape buckets, selected target, bridge direction, translated reasoning control, selected/must-not-select target behavior, and expected error classes. Use dedicated deployment smoke groups such as the reference `reasoning-bridge-smoke`, `responses-to-chat-bridge-smoke`, `large-openai-chat-tools-smoke`, or a scoped opencode stream-options smoke group; for caller-visible reference fixtures such as `high-gt1mb-openai-chat-tools`, use an existing scoped caller and confirm candidate filter evidence from safe reports. Grant one reusable, deployment-owned evaluation caller access before restricted smoke-group runs, and do not modify a broad production coding group just to execute bridge or large-payload fixtures. On 2026-06-30, Fireworks `accounts/fireworks/models/deepseek-v4-flash` passed the direct and local router 524 KB OpenAI Chat large-payload fixture with 24 tools and about 91K prompt tokens; a deployment rerun requires an operator-owned router URL and reusable safe caller token and should record only scalar helper output plus usage/report buckets. On 2026-07-09, production-derived opencode/AI SDK traffic with Chat `stream_options` produced upstream 400s on several broad Chat targets; keep that shape represented by the sanitized `opencode-ai-sdk-chat-stream-options` fixture and require explicit operator confirmation before changing broad coding-group composition.
 
 ### Cursor And OpenAI Chat IDE Clients
 

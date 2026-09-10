@@ -1,6 +1,6 @@
 # Support
 
-GenAI Smart Router is an open-source project maintained on a best-effort basis.
+Metrum Router is an open-source project maintained on a best-effort basis.
 The project does not promise response or resolution times.
 
 ## Where To Ask

@@ -90,6 +90,23 @@ STALE_CURRENT_ROUTE_PATTERNS = [
     ),
 ]
 
+# Current product display name is Metrum Router. Historical aliases may appear
+# only when explicitly marked as former names (for example in TRADEMARKS.md).
+STALE_PRODUCT_TITLE_PATTERNS = [
+    (
+        "stale product title Metrum AI Router",
+        re.compile(r"\bMetrum AI Router\b"),
+    ),
+    (
+        "stale product title GenAI Smart Router",
+        re.compile(r"\bGenAI Smart Router\b"),
+    ),
+]
+
+PRODUCT_TITLE_ALLOWLIST = {
+    Path("TRADEMARKS.md"),
+}
+
 
 def iter_public_files() -> Iterable[Path]:
     for path in PUBLIC_DOC_PATHS:
@@ -115,6 +132,11 @@ def line_errors(path: Path, line_no: int, line: str) -> Iterable[str]:
     for label, pattern in STALE_CURRENT_ROUTE_PATTERNS:
         if pattern.search(line):
             yield f"{rel}:{line_no}: contains {label}; mark historical or update to config.example.yaml"
+
+    if rel not in PRODUCT_TITLE_ALLOWLIST and rel not in HISTORICAL_FILES:
+        for label, pattern in STALE_PRODUCT_TITLE_PATTERNS:
+            if pattern.search(line):
+                yield f"{rel}:{line_no}: contains {label}; use Metrum Router"
 
 
 def doc_type_error(path: Path, text: str) -> str | None:

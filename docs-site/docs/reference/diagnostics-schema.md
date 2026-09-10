@@ -5,7 +5,7 @@ doc_type: reference
 
 # Diagnostics Schema
 
-This reference documents the relational diagnostics, usage, reporting, retention, security-access, and governed content-capture tables used by GenAI Smart Router. It is derived from the current router diagnostics schema definitions and is intended for operators who troubleshoot by `X-Request-Id`, build reports, or review what data is safe to persist.
+This reference documents the relational diagnostics, usage, reporting, retention, security-access, and governed content-capture tables used by Metrum Router. It is derived from the current router diagnostics schema definitions and is intended for operators who troubleshoot by `X-Request-Id`, build reports, or review what data is safe to persist.
 
 The ordinary diagnostics schema stores scalar metadata only. It is designed for request tracing, usage accounting, latency and fallback triage, provider/model health, quota and traffic-shaping analysis, and report generation without storing raw request content.
 
@@ -488,11 +488,6 @@ This section is generated from the router usage and content-capture schema used 
 - Foreign keys: `request_id` joins `request_usage.request_id` when a usage row exists
 - Indexes: `idx_request_content_group`, `idx_request_content_request`, `idx_request_content_retention`, `idx_request_content_scope`, `idx_request_content_ts`, primary key
 
-`encryption_kms_key_id` is a **legacy column name**. It stores the deployment's
-local AES-256-GCM key id (`local_key_id` / material via
-`CONTENT_CAPTURE_LOCAL_KEY`). It does **not** imply AWS KMS, GCP KMS, or any
-cloud key-management service integration.
-
 | Column | Scalar type | Nullable | Populated when | Safe to log/share | Example or range |
 |---|---|---|---|---|---|
 | `id` | integer | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
@@ -510,7 +505,7 @@ cloud key-management service integration.
 | `content_type` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
 | `content_text` | string | no | only when governed content capture is explicitly enabled | restricted; redacted and AES-256-GCM-encrypted governed content, not ordinary diagnostics | deployment-defined scalar value |
 | `encryption_nonce` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
-| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization; legacy name for local AES-256-GCM key id (`local_key_id` / `CONTENT_CAPTURE_LOCAL_KEY`), not cloud KMS | deployment-defined `local_key_id` scalar |
+| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
 | `encrypted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 | `content_bytes` | integer | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `0` or positive integer |
 | `truncated` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
@@ -538,7 +533,7 @@ cloud key-management service integration.
 | `name` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
 | `value` | string | no | only when governed content capture is explicitly enabled | restricted; redacted and AES-256-GCM-encrypted governed content, not ordinary diagnostics | deployment-defined scalar value |
 | `encryption_nonce` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
-| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization; legacy name for local AES-256-GCM key id (`local_key_id` / `CONTENT_CAPTURE_LOCAL_KEY`), not cloud KMS | deployment-defined `local_key_id` scalar |
+| `encryption_kms_key_id` | string | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | deployment-defined scalar value |
 | `encrypted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 | `redacted` | boolean | no | only when governed content capture is explicitly enabled | safe metadata under content-capture authorization | `true` or `false` |
 

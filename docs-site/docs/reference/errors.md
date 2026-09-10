@@ -5,7 +5,7 @@ doc_type: reference
 
 # Error Reference
 
-GenAI Smart Router returns structured errors intended to be useful to both callers and administrators. Every response includes `X-Request-Id`; include that ID when asking an administrator to inspect router traces.
+Metrum Router returns structured errors intended to be useful to both callers and administrators. Every response includes `X-Request-Id`; include that ID when asking an administrator to inspect router traces.
 
 ## Standard Error Shape
 
@@ -78,7 +78,7 @@ The error body, headers, diagnostics, and reports must not expose raw prompts, r
 | `license-invalid` | 503 | The license file is malformed, unverifiable, uses an unknown key, or otherwise cannot be trusted. | Contact the router operator with the request ID. | Replace the license with a valid operator-issued file; do not expose payloads or signatures in tickets. |
 | `license-expired` | 403 | The license signature is valid but the license is expired. | Contact the router operator. | Renew or restore a valid license file, then restart or wait for recheck. |
 | `license-not-yet-valid` | 503 | The license `not_before` time is in the future. | Contact the router operator. | Check the issued license dates and system clock. |
-| `license-product-mismatch` | 503 | The license is not issued for GenAI Smart Router. | Contact the router operator. | Install the correct product license. |
+| `license-product-mismatch` | 503 | The license is not issued for Metrum Router. | Contact the router operator. | Install the correct product license. |
 | `license-feature-forbidden` | 403 | The request uses a feature not enabled by the current license. | Use an enabled feature or ask the operator for access. | Review licensed feature gates for routing, reporting, dynamic score, TypeScript, external policy, contracts, rollups, or content capture. |
 | `license-limit-exceeded` | 403 | The deployment exceeds a licensed limit such as model groups or callers. | Contact the router operator. | Reduce configured usage or update the license. |
 | `license-volume-exceeded` | 429 | The license-wide lifetime request or token budget is exhausted. | Retry only after the operator installs a replacement or expanded license. | Review the license usage counters and install the contracted replacement or top-up license. |

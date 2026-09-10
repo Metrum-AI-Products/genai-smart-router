@@ -36,7 +36,7 @@ Use [Package Validation And Security Checks](./installation/package-validation).
 
 ### How do I evaluate a deployment?
 
-Follow [Evaluate GenAI Smart Router](./evaluation/evaluate-smart-router) with
+Follow [Evaluate Metrum Router](./evaluation/evaluate-smart-router) with
 your own provider accounts and representative workloads, then use [Deployment
 Paths](./licensing/deployment-paths) for self-managed installation choices.
 

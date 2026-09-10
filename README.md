@@ -1,9 +1,9 @@
-# Metrum AI Router
+# Metrum Router
 
-**Metrum AI Router** is an open-source AI model gateway: OpenAI and Anthropic
-dialects in, any provider or local model out; per-caller budgets, usage
-attribution, and decision trace. Apache-2.0, no license key required by
-default, runs on your hardware.
+**Metrum Router** is an open-source AI model gateway: OpenAI and Anthropic
+dialects in, any provider or local model out; configurable model groups,
+per-caller quotas, usage attribution, and optional decision diagnostics.
+Apache-2.0, no license key required by default, runs on your hardware.
 
 Works with Claude Code and Codex CLI. Routes to Anthropic, OpenAI, Replicate,
 and OpenAI-compatible backends including vLLM and SGLang.
@@ -44,7 +44,7 @@ unary upstream response.
 ## Software License And Notices
 
 The repository-root [LICENSE](LICENSE) contains the Apache License 2.0 terms
-for Metrum AI Router first-party content. Keep it together with
+for Metrum Router first-party content. Keep it together with
 [NOTICE](NOTICE), the dependency and asset inventory in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the model-term boundaries
 in [MODEL_LICENSES.md](MODEL_LICENSES.md) when copying or redistributing a
@@ -98,7 +98,7 @@ starting the router require no private repository access.
 
 ```bash
 git clone https://github.com/metrum-ai/router.git
-cd genai-smart-router
+cd router
 python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev
 # Set OPENAI_API_KEY in tmp/local-dev/env.json.
 go run ./cmd/metrum-router --config tmp/local-dev/config.yaml
@@ -132,7 +132,7 @@ server:
 
 `default_ttl` is the maximum duration for an entry. `max_bytes` is the total LRU byte budget. Entries are evicted when expired or when the cache exceeds `max_bytes`.
 
-The cache key is based on normalized request semantics and selected target: model group, system/input/messages, max tokens, temperature, stop sequences, provider, and target model. It does not use the raw request body, caller request IDs, router request IDs, caller tokens, caller project/user, or provider response IDs.
+The cache key is based on normalized request semantics, caller/project scope, and selected target: caller id, project, model group, system/input/messages, max tokens, temperature, stop sequences, selected sampling fields (`top_p`, `seed`, `frequency_penalty`, `presence_penalty`, `logit_bias`, reasoning/thinking, previous response id), provider, and target model. It does not use the raw request body, caller request IDs, router request IDs, caller tokens, or provider response IDs. Unknown behavior-changing request fields bypass the cache.
 
 Cached payloads are sanitized before storage. The router caches text, model, stop reason, usage, and warnings, but not upstream `id`, raw provider payloads, or provider-specific metadata. Every caller-facing response gets a fresh router-owned `resp_...` ID, including cache hits.
 
@@ -292,7 +292,7 @@ In a packaged deployment, put provider keys in `config/env.json` beside `config/
 
 ## Runtime Policy License Enforcement
 
-All Metrum AI Router first-party content is licensed under the Apache License
+All Metrum Router first-party content is licensed under the Apache License
 2.0. Copyright 2026 Metrum AI, Inc. The Apache license grants the rights to use,
 modify, and distribute those materials; no EULA acceptance or runtime-policy
 file is a condition of those rights.

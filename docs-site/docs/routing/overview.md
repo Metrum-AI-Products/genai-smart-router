@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Routing
 
-GenAI Smart Router lets callers request a stable, deployment-defined model group while operators change the provider and model mix behind that group. The caller sends `model: "<group-name>"`; the router checks caller access, filters the group's targets for the request shape, applies the configured routing strategy, and forwards the request to one eligible upstream target.
+Metrum Router lets callers request a stable, deployment-defined model group while operators change the provider and model mix behind that group. The caller sends `model: "<group-name>"`; the router checks caller access, filters the group's targets for the request shape, applies the configured routing strategy, and forwards the request to one eligible upstream target.
 
 Group names are deployment-defined. Names such as `fast`, `high`, `big-coder`, or `vision` may appear in examples from a reference or hosted deployment, but they are not product-required names. Callers should discover allowed groups from [`/v1/models`](../getting-started/available-models).
 

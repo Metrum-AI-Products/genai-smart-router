@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Security And Governance
 
-GenAI Smart Router centralizes caller access, provider credentials, admin access, telemetry boundaries, license enforcement, and optional content governance so applications and agent clients do not handle provider keys directly.
+Metrum Router centralizes caller access, provider credentials, admin access, telemetry boundaries, license enforcement, and optional content governance so applications and agent clients do not handle provider keys directly.
 
 ## Governance Layers
 

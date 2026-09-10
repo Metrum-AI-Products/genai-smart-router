@@ -8,7 +8,7 @@ This runbook is the internal source of truth for keeping operator docs, packaged
 
 | Tier | Surface | Location | Audience | Private details allowed? | Release/package status | Owner | Review checklist |
 |---|---|---|---|---|---|---|---|
-| Tier 1 | Router-served external docs | `docs-site/docs/**` | Customers, evaluators, application developers, platform admins | No private hostnames, SSH usernames, key paths, raw secrets, token hashes, full config, internal source-control workflow, or private deployment procedures | Built into the router binary and served under `/docs/` | Product/docs owner with feature owner | Complete external admin flow, links in `docs-site/sidebars.js`, `rtk make docs-qa`, `rtk make docs-build` when feasible |
+| Tier 1 | Router-served external docs | `docs-site/docs/**` | Customers, evaluators, application developers, platform admins | No private hostnames, SSH usernames, key paths, raw secrets, token hashes, full config, internal source-control workflow, or private deployment procedures | Built into the router binary and served under `/docs/` | Product/docs owner with feature owner | Complete external admin flow, links in `docs-site/sidebars.js`, `make docs-qa`, `make docs-build` when feasible |
 | Tier 2 | Package-safe bootstrap Markdown | Files named in `scripts/package_docs_allowlist.txt`, currently `docs/PACKAGE_README.md`, `docs/BINARY_INSTALL.md`, `docs/DOCKER_COMPOSE_INSTALL.md`, `docs/KUBERNETES_INSTALL.md`, `docs/PACKAGE_VALIDATION.md`, and `docs/solution-brief.md` | External administrators before the router is running | Placeholders only; no private operational details or source-maintenance process | Copied into binary and Docker packages under `docs/` | Release/package owner with docs owner | Verify allowlist, generic install path, `/docs/` pointer, package validator, no secrets/private markers |
 | Tier 3 | Operator source-checkout runbooks | `docs/*.md`, scripts, source comments not in Tier 2 | Operators, implementation reviewers, deployment owners | This repository is public open-source; do not check in private hostnames, SSH details, AWS account IDs, backup hosts, real caller IDs, or operator evidence. Placeholders only. Never include raw provider keys, raw router tokens, token hashes, real private keys, real customer payloads, or full production config | Not packaged unless explicitly reviewed and listed in the allowlist | Owning engineering area | Source-only header where appropriate, stale-doc search, matching Tier 1 public docs when behavior is external |
 | Config examples | Packaged config templates | `config.example.yaml`, `config.minimal.example.yaml`, `env.example.json`, `env.minimal.example.json`, docs snippets | Operators and evaluators | Placeholders only | `config.example.yaml` and `env.example.json` are packaged as config templates, not docs. `config.minimal.example.yaml` is the local/dev starter. | Runtime config owner | Placeholder-only secret review and config validation |
@@ -53,7 +53,7 @@ Use this map when public Docusaurus content changes. Public pages should explain
 
 ## Release Notes Workflow
 
-Before packaging a release, run `rtk make release-notes-from-git` to draft release-note entries from available router release tags. Review and hand-edit the draft before publishing so each entry is customer-safe and covers highlights, operator impact, caller impact, validation, and rollback.
+Before packaging a release, run `make release-notes-from-git` to draft release-note entries from available router release tags. Review and hand-edit the draft before publishing so each entry is customer-safe and covers highlights, operator impact, caller impact, validation, and rollback.
 
 Keep public release notes focused on shipped release information. Do not leave release-note templates, authoring instructions, placeholder bullets, or maintainer checklists in `docs-site/docs/release-notes/**`.
 
@@ -68,7 +68,7 @@ Each public release-note entry should include:
 
 Never include private hostnames, SSH details, raw router tokens, token hashes, provider API keys, full production config, private signing details, customer-specific license payloads, internal source-control workflow, or placeholder release-note template text in public release notes.
 
-Run `rtk make docs-qa` before `rtk make docs-build`. The docs QA checks that the hosted docs include a version banner component, per-page docs metadata, a releases index, at least one release-note entry, and no forbidden public release-note patterns. Public release notes should name shipped router versions and build timestamps, not internal source-control workflow details.
+Run `make docs-qa` before `make docs-build`. The docs QA checks that the hosted docs include a version banner component, per-page docs metadata, a releases index, at least one release-note entry, and no forbidden public release-note patterns. Public release notes should name shipped router versions and build timestamps, not internal source-control workflow details.
 
 ## Behavior-Change Documentation Requirements
 
@@ -163,12 +163,12 @@ Use placeholders such as `https://router.example.com`, `ROUTER_TOKEN`, `rtr_metr
 Run:
 
 ```bash
-rtk make docs-diag-schema
-rtk make docs-qa
-rtk make secret-check
+make docs-diag-schema
+make docs-qa
+make secret-check
 ```
 
-Run `docs-diag-schema` whenever diagnostics, usage, reporting, retention, security-access, or governed content-capture schema structs change. `docs-qa` checks public-facing docs for known private deployment markers and stale current-route claims. `secret-check` verifies environment examples, package-content validation tests, and license SKU checks. For public docs changes, run `rtk make docs-build` when feasible.
+Run `docs-diag-schema` whenever diagnostics, usage, reporting, retention, security-access, or governed content-capture schema structs change. `docs-qa` checks public-facing docs for known private deployment markers and stale current-route claims. `secret-check` verifies environment examples, package-content validation tests, and license SKU checks. For public docs changes, run `make docs-build` when feasible.
 
 ## Packaging Boundaries
 

@@ -105,7 +105,7 @@ server:
   admin_auth:
     basic:
       enabled: false
-      realm: GenAI Smart Router Admin
+      realm: Metrum Router Admin
       allow_insecure_http: false
       trusted_proxy_cidrs: []
       users: []
@@ -1740,6 +1740,16 @@ models:
       weight: 3
   adaptive-agent:
     strategy: dynamic_score
+    # Estimated target-selection ceilings for semantic/dynamic_score only.
+    # This is not a universal hard-dollar ledger or invoice guarantee. Weighted
+    # and other strategies ignore spend_ceiling.
+    spend_ceiling:
+      max_estimated_cost_usd: 0.05
+      max_tier: standard
+      allowed_tiers: [cheap, standard]
+      tier_ceilings:
+        cheap: 0.01
+        standard: 0.05
     contract:
       display_name: Adaptive agent
       caller_visible_notes: Deployment-defined text and tool-agent group with validated targets.
@@ -2571,6 +2581,11 @@ callers:
     lifetime_tokens: 2000000000
     soft_pct: 90
     on_exhaust: disable
+  # Caller entitlement for semantic/dynamic_score escalation. Merges with group
+  # spend_ceiling when both are set. Does not apply to weighted/static/failover.
+  spend_ceiling:
+    max_estimated_cost_usd: 0.08
+    max_tier: standard
 - id: coding-dev
   owner_user: coding
   project: example-project

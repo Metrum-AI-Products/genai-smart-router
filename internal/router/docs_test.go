@@ -52,7 +52,12 @@ func TestSecurityTextHandler(t *testing.T) {
 		t.Fatalf("content-type=%q", got)
 	}
 	body := rr.Body.String()
-	for _, required := range []string{"Contact: mailto:contact@metrum.ai", "Expires: 2027-08-19T00:00:00.000Z", "Preferred-Languages: en"} {
+	for _, required := range []string{
+		"Contact: mailto:security@metrum.ai",
+		"Expires: 2027-08-19T00:00:00.000Z",
+		"Preferred-Languages: en",
+		"Policy: https://github.com/metrum-ai/router/blob/main/SECURITY.md",
+	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("security.txt missing %q: %s", required, body)
 		}
