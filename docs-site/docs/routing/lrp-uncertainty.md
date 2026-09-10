@@ -29,6 +29,6 @@ routing activation is authorized by enabling these knobs alone.
 
 Labels and drift reports stay bounded and content-free. Rich explanations still
 require authenticated operator `/explain` access. See the operator document
-[LRP uncertainty](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/LRP_UNCERTAINTY.md)
+[LRP uncertainty](https://github.com/metrum-ai/router/blob/main/docs/LRP_UNCERTAINTY.md)
 and the [learned routing policy](learned-routing-policy.md) overview. Contact
 [contact@metrum.ai](mailto:contact@metrum.ai) for deployment guidance.

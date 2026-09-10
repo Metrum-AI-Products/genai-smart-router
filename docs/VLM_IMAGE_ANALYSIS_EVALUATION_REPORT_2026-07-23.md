@@ -66,7 +66,7 @@ targets. The following production checks were completed after rollout:
   request-shape counters, not request content or credentials.
 
 The production rollout evidence is summarized on
-[issue #556](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/556#issuecomment-5054717532).
+[issue #556](https://github.com/metrum-ai/router/issues/556#issuecomment-5054717532).
 
 ## Nano Banana Pro fixture attempt
 
@@ -100,4 +100,4 @@ passes the local-router forced-tool and streaming checks above.
 
 - [Validation runbook](VLM_IMAGE_ANALYSIS_VALIDATION.md)
 - [Local smoke script](../scripts/local_image_analysis_smoke.sh)
-- [Production rollout tracking issue #556](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/556)
+- [Production rollout tracking issue #556](https://github.com/metrum-ai/router/issues/556)

@@ -34,7 +34,7 @@ Session-based splitting prevents a conversation appearing in training and test.
 Optional near-duplicate embedding deduplication runs before that split so
 templated prompts do not leak across partitions; operators review removed counts
 and threshold sensitivity without exporting request content. See the operator
-[evaluation splits note](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/LRP_EVAL_SPLITS.md).
+[evaluation splits note](https://github.com/metrum-ai/router/blob/main/docs/LRP_EVAL_SPLITS.md).
 Small or undertrained models are excluded. Model bundles bind their embedding
 artifacts and feature definitions for consistent training and serving.
 
@@ -152,7 +152,7 @@ impossible. Test learned/fallback label counts and caller latency at the intende
 request sizes and concurrency. A 500 ms test allowance does not turn a failed
 40 ms performance target into a pass. Restore the default deadline and the
 previous router timeout when reverting a test. The
-[operator runbook](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/LEARNED_ROUTING_POLICY.md#choose-a-deadline-for-the-workload-or-test)
+[operator runbook](https://github.com/metrum-ai/router/blob/main/docs/LEARNED_ROUTING_POLICY.md#choose-a-deadline-for-the-workload-or-test)
 shows the configuration and validation steps.
 
 For a temporary run, `lrp serve --bundle BUNDLE --config CONFIG --deadline-ms 500`

@@ -1,10 +1,10 @@
 # LRP uncertainty, exploration, drift, and cold start
 
 Follow-up to issues
-[#24](https://github.com/Metrum-AI-Products/genai-smart-router/issues/24),
-[#25](https://github.com/Metrum-AI-Products/genai-smart-router/issues/25),
-[#28](https://github.com/Metrum-AI-Products/genai-smart-router/issues/28), and
-[#30](https://github.com/Metrum-AI-Products/genai-smart-router/issues/30).
+[#24](https://github.com/metrum-ai/router/issues/24),
+[#25](https://github.com/metrum-ai/router/issues/25),
+[#28](https://github.com/metrum-ai/router/issues/28), and
+[#30](https://github.com/metrum-ai/router/issues/30).
 Wave-2 modules extend Learned Routing Policy (LRP) with calibrated uncertainty,
 Thompson sampling, drift monitoring, and evidence-backed cold start. Defaults
 preserve Wave-1 epsilon-greedy behavior. **No live routing activation** is

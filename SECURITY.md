@@ -5,7 +5,7 @@
 Do not open a public issue for a suspected vulnerability. Use GitHub's private
 vulnerability-reporting form for this repository:
 
-https://github.com/Metrum-AI-Products/genai-smart-router/security/advisories/new
+https://github.com/metrum-ai/router/security/advisories/new
 
 Include affected versions, impact, a minimal reproduction, and suggested
 mitigations when available. Do not include live credentials, customer data,

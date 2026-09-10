@@ -28,6 +28,6 @@ remain valid for local development when no signature file is present and
 require-signed loading is off.
 
 See the operator document
-[LRP signed bundles](https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/docs/LRP_SIGNED_BUNDLES.md)
+[LRP signed bundles](https://github.com/metrum-ai/router/blob/main/docs/LRP_SIGNED_BUNDLES.md)
 for trust rotation, rollback, and negative-case behavior. Contact
 [contact@metrum.ai](mailto:contact@metrum.ai) for deployment questions.

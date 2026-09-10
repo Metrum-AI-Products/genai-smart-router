@@ -4,10 +4,10 @@ Operator guide for latency gates, per-project quality floors, evidence-based
 prompt-cache cost estimates, and bounded explanation labels in Learned Routing
 Policy selection. Companion to [LEARNED_ROUTING_POLICY.md](LEARNED_ROUTING_POLICY.md).
 Implements issues
-[#26](https://github.com/Metrum-AI-Products/genai-smart-router/issues/26),
-[#27](https://github.com/Metrum-AI-Products/genai-smart-router/issues/27),
-[#35](https://github.com/Metrum-AI-Products/genai-smart-router/issues/35), and
-[#36](https://github.com/Metrum-AI-Products/genai-smart-router/issues/36).
+[#26](https://github.com/metrum-ai/router/issues/26),
+[#27](https://github.com/metrum-ai/router/issues/27),
+[#35](https://github.com/metrum-ai/router/issues/35), and
+[#36](https://github.com/metrum-ai/router/issues/36).
 
 No live routing activation is authorized by these features. Use generic fixtures
 and deployment-defined project names only.

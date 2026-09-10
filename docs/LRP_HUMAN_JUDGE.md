@@ -1,7 +1,7 @@
 # LRP governed human judge audit sample
 
 **Audience:** operators reviewing LLM judge quality before promotion.
-**Related issues:** [#29](https://github.com/Metrum-AI-Products/genai-smart-router/issues/29).
+**Related issues:** [#29](https://github.com/metrum-ai/router/issues/29).
 
 Pairwise and absolute LLM judgments are sampled into a **protected** review queue
 for human spot-check. Public artifacts and checked-in fixtures must never include

@@ -1,7 +1,7 @@
 # LRP operator-signed bundles
 
 Follow-up to issue
-[#33](https://github.com/Metrum-AI-Products/genai-smart-router/issues/33).
+[#33](https://github.com/metrum-ai/router/issues/33).
 Learned Routing Policy (LRP) v1 already loads immutable bundles with a SHA-256
 manifest inventory and path containment checks. Operators may optionally attach
 an Ed25519 detached signature so production loaders can require a trusted
