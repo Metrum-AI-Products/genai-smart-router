@@ -39,13 +39,13 @@ if (
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: "Metrum GenAI Smart Router",
-  tagline: "A governed, multi-provider gateway for LLMs, VLMs, and AI agents.",
+  title: "Metrum AI Router",
+  tagline: "An open-source AI model gateway",
   favicon: "img/favicon/favicon.ico",
   url: process.env.DOCS_SITE_URL || "https://docs.metrum.ai",
   baseUrl: "/docs/",
   organizationName: "metrum-ai",
-  projectName: "smart-llmrouter",
+  projectName: "router",
   customFields: {
     routerVersion,
     routerBuildDate,
@@ -95,7 +95,7 @@ const config = {
         respectPrefersColorScheme: false,
       },
       navbar: {
-        title: "GenAI Smart Router",
+        title: "Metrum AI Router",
         logo: {
           alt: "Metrum AI",
           src: "img/metrum_logo_white_new.png",
@@ -145,6 +145,7 @@ const config = {
               { label: "Software Licenses", to: "/legal/software-licenses" },
               { label: "Privacy", to: "/privacy" },
               { label: "Source License", href: "https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/LICENSE" },
+              { label: "Trademarks", href: "https://github.com/Metrum-AI-Products/genai-smart-router/blob/main/TRADEMARKS.md" },
             ],
           },
         ],
