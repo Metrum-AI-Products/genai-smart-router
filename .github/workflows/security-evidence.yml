@@ -48,7 +48,7 @@ jobs:
       # in .grype.yaml with an owner and expiry tracked by issue #17. A passing
       # scan with documented exceptions is not proof of zero vulnerabilities.
       - name: Scan source dependencies
-        uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439
         with:
           path: .
           fail-build: true
