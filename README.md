@@ -1,10 +1,12 @@
-# GenAI Smart Router
+# Metrum AI Router
 
-GenAI Smart Router is a self-managed Go reverse proxy for routing OpenAI Chat,
-OpenAI Responses, and Anthropic Messages traffic across deployment-configured
-providers and private OpenAI-compatible model servers. It centralizes caller
-access, provider credentials, model-group policy, usage accounting, and safe
-operational diagnostics.
+**Metrum AI Router** is an open-source AI model gateway: OpenAI and Anthropic
+dialects in, any provider or local model out; per-caller budgets, usage
+attribution, and decision trace. Apache-2.0, no license key required by
+default, runs on your hardware.
+
+Works with Claude Code and Codex CLI. Routes to Anthropic, OpenAI, Replicate,
+and OpenAI-compatible backends including vLLM and SGLang.
 
 Community participation is governed by [CONTRIBUTING.md](CONTRIBUTING.md), the
 [Code of Conduct](CODE_OF_CONDUCT.md), and [GOVERNANCE.md](GOVERNANCE.md).
@@ -14,21 +16,44 @@ must use the private reporting path in [SECURITY.md](SECURITY.md).
 This repository is public Apache-2.0 open-source software maintained in the
 open. Metrum branding, copyright, and support contacts remain; private Metrum
 production topology and operator evidence do not belong in this tree.
+Trademark use is governed by [TRADEMARKS.md](TRADEMARKS.md); the Apache-2.0
+license does not grant trademark rights.
 
 For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md). The customer-facing hosted documentation is built from `docs-site/` and embedded into release binaries under `/docs/`; browser requests to `/` redirect there. In source checkouts, internal documentation maintenance rules and the public/internal source-of-truth map live in [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md).
+
+## Editions
+
+- **Community** — this Apache-2.0 repository. No license key is required by
+  default. You may use, modify, and distribute the software under Apache-2.0
+  without payment; Enterprise offerings never condition those Apache rights on
+  payment.
+- **Enterprise** — a separate distribution with production validation, named
+  support, signed releases, and related commercial entitlements.
+
+Privacy defaults for this software: do not retain prompts or responses by
+default; do not train on traffic; provider keys stay in your deployment.
+
+## Known limitations
+
+See [Architecture, Platforms, And Limitations](docs-site/docs/reference/architecture-limitations.md)
+for the full operator-owned boundary list. Streaming accuracy in brief: native
+incremental SSE applies to same-dialect Chat Completions and Anthropic
+Messages; OpenAI Responses and cross-dialect bridges synthesize SSE after a
+unary upstream response.
 
 ## Software License And Notices
 
 The repository-root [LICENSE](LICENSE) contains the Apache License 2.0 terms
-for GenAI Smart Router first-party content. Keep it together with
+for Metrum AI Router first-party content. Keep it together with
 [NOTICE](NOTICE), the dependency and asset inventory in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the model-term boundaries
 in [MODEL_LICENSES.md](MODEL_LICENSES.md) when copying or redistributing a
 release. Third-party components, assets, and models remain governed by their
-own applicable terms; the Apache-2.0 license does not replace them.
+own applicable terms; the Apache-2.0 license does not replace them. See
+[TRADEMARKS.md](TRADEMARKS.md) for mark usage.
 
-The signed `license.json` used by a deployment is separate. It is an operator
-runtime-policy input for feature and operational enforcement, not the software
+Optional signed `license.json` is a separate operator runtime-policy input for
+feature and operational enforcement when enabled. It is not the software
 copyright license and not a replacement for any of the files above. See
 [docs/LICENSE.md](docs/LICENSE.md) for the complete scope map and Apache terms.
 
@@ -261,8 +286,8 @@ In a packaged deployment, put provider keys in `config/env.json` beside `config/
 
 ## Runtime Policy License Enforcement
 
-All GenAI Smart Router first-party content is licensed under the Apache License
-2.0. Copyright 2026 Metrum AI. The Apache license grants the rights to use,
+All Metrum AI Router first-party content is licensed under the Apache License
+2.0. Copyright 2026 Metrum AI, Inc. The Apache license grants the rights to use,
 modify, and distribute those materials; no EULA acceptance or runtime-policy
 file is a condition of those rights.
 
