@@ -35,6 +35,8 @@ import (
 	"testing"
 	"time"
 
+	"smart-llmrouter/internal/buildinfo"
+
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
@@ -154,6 +156,80 @@ func TestAuthRejectsUnknownTokenBeforeUpstream(t *testing.T) {
 	if _, tokenID, err := svc.authenticate("Bearer bogus-secret-token", ""); err == nil || tokenID != "invalid-token" {
 		t.Fatalf("invalid token id=%q err=%v", tokenID, err)
 	}
+}
+
+func TestUpstreamUserAgentDefaultsAndAllowsOverride(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		var gotUA string
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotUA = r.Header.Get("User-Agent")
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id": "up_ua",
+				"choices": []map[string]any{{
+					"message":       map[string]any{"role": "assistant", "content": "ok"},
+					"finish_reason": "stop",
+				}},
+				"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+			})
+		}))
+		defer upstream.Close()
+
+		cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+		svc, err := New(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer svc.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		want := "metrum-ai-router/" + buildinfo.Version
+		if gotUA != want {
+			t.Fatalf("User-Agent=%q, want %q", gotUA, want)
+		}
+	})
+
+	t.Run("provider_headers_override", func(t *testing.T) {
+		var gotUA string
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotUA = r.Header.Get("User-Agent")
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id": "up_ua_override",
+				"choices": []map[string]any{{
+					"message":       map[string]any{"role": "assistant", "content": "ok"},
+					"finish_reason": "stop",
+				}},
+				"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+			})
+		}))
+		defer upstream.Close()
+
+		cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+		mock := cfg.Provider["mock"]
+		mock.Headers = map[string]string{"User-Agent": "custom-operator-ua"}
+		cfg.Provider["mock"] = mock
+		svc, err := New(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer svc.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		if gotUA != "custom-operator-ua" {
+			t.Fatalf("User-Agent=%q, want custom-operator-ua", gotUA)
+		}
+	})
 }
 
 func TestAuthRejectsInactiveCallerKeyAfterTokenMatch(t *testing.T) {
