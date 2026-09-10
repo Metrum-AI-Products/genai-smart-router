@@ -318,6 +318,9 @@ func TestHP3ImageURLDNSFailureStopsBeforeRoutingAndUpstream(t *testing.T) {
 	if got := rr.Header().Get("X-Router-Error-Class"); got != "image_url_dns_failure" {
 		t.Fatalf("X-Router-Error-Class = %q, want image_url_dns_failure", got)
 	}
+	if got := rr.Header().Get("X-Metrum-Error-Class"); got != "image_url_dns_failure" {
+		t.Fatalf("X-Metrum-Error-Class = %q, want image_url_dns_failure", got)
+	}
 	if got := resolverCalls.Load(); got != 1 {
 		t.Fatalf("resolver calls = %d, want exactly one request-level validation", got)
 	}
