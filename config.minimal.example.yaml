@@ -20,8 +20,9 @@ server:
     driver: sqlite
     path: usage.sqlite
     migration_policy: auto-safe
+  # Optional; leave enabled false unless you mount a signed license.json.
   license:
-    enabled: true
+    enabled: false
     path: license.json
     state_path: license-state.json
     public_keys:

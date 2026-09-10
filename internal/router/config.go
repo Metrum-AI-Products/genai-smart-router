@@ -999,9 +999,6 @@ func (c *Config) setDefaults() {
 	if c.Server.License.RecheckInterval == 0 {
 		c.Server.License.RecheckInterval = time.Hour
 	}
-	if licenseEnforcementRequired() && !(c.Server.License.enabledSet && !c.Server.License.Enabled) {
-		c.Server.License.Enabled = true
-	}
 	if len(c.Server.ClientIP.HeaderOrder) == 0 {
 		c.Server.ClientIP.HeaderOrder = []string{"X-Forwarded-For", "X-Real-IP"}
 	}
@@ -1691,12 +1688,6 @@ func validateAdminAuth(cfg AdminAuthConfig, usage UsageDBConfig) error {
 }
 
 func validateLicenseConfig(cfg LicenseConfig) error {
-	if licenseEnforcementRequired() && !cfg.Enabled {
-		return fmt.Errorf("server license enabled=false is not allowed in normal builds; provide a valid license or build with the internal dev_no_license tag")
-	}
-	if licenseEnforcementRequired() && cfg.FailOpenForDev {
-		return fmt.Errorf("server license fail_open_for_dev is not allowed in normal builds; use the internal dev_no_license build tag for temporary local testing")
-	}
 	if !cfg.Enabled {
 		if cfg.FailOpenForDev {
 			return fmt.Errorf("server license fail_open_for_dev requires license enabled")

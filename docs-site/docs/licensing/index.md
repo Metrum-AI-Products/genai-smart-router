@@ -6,11 +6,18 @@ doc_type: explanation
 # Self-Managed Licensing
 
 All GenAI Smart Router first-party content is licensed under Apache-2.0. In this
-section, "license" refers only to an operator-created runtime policy file. It is
-not a copyright license or commercial-use condition and does not narrow the
-rights granted by Apache-2.0.
+section, "license" refers only to an optional operator-created runtime policy
+file. It is not a copyright license or commercial-use condition and does not
+narrow the rights granted by Apache-2.0.
 
-GenAI Smart Router uses locally signed, self-managed licenses. The deployment wrapper creates an Ed25519 keypair on the operator host when one does not already exist, issues `license.json`, and mounts only the public key plus license into the router runtime.
+Signed-license enforcement is off by default (`server.license.enabled: false`).
+A normal build and run need no license file; all OSS router features stay
+available. Operators who want runtime policy gates may opt in by enabling a
+locally signed, self-managed license.
+
+When enabled, the deployment wrapper creates an Ed25519 keypair on the operator
+host when one does not already exist, issues `license.json`, and mounts only the
+public key plus license into the router runtime.
 
 ## What Operators Keep
 
@@ -85,9 +92,10 @@ payload. Production entitlements stay in operator-protected storage.
 
 ## Automated Helm Installation
 
-## Automated Helm Installation
-
-Use the generated deployment wrapper. It generates a local keypair on first use, issues a license with the requested validity, atomically refreshes the runtime Secret, and installs or upgrades Helm:
+Use the generated deployment wrapper when you choose to enforce a signed
+runtime license. It generates a local keypair on first use, issues a license
+with the requested validity, atomically refreshes the runtime Secret, and
+installs or upgrades Helm:
 
 ```bash
 scripts/helm_install_with_license.sh \
