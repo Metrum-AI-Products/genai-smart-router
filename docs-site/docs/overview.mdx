@@ -21,7 +21,9 @@ usage accounting.
   without rewriting every client.
 - Filter tool, image, dialect, context, and output-cap requests to targets
   validated for those shapes.
-- Enforce RPM, TPM, concurrency, and token/cost budgets before upstream calls.
+- Enforce RPM, TPM, concurrency, and request/token budgets (and per-request
+  estimated cost ceilings where configured) before upstream calls. These are
+  not cumulative dollar spend limits or multi-replica atomic spend accounting.
 - Preserve sanitized request IDs, attempts, latency, token, fallback, and
   request-time cost evidence for operations.
 - Combine private OpenAI-compatible servers (vLLM, SGLang, on-prem GPUs)

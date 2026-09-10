@@ -131,12 +131,14 @@ embedding representation, feature order and target identities.
 | Strength-only/BT | 1.000000 | 0.000000 | $0.1518290 |
 | Outcome oracle | 1.000000 | 0.000000 | $0.1507895 |
 
-The learned policy matches the oracle in this controlled dataset, but saves
-only **0.68465%** of total cost versus the anchor. Long requests dominate tokens
-and spend, so routing short requests cheaply barely changes total cost. The
-required cost ratio is at most 0.60 of anchor; the observed ratio is about
-0.99315, so `cost_vs_anchor` is false. The synthetic representation also makes
-`real_data_and_embedding` false. The bundle is **not promotable**.
+The learned policy matches the oracle in this controlled dataset, but the cost
+delta versus the anchor is only **0.68465%** of total cost. That percentage is a
+failed-gate benchmark artifact from this synthetic holdout — not a product or
+launch savings claim. Long requests dominate tokens and spend, so routing short
+requests cheaply barely changes total cost. The required cost ratio is at most
+0.60 of anchor; the observed ratio is about 0.99315, so `cost_vs_anchor` is
+false. The synthetic representation also makes `real_data_and_embedding` false.
+The bundle is **not promotable**.
 
 All 113 selected outcomes and costs are observed; upstream-reported billed
 cost coverage is zero. These costs use stored synthetic usage and rates and

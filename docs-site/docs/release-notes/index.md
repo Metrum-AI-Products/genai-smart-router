@@ -111,13 +111,16 @@ infer the running version from a date written in documentation.
   [LRP guide](/docs/routing/learned-routing-policy). Router binary and Docker
   packages do not start a policy service or contain trained bundles. No provider
   or model group is activated by installing this release.
-- Synthetic training and routing evidence passed, but the example saves only
-  0.685% against its anchor and fails its cost promotion gate. Real BGE tests
+- Synthetic training and routing evidence passed quality checks, but the
+  controlled example's cost delta versus its anchor was only 0.685% and
+  **failed** the cost promotion gate — that percentage is a failed-gate
+  benchmark artifact, not a product or launch savings claim. Real BGE tests
   failed the embedding/full-feature budgets at 512 tokens on the shared test
   host. Default one-thread median full-feature latency exceeded 200 ms; size
   deadlines for the intended workload and expect fallback while timed-out
   inference retains its bounded worker slot. These results do not establish
-  production quality, concurrency capacity or HTTP/router latency.
+  production quality, concurrency capacity, HTTP/router latency, or expected
+  customer savings.
 - Config: review `dynamic_score.affinity`, `script_max_concurrent`,
   `external_policy.mode`, and optional `targets[].region`. New external
   policies should begin in `shadow`; `baseline` skips policy calls.
