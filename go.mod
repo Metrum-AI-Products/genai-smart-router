@@ -21,7 +21,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.0
 	github.com/redis/go-redis/v9 v9.21.0
 	golang.org/x/crypto v0.56.0
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
