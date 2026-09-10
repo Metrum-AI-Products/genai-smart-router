@@ -1,6 +1,6 @@
 # Self-managed license operations
 
-GenAI Smart Router is OSS software. Operators generate, retain, rotate, and use
+Metrum Router is OSS software. Operators generate, retain, rotate, and use
 their own Ed25519 runtime-policy keypairs. No external issuer, signing service,
 entitlement record, payment record, or hosted dependency is required.
 

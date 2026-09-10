@@ -5,7 +5,7 @@ doc_type: howto
 
 # Deploy To Kubernetes
 
-Use Kubernetes when GenAI Smart Router needs to run inside a **customer-operated** cluster with cluster-native ingress, Secrets, and operational controls. The generic base defaults to a serialized single-writer SQLite deployment on its `/app/state` PVC; PostgreSQL is an explicit option for multi-replica or externally managed database designs. This is the canonical Kubernetes installation page for teams that operate their own cluster; post-deployment topology guidance lives in [Enterprise Deployment Patterns](../operations/deployment-patterns).
+Use Kubernetes when Metrum Router needs to run inside a **customer-operated** cluster with cluster-native ingress, Secrets, and operational controls. The generic base defaults to a serialized single-writer SQLite deployment on its `/app/state` PVC; PostgreSQL is an explicit option for multi-replica or externally managed database designs. This is the canonical Kubernetes installation page for teams that operate their own cluster; post-deployment topology guidance lives in [Enterprise Deployment Patterns](../operations/deployment-patterns).
 
 The project maintains Kustomize-friendly manifests as a production-oriented
 starting point. Review them against your cluster's ingress controller, network
@@ -21,7 +21,7 @@ not belong in public manifests or package documentation.
 ## Prerequisites
 
 - A Kubernetes cluster with an ingress controller and TLS automation or a separate TLS termination plan.
-- A private registry image tag such as `registry.example.com/smart-llmrouter:<version>-linux-amd64`.
+- A private registry image tag such as `registry.example.com/metrum-router:<version>-linux-amd64`.
 - A fresh `ReadWriteOnce` PVC for the default SQLite bootstrap, or an explicit PostgreSQL deployment design for multi-replica/external database use.
 - An operator-generated `license.json` and paired verification public key.
 - Provider credentials stored in a Kubernetes Secret or external secret manager.
@@ -44,9 +44,9 @@ Release Docker packages include per-architecture image tarballs:
 For private clusters, load the image tar into nodes or push it to a private registry:
 
 ```bash
-docker load -i images/smart-llmrouter-<version>-linux-amd64.tar
-docker tag smart-llmrouter:<version>-linux-amd64 registry.example.com/smart-llmrouter:<version>-linux-amd64
-docker push registry.example.com/smart-llmrouter:<version>-linux-amd64
+docker load -i images/metrum-router-<version>-linux-amd64.tar
+docker tag metrum-router:<version>-linux-amd64 registry.example.com/metrum-router:<version>-linux-amd64
+docker push registry.example.com/metrum-router:<version>-linux-amd64
 ```
 
 Mixed-architecture clusters need separate per-architecture tags or a registry-managed multi-architecture manifest. Do not use a per-architecture tarball as if it were a multi-architecture image.

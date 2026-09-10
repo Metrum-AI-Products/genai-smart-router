@@ -228,6 +228,6 @@ Keep behavior, config, docs, and tests aligned in the same change:
 - update internal runbooks and public Docusaurus docs when routing, auth, models, CLI/API behavior, telemetry, deployment, or production behavior changes;
 - update diagnostics schema docs when GORM diagnostic models change;
 - run stale-doc searches for old provider/model names, capability claims, route status, and private markers;
-- run relevant validation such as `rtk go test ./...`, targeted router tests, `rtk make docs-qa`, and live smokes when provider/model activation is in scope.
+- run relevant validation such as `go test ./...`, targeted router tests, `make docs-qa`, and live smokes when provider/model activation is in scope.
 
 Before final handoff, include changed files, validation commands/results, safe onboarding evidence, and any intentionally deferred live-provider or production steps.

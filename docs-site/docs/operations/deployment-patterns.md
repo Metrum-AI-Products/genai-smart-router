@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Deployment Patterns
 
-GenAI Smart Router is deployment-owned infrastructure. Choose boundaries that
+Metrum Router is deployment-owned infrastructure. Choose boundaries that
 match provider-key custody, state ownership, network policy, reporting,
 retention, and release cadence.
 

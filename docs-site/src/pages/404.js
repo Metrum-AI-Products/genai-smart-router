@@ -28,7 +28,7 @@ export default function NotFound() {
   }, [docsBaseUrl]);
 
   return (
-    <Layout title="Page Not Found" description="GenAI Smart Router documentation page not found">
+    <Layout title="Page Not Found" description="Metrum Router documentation page not found">
       <main className={styles.main}>
         <section className={clsx(styles.hero, styles.notFoundHero)}>
           <div className={styles.heroInner}>
@@ -42,7 +42,7 @@ export default function NotFound() {
             <form className={styles.searchForm} action="https://www.google.com/search" method="get">
               <input type="hidden" name="sitesearch" value={docsSearchScope} />
               <input
-                aria-label="Search GenAI Smart Router docs"
+                aria-label="Search Metrum Router docs"
                 name="q"
                 type="search"
                 placeholder="Search docs"

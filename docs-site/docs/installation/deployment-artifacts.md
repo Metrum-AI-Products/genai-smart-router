@@ -5,7 +5,7 @@ doc_type: howto
 
 # Deployment Artifacts
 
-GenAI Smart Router is delivered as release artifacts. Deployment hosts do not need language runtimes, documentation tooling, compilers, or package-build tooling.
+Metrum Router is delivered as release artifacts. Deployment hosts do not need language runtimes, documentation tooling, compilers, or package-build tooling.
 
 ## Artifact Types
 

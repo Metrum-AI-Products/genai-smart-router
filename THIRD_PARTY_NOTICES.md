@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-GenAI Smart Router includes, builds with, or refers to the dependencies below. The Apache-2.0 license in `LICENSE` applies only to first-party content. Metadata was audited on 2026-09-02 from pinned manifests and locks, fresh lockfile-preserving installations, installed package metadata, local Go module license files, and the completed ephemeral `go-licenses` scan. The focused 2026-09-03 remediation below inspected exact registry source archives and local module license texts. Package metadata is evidence, not a legal conclusion.
+Metrum Router includes, builds with, or refers to the dependencies below. The Apache-2.0 license in `LICENSE` applies only to first-party content. Metadata was audited on 2026-09-10 from pinned manifests and locks, with a focused version reconciliation against `go.mod` for redistributed Go modules. Package metadata is evidence, not a legal conclusion.
 
 ## Inventory summary
 
@@ -59,7 +59,7 @@ GenAI Smart Router includes, builds with, or refers to the dependencies below. T
 | Go | github.com/google/uuid | v1.6.0 | BSD-3-Clause | [project](https://github.com/google/uuid) | shipped binary; packages imported by repository Go builds |
 | Go | github.com/jackc/pgpassfile | v1.0.0 | MIT | [project](https://github.com/jackc/pgpassfile) | shipped binary; packages imported by repository Go builds |
 | Go | github.com/jackc/pgservicefile | v0.0.0-20240606120523-5a60cdf6a761 | MIT | [project](https://github.com/jackc/pgservicefile) | shipped binary; packages imported by repository Go builds |
-| Go | github.com/jackc/pgx/v5 | v5.6.0 | MIT | [project](https://github.com/jackc/pgx) | shipped binary; packages imported by repository Go builds |
+| Go | github.com/jackc/pgx/v5 | v5.9.0 | MIT | [project](https://github.com/jackc/pgx) | shipped binary; packages imported by repository Go builds |
 | Go | github.com/jackc/puddle/v2 | v2.2.2 | MIT | [project](https://github.com/jackc/puddle) | shipped binary; packages imported by repository Go builds |
 | Go | github.com/jinzhu/inflection | v1.0.0 | MIT | [project](https://github.com/jinzhu/inflection) | shipped binary; packages imported by repository Go builds |
 | Go | github.com/jinzhu/now | v1.1.5 | MIT | [project](https://github.com/jinzhu/now) | shipped binary; packages imported by repository Go builds |
@@ -75,8 +75,8 @@ GenAI Smart Router includes, builds with, or refers to the dependencies below. T
 | Go | go.uber.org/atomic | v1.11.0 | MIT | [project](https://pkg.go.dev/go.uber.org/atomic) | shipped binary; packages imported by repository Go builds |
 | Go | go.yaml.in/yaml/v2 | v2.4.3 | Apache-2.0 | [project](https://pkg.go.dev/go.yaml.in/yaml/v2) | shipped binary; packages imported by repository Go builds |
 | Go | go.yaml.in/yaml/v3 | v3.0.4 | Apache-2.0 | [project](https://pkg.go.dev/go.yaml.in/yaml/v3) | shipped binary; packages imported by repository Go builds |
-| Go | golang.org/x/crypto | v0.44.0 | BSD-3-Clause | [project](https://pkg.go.dev/golang.org/x/crypto) | shipped binary; packages imported by repository Go builds |
-| Go | golang.org/x/net | v0.47.0 | BSD-3-Clause | [project](https://pkg.go.dev/golang.org/x/net) | shipped binary; packages imported by repository Go builds |
+| Go | golang.org/x/crypto | v0.56.0 | BSD-3-Clause | [project](https://pkg.go.dev/golang.org/x/crypto) | shipped binary; packages imported by repository Go builds |
+| Go | golang.org/x/net | v0.57.0 | BSD-3-Clause | [project](https://pkg.go.dev/golang.org/x/net) | shipped binary; packages imported by repository Go builds |
 | Go | golang.org/x/oauth2 | v0.36.0 | BSD-3-Clause | [project](https://pkg.go.dev/golang.org/x/oauth2) | shipped binary; packages imported by repository Go builds |
 | Go | golang.org/x/sync | v0.20.0 | BSD-3-Clause | [project](https://pkg.go.dev/golang.org/x/sync) | shipped binary; packages imported by repository Go builds |
 | Go | golang.org/x/sys | v0.42.0 | BSD-3-Clause | [project](https://pkg.go.dev/golang.org/x/sys) | shipped binary; packages imported by repository Go builds |

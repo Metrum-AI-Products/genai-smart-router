@@ -4321,8 +4321,11 @@ func TestServiceServesSecurityTextBeforeDocsFallback(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), "Contact: mailto:contact@metrum.ai") {
+	if !strings.Contains(rr.Body.String(), "Contact: mailto:security@metrum.ai") {
 		t.Fatalf("unexpected security.txt body=%q", rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "Policy: https://github.com/metrum-ai/router/blob/main/SECURITY.md") {
+		t.Fatalf("security.txt missing Policy URL: %q", rr.Body.String())
 	}
 }
 

@@ -5,7 +5,7 @@ doc_type: reference
 
 # License
 
-All GenAI Smart Router first-party content is licensed under Apache-2.0. The
+All Metrum Router first-party content is licensed under Apache-2.0. The
 `license.json` described here is an operator runtime-policy input, not a
 copyright license or commercial-use condition, and it does not limit
 Apache-2.0 rights.
@@ -21,7 +21,7 @@ This example is a partial subset of `config.example.yaml`; the shipped sample co
 ```yaml title="config.example.yaml"
 server:
   license:
-    enabled: true
+    enabled: false
     path: /app/config/license.json
     state_path: /app/state/license-state.json
     instance_fingerprint: ""

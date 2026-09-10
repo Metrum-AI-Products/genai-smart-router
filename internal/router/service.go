@@ -123,6 +123,7 @@ type upstreamError struct {
 	TimedOut     bool
 	Canceled     bool
 	Committed    bool
+	PartialUsage *Usage
 	ResponseLen  int64
 	RetryAfter   time.Duration
 	Details      []upstreamErrorDetailLogRecord
@@ -787,6 +788,18 @@ func (s *Service) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Bound concurrent body buffering before ReadAll (16 MiB cap).
+	conc := s.quota.AcquireConcurrency(rc.caller)
+	if !conc.OK {
+		s.writeAdmissionError(w, rc, conc)
+		return
+	}
+	bodyConcurrencyHeld := true
+	defer func() {
+		if bodyConcurrencyHeld {
+			s.quota.Release(rc.caller)
+		}
+	}()
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 16<<20))
 	if err != nil {
 		s.writeError(w, rc, http.StatusBadRequest, "invalid-body")
@@ -812,6 +825,8 @@ func (s *Service) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, rc, http.StatusForbidden, "model-not-found")
 		return
 	}
+	s.quota.Release(rc.caller)
+	bodyConcurrencyHeld = false
 	ad := s.quota.Admit(rc.caller, estimateTokens(req))
 	if !ad.OK {
 		s.writeAdmissionError(w, rc, ad)
@@ -1171,6 +1186,16 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.FallbackUsed = fallbackUsed
 	if err != nil {
 		if committedStreamError(err) {
+			usage := committedStreamUsage(err, req, dialect, reservationTokens)
+			if totalTokens(usage) > 0 {
+				if _, _, qerr := s.quota.RecordTokens(rc.caller, resAd.Reservation, usage); qerr != nil {
+					rc.rec.QuotaState = "error"
+					rc.rec.KeyState = "error"
+				} else {
+					s.license.RecordTokens(licRes, usage)
+					rc.rec.Usage = usage
+				}
+			}
 			classified := classifyError(err)
 			rc.rec.ErrorClass = classified.Class
 			code := streamErrorCode(err)
@@ -1195,13 +1220,8 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			served = selected
 			s.applyServingTargetRecord(rc, served)
 		}
-		if cacheable(req) {
-			// Store under the target that actually answered. A fallback response
-			// must not poison the failed primary's target-sensitive cache key.
-			putCaller, putProject := cacheCallerScope(rc)
-			s.cache.Put(cacheKey(req, served, putCaller, putProject), resp)
-		}
 		s.captureResponseContent(rc, resp, captureDecision)
+		cacheResp := resp
 		if piiRestoreEnabled(group.PIIFilter) {
 			if resp.Streamed {
 				// Native streams have already been committed as provider SSE.
@@ -1210,6 +1230,8 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 				// split across arbitrary upstream chunk boundaries.
 				resp.Warnings = appendWarning(resp.Warnings, "pii-response-restoration-skipped-native-stream")
 			} else {
+				// Cache the redacted representation; restore only the caller-facing copy.
+				cacheResp = cloneCachedResponse(resp)
 				restorePIIPlaceholders(resp, piiResult)
 			}
 		}
@@ -1222,6 +1244,13 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			}
 			s.writeError(w, rc, http.StatusServiceUnavailable, "quota-state-error")
 			return
+		}
+		// Cache only after successful settlement so a quota-state error cannot
+		// leave an undisclosed cache/usage inconsistency. Use the pre-restore
+		// payload so PII placeholders remain redacted in cache.
+		if cacheable(req) {
+			putCaller, putProject := cacheCallerScope(rc)
+			s.cache.Put(cacheKey(req, served, putCaller, putProject), cacheResp)
 		}
 		s.license.RecordTokens(licRes, resp.Usage)
 		rc.rec.QuotaState = quotaState
@@ -1256,6 +1285,19 @@ func estimatedUsageForReservation(req *IRRequest, dialect string, reservationTok
 		total = reservationTokens
 	}
 	return Usage{InputTokens: input, OutputTokens: output, TotalTokens: total}
+}
+
+func committedStreamUsage(err error, req *IRRequest, dialect string, reservationTokens int) Usage {
+	var upstream upstreamError
+	if errors.As(err, &upstream) && upstream.PartialUsage != nil && totalTokens(*upstream.PartialUsage) > 0 {
+		return *upstream.PartialUsage
+	}
+	if reservationTokens > 0 {
+		usage := estimatedUsageForReservation(req, dialect, reservationTokens)
+		usage.TotalTokens = totalTokens(usage)
+		return usage
+	}
+	return Usage{}
 }
 
 func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) (*requestContext, bool) {
@@ -2230,6 +2272,10 @@ sendUpstream:
 		if streamErr != nil {
 			upErr := classifyError(streamErr)
 			upErr.Committed = streamResult.Committed
+			if streamResult.Response != nil && totalTokens(streamResult.Response.Usage) > 0 {
+				usage := streamResult.Response.Usage
+				upErr.PartialUsage = &usage
+			}
 			attempt.ErrorClass = upErr.Class
 			attempt.ErrorMessage = upErr.Message
 			attempt.Retryable = upErr.Retryable

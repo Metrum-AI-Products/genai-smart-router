@@ -18,7 +18,7 @@ it never emits or accepts `database_profile`. Dedicated RDS stays a core Fleet
 is not a customer-verb input. Offline verification:
 
 ```bash
-rtk make test-tenant-deploy-all
+make test-tenant-deploy-all
 ```
 
 `metrum-fleetctl`, `metrum-smartrouterctl`, `metrum-fleet-sign`, and
@@ -277,8 +277,8 @@ Responses smoke remain separate required operator evidence.
 ## Validation
 
 ```bash
-rtk go test ./internal/fleet ./cmd/metrum-genai-smartrouter-fleetctl -run TenantDeployment -count=1
-rtk go test ./internal/architecture -count=1
+go test ./internal/fleet ./cmd/metrum-genai-smartrouter-fleetctl -run TenantDeployment -count=1
+go test ./internal/architecture -count=1
 ```
 
 The architecture test keeps the serving request path independent from Fleet

@@ -34,11 +34,11 @@ database snapshot.
 ## Docker Compose Upgrade
 
 ```bash
-docker load -i images/smart-llmrouter-<version>-linux-<arch>.tar
+docker load -i images/metrum-router-<version>-linux-<arch>.tar
 
 cd compose
 cp .env .env.backup
-# Edit SMART_LLMROUTER_VERSION to the exact loaded image tag.
+# Edit SMART_LLMROUTER_VERSION to the exact loaded image tag (metrum-router:<tag>).
 docker compose config >/dev/null
 docker compose up -d
 docker compose ps
@@ -59,7 +59,9 @@ curl -fsS -H "Authorization: Bearer $ROUTER_TOKEN" \
 ## Binary Upgrade
 
 1. Stop or drain traffic according to the service manager and reverse proxy policy.
-2. Install the new `smart-llmrouter` and operational CLI binaries.
+2. Install the new `metrum-router` and operational CLI binaries. Legacy `router*`
+   names shipped in packages are **rename notices only** (exit 2); they are not
+   functional wrappers. Update unit files and scripts to call `metrum-router*`.
 3. Apply reviewed config or license changes.
 4. Restart the service.
 5. Validate readiness and caller/API smokes.

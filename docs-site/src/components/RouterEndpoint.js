@@ -47,7 +47,7 @@ export function DeploymentSpecificNote() {
       <p>
         {embedded ? (
           <>
-            These docs are built into the GenAI Smart Router server delivered for your
+            These docs are built into the Metrum Router server delivered for your
             deployment. Examples that show the router base URL use this browser origin, so
             on this deployment they render as <RouterOrigin /> and <RouterApiBase />.
           </>

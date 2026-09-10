@@ -165,5 +165,5 @@ func setPublicDocsSecurityHeaders(w http.ResponseWriter) {
 func securityTextHandler(w http.ResponseWriter, r *http.Request) {
 	setPublicDocsSecurityHeaders(w)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = io.WriteString(w, "Contact: mailto:contact@metrum.ai\nExpires: 2027-08-19T00:00:00.000Z\nPreferred-Languages: en\nPolicy: mailto:contact@metrum.ai\n")
+	_, _ = io.WriteString(w, "Contact: mailto:security@metrum.ai\nExpires: 2027-08-19T00:00:00.000Z\nPreferred-Languages: en\nPolicy: https://github.com/metrum-ai/router/blob/main/SECURITY.md\n")
 }

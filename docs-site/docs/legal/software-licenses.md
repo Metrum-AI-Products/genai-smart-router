@@ -5,13 +5,13 @@ doc_type: reference
 
 # Software License And Third-Party Notices
 
-Use the legal files delivered at the root of each GenAI Smart Router release
+Use the legal files delivered at the root of each Metrum Router release
 artifact as a set. They have different scopes and should remain together when
 an artifact is copied or redistributed.
 
 | File | What it covers |
 | --- | --- |
-| `LICENSE` | Apache License 2.0 terms for GenAI Smart Router first-party content. |
+| `LICENSE` | Apache License 2.0 terms for Metrum Router first-party content. |
 | `NOTICE` | Notices distributed with the first-party work and any attribution that confirmed source terms require there. |
 | `THIRD_PARTY_NOTICES.md` | The dependency and asset inventory, including recorded provenance, license information, and distribution surface. Third-party materials remain subject to their own applicable terms. |
 | `MODEL_LICENSES.md` | The boundaries and recorded terms for model or dataset references and download surfaces. The project license does not grant rights to separately obtained model weights or datasets. |

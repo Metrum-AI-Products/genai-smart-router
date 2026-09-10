@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Cost Governance
 
-GenAI Smart Router treats cost control as a routing and accounting problem. Provider selection, caller authorization, quotas, caching, and usage reporting are handled centrally instead of being left to each application.
+Metrum Router treats cost control as a routing and accounting problem. Provider selection, caller authorization, quotas, caching, and usage reporting are handled centrally instead of being left to each application.
 
 ## Request-Time Cost Accounting
 
@@ -43,7 +43,7 @@ These dimensions support project cost allocation, quota review, provider evaluat
 
 ## Cost Controls
 
-GenAI Smart Router can reduce uncontrolled spend through:
+Metrum Router can reduce uncontrolled spend through:
 
 - per-key allow lists;
 - RPM and TPM limits;

@@ -217,7 +217,7 @@ with `runtime_bundle_policy_failed` instead of shipping it. Confirm the ingress
 address with the currently authenticated cluster session:
 
 ```bash
-rtk kubectl get pods -n <ingress-namespace> -o wide
+kubectl get pods -n <ingress-namespace> -o wide
 ```
 
 For repeatable non-production SQLite customer instances (`acme3`, `acme4`, …)
@@ -255,9 +255,9 @@ Repeat these credential-free suites on a clean checkout before any live
 customer create (no MFA/SSO required):
 
 ```bash
-rtk make test-tenant-deploy-all
+make test-tenant-deploy-all
 # or just the customer convenience gates:
-rtk make test-fleet-customer-cli
+make test-fleet-customer-cli
 ```
 
 Those targets cover fake-adapter tenant deploy suites plus customer CLI
@@ -267,7 +267,7 @@ refs, ACME-rehearsal mismatch, donor-key non-copy, dedicated-RDS refuse).
 Gated live acceptance (packaged `dist/` binaries only; skipped without env):
 
 ```bash
-rtk make test-fleet-sqlite-customer-live
+make test-fleet-sqlite-customer-live
 ```
 
 Set `FLEET_SQLITE_E2E_PROFILE_REF`, `FLEET_SQLITE_E2E_LICENSE_REF`,

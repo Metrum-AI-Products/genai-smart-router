@@ -5,6 +5,8 @@
 examples/inspect-coding-evaluation.env
 env.json
 ops.env.json
+commerce.env.json
+**/commerce.env.json
 # Retired local agent runtimes may still contain credentials in older checkouts.
 # Keep these tombstone ignores even though the integrations are no longer shipped.
 .metrum-agents/local/*

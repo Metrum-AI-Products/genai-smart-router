@@ -29,7 +29,7 @@ Repeated upstream HTTP 400s are compatibility evidence. Do not rely on weighted 
 | Change type | Required smoke |
 |---|---|
 | Config validation | YAML parse and `docker compose config` |
-| API compatibility dependency bootstrap | `rtk python3 scripts/api_compat_bootstrap_test.py`; it proves a failed locked Python provision stops before Go provisioning, a failed normal bootstrap stops before offline conformance, clean-cache offline use fails closed, and offline conformance succeeds only after bootstrap |
+| API compatibility dependency bootstrap | `python3 scripts/api_compat_bootstrap_test.py`; it proves a failed locked Python provision stops before Go provisioning, a failed normal bootstrap stops before offline conformance, clean-cache offline use fails closed, and offline conformance succeeds only after bootstrap |
 | Health/deploy | `/readyz`, `/version`, router logs |
 | Auth/allow list | `/v1/models` with caller token |
 | Codex model catalog | missing token gets `401`; a restricted caller gets only its allow-listed, Responses-eligible groups from `/v1/codex/models.json`; prove native Responses and explicitly bridged Chat targets agree between catalog and routing, while unbridged Chat-only and Anthropic-only targets are absent. For every advertised image modality, repeat the exact mixed text/image Responses request and prove the selected native or enabled `responses_to_chat` target is eligible; a bridge without `images: true` or a target with an image request-shape exclusion must omit image metadata and return safe `no-eligible-target`. Parse returned `models[]` as Codex metadata, verify no upstream/provider/token/weight fields, and fetch it to a mode-0600 local file before an installed-Codex Responses-wire smoke |
@@ -55,7 +55,7 @@ Repeated upstream HTTP 400s are compatibility evidence. Do not rely on weighted 
 | Claude Code restricted-group validation | use a caller allowed only to the intended group; set `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL`; run plain text, client-tool/file edit, subagent, long-context/tool-schema, and tiny-cap smokes; verify `/v1/models`, no blank-model `403`, selected Anthropic Messages or explicitly validated bridge target, attempts/fallback/latency/tokens, and safe response-shape diagnostics |
 | Decision telemetry | with `server.decision_telemetry.enabled: true`, run success, no-eligible-target, policy fail-closed, policy fallback, upstream-fallback-success, and cache-bypass requests; query `request_policy_executions`, `request_fallback_transitions`, score/ranking rows, safe fingerprints, and `router-usage-report` summary buckets |
 | Multimodal/VLM routing | direct upstream image smoke for the exact provider/model/dialect, router-level image smoke through the intended model group, URL safety negative smoke, tiny-cap smoke, usage row image/cost fields, and no raw image persistence |
-| Coding-agent client compatibility | deterministic fixture matrix with `rtk python3 scripts/coding_agent_matrix.py --mode mock`, opencode API capability matrix with `rtk python3 scripts/opencode_api_matrix.py` for provider/model skin support, then live Codex/Claude Code/opencode/aider smokes when the route change affects those clients |
+| Coding-agent client compatibility | deterministic fixture matrix with `python3 scripts/coding_agent_matrix.py --mode mock`, opencode API capability matrix with `python3 scripts/opencode_api_matrix.py` for provider/model skin support, then live Codex/Claude Code/opencode/aider smokes when the route change affects those clients |
 | Kubernetes deployment artifacts | `kubectl kustomize deploy/kubernetes/overlays/example`, YAML parse, `kubectl apply --dry-run=client` or server dry-run when available, then staging port-forward smoke for `/readyz`, `/docs/`, `/version`, `/v1/models`, one chat request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens |
 
 ## Anthropic Endpoint Split And Metadata Migration Proof
@@ -105,7 +105,7 @@ The full onboarding procedure is tracked in `docs/onboard-model.md` when present
 Use this proof after any deployment or config change that affects reasoning metadata, model groups used by Codex/agent clients, provider skins, or usage diagnostics. The reference config includes `reasoning-smoke` as an example restricted group with one validated target for each enabled surface. Hosted deployments may instead pass a deployment-defined group such as a staging group or `big-coder` when that group is intended to advertise reasoning.
 
 ```bash
-rtk python3 scripts/reasoning_smoke.py \
+python3 scripts/reasoning_smoke.py \
   --base-url "$ROUTER_BASE_URL" \
   --token-file "$ROUTER_TOKEN_FILE" \
   --model reasoning-smoke \
@@ -122,9 +122,9 @@ For SQLite-backed local/staging checks, replace `--postgres-dsn` with `--sqlite-
 Local regression coverage must stay in the normal test suite so reasoning translation can be proven without a live provider. Run:
 
 ```bash
-rtk go test ./internal/router -run TestReasoning
-rtk python3 scripts/prod_reasoning_smoke_test.py
-rtk python3 scripts/reasoning_smoke.py --help
+go test ./internal/router -run TestReasoning
+python3 scripts/prod_reasoning_smoke_test.py
+python3 scripts/reasoning_smoke.py --help
 ```
 
 The Go matrix verifies OpenAI Chat, OpenAI Responses, and Anthropic Messages requests filter out non-reasoning targets, translate the correct upstream control field, persist `request_shapes.reasoning_present`, select the reasoning-capable candidate, and record `request_translation_shapes.translated_reasoning_control`. The Python tests verify the standalone smoke's DB proof logic against the current relational schema. `scripts/prod_reasoning_smoke.py` is kept only as a compatibility wrapper.
@@ -152,14 +152,14 @@ Run this proof after a production incident exposes a request shape or upstream e
 Local regression gate:
 
 ```bash
-rtk go test ./internal/router -run 'ProductionDerived'
-rtk python3 scripts/prod_smoke_regressions_test.py
+go test ./internal/router -run 'ProductionDerived'
+python3 scripts/prod_smoke_regressions_test.py
 ```
 
 Deployment smoke for all sanitized production-derived fixtures:
 
 ```bash
-rtk python3 scripts/prod_smoke_regressions.py \
+python3 scripts/prod_smoke_regressions.py \
   --mode prod \
   --base-url "$ROUTER_BASE_URL" \
   --token-file "$ROUTER_TOKEN_FILE" \
@@ -190,7 +190,7 @@ The shared fixture set covers:
 Use the opencode matrix when a model or endpoint is expected to serve opencode-style coding-agent traffic. It checks OpenAI Chat and Anthropic Messages request shapes with synthetic text, client-tool, and image payloads, then writes sanitized JSON and Markdown evidence without printing API keys, raw prompts, raw images, tool outputs, or provider bodies.
 
 ```bash
-rtk python3 scripts/opencode_api_matrix.py \
+python3 scripts/opencode_api_matrix.py \
   --base-url https://api.provider.example/v1 \
   --model provider-model-id \
   --api-key-env PROVIDER_API_KEY \
@@ -202,7 +202,7 @@ rtk python3 scripts/opencode_api_matrix.py \
 For Fireworks direct validation:
 
 ```bash
-rtk python3 scripts/opencode_api_matrix.py \
+python3 scripts/opencode_api_matrix.py \
   --base-url https://api.fireworks.ai/inference/v1 \
   --model accounts/fireworks/models/deepseek-v4-flash \
   --api-key-env FIREWORKS_API_KEY \
@@ -438,7 +438,7 @@ curl -fsS https://api.fireworks.ai/inference/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"accounts/fireworks/models/gpt-oss-20b","messages":[{"role":"user","content":"Reply OK only."}],"reasoning_effort":"low","max_tokens":128,"stream":false}'
 
-rtk python3 scripts/large_payload_chat_smoke.py \
+python3 scripts/large_payload_chat_smoke.py \
   --base-url https://api.fireworks.ai/inference/v1 \
   --model accounts/fireworks/models/deepseek-v4-flash \
   --api-key-env FIREWORKS_API_KEY \
@@ -561,7 +561,7 @@ Run [Coding-Agent E2E Matrix](CODING_AGENT_E2E_MATRIX.md) for route changes that
 Minimum deterministic check:
 
 ```bash
-rtk python3 scripts/coding_agent_matrix.py --mode mock --output-dir tmp/coding-agent-matrix
+python3 scripts/coding_agent_matrix.py --mode mock --output-dir tmp/coding-agent-matrix
 ```
 
 Production or staging promotion should add live smokes for Codex CLI over OpenAI Responses, Claude Code CLI over Anthropic Messages, opencode, and aider where the client is installed and supported. Record client version, model group, request dialect, request IDs, selected upstream provider/model/dialect when available from reports, verifier result, elapsed time, and token totals.

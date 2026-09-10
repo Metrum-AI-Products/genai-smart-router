@@ -1,4 +1,6 @@
 name: Inspect coding evaluation
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
 
 on:
   pull_request:
@@ -47,7 +49,7 @@ jobs:
           EVAL_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-smoke
           EVAL_LIMIT: "2"
         run: make eval-ci-smoke
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with: { name: inspect-smoke-sanitized, path: tmp/inspect-evals/**/evaluation-summary.*, if-no-files-found: ignore, retention-days: 7 }
 
@@ -55,7 +57,7 @@ jobs:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.tier != 'smoke')
     runs-on: ubuntu-24.04
     environment: evaluation
-    permissions: { contents: write }
+    permissions: { contents: read }
     timeout-minutes: 90
     env:
       EVAL_BASE_URL: ${{ secrets.EVAL_ROUTER_BASE_URL }}
@@ -81,17 +83,17 @@ jobs:
           EVAL_CI_REPORT_TIMESTAMP: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           make eval-ci-full
-      - name: Commit sanitized evaluation report
-        if: success()
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/evaluation-reports/inspect
-          git diff --cached --quiet || git commit -m 'docs: record Inspect evaluation report'
-          git push
-      - uses: actions/upload-artifact@v4
+      - name: Upload sanitized evaluation report
         if: always()
-        with: { name: inspect-sanitized-summary, path: tmp/inspect-evals/**/evaluation-summary.*, if-no-files-found: ignore, retention-days: 30 }
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: inspect-sanitized-summary
+          path: |
+            tmp/inspect-evals/**/evaluation-summary.*
+            docs/evaluation-reports/inspect/**
+          if-no-files-found: ignore
+          retention-days: 30
 
 # Promotion-review is a manual protected-environment decision. A completed
 # benchmark is evidence, never an automatic target-weight or membership change.
+# Reports are uploaded as artifacts; they are not force-pushed to main.
