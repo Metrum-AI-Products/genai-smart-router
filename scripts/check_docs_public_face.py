@@ -16,7 +16,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 PUBLIC_DOC_PATHS = [
     ROOT / "README.md",
-    ROOT / "AGENTS.md",
     ROOT / "GOVERNANCE.md",
     ROOT / "SUPPORT.md",
     ROOT / "SECURITY.md",
