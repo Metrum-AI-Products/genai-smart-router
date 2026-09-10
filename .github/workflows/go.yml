@@ -28,6 +28,7 @@ jobs:
       - name: Install Python test deps
         # secret-check (via make test) runs prepare_fleet_production_bundle*.py
         run: python3 -m pip install --user 'PyYAML==6.0.3'
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
       - name: gofmt
         run: |
           unformatted="$(gofmt -l .)"
