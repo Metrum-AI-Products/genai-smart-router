@@ -49,7 +49,17 @@ class FakeUpstream(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         self.__class__.calls.append({"path": self.path, "body": body})
         model = body.get("model", "")
+        stream = bool(body.get("stream"))
         if self.path.endswith("/chat/completions"):
+            if stream:
+                # Native same-dialect chat streaming proxies provider SSE as-is.
+                frames = [
+                    'data: {"id":"chatcmpl_synthetic","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"synthetic chat"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_synthetic","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}\n\n',
+                    "data: [DONE]\n\n",
+                ]
+                self._write_sse("".join(frames))
+                return
             message = {"role": "assistant", "content": "synthetic chat"}
             if body.get("tools"):
                 message["tool_calls"] = [{"id": "call_synthetic", "type": "function", "function": {"name": "lookup", "arguments": "{}"}}]
@@ -60,6 +70,18 @@ class FakeUpstream(BaseHTTPRequestHandler):
                 output = [{"type": "function_call", "id": "fc_synthetic", "call_id": "call_synthetic", "name": "lookup", "arguments": "{}"}]
             response = {"id": "resp_synthetic", "object": "response", "model": model, "status": "completed", "output": output, "output_text": "synthetic responses", "usage": {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5}}
         elif self.path.endswith("/messages"):
+            if stream:
+                # Native Anthropic streaming proxies provider SSE event frames.
+                frames = [
+                    'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_synthetic","type":"message","role":"assistant","model":"synthetic-messages","content":[],"usage":{"input_tokens":3,"output_tokens":0}}}\n\n',
+                    'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+                    'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"synthetic messages"}}\n\n',
+                    'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n',
+                    'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}\n\n',
+                    'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+                ]
+                self._write_sse("".join(frames))
+                return
             content = [{"type": "text", "text": "synthetic messages"}]
             stop_reason = "end_turn"
             if body.get("tools"):
@@ -72,6 +94,15 @@ class FakeUpstream(BaseHTTPRequestHandler):
         raw = json.dumps(response).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def _write_sse(self, payload: str):
+        raw = payload.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
