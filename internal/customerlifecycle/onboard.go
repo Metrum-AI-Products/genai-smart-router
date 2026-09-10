@@ -18,36 +18,29 @@ type OnboardStep string
 
 const (
 	StepCollect   OnboardStep = "collect"
-	StepPay       OnboardStep = "pay"
+	StepPay       OnboardStep = "pay" // rejected: payment is out of band
 	StepLicense   OnboardStep = "license"
 	StepProvision OnboardStep = "provision"
 	StepDone      OnboardStep = "done"
 )
 
-// OnboardOptions controls resume and polling.
+// OnboardOptions controls resume behavior.
 type OnboardOptions struct {
-	IntentPath       string
-	FromStep         OnboardStep // empty = auto from workspace state
-	PollEvery        time.Duration
-	PollWait         time.Duration
-	SkipCheckout     bool // resume when checkout_session_id already recorded
-	PrintCheckoutURL bool
+	IntentPath string
+	FromStep   OnboardStep // empty = auto from workspace state
 }
 
 // OnboardState is safe-scalar workspace progress (never includes secrets).
 type OnboardState struct {
-	CustomerID        string `json:"customer_id"`
-	Hostname          string `json:"hostname"`
-	SKU               string `json:"sku"`
-	Step              string `json:"step"`
-	CheckoutSessionID string `json:"checkout_session_id,omitempty"`
-	CheckoutURL       string `json:"checkout_url,omitempty"`
-	EntitlementStatus string `json:"entitlement_status,omitempty"`
-	LicenseRef        string `json:"license_ref,omitempty"`
-	LicensePublished  bool   `json:"license_published,omitempty"`
-	EnvFile           string `json:"env_file,omitempty"`
-	ProvisionState    string `json:"provision_state,omitempty"`
-	UpdatedAt         string `json:"updated_at"`
+	CustomerID       string `json:"customer_id"`
+	Hostname         string `json:"hostname"`
+	SKU              string `json:"sku"`
+	Step             string `json:"step"`
+	LicenseRef       string `json:"license_ref,omitempty"`
+	LicensePublished bool   `json:"license_published,omitempty"`
+	EnvFile          string `json:"env_file,omitempty"`
+	ProvisionState   string `json:"provision_state,omitempty"`
+	UpdatedAt        string `json:"updated_at"`
 }
 
 func statePath(customerID string) string {
@@ -73,7 +66,8 @@ func saveState(st OnboardState) error {
 	return writeMode0600(statePath(st.CustomerID), raw)
 }
 
-// RunOnboard executes collect → pay+license → provision.
+// RunOnboard executes collect → license → provision.
+// Payment/checkout is out of band and is not performed by this CLI.
 func RunOnboard(ctx context.Context, opts OnboardOptions) (OnboardState, error) {
 	intent, err := LoadIntent(opts.IntentPath)
 	if err != nil {
@@ -102,18 +96,15 @@ func RunOnboard(ctx context.Context, opts OnboardOptions) (OnboardState, error) 
 	if start == "" {
 		start = resumeStep(st)
 	}
+	if start == StepPay {
+		return st, fmt.Errorf("payment is out of band")
+	}
 	if start == StepDone {
 		st.Step = string(StepDone)
 		_ = saveState(st)
 		return st, nil
 	}
 
-	if stepOrder(start) <= stepOrder(StepPay) {
-		if err := runPay(ctx, intent, &st, opts); err != nil {
-			_ = saveState(st)
-			return st, err
-		}
-	}
 	if stepOrder(start) <= stepOrder(StepLicense) {
 		if err := runLicense(ctx, intent, &st); err != nil {
 			_ = saveState(st)
@@ -139,12 +130,8 @@ func resumeStep(st OnboardState) OnboardStep {
 		return StepDone
 	case st.LicensePublished:
 		return StepProvision
-	case PaidEntitlementStatuses[st.EntitlementStatus]:
-		return StepLicense
-	case st.CheckoutSessionID != "":
-		return StepPay
 	default:
-		return StepPay
+		return StepLicense
 	}
 }
 
@@ -152,42 +139,15 @@ func stepOrder(s OnboardStep) int {
 	switch s {
 	case StepCollect:
 		return 1
-	case StepPay:
-		return 2
 	case StepLicense:
-		return 3
+		return 2
 	case StepProvision:
-		return 4
+		return 3
 	case StepDone:
-		return 5
+		return 4
 	default:
 		return 2
 	}
-}
-
-func runPay(ctx context.Context, intent Intent, st *OnboardState, opts OnboardOptions) error {
-	st.Step = string(StepPay)
-	client := &CommerceClient{BaseURL: intent.CommerceBaseURL}
-	if st.CheckoutSessionID == "" || !opts.SkipCheckout {
-		sess, err := client.CreateCheckoutSession(ctx, intent)
-		if err != nil {
-			return err
-		}
-		st.CheckoutSessionID = sess.CheckoutSessionID
-		st.CheckoutURL = sess.URL
-		if err := saveState(*st); err != nil {
-			return err
-		}
-		if opts.PrintCheckoutURL && sess.URL != "" {
-			fmt.Fprintf(os.Stderr, "checkout_url=%s\ncomplete Stripe Checkout, then entitlement will advance\n", sess.URL)
-		}
-	}
-	status, err := client.PollUntilPaid(ctx, st.CheckoutSessionID, opts.PollEvery, opts.PollWait)
-	if err != nil {
-		return err
-	}
-	st.EntitlementStatus = status.Status
-	return saveState(*st)
 }
 
 func runLicense(ctx context.Context, intent Intent, st *OnboardState) error {

@@ -159,8 +159,8 @@ Kubernetes API at runtime.
 Kubernetes client libraries exist in this Go module because Fleet EKS adapters
 live in `internal/fleet`. Only `metrum-genai-smartrouter-fleetctl` and its
 package-only support commands import that package. Architecture tests enforce
-that `cmd/router` and `internal/router` do not import `internal/fleet` or
-`internal/commerce`. This specification MUST NOT add a serving-router
+that `cmd/router` and `internal/router` do not import `internal/fleet`.
+This specification MUST NOT add a serving-router
 Kubernetes dependency, `controller-runtime` import, CRD, or in-process cluster
 client.
 
@@ -175,7 +175,7 @@ client.
 | `replicas` / `ingress` in config | Packaging topology only |
 | Provider needs only `api_key_env` | YAML serving needs `api_key: ${ENV}` |
 | `allowed_validation_status: validated` | Illegal; use `passed` |
-| Serving binary imports no Kubernetes client | Correct after the package split: Fleet owns Kubernetes adapters; the serving request path does not import Fleet or commerce |
+| Serving binary imports no Kubernetes client | Correct after the package split: Fleet owns Kubernetes adapters; the serving request path does not import Fleet |
 | Resource name `smart-router` | Shipped objects use `smart-llmrouter` |
 | Mooncake has a first-party CRD | Current docs use Deployment and Service |
 | LMCache is the only cache product | Mooncake Store is a peer Level 3 option |

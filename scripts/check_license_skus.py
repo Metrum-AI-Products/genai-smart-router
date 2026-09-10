@@ -42,9 +42,9 @@ BILLING_KINDS = {
     "subscription",
     "subscription_addon",
     "invoice_only",
+    "none",
 }
-STRIPE_MODES = {"payment", "subscription", "none"}
-PRICING_STATUSES = {"placeholder_assumption"}
+PRICING_STATUSES = {"placeholder_assumption", "not-applicable"}
 
 
 def fail(message: str) -> None:
@@ -78,18 +78,21 @@ def assert_no_disallowed_group_names(value: Any, path: str = "$") -> None:
 
 
 def validate_commercial_fields(sku: dict[str, Any], name: str) -> None:
+    for forbidden in ("stripe", "stripe_mode", "self_serve_stripe"):
+        if forbidden in sku:
+            fail(f"{name}: {forbidden} must not be present (Stripe commerce removed)")
     billing_kind = sku.get("billing_kind")
     if billing_kind not in BILLING_KINDS:
         fail(f"{name}: billing_kind must be one of {sorted(BILLING_KINDS)}")
-    stripe_mode = sku.get("stripe_mode")
-    if stripe_mode not in STRIPE_MODES:
-        fail(f"{name}: stripe_mode must be one of {sorted(STRIPE_MODES)}")
-    if not isinstance(sku.get("self_serve_stripe"), bool):
-        fail(f"{name}: self_serve_stripe must be a boolean")
     if not isinstance(sku.get("auto_provision_instance"), bool):
         fail(f"{name}: auto_provision_instance must be a boolean")
-    if sku.get("pricing_status") not in PRICING_STATUSES:
-        fail(f"{name}: pricing_status must be placeholder_assumption")
+    pricing_status = sku.get("pricing_status")
+    if pricing_status not in PRICING_STATUSES:
+        fail(f"{name}: pricing_status must be one of {sorted(PRICING_STATUSES)}")
+    if billing_kind == "none":
+        if "price_placeholder" in sku and sku.get("price_placeholder") not in (None, {}):
+            fail(f"{name}: billing_kind none must not declare price_placeholder")
+        return
     placeholder = sku.get("price_placeholder")
     if not isinstance(placeholder, dict):
         fail(f"{name}: price_placeholder must be an object")
@@ -99,44 +102,6 @@ def validate_commercial_fields(sku: dict[str, Any], name: str) -> None:
     amount = placeholder.get("amount_usd")
     if not isinstance(amount, (int, float)) or amount < 0:
         fail(f"{name}: price_placeholder.amount_usd must be a non-negative number")
-
-    self_serve = sku["self_serve_stripe"]
-    stripe = sku.get("stripe")
-    if not self_serve:
-        if stripe not in (None, {}, "none"):
-            # allow explicit null/omitted; reject product maps when not self-serve
-            if isinstance(stripe, dict) and (stripe.get("product") or stripe.get("price")):
-                fail(f"{name}: non-self-serve SKUs must not declare stripe.product/price")
-        return
-
-    if stripe_mode == "none":
-        fail(f"{name}: self_serve_stripe true requires stripe_mode payment or subscription")
-    if not isinstance(stripe, dict):
-        fail(f"{name}: self_serve SKUs require a stripe object")
-    product = stripe.get("product")
-    price = stripe.get("price")
-    if not isinstance(product, dict) or not product.get("name"):
-        fail(f"{name}: stripe.product.name is required")
-    if not isinstance(price, dict):
-        fail(f"{name}: stripe.price is required")
-    if price.get("lookup_key") != name:
-        fail(f"{name}: stripe.price.lookup_key must equal sku")
-    unit_amount = price.get("unit_amount")
-    if not isinstance(unit_amount, int) or unit_amount < 0:
-        fail(f"{name}: stripe.price.unit_amount must be a non-negative integer (cents)")
-    expected_cents = int(round(float(amount) * 100))
-    if unit_amount != expected_cents:
-        fail(f"{name}: stripe.price.unit_amount {unit_amount} must match amount_usd*100={expected_cents}")
-    if price.get("currency") != placeholder.get("currency"):
-        fail(f"{name}: stripe.price.currency must match price_placeholder.currency")
-    recurring = price.get("recurring")
-    if stripe_mode == "subscription":
-        if not isinstance(recurring, dict) or recurring.get("interval") not in {"month", "year"}:
-            fail(f"{name}: subscription SKUs require stripe.price.recurring.interval month|year")
-        if placeholder.get("interval") != recurring.get("interval"):
-            fail(f"{name}: price_placeholder.interval must match recurring.interval")
-    elif recurring not in (None, {}):
-        fail(f"{name}: payment/top_up SKUs must not set stripe.price.recurring")
 
 
 def main() -> int:

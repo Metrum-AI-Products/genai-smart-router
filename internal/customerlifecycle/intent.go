@@ -39,14 +39,11 @@ type Intent struct {
 	SignKey          string   `json:"sign_key"`
 	LicenseKey       string   `json:"license_key"`
 	LicenseKeyID     string   `json:"license_key_id"`
-	CommerceBaseURL  string   `json:"commerce_base_url"`
 	BYOKEnvFile      string   `json:"byok_env_file"`
 	BYOK             BYOKSpec `json:"byok"`
 	Catalog          string   `json:"catalog"`
 	SmokeModel       string   `json:"smoke_model"`
 	TokenOut         string   `json:"token_out"`
-	SuccessURL       string   `json:"success_url"`
-	CancelURL        string   `json:"cancel_url"`
 	// LicenseAllowUnknownRuntimeKey is for sandbox/test keys absent from embedded runtime pubs.
 	LicenseAllowUnknownRuntimeKey bool `json:"license_allow_unknown_runtime_key"`
 }
@@ -129,7 +126,6 @@ func ValidateIntent(intent Intent) (Intent, error) {
 	intent.ConfigFile = expandHome(intent.ConfigFile)
 	intent.SignKey = expandHome(intent.SignKey)
 	intent.LicenseKey = expandHome(intent.LicenseKey)
-	intent.CommerceBaseURL = strings.TrimRight(strings.TrimSpace(intent.CommerceBaseURL), "/")
 	intent.BYOKEnvFile = expandHome(intent.BYOKEnvFile)
 	intent.BYOK.Provider = strings.TrimSpace(intent.BYOK.Provider)
 	intent.BYOK.APIKeyEnv = strings.TrimSpace(intent.BYOK.APIKeyEnv)
@@ -164,7 +160,6 @@ func ValidateIntent(intent Intent) (Intent, error) {
 		"sign_key":           intent.SignKey,
 		"license_key":        intent.LicenseKey,
 		"license_key_id":     intent.LicenseKeyID,
-		"commerce_base_url":  intent.CommerceBaseURL,
 		"byok_env_file":      intent.BYOKEnvFile,
 		"byok.provider":      intent.BYOK.Provider,
 		"byok.api_key_env":   intent.BYOK.APIKeyEnv,

@@ -6,8 +6,7 @@
     "owner": "commercial-operations",
     "updated_at": "2026-08-20",
     "runtime_dependency_issue": 159,
-    "commerce_epic": 921,
-    "description": "Commercial SKU to signed license template mapping, including Stripe self-serve catalog fields for #921. Placeholder USD amounts are engineering assumptions only; do not publish them in docs-site until #42."
+    "description": "Commercial SKU to signed license template mapping. Placeholder USD amounts are engineering assumptions only; do not publish them in docs-site until commercial wording is approved."
   },
   "entitlement_names": {
     "features": [
@@ -64,8 +63,6 @@
       "license_template": "eval-72h",
       "commercial_motion": "metrum-managed-evaluation",
       "billing_kind": "payment",
-      "stripe_mode": "payment",
-      "self_serve_stripe": true,
       "auto_provision_instance": true,
       "pricing_status": "placeholder_assumption",
       "price_placeholder": {
@@ -74,17 +71,6 @@
         "unit": "instance",
         "interval": "once",
         "assumption_notes": "Zero-dollar Checkout Session for sandbox evaluation; card verification may still apply in Stripe test mode."
-      },
-      "stripe": {
-        "product": {
-          "name": "GenAI Smart Router Eval 72h",
-          "description": "Time-boxed evaluation instance with small caller and model-group footprint."
-        },
-        "price": {
-          "lookup_key": "eval-72h",
-          "unit_amount": 0,
-          "currency": "usd"
-        }
       },
       "term": {
         "duration": "72h",
@@ -155,8 +141,6 @@
       "license_template": "pilot-30d",
       "commercial_motion": "paid-pilot",
       "billing_kind": "payment",
-      "stripe_mode": "none",
-      "self_serve_stripe": false,
       "auto_provision_instance": false,
       "pricing_status": "placeholder_assumption",
       "price_placeholder": {
@@ -210,8 +194,6 @@
       "license_template": "pilot-30d",
       "commercial_motion": "paid-pilot-hosted",
       "billing_kind": "payment",
-      "stripe_mode": "payment",
-      "self_serve_stripe": true,
       "auto_provision_instance": true,
       "pricing_status": "placeholder_assumption",
       "price_placeholder": {
@@ -220,17 +202,6 @@
         "unit": "instance",
         "interval": "once",
         "assumption_notes": "One-time hosted pilot Checkout; licenses against pilot-30d template."
-      },
-      "stripe": {
-        "product": {
-          "name": "GenAI Smart Router Hosted Pilot 30d",
-          "description": "30-day hosted pilot instance licensed from the pilot-30d template."
-        },
-        "price": {
-          "lookup_key": "hosted-pilot-30d",
-          "unit_amount": 99900,
-          "currency": "usd"
-        }
       },
       "term": {
         "duration": "30d",
@@ -276,8 +247,6 @@
       "license_template": "credit-pack-5m",
       "commercial_motion": "volume-top-up",
       "billing_kind": "top_up",
-      "stripe_mode": "payment",
-      "self_serve_stripe": true,
       "auto_provision_instance": false,
       "pricing_status": "placeholder_assumption",
       "price_placeholder": {
@@ -286,17 +255,6 @@
         "unit": "credit_pack",
         "interval": "once",
         "assumption_notes": "Prepaid volume top-up; does not provision a new instance."
-      },
-      "stripe": {
-        "product": {
-          "name": "GenAI Smart Router Credit Pack 5M",
-          "description": "5M total token prepaid volume top-up."
-        },
-        "price": {
-          "lookup_key": "credit-pack-5m",
-          "unit_amount": 25000,
-          "currency": "usd"
-        }
       },
       "term": {
         "duration": "12mo",
@@ -330,8 +288,6 @@
       "license_template": "credit-pack-25m",
       "commercial_motion": "volume-top-up",
       "billing_kind": "top_up",
-      "stripe_mode": "payment",
-      "self_serve_stripe": true,
       "auto_provision_instance": false,
       "pricing_status": "placeholder_assumption",
       "price_placeholder": {
@@ -340,17 +296,6 @@
         "unit": "credit_pack",
         "interval": "once",
         "assumption_notes": "Larger prepaid volume top-up; does not provision a new instance."
-      },
-      "stripe": {
-        "product": {
-          "name": "GenAI Smart Router Credit Pack 25M",
-          "description": "25M total token prepaid volume top-up."
-        },
-        "price": {
-          "lookup_key": "credit-pack-25m",
-          "unit_amount": 100000,
-          "currency": "usd"
-        }
       },
       "term": {
         "duration": "12mo",
@@ -393,8 +338,6 @@
       "license_template": "hosted-instance-monthly",
       "commercial_motion": "hosted-subscription",
       "billing_kind": "subscription",
-      "stripe_mode": "subscription",
-      "self_serve_stripe": true,
       "auto_provision_instance": true,
       "auto_provision_on": "first_paid_only",
       "pricing_status": "placeholder_assumption",
@@ -404,21 +347,6 @@
         "unit": "instance",
         "interval": "month",
         "assumption_notes": "Monthly hosted instance subscription; auto-provision on first paid invoice only."
-      },
-      "stripe": {
-        "product": {
-          "name": "GenAI Smart Router Hosted Instance Monthly",
-          "description": "Monthly hosted SQLite customer instance subscription."
-        },
-        "price": {
-          "lookup_key": "hosted-instance-monthly",
-          "unit_amount": 49900,
-          "currency": "usd",
-          "recurring": {
-            "interval": "month",
-            "interval_count": 1
-          }
-        }
       },
       "term": {
         "duration": "1mo",
@@ -463,8 +391,6 @@
       "license_template": "hosted-instance-annual",
       "commercial_motion": "hosted-subscription",
       "billing_kind": "subscription",
-      "stripe_mode": "subscription",
-      "self_serve_stripe": true,
       "auto_provision_instance": true,
       "auto_provision_on": "first_paid_only",
       "pricing_status": "placeholder_assumption",
@@ -474,21 +400,6 @@
         "unit": "instance",
         "interval": "year",
         "assumption_notes": "Annual hosted instance subscription; auto-provision on first paid invoice only."
-      },
-      "stripe": {
-        "product": {
-          "name": "GenAI Smart Router Hosted Instance Annual",
-          "description": "Annual hosted SQLite customer instance subscription."
-        },
-        "price": {
-          "lookup_key": "hosted-instance-annual",
-          "unit_amount": 499000,
-          "currency": "usd",
-          "recurring": {
-            "interval": "year",
-            "interval_count": 1
-          }
-        }
       },
       "term": {
         "duration": "12mo",
@@ -534,8 +445,6 @@
       "license_template": "hosted-instance-additional-monthly",
       "commercial_motion": "hosted-subscription-addon",
       "billing_kind": "subscription_addon",
-      "stripe_mode": "subscription",
-      "self_serve_stripe": true,
       "auto_provision_instance": true,
       "auto_provision_on": "each_paid",
       "pricing_status": "placeholder_assumption",
@@ -545,21 +454,6 @@
         "unit": "additional_instance",
         "interval": "month",
         "assumption_notes": "Add-on monthly instance; each paid fulfillment may provision an extra isolated instance."
-      },
-      "stripe": {
-        "product": {
-          "name": "GenAI Smart Router Additional Hosted Instance Monthly",
-          "description": "Additional monthly hosted SQLite instance add-on."
-        },
-        "price": {
-          "lookup_key": "hosted-instance-additional-monthly",
-          "unit_amount": 39900,
-          "currency": "usd",
-          "recurring": {
-            "interval": "month",
-            "interval_count": 1
-          }
-        }
       },
       "term": {
         "duration": "1mo",
@@ -599,8 +493,6 @@
       "license_template": "enterprise-annual",
       "commercial_motion": "enterprise-self-hosted",
       "billing_kind": "invoice_only",
-      "stripe_mode": "none",
-      "self_serve_stripe": false,
       "auto_provision_instance": false,
       "pricing_status": "placeholder_assumption",
       "price_placeholder": {
@@ -658,8 +550,6 @@
       "license_template": "marketplace-seat",
       "commercial_motion": "marketplace-private-offer",
       "billing_kind": "invoice_only",
-      "stripe_mode": "none",
-      "self_serve_stripe": false,
       "auto_provision_instance": false,
       "pricing_status": "placeholder_assumption",
       "price_placeholder": {

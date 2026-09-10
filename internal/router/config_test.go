@@ -87,7 +87,7 @@ func TestEnvExampleContainsOnlySafePlaceholders(t *testing.T) {
 	liveSecretRe := regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{16,}|sk-or-v1-[A-Za-z0-9_-]{16,}|xai-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9_]{16,}|[A-Za-z0-9_-]{32,})`)
 	for name, value := range values {
 		if strings.HasPrefix(name, "STRIPE_") || strings.HasPrefix(name, "RESTIC_") || strings.HasPrefix(name, "BACKUP_") || strings.HasPrefix(name, "COMMERCE_") {
-			t.Fatalf("env.example.json must remain instance-only; move %s to commerce.env.example.json or ops.env.example.json", name)
+			t.Fatalf("env.example.json must remain instance-only; move %s to ops.env.example.json (or keep out of instance env)", name)
 		}
 		if strings.HasSuffix(name, "_API_KEY") && value != "" {
 			t.Fatalf("env.example.json %s must be an empty placeholder", name)
@@ -104,9 +104,6 @@ func TestEnvExampleContainsOnlySafePlaceholders(t *testing.T) {
 	ignoreText := "\n" + string(gitignore) + "\n"
 	if !strings.Contains(ignoreText, "\nenv.json\n") {
 		t.Fatal(".gitignore must keep real env.json out of source control")
-	}
-	if !strings.Contains(ignoreText, "\ncommerce.env.json\n") {
-		t.Fatal(".gitignore must keep real commerce.env.json out of source control")
 	}
 	if !strings.Contains(ignoreText, "\nops.env.json\n") {
 		t.Fatal(".gitignore must keep real ops.env.json out of source control")

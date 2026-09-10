@@ -1,9 +1,10 @@
 // Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
-// Command metrum-genai-customer-lifecycle orchestrates commerce pay + license SSM
-// publish + fleetctl customer bootstrap from a JSON intent. It composes existing
-// binaries and does not replace metrum-genai-smartrouter-fleetctl (#555).
+// Command metrum-genai-customer-lifecycle orchestrates license SSM publish +
+// fleetctl customer bootstrap from a JSON intent. Payment is out of band.
+// It composes existing binaries and does not replace
+// metrum-genai-smartrouter-fleetctl (#555).
 package main
 
 import (
@@ -13,7 +14,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"smart-llmrouter/internal/customerlifecycle"
 )
@@ -60,7 +60,7 @@ func usage() {
 
 commands:
   validate-intent  --intent PATH
-  onboard          --intent PATH [--from-step pay|license|provision] [--poll-wait 10m]
+  onboard          --intent PATH [--from-step license|provision]
   status           --intent PATH
   smoke            --intent PATH [--token-file PATH] [--model GROUP]
   update-config    --intent PATH [--patch-file PATH] [--refresh-byok]
@@ -68,8 +68,8 @@ commands:
   export-usage     --intent PATH --out-dir PATH [--token-file PATH]
   delete           --intent PATH [--confirm-file PATH]
 
-Onboard steps: collect/validate → pay+license (commerce + SSM) → provision (fleetctl bootstrap).
-BYOK is required. Never put raw API keys in the intent JSON.
+Onboard steps: collect/validate → license (SSM) → provision (fleetctl bootstrap).
+Payment is out of band. BYOK is required. Never put raw API keys in the intent JSON.
 Fleet mutation authority remains metrum-genai-smartrouter-fleetctl (#555).`)
 }
 
@@ -112,10 +112,7 @@ func cmdValidateIntent(args []string) error {
 func cmdOnboard(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("onboard", flag.ExitOnError)
 	intentPath := fs.String("intent", "", "onboard intent JSON (required)")
-	fromStep := fs.String("from-step", "", "resume from pay|license|provision")
-	pollWait := fs.Duration("poll-wait", 10*time.Minute, "max wait for paid entitlement")
-	pollEvery := fs.Duration("poll-every", 2*time.Second, "entitlement poll interval")
-	skipCheckout := fs.Bool("skip-checkout", false, "reuse checkout_session_id from workspace state")
+	fromStep := fs.String("from-step", "", "resume from license|provision")
 	_ = fs.Parse(args)
 	if strings.TrimSpace(*intentPath) == "" {
 		return fmt.Errorf("--intent is required")
@@ -124,7 +121,7 @@ func cmdOnboard(ctx context.Context, args []string) error {
 	switch strings.TrimSpace(*fromStep) {
 	case "":
 	case "pay":
-		step = customerlifecycle.StepPay
+		return fmt.Errorf("payment is out of band")
 	case "license":
 		step = customerlifecycle.StepLicense
 	case "provision":
@@ -133,12 +130,8 @@ func cmdOnboard(ctx context.Context, args []string) error {
 		return fmt.Errorf("unsupported --from-step %q", *fromStep)
 	}
 	st, err := customerlifecycle.RunOnboard(ctx, customerlifecycle.OnboardOptions{
-		IntentPath:       *intentPath,
-		FromStep:         step,
-		PollEvery:        *pollEvery,
-		PollWait:         *pollWait,
-		SkipCheckout:     *skipCheckout,
-		PrintCheckoutURL: true,
+		IntentPath: *intentPath,
+		FromStep:   step,
 	})
 	if err != nil {
 		_ = customerlifecycle.PrintStateJSON(st)

@@ -14,7 +14,6 @@ import (
 const (
 	routerPackage    = "smart-llmrouter/internal/router"
 	fleetPackage     = "smart-llmrouter/internal/fleet"
-	commercePackage  = "smart-llmrouter/internal/commerce"
 	lifecyclePackage = "smart-llmrouter/internal/customerlifecycle"
 )
 
@@ -24,7 +23,6 @@ func TestRequestPathDoesNotDependOnFleetOrInfrastructureSDKs(t *testing.T) {
 			dependencies := goListDependencies(t, target)
 			for dependency := range dependencies {
 				if packageOrChild(dependency, fleetPackage) ||
-					packageOrChild(dependency, commercePackage) ||
 					packageOrChild(dependency, lifecyclePackage) ||
 					strings.HasPrefix(dependency, "k8s.io/") ||
 					strings.HasPrefix(dependency, "github.com/aws/aws-sdk-go-v2/service/eks") ||
