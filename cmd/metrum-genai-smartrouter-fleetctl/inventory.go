@@ -6,7 +6,7 @@ package main
 import (
 	"context"
 	"flag"
-	"smart-llmrouter/internal/fleet"
+	"github.com/metrum-ai/router/internal/fleet"
 	"strings"
 )
 

@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"smart-llmrouter/internal/fleet"
+	"github.com/metrum-ai/router/internal/fleet"
 )
 
 func customerList(args []string) {

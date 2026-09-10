@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	"smart-llmrouter/internal/buildinfo"
+	"github.com/metrum-ai/router/internal/buildinfo"
 
 	"golang.org/x/crypto/bcrypt"
 )

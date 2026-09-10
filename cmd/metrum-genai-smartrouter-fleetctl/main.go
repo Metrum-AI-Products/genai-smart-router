@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"os"
 
-	"smart-llmrouter/internal/buildinfo"
+	"github.com/metrum-ai/router/internal/buildinfo"
 )
 
 func main() {

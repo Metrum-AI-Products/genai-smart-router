@@ -14,7 +14,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"smart-llmrouter/internal/router"
+	"github.com/metrum-ai/router/internal/router"
 )
 
 // UsageBackupResult is a secret-free summary of a SQLite usage backup.

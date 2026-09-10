@@ -22,7 +22,7 @@ func TestCommandVersionFlags(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			outPath := filepath.Join(binDir, name)
 			build := exec.Command("go", "build",
-				"-ldflags", "-X smart-llmrouter/internal/buildinfo.Version=test-version -X smart-llmrouter/internal/buildinfo.Commit=test-commit -X smart-llmrouter/internal/buildinfo.BuildDate=2026-06-17T05:00:00Z",
+				"-ldflags", "-X github.com/metrum-ai/router/internal/buildinfo.Version=test-version -X github.com/metrum-ai/router/internal/buildinfo.Commit=test-commit -X github.com/metrum-ai/router/internal/buildinfo.BuildDate=2026-06-17T05:00:00Z",
 				"-o", outPath,
 				"./cmd/"+name,
 			)

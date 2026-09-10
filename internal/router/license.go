@@ -18,7 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"smart-llmrouter/internal/licensecontract"
+	"github.com/metrum-ai/router/internal/licensecontract"
 	"sort"
 	"strings"
 	"sync"

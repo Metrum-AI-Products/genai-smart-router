@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"smart-llmrouter/internal/buildinfo"
+	"github.com/metrum-ai/router/internal/buildinfo"
 )
 
 type metricsStore struct {

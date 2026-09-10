@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"smart-llmrouter/internal/router"
-	"smart-llmrouter/internal/smartrouterctl"
+	"github.com/metrum-ai/router/internal/router"
+	"github.com/metrum-ai/router/internal/smartrouterctl"
 )
 
 func TestRenderBlueprintNvidiaLLMDCompat(t *testing.T) {

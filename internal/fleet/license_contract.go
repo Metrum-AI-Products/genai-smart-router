@@ -3,7 +3,7 @@
 
 package fleet
 
-import "smart-llmrouter/internal/licensecontract"
+import "github.com/metrum-ai/router/internal/licensecontract"
 
 // These aliases keep Fleet's inventory API readable while the wire contract
 // remains owned by a neutral, dependency-free package.

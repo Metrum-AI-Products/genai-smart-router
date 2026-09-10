@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"smart-llmrouter/internal/fleet"
+	"github.com/metrum-ai/router/internal/fleet"
 )
 
 func customerRepair(args []string) {

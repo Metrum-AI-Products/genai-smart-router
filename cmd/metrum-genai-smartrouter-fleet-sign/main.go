@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"smart-llmrouter/internal/buildinfo"
-	"smart-llmrouter/internal/fleet"
+	"github.com/metrum-ai/router/internal/buildinfo"
+	"github.com/metrum-ai/router/internal/fleet"
 )
 
 func main() {

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
-	"smart-llmrouter/internal/router"
+	"github.com/metrum-ai/router/internal/router"
 )
 
 // LoadConfigRaw reads router YAML without expanding environment expressions so

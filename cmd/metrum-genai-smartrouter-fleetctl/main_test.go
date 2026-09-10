@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"smart-llmrouter/internal/fleet"
+	"github.com/metrum-ai/router/internal/fleet"
 )
 
 func writeSignedFleetIntent(t *testing.T, directory string, manifest fleet.TenantDeploymentManifest, intentID string) string {
