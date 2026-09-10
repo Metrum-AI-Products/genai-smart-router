@@ -126,7 +126,7 @@ The existing image runs as UID and GID `65532`, uses a `scratch` runtime image, 
 port `8080`, and executes:
 
 ```text
-/app/bin/router --config /app/config/config.yaml
+/app/bin/metrum-router --config /app/config/config.yaml
 ```
 
 The chart specified here is a launch deliverable. It does not exist in this repository

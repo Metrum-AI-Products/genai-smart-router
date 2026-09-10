@@ -12,7 +12,7 @@ Release packages are designed to be small, inspectable, and safe for external ad
 For binary packages:
 
 ```text
-smart-llmrouter-<version>-linux-<arch>/
+metrum-router-<version>-linux-<arch>/
   bin/router
   bin/router-token-gen
   bin/router-usage-report
@@ -36,7 +36,7 @@ smart-llmrouter-<version>-linux-<arch>/
 For Docker Compose packages:
 
 ```text
-smart-llmrouter-<version>-docker-linux-<arch>/
+metrum-router-<version>-docker-linux-<arch>/
   compose/docker-compose.yml
   compose/docker-compose.postgres-localhost.yml
   compose/Caddyfile.compose
@@ -45,7 +45,7 @@ smart-llmrouter-<version>-docker-linux-<arch>/
   config/config.example.yaml
   config/env.example.json
   config/scripts/router.ts
-  images/smart-llmrouter-<version>-linux-<arch>.tar
+  images/metrum-router-<version>-linux-<arch>.tar
   docs/
 ```
 
@@ -58,12 +58,12 @@ binary package on a separate trusted administration host.
 
 Confirm the architecture suffix matches the host and, for Docker packages, that `compose/.env` pins `SMART_LLMROUTER_VERSION` to the loaded image tag.
 
-For Docker packages, the saved image includes `/app/bin/router-migrate` and
+For Docker packages, the saved image includes `/app/bin/metrum-router-migrate` and
 `/app/bin/metrum-genai-smartrouterctl`. Version-check them before operation:
 
 ```bash
 docker run --rm --entrypoint /app/bin/metrum-genai-smartrouterctl \
-  smart-llmrouter:<version>-linux-<arch> version
+  metrum-router:<version>-linux-<arch> version
 ```
 
 For `migration_policy: deployment-job`, follow the packaged `docs/DATA_MIGRATIONS.md` runbook before service startup: `plan`, approved backup, `apply`, every release-defined data job until each safe state is `validated`, `verify-serving`, then final read-only `status`. `verify-serving` runs schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. Generic Compose/Kubernetes installs use `--driver sqlite --db /app/state/usage.sqlite`; PostgreSQL is a separately configured deployment substitution using `--driver postgres --dsn "$ROUTER_USAGE_DB_DSN"`. Do not treat checkpoint ordinal `0` as completion or expose a connection string in commands/evidence. See [Upgrade Guide](../release-notes/upgrade-guide) for the release and rollback contract.

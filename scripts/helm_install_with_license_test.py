@@ -86,7 +86,7 @@ def main() -> None:
                 "--valid-for", "12h",
                 "--config", str(config),
                 "--env-file", str(upstream_env),
-                "--image-repository", "smart-llmrouter",
+                "--image-repository", "metrum-router",
                 "--image-tag", "test",
             ],
             check=False,

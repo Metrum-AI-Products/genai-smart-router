@@ -12,7 +12,7 @@ For package selection and architecture guidance, start with [Deployment Artifact
 ## Package Layout
 
 ```text
-smart-llmrouter-<version>-linux-<arch>/
+metrum-router-<version>-linux-<arch>/
   bin/
     router
     router-token-gen
@@ -57,10 +57,10 @@ Create a dedicated service account, then create deployment-owned directories:
 
 ```bash
 sudo groupadd --system router
-sudo useradd --system --gid router --home-dir /var/lib/smart-llmrouter --shell /usr/sbin/nologin router
-sudo install -d -m 0750 -o router -g router /etc/smart-llmrouter
-sudo install -d -m 0750 -o router -g router /var/lib/smart-llmrouter
-sudo install -d -m 0750 -o router -g router /var/log/smart-llmrouter
+sudo useradd --system --gid router --home-dir /var/lib/metrum-router --shell /usr/sbin/nologin router
+sudo install -d -m 0750 -o router -g router /etc/metrum-router
+sudo install -d -m 0750 -o router -g router /var/lib/metrum-router
+sudo install -d -m 0750 -o router -g router /var/log/metrum-router
 ```
 
 If the deployment uses a different service account, substitute that account consistently in the install commands and process supervisor configuration.
@@ -71,7 +71,7 @@ Create reviewed runtime files from the shipped templates before installing them:
 cp config/config.example.yaml config/config.yaml
 cp config/env.example.json config/env.json
 
-bin/router-token-gen generate \
+bin/metrum-router-token-gen generate \
   --owner-user example-admin \
   --project example-project \
   --env prod \
@@ -85,17 +85,17 @@ Edit runtime paths in `config/config.yaml` for the binary host layout before ins
 ```yaml
 server:
   logging:
-    path: /var/log/smart-llmrouter/requests.jsonl
+    path: /var/log/metrum-router/requests.jsonl
   license:
     enabled: true
-    path: /etc/smart-llmrouter/license.json
-    state_path: /var/lib/smart-llmrouter/license-state.json
+    path: /etc/metrum-router/license.json
+    state_path: /var/lib/metrum-router/license-state.json
   usage_db:
     enabled: true
     driver: sqlite
-    path: /var/lib/smart-llmrouter/usage.sqlite
+    path: /var/lib/metrum-router/usage.sqlite
 
-state_path: /var/lib/smart-llmrouter/router-state.json
+state_path: /var/lib/metrum-router/router-state.json
 ```
 
 Use `driver: postgres` and a deployment-owned DSN instead of SQLite when the binary service is part of a production database deployment.
@@ -103,14 +103,14 @@ Use `driver: postgres` and a deployment-owned DSN instead of SQLite when the bin
 Install the binary and runtime files according to the host change-control process:
 
 ```bash
-sudo install -m 0755 bin/router /usr/local/bin/smart-llmrouter
-sudo install -m 0755 bin/router-token-gen /usr/local/bin/router-token-gen
-sudo install -m 0755 bin/router-usage-report /usr/local/bin/router-usage-report
+sudo install -m 0755 bin/metrum-router /usr/local/bin/metrum-router
+sudo install -m 0755 bin/metrum-router-token-gen /usr/local/bin/metrum-router-token-gen
+sudo install -m 0755 bin/metrum-router-usage-report /usr/local/bin/metrum-router-usage-report
 sudo install -m 0755 bin/metrum-genai-smartrouterctl /usr/local/bin/metrum-genai-smartrouterctl
 sudo install -m 0755 bin/metrum-genai-smartrouter-fleetctl /usr/local/bin/metrum-genai-smartrouter-fleetctl
-sudo install -m 0640 -o router -g router config/config.yaml /etc/smart-llmrouter/config.yaml
-sudo install -m 0640 -o router -g router config/env.json /etc/smart-llmrouter/env.json
-sudo install -m 0640 -o router -g router license.json /etc/smart-llmrouter/license.json
+sudo install -m 0640 -o router -g router config/config.yaml /etc/metrum-router/config.yaml
+sudo install -m 0640 -o router -g router config/env.json /etc/metrum-router/env.json
+sudo install -m 0640 -o router -g router license.json /etc/metrum-router/license.json
 ```
 
 `metrum-genai-smartrouterctl` is the customer-local operations CLI. On file-owned
@@ -153,8 +153,8 @@ The service process needs access to:
 Example service command:
 
 ```bash
-smart-llmrouter \
-  --config /etc/smart-llmrouter/config.yaml
+metrum-router \
+  --config /etc/metrum-router/config.yaml
 ```
 
 The router loads `env.json` from the same directory as the config file before expanding `${VAR}` references. Deployments that use a secret manager can inject the same environment variables into the service process instead.
@@ -191,6 +191,6 @@ For request-level diagnostics after installation, use [Troubleshooting Requests]
 
 Before an upgrade, back up `config.yaml`, `env.json` or equivalent secret-manager state, `license.json`, license state, router state, usage database data, logs needed by the retention policy, and the previous package artifact.
 
-Install the new package beside the old package, run `smart-llmrouter --version` or `bin/router --version`, review config template changes, then restart the supervised service with the new binary. After restart, repeat `/readyz`, `/docs/`, `/v1/models`, and one caller smoke.
+Install the new package beside the old package, run `metrum-router --version` or `bin/metrum-router --version`, review config template changes, then restart the supervised service with the new binary. After restart, repeat `/readyz`, `/docs/`, `/v1/models`, and one caller smoke.
 
 Package rollback never runs a reverse migration. If the release migration contract is `restore-required`, restore the approved pre-migration snapshot before deploying the earlier binary. Otherwise preserve the usage database and restore only approved package/config inputs, then repeat migration verify/status and the same smokes before sending traffic.

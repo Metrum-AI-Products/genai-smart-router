@@ -114,7 +114,7 @@ def test_go_clis_issue_license_and_caller() -> None:
         bin_dir = Path(temp) / "bin"
         bin_dir.mkdir()
         license_bin = bin_dir / "metrum-genai-smartrouter-license"
-        ctl_bin = bin_dir / "metrum-genai-smartrouterctl"
+        ctl_bin = bin_dir / "metrum-routerctl"
         build = subprocess.run(
             ["go", "build", "-o", str(license_bin), "./cmd/metrum-genai-smartrouter-license"],
             cwd=ROOT,
@@ -124,7 +124,7 @@ def test_go_clis_issue_license_and_caller() -> None:
         if build.returncode != 0:
             raise AssertionError(build.stderr)
         build = subprocess.run(
-            ["go", "build", "-o", str(ctl_bin), "./cmd/metrum-genai-smartrouterctl"],
+            ["go", "build", "-o", str(ctl_bin), "./cmd/metrum-routerctl"],
             cwd=ROOT,
             capture_output=True,
             text=True,

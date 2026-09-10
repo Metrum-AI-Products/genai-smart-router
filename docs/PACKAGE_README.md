@@ -6,17 +6,22 @@ This package contains a packaged GenAI Smart Router runtime plus a small offline
 
 Binary packages include:
 
-- `bin/router`
-- `bin/router-token-gen`
-- `bin/router-usage-report`
-- `bin/router-migrate`
-- `bin/metrum-genai-smartrouterctl`
+- `bin/metrum-router`
+- `bin/metrum-router-token-gen`
+- `bin/metrum-router-usage-report`
+- `bin/metrum-router-migrate`
+- `bin/metrum-routerctl`
 - `bin/metrum-genai-smartrouter-fleetctl`
 - `bin/metrum-genai-smartrouter-fleet-sign`
 - `bin/metrum-genai-smartrouter-license` (operator-side runtime-policy key and
   license tool; never included in the runtime image)
 - `bin/metrum-genai-customer-lifecycle` (Metrum operator lifecycle CLI only; never for customer self-service)
-- `bin/smartrouterctl` (one-release rename notice → `metrum-genai-smartrouterctl`)
+- `bin/router` (one-release rename notice → `metrum-router`)
+- `bin/router-token-gen` (one-release rename notice → `metrum-router-token-gen`)
+- `bin/router-usage-report` (one-release rename notice → `metrum-router-usage-report`)
+- `bin/router-migrate` (one-release rename notice → `metrum-router-migrate`)
+- `bin/metrum-genai-smartrouterctl` (one-release rename notice → `metrum-routerctl`)
+- `bin/smartrouterctl` (one-release rename notice → `metrum-routerctl`)
 - `bin/metrum-fleetctl` (one-release rename notice → `metrum-genai-smartrouter-fleetctl`)
 - `bin/metrum-smartrouterctl` (one-release rename notice → `metrum-genai-smartrouter-fleetctl`)
 - `bin/metrum-fleet-sign` (one-release rename notice → `metrum-genai-smartrouter-fleet-sign`)
@@ -42,18 +47,19 @@ Docker Compose packages include:
 - `config/config.example.yaml`
 - `config/env.example.json`
 - `config/scripts/router.ts`
-- `images/smart-llmrouter-<version>-linux-<arch>.tar`
+- `images/metrum-router-<version>-linux-<arch>.tar`
 - `docs/`
 - `LICENSE`
 - `NOTICE`
 - `THIRD_PARTY_NOTICES.md`
 - `MODEL_LICENSES.md`
 
-The saved Docker image includes `/app/bin/router-migrate`, customer-local
-`/app/bin/metrum-genai-smartrouterctl`, and one-release `/app/bin/smartrouterctl`
-rename notice; Fleet lifecycle binaries are excluded. Version-check
-the runtime with `docker run --rm --entrypoint /app/bin/metrum-genai-smartrouterctl
-smart-llmrouter:<version>-linux-<arch> version`.
+The saved Docker image includes `/app/bin/metrum-router`, `/app/bin/metrum-router-migrate`,
+customer-local `/app/bin/metrum-routerctl`, and one-release rename notices for the
+previous `router*` / `metrum-genai-smartrouterctl` / `smartrouterctl` names; Fleet
+lifecycle binaries are excluded. Version-check the runtime with
+`docker run --rm --entrypoint /app/bin/metrum-routerctl
+metrum-router:<version>-linux-<arch> version`.
 
 The standard Docker and Docker Compose images do not include
 `metrum-genai-smartrouter-fleetctl`, `metrum-genai-smartrouter-fleet-sign`,

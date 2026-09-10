@@ -21,8 +21,8 @@ make package-docker
 This creates:
 
 ```text
-dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz
-dist/smart-llmrouter-<version>-docker-linux-arm64.tar.gz
+dist/metrum-router-<version>-docker-linux-amd64.tar.gz
+dist/metrum-router-<version>-docker-linux-arm64.tar.gz
 ```
 
 Docker image builds use `docker buildx build --load` for each packaged platform.
@@ -32,7 +32,7 @@ Package targets require a clean git tree and reject versions containing `-dirty`
 Each package contains:
 
 ```text
-images/smart-llmrouter-<version>-linux-<arch>.tar
+images/metrum-router-<version>-linux-<arch>.tar
 compose/docker-compose.yml
 compose/docker-compose.postgres-localhost.yml
 compose/Caddyfile.compose
@@ -63,7 +63,7 @@ assuming the first-party license grants third-party rights. A deployment's
 `license.json` remains protected runtime policy and must not be added to the
 package legal set.
 
-Package docs are copied only from the Tier 2 bootstrap allowlist in `scripts/package_docs_allowlist.txt`. Package tar commands run with `COPYFILE_DISABLE=1` so macOS does not inject AppleDouble `._*` metadata. The package build validates the resulting tarball and fails if it contains AppleDouble entries, unexpected package files, missing allowlisted docs, private production runbooks, private host/IP markers, SSH key paths, live production compose config/env/token paths, local secret/state/license filenames, local DB/log artifacts, or raw token/provider-key patterns. The validator also checks that the package has exactly one image tar matching the package architecture and that the saved image layers include `/app/bin/router`, `/app/bin/router-token-gen`, and `/app/bin/router-usage-report`.
+Package docs are copied only from the Tier 2 bootstrap allowlist in `scripts/package_docs_allowlist.txt`. Package tar commands run with `COPYFILE_DISABLE=1` so macOS does not inject AppleDouble `._*` metadata. The package build validates the resulting tarball and fails if it contains AppleDouble entries, unexpected package files, missing allowlisted docs, private production runbooks, private host/IP markers, SSH key paths, live production compose config/env/token paths, local secret/state/license filenames, local DB/log artifacts, or raw token/provider-key patterns. The validator also checks that the package has exactly one image tar matching the package architecture and that the saved image layers include `/app/bin/metrum-router`, `/app/bin/metrum-router-token-gen`, and `/app/bin/metrum-router-usage-report`.
 
 Run the full local package validation before release handoff:
 
@@ -79,17 +79,17 @@ dispositions with the release record.
 
 ```bash
 make package-docker-all
-python3 scripts/validate_package_contents.py --allowlist scripts/package_docs_allowlist.txt dist/smart-llmrouter-*-docker-linux-amd64.tar.gz dist/smart-llmrouter-*-docker-linux-arm64.tar.gz
+python3 scripts/validate_package_contents.py --allowlist scripts/package_docs_allowlist.txt dist/metrum-router-*-docker-linux-amd64.tar.gz dist/metrum-router-*-docker-linux-arm64.tar.gz
 ```
 
 When Docker is available, load each packaged image and run version checks before deployment:
 
 ```bash
-docker load -i images/smart-llmrouter-<version>-linux-<arch>.tar
-docker run --rm --entrypoint /app/bin/router smart-llmrouter:<version>-linux-<arch> --version
-docker run --rm --entrypoint /app/bin/router-token-gen smart-llmrouter:<version>-linux-<arch> --version
-docker run --rm --entrypoint /app/bin/router-usage-report smart-llmrouter:<version>-linux-<arch> --version
-docker run --rm --entrypoint /app/bin/router-migrate smart-llmrouter:<version>-linux-<arch> --version
+docker load -i images/metrum-router-<version>-linux-<arch>.tar
+docker run --rm --entrypoint /app/bin/metrum-router metrum-router:<version>-linux-<arch> --version
+docker run --rm --entrypoint /app/bin/metrum-router-token-gen metrum-router:<version>-linux-<arch> --version
+docker run --rm --entrypoint /app/bin/metrum-router-usage-report metrum-router:<version>-linux-<arch> --version
+docker run --rm --entrypoint /app/bin/metrum-router-migrate metrum-router:<version>-linux-<arch> --version
 ```
 
 ## AWS EC2 Host Setup
@@ -113,9 +113,9 @@ DNS:
 Install Docker and the Compose plugin on the host, then unpack:
 
 ```bash
-sudo mkdir -p /opt/smart-llmrouter
-sudo tar -C /opt/smart-llmrouter --strip-components=1 -xzf smart-llmrouter-<version>-docker-linux-amd64.tar.gz
-cd /opt/smart-llmrouter
+sudo mkdir -p /opt/metrum-router
+sudo tar -C /opt/metrum-router --strip-components=1 -xzf metrum-router-<version>-docker-linux-amd64.tar.gz
+cd /opt/metrum-router
 ```
 
 Use the `docker-linux-amd64` package on x86_64 hosts and the `docker-linux-arm64` package on ARM64 hosts.
@@ -126,12 +126,12 @@ First-time bootstrap may unpack with `tar --strip-components=1` as shown above. 
 
 ```bash
 python3 scripts/compose_package_upgrade.py plan \
-  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
-  --install-root /opt/smart-llmrouter
+  --package dist/metrum-router-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/metrum-router
 
 python3 scripts/compose_package_upgrade.py apply \
-  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
-  --install-root /opt/smart-llmrouter \
+  --package dist/metrum-router-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/metrum-router \
   --backup-suffix <purpose> \
   --remote ubuntu@<compose-host> \
   --ssh-identity <ssh-key>
@@ -155,12 +155,12 @@ When an existing Compose Postgres usage schema cannot be adopted and historical 
 
 ```bash
 python3 scripts/compose_clean_cutover.py plan \
-  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
-  --install-root /opt/smart-llmrouter
+  --package dist/metrum-router-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/metrum-router
 
 python3 scripts/compose_clean_cutover.py apply \
-  --package dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz \
-  --install-root /opt/smart-llmrouter \
+  --package dist/metrum-router-<version>-docker-linux-amd64.tar.gz \
+  --install-root /opt/metrum-router \
   --backup-suffix <purpose> \
   --confirm-reset-usage reset-postgres-data \
   --remote ubuntu@<compose-host> \
@@ -184,8 +184,8 @@ Rollback of a package upgrade that did not reset the usage store:
 
 ```bash
 python3 scripts/compose_package_upgrade.py rollback \
-  --backup /opt/smart-llmrouter.backup-<purpose>-<UTC timestamp> \
-  --install-root /opt/smart-llmrouter \
+  --backup /opt/metrum-router.backup-<purpose>-<UTC timestamp> \
+  --install-root /opt/metrum-router \
   --remote ubuntu@<compose-host> \
   --ssh-identity <ssh-key>
 ```
@@ -197,7 +197,7 @@ This runbook is source-only. Do not add it to `scripts/package_docs_allowlist.tx
 Load the packaged image:
 
 ```bash
-docker load -i images/smart-llmrouter-<version>-linux-amd64.tar
+docker load -i images/metrum-router-<version>-linux-amd64.tar
 ```
 
 Prepare runtime directories and config:
@@ -328,7 +328,7 @@ Provider/model/target `traffic_shape` blocks are optional and should be rolled o
 Generate a caller token:
 
 ```bash
-docker run --rm --entrypoint /app/bin/router-token-gen smart-llmrouter:<version>-linux-amd64 generate \
+docker run --rm --entrypoint /app/bin/metrum-router-token-gen metrum-router:<version>-linux-amd64 generate \
   --owner-user alice \
   --project example-project \
   --env dev \
@@ -372,7 +372,7 @@ Before a fresh serving startup, run the mandatory [Data migration framework](DAT
 Start only after that gate:
 
 ```bash
-cd /opt/smart-llmrouter/compose
+cd /opt/metrum-router/compose
 docker compose up -d
 ```
 
@@ -389,7 +389,7 @@ curl "$ROUTER_BASE_URL/version"
 curl -H "Authorization: Bearer $ROUTER_TOKEN" "$ROUTER_BASE_URL/v1/models"
 ```
 
-Inside the running container, `/app/bin/router --version`, `/app/bin/router-token-gen --version`, and `/app/bin/router-usage-report --version` print the package version, commit, full UTC build timestamp, Go version, OS, and architecture. Hosted browser docs display the package version and build timestamp on every page and return `X-Smart-LLMRouter-*` version headers.
+Inside the running container, `/app/bin/metrum-router --version`, `/app/bin/metrum-router-token-gen --version`, and `/app/bin/metrum-router-usage-report --version` print the package version, commit, full UTC build timestamp, Go version, OS, and architecture. Hosted browser docs display the package version and build timestamp on every page and return `X-Smart-LLMRouter-*` version headers.
 
 The router image also embeds authenticated admin report assets, including the Metrum-branded browser shell, local logo/font assets, JavaScript, and chart bundle. They are disabled by default and served only under `/admin/reports/` after `server.admin_reports.enabled: true`, Basic Auth, and Casbin `admin:reports` policy are configured. Optional security access reports require `server.admin_reports.security.enabled: true`, trusted proxy configuration under `server.client_ip`, and separate `admin:security_reports` policy. Public `/docs/` remains separate from report data.
 
@@ -410,7 +410,7 @@ Generate a markdown usage report on the host from the running compose data:
 
 ```bash
 dsn="$(sed -n 's/^ROUTER_USAGE_DB_DSN=//p' .env | tail -n 1)"
-docker compose run --rm --entrypoint /app/bin/router-usage-report router \
+docker compose run --rm --entrypoint /app/bin/metrum-router-usage-report router \
   --driver postgres \
   --dsn "$dsn" \
   --since 24h \

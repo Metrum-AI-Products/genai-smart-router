@@ -16,7 +16,7 @@ cleanup() { rm -rf "$OUT"; }
 trap cleanup EXIT
 
 echo "==> blueprint render"
-go run ./cmd/metrum-genai-smartrouterctl blueprint render --intent "$INTENT" --out "$OUT"
+go run ./cmd/metrum-routerctl blueprint render --intent "$INTENT" --out "$OUT"
 
 echo "==> assert local upstreams and no cloud URLs"
 CFG="$OUT/config.yaml"
@@ -52,7 +52,7 @@ grep -q 'helm_chart_emitted: true' "$OUT/inventory.yaml"
 grep -q 'operator_emitted: true' "$OUT/inventory.yaml"
 
 echo "==> package unit tests"
-go test ./internal/smartrouterctl ./cmd/metrum-genai-smartrouterctl -count=1
+go test ./internal/smartrouterctl ./cmd/metrum-routerctl -count=1
 
 echo "==> kubectl kustomize overlay"
 if command -v kubectl >/dev/null 2>&1; then

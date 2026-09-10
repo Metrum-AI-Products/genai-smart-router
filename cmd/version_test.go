@@ -16,7 +16,7 @@ func TestCommandVersionFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	binDir := t.TempDir()
-	commands := []string{"router", "router-token-gen", "router-usage-report"}
+	commands := []string{"metrum-router", "metrum-router-token-gen", "metrum-router-usage-report"}
 	for _, name := range commands {
 		name := name
 		t.Run(name, func(t *testing.T) {

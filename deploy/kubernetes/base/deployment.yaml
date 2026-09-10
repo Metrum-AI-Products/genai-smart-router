@@ -28,7 +28,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: router
-          image: registry.example.com/smart-llmrouter:<version>-linux-amd64
+          image: registry.example.com/metrum-router:<version>-linux-amd64
           imagePullPolicy: IfNotPresent
           args: ["--config", "/app/config/config.yaml"]
           ports:

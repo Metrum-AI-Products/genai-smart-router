@@ -18,16 +18,20 @@ from typing import Iterable
 
 TEXT_SCAN_LIMIT = 10 * 1024 * 1024
 BINARY_PACKAGE_FILES = {
+    "bin/metrum-router",
+    "bin/metrum-router-token-gen",
+    "bin/metrum-router-usage-report",
+    "bin/metrum-router-migrate",
+    "bin/metrum-routerctl",
+    "bin/metrum-genai-smartrouter-fleetctl",
+    "bin/metrum-genai-smartrouter-fleet-sign",
+    "bin/metrum-genai-smartrouter-license",
+    "bin/metrum-genai-customer-lifecycle",
     "bin/router",
     "bin/router-token-gen",
     "bin/router-usage-report",
     "bin/router-migrate",
     "bin/metrum-genai-smartrouterctl",
-    "bin/metrum-genai-smartrouter-fleetctl",
-    "bin/metrum-genai-smartrouter-fleet-sign",
-    "bin/metrum-genai-smartrouter-license",
-    "bin/metrum-genai-customer-lifecycle",
-    "bin/metrum-genai-customer-lifecycle",
     "bin/smartrouterctl",
     "bin/metrum-fleetctl",
     "bin/metrum-smartrouterctl",
@@ -58,14 +62,20 @@ DOCKER_PACKAGE_FILES = {
     "MODEL_LICENSES.md",
 }
 PACKAGE_BINARIES = {
+    "bin/metrum-router",
+    "bin/metrum-router-token-gen",
+    "bin/metrum-router-usage-report",
+    "bin/metrum-router-migrate",
+    "bin/metrum-routerctl",
+    "bin/metrum-genai-smartrouter-fleetctl",
+    "bin/metrum-genai-smartrouter-fleet-sign",
+    "bin/metrum-genai-smartrouter-license",
+    "bin/metrum-genai-customer-lifecycle",
     "bin/router",
     "bin/router-token-gen",
     "bin/router-usage-report",
     "bin/router-migrate",
     "bin/metrum-genai-smartrouterctl",
-    "bin/metrum-genai-smartrouter-fleetctl",
-    "bin/metrum-genai-smartrouter-fleet-sign",
-    "bin/metrum-genai-smartrouter-license",
     "bin/smartrouterctl",
     "bin/metrum-fleetctl",
     "bin/metrum-smartrouterctl",
@@ -83,7 +93,7 @@ FLEET_ONLY_BINARY_NAMES = {
     "router-license",
 }
 EXPECTED_ELF_MACHINE = {"amd64": 62, "arm64": 183}
-DOCKER_IMAGE_RE = re.compile(r"^images/smart-llmrouter-.+-linux-(amd64|arm64)\.tar$")
+DOCKER_IMAGE_RE = re.compile(r"^images/metrum-router-.+-linux-(amd64|arm64)\.tar$")
 FORBIDDEN_IMAGE_PATH_RE = re.compile(
     r"^/?(?:"
     r"src/|"
@@ -240,7 +250,19 @@ def validate_elf_arch(blob: bytes, arch: str) -> str | None:
 
 def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes, expected_arch: str) -> list[str]:
     errors: list[str] = []
-    required = {"/app/bin/router", "/app/bin/router-token-gen", "/app/bin/router-usage-report", "/app/bin/router-migrate", "/app/bin/metrum-genai-smartrouterctl", "/app/bin/smartrouterctl"}
+    required = {
+        "/app/bin/metrum-router",
+        "/app/bin/metrum-router-token-gen",
+        "/app/bin/metrum-router-usage-report",
+        "/app/bin/metrum-router-migrate",
+        "/app/bin/metrum-routerctl",
+        "/app/bin/router",
+        "/app/bin/router-token-gen",
+        "/app/bin/router-usage-report",
+        "/app/bin/router-migrate",
+        "/app/bin/metrum-genai-smartrouterctl",
+        "/app/bin/smartrouterctl",
+    }
     actual: set[str] = set()
     try:
         with tarfile.open(fileobj=io.BytesIO(blob), mode="r:*") as image:

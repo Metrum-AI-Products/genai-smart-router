@@ -53,7 +53,7 @@ CloudFormation definition for the single reviewed Metrum staging target. It
 creates exact delivery and bootstrap roles, a separate reusable staging
 image-publisher role, a fixed lifecycle-operator role, and the permanent
 `genai-smart-router-eks-staging-lifecycle-operators` IAM group. It also creates
-the private `smart-llmrouter` ECR repository, protected non-secret target
+the private `metrum-router` ECR repository, protected non-secret target
 Parameter, and EKS access entries mapped to the
 `genai-smart-router-eks-staging-delivery` and
 `genai-smart-router-eks-staging-bootstrap` Kubernetes groups. The repository
@@ -181,7 +181,7 @@ name an individual user. Assign operators to that federated/SSO role and grant
 its source role `sts:AssumeRole` for
 `genai-smart-router-eks-staging-image-publisher`. The publisher can request an
 ECR authorization token and upload, inspect, and resolve images only in the
-stack-owned `smart-llmrouter` repository. It cannot mutate EKS, Secrets,
+stack-owned `metrum-router` repository. It cannot mutate EKS, Secrets,
 parameters, or any other repository.
 
 Publish a reviewed current commit under an immutable staging tag, then resolve
@@ -191,10 +191,10 @@ the resulting `@sha256:` digest before creating the runtime attestation:
 aws ecr get-login-password --profile <staging-publisher-profile> --region us-east-1 \
   | docker login --username AWS --password-stdin <account>.dkr.ecr.us-east-1.amazonaws.com
 docker buildx build --platform linux/amd64 --load \
-  -t <account>.dkr.ecr.us-east-1.amazonaws.com/smart-llmrouter:staging-<commit> .
-docker push <account>.dkr.ecr.us-east-1.amazonaws.com/smart-llmrouter:staging-<commit>
+  -t <account>.dkr.ecr.us-east-1.amazonaws.com/metrum-router:staging-<commit> .
+docker push <account>.dkr.ecr.us-east-1.amazonaws.com/metrum-router:staging-<commit>
 aws ecr describe-images --profile <staging-publisher-profile> --region us-east-1 \
-  --repository-name smart-llmrouter --image-ids imageTag=staging-<commit>
+  --repository-name metrum-router --image-ids imageTag=staging-<commit>
 ```
 
 The separately reviewed cluster-bootstrap identity must first create the

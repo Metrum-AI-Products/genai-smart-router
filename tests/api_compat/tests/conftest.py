@@ -129,7 +129,7 @@ callers:
     config_path.write_text(config)
     build_env = os.environ | {"GOPROXY": "off", "GOSUMDB": "off"}
     router_binary = work / "router"
-    subprocess.run(["go", "build", "-tags", "dev_no_license", "-o", str(router_binary), "./cmd/router"], cwd=Path(__file__).parents[3], env=build_env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    subprocess.run(["go", "build", "-tags", "dev_no_license", "-o", str(router_binary), "./cmd/metrum-router"], cwd=Path(__file__).parents[3], env=build_env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     process = subprocess.Popen([str(router_binary), "-config", "config.yaml"], cwd=work, env=build_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     base = f"http://127.0.0.1:{port}"
     for _ in range(100):

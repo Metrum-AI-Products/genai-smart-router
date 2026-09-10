@@ -9,22 +9,27 @@ This project is packaged as a binary distribution. A deployment host does not ne
 `make package` creates Linux x86_64 and arm64 tarballs under `dist/`:
 
 ```text
-smart-llmrouter-<version>-linux-amd64.tar.gz
-smart-llmrouter-<version>-linux-arm64.tar.gz
+metrum-router-<version>-linux-amd64.tar.gz
+metrum-router-<version>-linux-arm64.tar.gz
 ```
 
 Each tarball contains:
 
 ```text
+bin/metrum-router
+bin/metrum-router-token-gen
+bin/metrum-router-usage-report
+bin/metrum-router-migrate
+bin/metrum-routerctl
+bin/metrum-genai-smartrouter-fleetctl
+bin/metrum-genai-smartrouter-fleet-sign
+bin/metrum-genai-smartrouter-license
+bin/metrum-genai-customer-lifecycle
 bin/router
 bin/router-token-gen
 bin/router-usage-report
 bin/router-migrate
 bin/metrum-genai-smartrouterctl
-bin/metrum-genai-smartrouter-fleetctl
-bin/metrum-genai-smartrouter-fleet-sign
-bin/metrum-genai-smartrouter-license
-bin/metrum-genai-customer-lifecycle
 bin/smartrouterctl
 bin/metrum-fleetctl
 bin/metrum-smartrouterctl  # one-release rename notice
@@ -72,7 +77,7 @@ Release metadata is intentionally strict because package and Docker recipes use 
 The config and routing script are packaged together so this command works after unpacking:
 
 ```bash
-bin/router --config config/config.yaml
+bin/metrum-router --config config/config.yaml
 ```
 
 `config/config.yaml` can keep `script: scripts/router.ts` because script paths are resolved relative to the config file.
@@ -155,7 +160,7 @@ Docker packages use `docker buildx build --platform linux/<arch> --load`, save e
 ```bash
 make package-all
 make package-docker-all
-python3 scripts/validate_package_contents.py --allowlist scripts/package_docs_allowlist.txt dist/smart-llmrouter-*.tar.gz
+python3 scripts/validate_package_contents.py --allowlist scripts/package_docs_allowlist.txt dist/metrum-router-*.tar.gz
 ```
 
 Bind the complete four-artifact set to the approved version, full commit ID,
@@ -197,13 +202,13 @@ make dist-backup
 ```
 
 Local artifacts keep the git version/hash in their filenames
-(`smart-llmrouter-<version>-linux-amd64.tar.gz`, …). The backup stages them
+(`metrum-router-<version>-linux-amd64.tar.gz`, …). The backup stages them
 under stable restic basenames so each snapshot replaces the same four paths:
 
-- `smart-llmrouter-linux-amd64.tar.gz`
-- `smart-llmrouter-linux-arm64.tar.gz`
-- `smart-llmrouter-docker-linux-amd64.tar.gz`
-- `smart-llmrouter-docker-linux-arm64.tar.gz`
+- `metrum-router-linux-amd64.tar.gz`
+- `metrum-router-linux-arm64.tar.gz`
+- `metrum-router-docker-linux-amd64.tar.gz`
+- `metrum-router-docker-linux-arm64.tar.gz`
 
 Release identity is recorded in restic tags (`version:<id>`). Restore a prior
 build with `restic snapshots --tag version:<id>` then
@@ -274,8 +279,8 @@ Use the DNS provider for the deployment environment. Create or update an `A` rec
 Recommended paths:
 
 ```text
-/opt/smart-llmrouter/bin/router
-/opt/smart-llmrouter/bin/router-token-gen
+/opt/smart-llmrouter/bin/metrum-router
+/opt/smart-llmrouter/bin/metrum-router-token-gen
 /opt/smart-llmrouter/config/config.yaml
 /opt/smart-llmrouter/config/env.json
 /opt/smart-llmrouter/config/scripts/router.ts
@@ -296,10 +301,10 @@ On the deployment host:
 
 ```bash
 sudo mkdir -p /opt/smart-llmrouter /var/lib/smart-llmrouter /var/log/smart-llmrouter
-sudo tar -C /opt/smart-llmrouter --strip-components=1 -xzf smart-llmrouter-<version>-linux-amd64.tar.gz
+sudo tar -C /opt/smart-llmrouter --strip-components=1 -xzf metrum-router-<version>-linux-amd64.tar.gz
 sudo cp /opt/smart-llmrouter/config/config.example.yaml /opt/smart-llmrouter/config/config.yaml
 sudo cp /opt/smart-llmrouter/config/env.example.json /opt/smart-llmrouter/config/env.json
-sudo chmod 0755 /opt/smart-llmrouter/bin/router /opt/smart-llmrouter/bin/router-token-gen
+sudo chmod 0755 /opt/smart-llmrouter/bin/metrum-router /opt/smart-llmrouter/bin/metrum-router-token-gen
 sudo chmod 0600 /opt/smart-llmrouter/config/env.json
 ```
 
@@ -329,7 +334,7 @@ Edit `/opt/smart-llmrouter/config/env.json` with provider keys such as `OPENAI_A
 Generate a caller token and append the generated caller block to `config.yaml`:
 
 ```bash
-/opt/smart-llmrouter/bin/router-token-gen generate \
+/opt/smart-llmrouter/bin/metrum-router-token-gen generate \
   --owner-user alice \
   --project example-project \
   --env dev \
@@ -363,7 +368,7 @@ Type=simple
 User=smart-llmrouter
 Group=smart-llmrouter
 WorkingDirectory=/opt/smart-llmrouter
-ExecStart=/opt/smart-llmrouter/bin/router --config /opt/smart-llmrouter/config/config.yaml
+ExecStart=/opt/smart-llmrouter/bin/metrum-router --config /opt/smart-llmrouter/config/config.yaml
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
@@ -409,7 +414,7 @@ curl "$ROUTER_BASE_URL/version"
 curl -H "Authorization: Bearer $ROUTER_TOKEN" "$ROUTER_BASE_URL/v1/models"
 ```
 
-On the host, `bin/router --version`, `bin/router-token-gen --version`, `bin/router-usage-report --version`, and `bin/router-migrate --version` print the package version, commit, full UTC build timestamp, Go version, OS, and architecture. Hosted browser docs display the package version and build timestamp on every page and return `X-Smart-LLMRouter-*` version headers.
+On the host, `bin/metrum-router --version`, `bin/metrum-router-token-gen --version`, `bin/metrum-router-usage-report --version`, and `bin/metrum-router-migrate --version` print the package version, commit, full UTC build timestamp, Go version, OS, and architecture. Hosted browser docs display the package version and build timestamp on every page and return `X-Smart-LLMRouter-*` version headers.
 
 If enabling admin browser reports, first deploy with `server.admin_reports.enabled: false`, then add Basic Auth or OIDC, Casbin policy for `admin:reports`, and finally enable `server.admin_reports.enabled: true`. Smoke `/admin/reports/`, `/admin/reports/api/version`, `/admin/reports/api/summary?since=24h`, `/admin/reports/api/requests?since=24h&limit=25`, `/admin/reports/api/request-evidence?request_id=<request_id>`, `/admin/reports/api/provider-catalog-status`, and `/admin/reports/api/retention-status` with an authorized browser-admin user, verify the Metrum-branded dark shell and version chip, verify ordinary router tokens receive `403 reports-forbidden`, verify `/docs/` remains public docs only, and roll back by setting `server.admin_reports.enabled: false`. Report data is scoped to the admin's Casbin domain by default; smoke a domain-scoped admin against another project/environment request ID and expect `404`. Grant deployment-global report visibility only with an explicit `*` policy domain and smoke that subject separately. Check that report filters and request evidence return bounded safe rows, diagnostic completeness, stored request-time cost fields, and no raw tokens, token hashes, provider keys, prompts, images, image URLs, tool schemas, tool outputs, cookies, OIDC tokens, upstream bodies, full config, or private host paths. If an admin report API returns `report-query-failed`, keep the caller-facing error generic and inspect the matching `admin_report_query_failed` router log for safe scalar fields such as `report`, `handler`, `db_driver`, `error_class`, and, for PostgreSQL, `pg_code`, `pg_severity`, and bounded `pg_message`. If enabling security access reports, also configure `server.client_ip.trusted_proxy_cidrs`, set `server.admin_reports.security.enabled: true`, grant `admin:security_reports` read/export only to approved subjects, smoke `/admin/reports/api/security/events?since=24h`, and verify exports contain no raw tokens, token hashes, provider keys, prompts, images, cookies, OIDC tokens, full config, or raw spreadsheet formulas. For metrics/report authorization rollout, use `server.admin_auth.authorization.source: static` with `policy_file` or inline `policy`, or `source: db` after a policy set has been validated and activated in the usage DB. Smoke `/metrics` with an authorized caller, verify ordinary callers still receive `403 metrics-forbidden`, and keep a known-good static policy file or retired DB policy set for rollback.
 

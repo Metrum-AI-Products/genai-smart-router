@@ -101,7 +101,7 @@ git clone https://github.com/Metrum-AI-Products/genai-smart-router.git
 cd genai-smart-router
 python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev
 # Set OPENAI_API_KEY in tmp/local-dev/env.json.
-go run ./cmd/router --config tmp/local-dev/config.yaml
+go run ./cmd/metrum-router --config tmp/local-dev/config.yaml
 ```
 
 The bootstrap issues a local runtime `license.json` (SKU `oss-self-managed`)
@@ -156,15 +156,20 @@ Release package targets require a clean git tree and reject `-dirty` versions. U
 Each tarball contains:
 
 ```text
+bin/metrum-router
+bin/metrum-router-token-gen
+bin/metrum-router-usage-report
+bin/metrum-router-migrate
+bin/metrum-routerctl
+bin/metrum-genai-smartrouter-fleetctl
+bin/metrum-genai-smartrouter-fleet-sign
+bin/metrum-genai-smartrouter-license
+bin/metrum-genai-customer-lifecycle
 bin/router
 bin/router-token-gen
 bin/router-usage-report
 bin/router-migrate
 bin/metrum-genai-smartrouterctl
-bin/metrum-genai-smartrouter-fleetctl
-bin/metrum-genai-smartrouter-fleet-sign
-bin/metrum-genai-smartrouter-license
-bin/metrum-genai-customer-lifecycle
 bin/smartrouterctl
 bin/metrum-fleetctl
 bin/metrum-smartrouterctl # one-release rename notice
@@ -198,7 +203,7 @@ profile-key-signed, reference-only deployment intent; it contains the protected
 profile, runtime bundle, and license references without their resolved values.
 `customer create|status|smoke|grant-caller|get-config|list-callers|revoke-caller|update-quota|quota-status|update-config|delete` orchestrates
 disposable SQLite Fleet instances from the packaged binary alone (no Python/repo).
-`metrum-genai-smartrouterctl` provides customer-local safe config, caller-token-file,
+`metrum-routerctl` provides customer-local safe config, caller-token-file,
 license, model, and aggregate-usage operations and is included in Docker images;
 Fleet binaries are not. The default deployment is SQLite state with one Router
 container and one replica; it neither provisions nor binds RDS. Dedicated RDS
@@ -206,8 +211,9 @@ requires an explicit approved `database_profile` manifest branch and a
 separately signed, scoped external admission that Fleet never creates. After
 disposable-E2E evidence exists, one qualified maintainer may self-review before
 a production-like non-production rehearsal.
-`metrum-fleetctl`, `metrum-smartrouterctl`, `metrum-fleet-sign`, `router-license`,
-and `smartrouterctl` are one-release rename notices only. Fleet and multi-environment
+`router`, `router-token-gen`, `router-usage-report`, `router-migrate`, `metrum-genai-smartrouterctl`,
+`smartrouterctl`, `metrum-fleetctl`, `metrum-smartrouterctl`, `metrum-fleet-sign`, and `router-license`
+are one-release rename notices only. Fleet and multi-environment
 customer CLI guidance lives in
 [docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md](docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md)
 and [docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md](docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md).
@@ -230,7 +236,7 @@ Internal operator and maintainer docs live under `docs/`. Use [docs/DOCS_MAINTEN
 Docker packages contain prebuilt image tarballs plus compose deployment assets:
 
 ```text
-images/smart-llmrouter-<version>-linux-<arch>.tar
+images/metrum-router-<version>-linux-<arch>.tar
 compose/docker-compose.yml
 compose/docker-compose.postgres-localhost.yml
 compose/Caddyfile.compose
@@ -250,7 +256,7 @@ docs/solution-brief.md
 The packaged config expects the routing script at `config/scripts/router.ts`, so the standard packaged run command is:
 
 ```bash
-bin/router --config config/config.yaml
+bin/metrum-router --config config/config.yaml
 ```
 
 See `docs/DEPLOYMENT.md` for binary deployment guidance with Caddy TLS termination.
@@ -263,7 +269,7 @@ Create a config from the example:
 
 ```bash
 cp config.example.yaml config.yaml
-go run ./cmd/router-token-gen generate \
+go run ./cmd/metrum-router-token-gen generate \
   --owner-user alice \
   --project example-project \
   --env dev \
@@ -277,7 +283,7 @@ Provider keys are read from `env.json` in this project before `${VAR}` reference
 Restic/backup secrets belong in ignored `ops.env.json` (see `ops.env.example.json`). Do not mix those into instance `env.json`; every deployment uses the same provider-only shape for instance secrets. Copy the example file locally (`cp ops.env.example.json ops.env.json`) and fill values; never commit the ignored runtime file.
 
 ```bash
-go run ./cmd/router --config config.yaml
+go run ./cmd/metrum-router --config config.yaml
 ```
 
 If a variable is already set in the shell, the shell value wins over `env.json`. This lets CI or one-off live tests override local secrets without editing files.
@@ -949,7 +955,7 @@ Generate a report for an explicit period and import existing JSONL first. Import
 Generate a report from the default Docker Compose SQLite deployment:
 
 ```bash
-docker compose run --rm --no-deps --entrypoint /app/bin/router-usage-report router \
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-usage-report router \
   --driver sqlite \
   --db /app/state/usage.sqlite \
   --since 24h \
@@ -999,7 +1005,7 @@ make build-go-only # build Go binaries without refreshing embedded docs
 make build-all  # build docs, then linux amd64 and linux arm64 binaries under dist/build
 make package    # build linux amd64 and linux arm64 tarballs
 make package-all # same as package
-make docker-image # build one smart-llmrouter image for GOOS/GOARCH with docker buildx
+make docker-image # build one metrum-router image for GOOS/GOARCH with docker buildx
 make package-docker # build linux amd64 and linux arm64 Docker packages
 make package-docker-all # same as package-docker
 make e2e-mock   # local mock Claude/Codex C harness
@@ -1288,7 +1294,7 @@ Tool-bearing requests bypass the router response cache. They are intentionally r
 
 ```bash
 go test ./...
-go build ./cmd/router
+go build ./cmd/metrum-router
 ```
 
 The automated suite uses deterministic mock upstreams. The Claude Code and Codex commands above are the live provider acceptance gates.

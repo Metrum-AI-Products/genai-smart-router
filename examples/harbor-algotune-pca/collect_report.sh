@@ -32,7 +32,7 @@ ENVIRONMENT="${CALLER_ENVIRONMENT:-$case_environment}"
 
 if [[ ! -x "$REPORT_BIN" ]]; then
   if command -v go >/dev/null 2>&1; then
-    REPORT_BIN=(go run "$ROOT/cmd/router-usage-report")
+    REPORT_BIN=(go run "$ROOT/cmd/metrum-router-usage-report")
   else
     echo "router-usage-report not found at $REPORT_BIN and go is not available" >&2
     exit 2

@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_RE = re.compile(
-    r"^smart-llmrouter-(?P<version>.+?)(?P<docker>-docker)?-linux-(?P<arch>amd64|arm64)\.tar\.gz$"
+    r"^metrum-router-(?P<version>.+?)(?P<docker>-docker)?-linux-(?P<arch>amd64|arm64)\.tar\.gz$"
 )
 REQUIRED = {
     ("binary", "amd64"),
@@ -51,7 +51,7 @@ def parse_package(path: Path) -> tuple[str, str, str]:
 def select_complete_set(dist_dir: Path, version: str) -> list[tuple[Path, str, str]]:
     selected: dict[tuple[str, str], Path] = {}
     errors: list[str] = []
-    for path in sorted(dist_dir.glob("smart-llmrouter-*.tar.gz")):
+    for path in sorted(dist_dir.glob("metrum-router-*.tar.gz")):
         try:
             found_version, kind, arch = parse_package(path)
         except ValueError as exc:
@@ -136,7 +136,7 @@ def create_inventory(
             item["release_url"] = release_url.rstrip("/") + "/" + path.name
         artifacts.append(item)
     inventory: dict[str, object] = {
-        "schema": "smart-llmrouter.release-artifact-inventory/v1",
+        "schema": "metrum-router.release-artifact-inventory/v1",
         "version": version,
         "commit": commit,
         "build_date": build_date,
