@@ -19,7 +19,7 @@ Release packages support Linux `amd64` and `arm64`. Use immutable versioned
 artifacts; do not deploy `latest`.
 
 For a laptop or workstation trial, use the
-[Local Quickstart](../getting-started/local-quickstart) instead of a release
+[Local Quickstart](/docs/getting-started/local-quickstart) instead of a release
 package.
 
 ```mermaid

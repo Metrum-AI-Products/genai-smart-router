@@ -62,7 +62,7 @@ containers, Kubernetes, logs, or this repository.
 
 Use the packaged `metrum-genai-smartrouter-license` (or `go run ./cmd/metrum-genai-smartrouter-license` from a source checkout). Operator-generated keys are not embedded in release binaries, so `issue` needs `--allow-unknown-runtime-key` plus `--public-key`.
 
-A local trial can run [Local Quickstart](../getting-started/local-quickstart) instead of these flags. For a manual issue:
+A local trial can run [Local Quickstart](/docs/getting-started/local-quickstart) instead of these flags. For a manual issue:
 
 ```bash
 metrum-genai-smartrouter-license generate-keypair \
