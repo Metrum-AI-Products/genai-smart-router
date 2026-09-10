@@ -1,4 +1,4 @@
-module smart-llmrouter
+module github.com/metrum-ai/router
 
 go 1.26.0
 

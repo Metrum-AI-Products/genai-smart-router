@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"smart-llmrouter/internal/fleet"
+	"github.com/metrum-ai/router/internal/fleet"
 )
 
 func requiresDisposableRDSAdmission(manifest fleet.TenantDeploymentManifest) bool {

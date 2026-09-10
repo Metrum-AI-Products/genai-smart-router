@@ -15,7 +15,7 @@ import (
 	"os"
 	"strings"
 
-	"smart-llmrouter/internal/customerlifecycle"
+	"github.com/metrum-ai/router/internal/customerlifecycle"
 )
 
 func main() {

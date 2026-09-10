@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"smart-llmrouter/internal/licensecontract"
+	"github.com/metrum-ai/router/internal/licensecontract"
 	"sort"
 	"strings"
 	"time"

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"smart-llmrouter/internal/smartrouterctl"
+	"github.com/metrum-ai/router/internal/smartrouterctl"
 )
 
 func TestNvidiaLLMDCompatRequiresLLMDBlock(t *testing.T) {

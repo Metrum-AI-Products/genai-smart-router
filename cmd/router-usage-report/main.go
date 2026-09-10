@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"smart-llmrouter/internal/buildinfo"
-	"smart-llmrouter/internal/router"
+	"github.com/metrum-ai/router/internal/buildinfo"
+	"github.com/metrum-ai/router/internal/router"
 )
 
 func main() {

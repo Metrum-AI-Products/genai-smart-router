@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"smart-llmrouter/internal/router"
+	"github.com/metrum-ai/router/internal/router"
 )
 
 func TestRouterLicenseCLIKeySignVerifyInspect(t *testing.T) {

@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"smart-llmrouter/internal/buildinfo"
+	"github.com/metrum-ai/router/internal/buildinfo"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"

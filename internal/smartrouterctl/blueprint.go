@@ -12,7 +12,7 @@ import (
 	"text/template"
 
 	"gopkg.in/yaml.v3"
-	"smart-llmrouter/internal/router"
+	"github.com/metrum-ai/router/internal/router"
 )
 
 // RenderResult summarizes files emitted by blueprint render.

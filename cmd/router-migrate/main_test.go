@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"smart-llmrouter/internal/router"
+	"github.com/metrum-ai/router/internal/router"
 )
 
 func TestRequireServingCompatible(t *testing.T) {
