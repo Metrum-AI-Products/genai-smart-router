@@ -3,7 +3,7 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS ?= -X github.com/metrum-ai/router/internal/buildinfo.Version=$(VERSION) -X github.com/metrum-ai/router/internal/buildinfo.Commit=$(COMMIT) -X github.com/metrum-ai/router/internal/buildinfo.BuildDate=$(BUILD_DATE)
 DIST_DIR ?= dist
-PKG_NAME ?= smart-llmrouter
+PKG_NAME ?= metrum-router
 GOOS ?= linux
 GOARCH ?= $(shell go env GOARCH)
 HOST_GOOS := $(shell go env GOHOSTOS)
@@ -11,9 +11,10 @@ HOST_GOARCH := $(shell go env GOHOSTARCH)
 PYTHON ?= python3
 # Packaged CLIs are ELF binaries only. Release packages never ship Go source,
 # cmd/, internal/, or go.mod. Fleet-only CLIs stay out of customer Docker images.
-PACKAGE_BINARIES := router router-token-gen router-usage-report router-migrate metrum-genai-smartrouterctl metrum-genai-smartrouter-fleetctl metrum-genai-smartrouter-fleet-sign metrum-genai-smartrouter-license metrum-genai-customer-lifecycle smartrouterctl metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
+# Primary runtime names are metrum-router*; older names remain one-release stubs.
+PACKAGE_BINARIES := metrum-router metrum-router-token-gen metrum-router-usage-report metrum-router-migrate metrum-routerctl metrum-genai-smartrouter-fleetctl metrum-genai-smartrouter-fleet-sign metrum-genai-smartrouter-license metrum-genai-customer-lifecycle router router-token-gen router-usage-report router-migrate metrum-genai-smartrouterctl smartrouterctl metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
 FLEET_ONLY_BINARIES := metrum-genai-smartrouter-fleetctl metrum-genai-smartrouter-fleet-sign metrum-genai-smartrouter-license metrum-genai-customer-lifecycle metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
-DOCKER_RUNTIME_BINARIES := router router-token-gen router-usage-report router-migrate metrum-genai-smartrouterctl
+DOCKER_RUNTIME_BINARIES := metrum-router metrum-router-token-gen metrum-router-usage-report metrum-router-migrate metrum-routerctl router router-token-gen router-usage-report router-migrate metrum-genai-smartrouterctl smartrouterctl
 
 # Inspect coding evaluations are deliberately opt-in: they call a live endpoint
 # and may start Docker sandboxes.  They are never prerequisites of test/build.
@@ -62,7 +63,9 @@ export EVAL_MODEL EVAL_BASE_URL EVAL_API EVAL_LIMIT EVAL_CONCURRENCY EVAL_TIMEOU
 DOCKER ?= docker
 DOCKER_BUILDX ?= $(DOCKER) buildx
 DOCKER_PLATFORM ?= linux/$(GOARCH)
-IMAGE_NAME ?= smart-llmrouter
+# Unqualified local tag used by make docker / docker save. Published images are
+# also tagged as ghcr.io/metrum-ai/router (same IMAGE_TAG suffix).
+IMAGE_NAME ?= metrum-router
 IMAGE_TAG ?= $(VERSION)-$(GOOS)-$(GOARCH)
 DOCS_SITE_DIR ?= docs-site
 DOCS_EMBED_DIR ?= internal/router/docsdist

@@ -140,7 +140,7 @@ Under a three-resource CRD surface, account-directory fields belong on
 Image entrypoint:
 
 ```text
-/app/bin/router --config /app/config/config.yaml
+/app/bin/metrum-router --config /app/config/config.yaml
 ```
 
 Generic Kustomize uses name `smart-llmrouter`, one replica, `Recreate`, RWO PVC,

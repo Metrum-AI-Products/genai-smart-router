@@ -37,7 +37,7 @@ callers:
     token_sha256: "$hash"
     allow: [image-analysis-smoke-gpt54, image-analysis-smoke-grok45, image-analysis-smoke-claude46, image-analysis-smoke-minimax-m3]
 YAML
-go run -tags dev_no_license ./cmd/router -config "$work/config.yaml" >"$work/router.log" 2>&1 & pid=$!
+go run -tags dev_no_license ./cmd/metrum-router -config "$work/config.yaml" >"$work/router.log" 2>&1 & pid=$!
 for _ in $(seq 1 25); do curl -fsS "http://127.0.0.1:$port/readyz" >/dev/null && break; sleep 1; done
 curl -fsS "http://127.0.0.1:$port/readyz" >/dev/null
 for group in image-analysis-smoke-gpt54 image-analysis-smoke-grok45 image-analysis-smoke-claude46 image-analysis-smoke-minimax-m3; do

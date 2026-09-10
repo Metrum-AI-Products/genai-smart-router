@@ -178,7 +178,7 @@ scripts/helm_install_with_license.sh \
   --valid-for 12h \
   --config /tmp/shadeform-blueprint/config.yaml \
   --env-file /secure/path/local-env.json \
-  --image-repository smart-llmrouter \
+  --image-repository metrum-router \
   --image-tag issue-943
 ```
 
@@ -213,7 +213,7 @@ Run before PR creation:
 ```bash
 make test-k8s-nvidia-local-serving
 make secret-check
-go test ./internal/smartrouterctl ./cmd/metrum-genai-smartrouterctl
+go test ./internal/smartrouterctl ./cmd/metrum-routerctl
 ```
 
 Attach safe scalars only: worktree/branch, Shadeform SKU, GPU/driver/CUDA,

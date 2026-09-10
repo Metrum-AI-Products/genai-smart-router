@@ -287,13 +287,13 @@ ENV
 chmod 0600 "$WORKDIR/.env"
 
 
-docker buildx build --load --build-arg GO_BUILD_TAGS=dev_no_license -t "smart-llmrouter:${IMAGE_TAG}" "$ROOT"
-(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --version)
-(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=plan --driver=sqlite --db=/app/state/usage.sqlite --json)
-(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=apply --driver=sqlite --db=/app/state/usage.sqlite --json)
-(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --driver=sqlite --db=/app/state/usage.sqlite --json)
-(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=verify-serving --driver=sqlite --db=/app/state/usage.sqlite --json)
-MIGRATION_STATUS="$(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/router-migrate router --action=status --driver=sqlite --db=/app/state/usage.sqlite --json)"
+docker buildx build --load --build-arg GO_BUILD_TAGS=dev_no_license -t "metrum-router:${IMAGE_TAG}" "$ROOT"
+(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --version)
+(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=plan --driver=sqlite --db=/app/state/usage.sqlite --json)
+(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=apply --driver=sqlite --db=/app/state/usage.sqlite --json)
+(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --driver=sqlite --db=/app/state/usage.sqlite --json)
+(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=verify-serving --driver=sqlite --db=/app/state/usage.sqlite --json)
+MIGRATION_STATUS="$(cd "$WORKDIR" && docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=status --driver=sqlite --db=/app/state/usage.sqlite --json)"
 python3 - "$MIGRATION_STATUS" <<'PY'
 import json
 import sys
@@ -403,7 +403,7 @@ mkdir -p "$CODEX_TOOL_WORK"
 grep -qx "codex-tool-ok" "$CODEX_TOOL_WORK/codex_tool_smoke.txt"
 grep -q "codex-tool-ok" "$WORKDIR/codex-tool-smoke.out"
 
-(cd "$WORKDIR" && docker compose exec -T router /app/bin/router-usage-report --driver=sqlite --db=/app/state/usage.sqlite --since=24h) >"$WORKDIR/usage-e2e.md"
+(cd "$WORKDIR" && docker compose exec -T router /app/bin/metrum-router-usage-report --driver=sqlite --db=/app/state/usage.sqlite --since=24h) >"$WORKDIR/usage-e2e.md"
 grep -q "$REQUEST_ID" "$WORKDIR/usage-e2e.md"
 (cd "$WORKDIR" && docker compose up -d --force-recreate router)
 for _ in $(seq 1 120); do
@@ -413,7 +413,7 @@ for _ in $(seq 1 120); do
   sleep 0.5
 done
 curl -fsS "$BASE_URL/healthz" >/dev/null
-(cd "$WORKDIR" && docker compose exec -T router /app/bin/router-usage-report --driver=sqlite --db=/app/state/usage.sqlite --since=24h) >"$WORKDIR/usage-e2e.md"
+(cd "$WORKDIR" && docker compose exec -T router /app/bin/metrum-router-usage-report --driver=sqlite --db=/app/state/usage.sqlite --since=24h) >"$WORKDIR/usage-e2e.md"
 grep -q "$REQUEST_ID" "$WORKDIR/usage-e2e.md"
 if (cd "$WORKDIR" && docker compose ps --services | grep -qx postgres); then
   echo "SQLite Compose E2E must not start PostgreSQL" >&2

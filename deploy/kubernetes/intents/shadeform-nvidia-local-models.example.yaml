@@ -5,7 +5,7 @@ profile: nvidia-local-serving
 # when B200/H200 capacity exists.
 hardware_profile: l40s
 namespace: smart-llmrouter
-router_image: registry.example.com/smart-llmrouter:<version>-linux-amd64
+router_image: registry.example.com/metrum-router:<version>-linux-amd64
 edge: ingress
 usage_driver: sqlite
 default_model_group: local-small-chat

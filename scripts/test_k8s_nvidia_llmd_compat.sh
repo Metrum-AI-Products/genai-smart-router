@@ -15,7 +15,7 @@ cleanup() { rm -rf "$OUT"; }
 trap cleanup EXIT
 
 echo "==> blueprint render"
-go run ./cmd/metrum-genai-smartrouterctl blueprint render --intent "$INTENT" --out "$OUT"
+go run ./cmd/metrum-routerctl blueprint render --intent "$INTENT" --out "$OUT"
 
 echo "==> assert local llm-d upstream and no cloud URLs"
 CFG="$OUT/config.yaml"
@@ -46,6 +46,6 @@ grep -q 'kv_cache_enabled: false' "$OUT/inventory.yaml"
 grep -q 'router_requests_gpu: false' "$OUT/inventory.yaml"
 
 echo "==> package unit tests"
-go test ./internal/smartrouterctl ./cmd/metrum-genai-smartrouterctl -count=1 -run 'TestRenderBlueprintNvidia|TestNvidia|TestLoadIntent|TestRenderBlueprintNvidiaLLMD'
+go test ./internal/smartrouterctl ./cmd/metrum-routerctl -count=1 -run 'TestRenderBlueprintNvidia|TestNvidia|TestLoadIntent|TestRenderBlueprintNvidiaLLMD'
 
 echo "OK test-k8s-nvidia-llmd-compat"

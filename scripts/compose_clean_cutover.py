@@ -38,14 +38,14 @@ DEFAULT_ENV_JSON = ROOT / "env.json"
 STABLE_ARCHIVE_DIR = ROOT / "tmp" / "restic-compose-usage-archive"
 DUMP_NAME = "usage.dump"
 MANIFEST_NAME = "MANIFEST.txt"
-REMOTE_DUMP_PATH = Path("/tmp/smart-llmrouter-usage.dump")
+REMOTE_DUMP_PATH = Path("/tmp/metrum-router-usage.dump")
 JOB_KEY = "historical-usage-validation-v1"
 DSN_ENV = "ROUTER_USAGE_DB_DSN"
 CONFIRM_RESET = "reset-postgres-data"
 MAX_CHECKPOINTS = 64
 POSTGRES_READY_ATTEMPTS = 30
 POSTGRES_VOLUME_KEY = "postgres_data"
-MIGRATE_ENTRYPOINT = "/app/bin/router-migrate"
+MIGRATE_ENTRYPOINT = "/app/bin/metrum-router-migrate"
 
 
 class CutoverError(RuntimeError):
@@ -107,7 +107,7 @@ def restic_tags(version: str) -> list[str]:
     return [
         "purpose:compose-usage-archive",
         "cto",
-        "smart-llmrouter",
+        "metrum-router",
         f"version:{version}",
     ]
 
@@ -214,7 +214,7 @@ def router_image_tag(install_root: Path) -> str:
         if line.startswith("SMART_LLMROUTER_VERSION="):
             version = line.split("=", 1)[1].strip()
             if version:
-                return f"smart-llmrouter:{version}"
+                return f"metrum-router:{version}"
     raise CutoverError("compose/.env is missing SMART_LLMROUTER_VERSION")
 
 
@@ -617,7 +617,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     def add_common(cmd: argparse.ArgumentParser, *, require_package: bool) -> None:
         if require_package:
             cmd.add_argument("--package", required=True, type=Path)
-        cmd.add_argument("--install-root", type=Path, default=Path("/opt/smart-llmrouter"))
+        cmd.add_argument("--install-root", type=Path, default=Path("/opt/metrum-router"))
         cmd.add_argument("--backup-suffix", default="compose-clean-cutover")
         cmd.add_argument("--utc", default=None, help="UTC stamp override YYYYMMDDTHHMMSSZ")
         cmd.add_argument("--remote", default=None)

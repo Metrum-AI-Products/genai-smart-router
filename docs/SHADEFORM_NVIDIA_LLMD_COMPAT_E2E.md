@@ -35,7 +35,7 @@ Intent: `deploy/kubernetes/intents/shadeform-nvidia-llmd-compat.example.yaml`
 ```bash
 INTENT=deploy/kubernetes/intents/shadeform-nvidia-llmd-compat.example.yaml
 OUT=/tmp/shadeform-llmd-blueprint
-go run ./cmd/metrum-genai-smartrouterctl blueprint render --intent "$INTENT" --out "$OUT"
+go run ./cmd/metrum-routerctl blueprint render --intent "$INTENT" --out "$OUT"
 ```
 
 Confirm `config.yaml` references only `*.svc.cluster.local` upstreams and exposes

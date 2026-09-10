@@ -64,7 +64,7 @@ Keep `tmp/local-dev/` out of git. `tmp/` is gitignored.
 ## Start And Smoke
 
 ```bash
-go run ./cmd/router --config tmp/local-dev/config.yaml
+go run ./cmd/metrum-router --config tmp/local-dev/config.yaml
 ```
 
 In another terminal:

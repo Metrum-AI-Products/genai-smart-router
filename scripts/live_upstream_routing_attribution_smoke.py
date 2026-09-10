@@ -357,7 +357,7 @@ def main() -> int:
         else:
             bin_path = temp / "router-dev"
             build = subprocess.run(
-                ["go", "build", "-tags", "dev_no_license", "-o", str(bin_path), "./cmd/router"],
+                ["go", "build", "-tags", "dev_no_license", "-o", str(bin_path), "./cmd/metrum-router"],
                 cwd=str(ROOT),
                 capture_output=True,
                 text=True,

@@ -5,7 +5,7 @@
 """Prepare a local/dev router directory: license, env template, and one caller.
 
 This script composes existing CLIs. It does not add license-signing authority to
-metrum-genai-smartrouterctl. Do not commit the output directory.
+metrum-routerctl. Do not commit the output directory.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--force", action="store_true", help="replace an existing out-dir")
     parser.add_argument("--repo-root", type=Path, default=ROOT)
     parser.add_argument("--license-cli", default="", help="path to metrum-genai-smartrouter-license")
-    parser.add_argument("--smartrouterctl", default="", help="path to metrum-genai-smartrouterctl")
+    parser.add_argument("--smartrouterctl", default="", help="path to metrum-routerctl")
     parser.add_argument("--owner-user", default="local-dev")
     parser.add_argument("--project", default="example-project")
     parser.add_argument("--allow", default="local")
@@ -101,7 +101,7 @@ def license_argv(cli: str, repo_root: Path) -> list[str]:
 
 def ctl_argv(cli: str, repo_root: Path) -> list[str]:
     if cli.endswith("go") or Path(cli).name == "go":
-        return [cli, "run", str(repo_root / "cmd" / "metrum-genai-smartrouterctl")]
+        return [cli, "run", str(repo_root / "cmd" / "metrum-routerctl")]
     return [cli]
 
 
@@ -138,7 +138,7 @@ def main() -> None:
     os.chmod(entitlement_path, 0o600)
 
     license_cli = resolve_cli(args.license_cli, ("metrum-genai-smartrouter-license", "router-license"), repo_root)
-    ctl = resolve_cli(args.smartrouterctl, ("metrum-genai-smartrouterctl", "smartrouterctl"), repo_root)
+    ctl = resolve_cli(args.smartrouterctl, ("metrum-routerctl", "metrum-genai-smartrouterctl", "smartrouterctl"), repo_root)
 
     run(
         license_argv(license_cli, repo_root)
@@ -197,7 +197,7 @@ def main() -> None:
             [
                 "Local/dev bootstrap complete. Keep this directory out of git.",
                 "Fill OPENAI_API_KEY in env.json (empty placeholder only).",
-                f"Start: go run ./cmd/router --config {config_path}",
+                f"Start: go run ./cmd/metrum-router --config {config_path}",
                 f"Caller token file (mode 0600): {token_path}",
                 "Do not paste the token into tickets, chat, or public docs.",
                 "curl -fsS http://127.0.0.1:8080/readyz",

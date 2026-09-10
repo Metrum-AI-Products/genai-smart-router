@@ -31,9 +31,9 @@ def run_make(
             "BUILD_DATE": "2026-06-28T00:00:00Z",
             "GOOS": "linux",
             "GOARCH": "amd64",
-            "PKG_NAME": "smart-llmrouter",
+            "PKG_NAME": "metrum-router",
             "DIST_DIR": "dist",
-            "IMAGE_NAME": "smart-llmrouter",
+            "IMAGE_NAME": "metrum-router",
             "IMAGE_TAG": "v1.2.3-linux-amd64",
         }
     )

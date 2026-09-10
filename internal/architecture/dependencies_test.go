@@ -18,7 +18,7 @@ const (
 )
 
 func TestRequestPathDoesNotDependOnFleetOrInfrastructureSDKs(t *testing.T) {
-	for _, target := range []string{"./cmd/router", "./internal/router"} {
+	for _, target := range []string{"./cmd/metrum-router", "./internal/router"} {
 		t.Run(strings.TrimPrefix(target, "./"), func(t *testing.T) {
 			dependencies := goListDependencies(t, target)
 			for dependency := range dependencies {

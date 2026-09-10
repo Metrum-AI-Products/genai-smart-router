@@ -13,10 +13,10 @@ This is the offline bootstrap path for a Linux binary package. After startup, us
 ## Bootstrap
 
 ```bash
-tar -xzf smart-llmrouter-<version>-linux-<arch>.tar.gz
-cd smart-llmrouter-<version>-linux-<arch>
+tar -xzf metrum-router-<version>-linux-<arch>.tar.gz
+cd metrum-router-<version>-linux-<arch>
 
-bin/router --version
+bin/metrum-router --version
 cp config/config.example.yaml config/config.yaml
 cp config/env.example.json config/env.json
 ```
@@ -35,7 +35,7 @@ Populate `config/env.json` or the process environment with provider credentials.
 Generate a caller token and add the generated caller entry to `config/config.yaml`:
 
 ```bash
-bin/router-token-gen generate \
+bin/metrum-router-token-gen generate \
   --owner-user example-admin \
   --project example-project \
   --env prod \
@@ -63,7 +63,7 @@ approval contract.
 Start the router in the foreground only after compatible/current final status:
 
 ```bash
-bin/router --config config/config.yaml
+bin/metrum-router --config config/config.yaml
 ```
 
 ## Validate
@@ -95,6 +95,6 @@ curl -fsS "$ROUTER_BASE_URL/v1/chat/completions" \
 
 ## Upgrade And Rollback
 
-Before upgrading, back up `config.yaml`, `env.json`, `license.json`, license state, router state, usage database data, and logs according to the deployment policy. Install the new package beside the old one, run `bin/router --version`, review config changes, then restart the supervised service.
+Before upgrading, back up `config.yaml`, `env.json`, `license.json`, license state, router state, usage database data, and logs according to the deployment policy. Install the new package beside the old one, run `bin/metrum-router --version`, review config changes, then restart the supervised service.
 
 Package rollback never runs a reverse migration. For a `restore-required` release contract, restore the approved pre-migration database snapshot before deploying the earlier package; otherwise preserve the usage database and restore only approved package/config inputs. Rerun migration verify/status, `/readyz`, `/docs/`, `/v1/models`, and one caller smoke.

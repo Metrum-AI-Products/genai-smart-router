@@ -16,7 +16,7 @@ TOKEN_GEN_BIN="${ROUTER_TOKEN_GEN_BIN:-$ROOT/router-token-gen}"
 
 if [[ ! -x "$TOKEN_GEN_BIN" ]]; then
   if command -v go >/dev/null 2>&1; then
-    TOKEN_GEN_BIN=(go run "$ROOT/cmd/router-token-gen")
+    TOKEN_GEN_BIN=(go run "$ROOT/cmd/metrum-router-token-gen")
   else
     echo "router-token-gen not found at $TOKEN_GEN_BIN and go is not available" >&2
     exit 2

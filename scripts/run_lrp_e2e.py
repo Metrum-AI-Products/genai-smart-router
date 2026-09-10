@@ -294,7 +294,7 @@ def execute(args: argparse.Namespace, checks: list[dict[str, Any]]) -> dict[str,
         temp = Path(temp_name)
         binary = args.router_binary.resolve() if args.router_binary else temp / "metrum-genai-smartrouter"
         if args.router_binary is None:
-            run(["go", "build", "-buildvcs=false", "-o", str(binary), "./cmd/router"], "router_build")
+            run(["go", "build", "-buildvcs=false", "-o", str(binary), "./cmd/metrum-router"], "router_build")
         license_binary = temp / "metrum-genai-smartrouter-license"
         run(["go", "build", "-buildvcs=false", "-o", str(license_binary), "./cmd/metrum-genai-smartrouter-license"], "license_build")
         license_config = make_license(license_binary, temp)

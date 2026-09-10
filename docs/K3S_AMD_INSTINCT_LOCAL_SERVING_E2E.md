@@ -224,19 +224,19 @@ Build CLIs to a **temp** directory (not the repo):
 ```bash
 mkdir -p /tmp/smart-router-amd/bin /tmp/smart-router-amd/protected
 go build -o /tmp/smart-router-amd/bin/metrum-genai-smartrouterctl \
-  ./cmd/metrum-genai-smartrouterctl
+  ./cmd/metrum-routerctl
 go build -o /tmp/smart-router-amd/bin/metrum-genai-smartrouter-license \
   ./cmd/metrum-genai-smartrouter-license
 
 VERSION="$(git rev-parse --short HEAD)"
 IMAGE_TAG="${VERSION}-linux-amd64"
-docker build -t "smart-llmrouter:${IMAGE_TAG}" .
+docker build -t "metrum-router:${IMAGE_TAG}" .
 ```
 
 Import into k3s (requires sudo on a default install):
 
 ```bash
-docker save "smart-llmrouter:${IMAGE_TAG}" | sudo k3s ctr images import -
+docker save "metrum-router:${IMAGE_TAG}" | sudo k3s ctr images import -
 ```
 
 Never tag `latest`. Registry push is an alternative to `ctr import`.
@@ -374,7 +374,7 @@ scripts/helm_install_with_license.sh \
   --valid-for 12h \
   --config /tmp/smart-router-amd/protected/config.yaml \
   --env-file /tmp/smart-router-amd/protected/env.json \
-  --image-repository smart-llmrouter \
+  --image-repository metrum-router \
   --image-tag "${IMAGE_TAG}"
 
 kubectl -n smart-llmrouter rollout status deployment/smart-llmrouter --timeout=10m

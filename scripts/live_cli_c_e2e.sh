@@ -367,7 +367,7 @@ run_case() {
 }
 
 if [[ ! -x "$ROOT/router" ]]; then
-  (cd "$ROOT" && go build -o router ./cmd/router)
+  (cd "$ROOT" && go build -o metrum-router ./cmd/metrum-router)
 fi
 
 if [[ ! -f "$ROOT/env.json" && -z "${OPENROUTER_API_KEY:-}" ]]; then
