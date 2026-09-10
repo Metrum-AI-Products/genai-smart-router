@@ -16,7 +16,7 @@ require (
 	github.com/casbin/casbin/v2 v2.134.0
 	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/dop251/goja v0.0.0-20260607120635-348e6bea910d
-	github.com/evanw/esbuild v0.28.1
+	github.com/evanw/esbuild v0.28.2
 	github.com/glebarez/sqlite v1.11.0
 	github.com/jackc/pgx/v5 v5.9.0
 	github.com/redis/go-redis/v9 v9.21.0
