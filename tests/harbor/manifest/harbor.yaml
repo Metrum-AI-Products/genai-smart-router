@@ -1,0 +1,114 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# Harbor P0 local-task catalog rows for issue #94 (HARBOR-01..06).
+cases:
+  - id: HARBOR-01
+    priority: P0
+    owner: harbor-local
+    component: harbor-tasks
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: n/a
+    disposition: native_supported
+    assertions:
+      - hidden cases pass and artifact differs from starter
+      - no-edit/read-loop control fails verifier
+    evidence_paths:
+      - tests/harbor/tasks/HARBOR-01-read-edit-repair/
+      - tests/harbor/tests/test_verifier_integrity.py
+    test_id: test_reference_passes_and_starter_fails[HARBOR-01]
+
+  - id: HARBOR-02
+    priority: P0
+    owner: harbor-local
+    component: harbor-tasks
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: n/a
+    disposition: native_supported
+    assertions:
+      - final artifact digest matches fresh tool-output nonce
+      - static canned nonce cannot pass
+    evidence_paths:
+      - tests/harbor/tasks/HARBOR-02-nonce-chain/
+      - tests/harbor/tests/test_verifier_integrity.py
+    test_id: test_reference_passes_and_starter_fails[HARBOR-02]
+
+  - id: HARBOR-03
+    priority: P0
+    owner: harbor-local
+    component: harbor-tasks
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: n/a
+    disposition: native_supported
+    assertions:
+      - parallel same-name lookups matched by call id not name or order
+    evidence_paths:
+      - tests/harbor/tasks/HARBOR-03-parallel-tool-ids/
+      - tests/harbor/tests/test_verifier_integrity.py
+    test_id: test_reference_passes_and_starter_fails[HARBOR-03]
+
+  - id: HARBOR-04
+    priority: P0
+    owner: harbor-local
+    component: harbor-tasks
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: n/a
+    disposition: native_supported
+    assertions:
+      - controlled tool error then corrected retry yields final artifact
+      - attempt count stays bounded
+    evidence_paths:
+      - tests/harbor/tasks/HARBOR-04-tool-error-retry/
+      - tests/harbor/tests/test_verifier_integrity.py
+    test_id: test_reference_passes_and_starter_fails[HARBOR-04]
+
+  - id: HARBOR-05
+    priority: P0
+    owner: harbor-local
+    component: harbor-tasks
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: n/a
+    disposition: native_supported
+    assertions:
+      - large streamed patch argument reassembles to expected file hash
+      - truncated or corrupted patch fails
+    evidence_paths:
+      - tests/harbor/tasks/HARBOR-05-large-stream-patch/
+      - tests/harbor/tests/test_protocol_simulations.py
+    test_id: test_reference_passes_and_starter_fails[HARBOR-05]
+
+  - id: HARBOR-06
+    priority: P0
+    owner: harbor-local
+    component: harbor-tasks
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: n/a
+    disposition: native_supported
+    assertions:
+      - disconnect after visible side-effect does not replay commit
+      - ledger shows exactly one committed action
+    evidence_paths:
+      - tests/harbor/tasks/HARBOR-06-no-replay-disconnect/
+      - tests/harbor/tests/test_protocol_simulations.py
+    test_id: test_reference_passes_and_starter_fails[HARBOR-06]
+
+  - id: HARBOR-REAL-AGENT
+    priority: P0
+    owner: harbor-local
+    component: harbor-real-agent
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: n/a
+    disposition: blocked
+    assertions:
+      - missing credentials yield blocked evidence not a green pass
+    evidence_paths:
+      - tests/harbor/harness/credentials.py
+      - tests/harbor/tests/test_credentials_blocked.py
+    test_id: test_missing_credentials_are_blocked_not_pass
+    rationale: Real Harbor agent cells require operator credentials; offline CI reports blocked.

@@ -100,7 +100,7 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X github.com/metrum-ai/router/internal/buildinfo.Version=$${VERSION} -X github.com/metrum-ai/router/internal/buildinfo.Commit=$${COMMIT} -X github.com/metrum-ai/router/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help test test-k8s-nvidia-local-serving test-k8s-amd-instinct-local-serving test-migration-operational-postgres test-migration-data-jobs-postgres test-migration-data-job-ownership-postgres test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo adaptive-signal-policy-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-artifact-inventory release-security-evidence launch-operational-readiness release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-package-binaries build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all dist-backup package-dist-backup compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
+.PHONY: help test test-k8s-nvidia-local-serving test-k8s-amd-instinct-local-serving test-migration-operational-postgres test-migration-data-jobs-postgres test-migration-data-job-ownership-postgres test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live harbor-local harbor-local-offline outcome-calibrated-demo outcome-calibrated-synthetic-demo adaptive-signal-policy-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-artifact-inventory release-security-evidence launch-operational-readiness release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-package-binaries build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all dist-backup package-dist-backup compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
 
 help:
 	@echo "GenAI Smart Router make targets. Fleet ops: docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md"
@@ -236,6 +236,7 @@ test: secret-check capability-smoke-unit
 	"$${MAKE:-make}" api-compat-mock \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_PROXY) \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_SUMDB)
+	"$${MAKE:-make}" harbor-local
 
 # Provision the locked Python and Go dependency sets before entering the
 # isolated conformance run. API_COMPAT_BOOTSTRAP_GO_PROXY and
@@ -313,6 +314,23 @@ api-compat-mock:
 	env -u API_COMPAT_BOOTSTRAP_GO_PROXY -u API_COMPAT_BOOTSTRAP_GO_SUMDB \
 		-u MAKEFLAGS -u MAKEOVERRIDES \
 		$(MAKE) $(call api_compat_effective_dry_run_flag) --no-print-directory api-compat-mock-offline
+
+# Harbor P0 local-task dataset (HARBOR-01..06): offline verifier integrity and
+# protocol simulations. Does not run real agents or contact providers.
+harbor-local-offline:
+	cd tests/harbor && PYTHONDONTWRITEBYTECODE=1 UV_OFFLINE=1 uv run --locked --offline pytest -p no:cacheprovider
+
+harbor-local:
+	@harbor_root=$$(mktemp -d); \
+	trap 'chmod -R u+w "$$harbor_root" 2>/dev/null; rm -rf "$$harbor_root"' EXIT; \
+	cd tests/harbor && \
+	UV_CACHE_DIR="$$harbor_root/uv-cache" \
+	UV_PROJECT_ENVIRONMENT="$$harbor_root/venv" \
+	uv sync --locked && \
+	UV_CACHE_DIR="$$harbor_root/uv-cache" \
+	UV_PROJECT_ENVIRONMENT="$$harbor_root/venv" \
+	PYTHONDONTWRITEBYTECODE=1 UV_OFFLINE=1 \
+	uv run --locked --offline pytest -p no:cacheprovider
 
 # Deliberately not a normal test/build/package target. Live execution awaits a
 # human-approved non-production matrix and least-privilege caller identity.

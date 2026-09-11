@@ -1,0 +1,16 @@
+[project]
+name = "smart-llmrouter-harbor-local"
+version = "0.0.0"
+license = "Apache-2.0"
+license-files = []
+classifiers = ["License :: OSI Approved :: Apache Software License"]
+requires-python = ">=3.11"
+dependencies = [
+  "pytest==8.3.5",
+  "PyYAML==6.0.2",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["."]
