@@ -278,14 +278,8 @@ api-compat-bootstrap:
 # #694 shell-data quoting at that sole consumer so explicit Make command-line
 # values remain literal configuration data.
 api-compat-bootstrap-go-provision:
-	@modcache="$${GOMODCACHE}"; \
-	buildcache="$${GOCACHE}"; \
-	if [ -n "$${API_COMPAT_BOOTSTRAP_ROOT}" ]; then \
-		modcache="$${API_COMPAT_BOOTSTRAP_ROOT}/go-mod-cache"; \
-		buildcache="$${API_COMPAT_BOOTSTRAP_ROOT}/go-build-cache"; \
-	fi; \
-	GOMODCACHE="$$modcache" \
-	GOCACHE="$$buildcache" \
+	@GOMODCACHE=$${GOMODCACHE:-$${API_COMPAT_BOOTSTRAP_ROOT}/go-mod-cache} \
+	GOCACHE=$${GOCACHE:-$${API_COMPAT_BOOTSTRAP_ROOT}/go-build-cache} \
 	GOTOOLCHAIN=local \
 	GOPROXY=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_PROXY) GOSUMDB=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_SUMDB) go mod download
 
@@ -303,6 +297,11 @@ api-compat-mock-offline:
 api-compat-mock:
 	@api_compat_root=$$(mktemp -d); \
 	trap 'chmod -R u+w "$$api_compat_root" 2>/dev/null; rm -rf "$$api_compat_root"' EXIT; \
+	UV_CACHE_DIR="$$api_compat_root/uv-cache" \
+	UV_PROJECT_ENVIRONMENT="$$api_compat_root/venv" \
+	GOMODCACHE="$$api_compat_root/go-mod-cache" \
+	GOCACHE="$$api_compat_root/go-build-cache" \
+	GOTOOLCHAIN=local \
 	$(MAKE) $(call api_compat_effective_dry_run_flag) $(call api_compat_dry_run_transport) api-compat-bootstrap API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root" \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_PROXY) \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_SUMDB) && \
