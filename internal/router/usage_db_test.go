@@ -117,7 +117,7 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"# Smart LLM Router Usage Report",
+		"# Metrum AI Router Usage Report",
 		"Period UTC: `2026-06-14T00:00:00.000Z` to `2026-06-15T00:00:00.000Z`",
 		"Requests: `3`",
 		"Errors: `1`",

@@ -7722,7 +7722,7 @@ func renderUsageMarkdownWithTimeFormatter(from, to time.Time, rows []usageRow, d
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Smart LLM Router Usage Report\n\n")
+	fmt.Fprintf(&b, "# Metrum AI Router Usage Report\n\n")
 	fmt.Fprintf(&b, "- Period UTC: `%s` to `%s`\n", formatInstant(from), formatInstant(to))
 	fmt.Fprintf(&b, "- Requests: `%d`\n", total.Calls)
 	fmt.Fprintf(&b, "- Errors: `%d`\n", total.Errors)

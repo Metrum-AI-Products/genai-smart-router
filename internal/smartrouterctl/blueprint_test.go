@@ -84,6 +84,20 @@ func TestRenderBlueprintNvidiaLocalServing(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(out, "operator", "crds", "smartrouter.yaml")); err != nil {
 		t.Fatal(err)
 	}
+	for _, rel := range []string{
+		"architecture.md",
+		filepath.Join("charts", "smart-llmrouter", "Chart.yaml"),
+		filepath.Join("charts", "smart-llmrouter", "templates", "NOTES.txt"),
+		filepath.Join("operator", "README.md"),
+	} {
+		raw, err := os.ReadFile(filepath.Join(out, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), "Metrum AI Router") {
+			t.Fatalf("%s missing canonical product name: %s", rel, raw)
+		}
+	}
 	chartDeployment, err := os.ReadFile(filepath.Join(out, "charts", "smart-llmrouter", "templates", "deployment.yaml"))
 	if err != nil {
 		t.Fatal(err)

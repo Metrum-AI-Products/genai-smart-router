@@ -105,7 +105,7 @@ server:
   admin_auth:
     basic:
       enabled: false
-      realm: Metrum Router Admin
+      realm: Metrum AI Router Admin
       allow_insecure_http: false
       trusted_proxy_cidrs: []
       users: []

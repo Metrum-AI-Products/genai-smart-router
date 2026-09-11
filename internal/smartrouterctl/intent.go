@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package smartrouterctl implements customer-local file-owned operations and
-// Kubernetes architecture blueprint rendering for GenAI Smart Router.
+// Kubernetes architecture blueprint rendering for Metrum AI Router.
 // It never calls AWS, EKS, RDS, Fleet, or the Kubernetes API.
 package smartrouterctl
 
@@ -37,7 +37,7 @@ type StackIntent struct {
 }
 
 // LLMDCompatIntent describes upstream llm-d standalone/gateway install inputs for
-// nvidia-llmd-compat. Smart Router never owns llm-d; this block documents Helm inputs only.
+// nvidia-llmd-compat. Metrum AI Router never owns llm-d; this block documents Helm inputs only.
 type LLMDCompatIntent struct {
 	ChartOCI        string            `yaml:"chart_oci" json:"chart_oci"`
 	ChartVersion    string            `yaml:"chart_version" json:"chart_version"`

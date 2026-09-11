@@ -251,7 +251,7 @@ run_codex() {
       -o "$final_message" \
       -c "model=\"${group}\"" \
       -c 'model_provider="metrum-router"' \
-      -c 'model_providers.metrum-router.name="Metrum Router"' \
+      -c 'model_providers.metrum-router.name="Metrum AI Router"' \
       -c "model_providers.metrum-router.base_url=\"${BASE_URL}/v1\"" \
       -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
       -c 'model_providers.metrum-router.wire_api="responses"' \

@@ -2,7 +2,7 @@
 # Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
-"""Standalone reasoning proof smoke for GenAI Smart Router.
+"""Standalone reasoning proof smoke for Metrum AI Router.
 
 The script sends small safe requests through each API surface, checks that
 `/v1/models` advertises reasoning metadata for the requested model group, and

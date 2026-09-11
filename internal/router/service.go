@@ -424,7 +424,7 @@ func (s *Service) modelMetadata(caller *callerRuntime, codexResponsesOnly bool) 
 			supportsTools = len(s.codexTargetsForGroup(name, &IRRequest{Tools: []map[string]any{{"type": "function", "name": "catalog_tool"}}})) > 0
 		}
 		displayName := name
-		description := "Smart LLM Router model group " + name
+		description := "Metrum AI Router model group " + name
 		if group.Contract != nil {
 			if strings.TrimSpace(group.Contract.DisplayName) != "" {
 				displayName = group.Contract.DisplayName
@@ -440,7 +440,7 @@ func (s *Service) modelMetadata(caller *callerRuntime, codexResponsesOnly bool) 
 			"display_name":                     displayName,
 			"description":                      description,
 			"mode":                             "default",
-			"base_instructions":                "Use GenAI Smart Router as the model gateway.",
+			"base_instructions":                "Use Metrum AI Router as the model gateway.",
 			"context_window":                   maxContextWindow * 95 / 100,
 			"max_context_window":               maxContextWindow,
 			"effective_context_window_percent": 95,
@@ -451,7 +451,7 @@ func (s *Service) modelMetadata(caller *callerRuntime, codexResponsesOnly bool) 
 			"support_verbosity":                true,
 			"apply_patch_tool_type":            "freeform",
 			"additional_speed_tiers":           []string{},
-			"service_tiers":                    []map[string]any{{"id": "default", "name": "Default", "description": "Default Smart LLM Router service tier"}},
+			"service_tiers":                    []map[string]any{{"id": "default", "name": "Default", "description": "Default Metrum AI Router service tier"}},
 			"experimental_supported_tools":     codexSupportedTools(supportsTools),
 			"input_modalities":                 publicModalities,
 			"model_messages":                   map[string]any{"instructions_template": "", "instructions_variables": map[string]any{}},
@@ -1657,7 +1657,7 @@ func (s *Service) setAdminAuthHeaders(w http.ResponseWriter) {
 }
 
 func (s *Service) adminBasicChallenge(w http.ResponseWriter) {
-	realm := "GenAI Smart Router Admin"
+	realm := "Metrum AI Router Admin"
 	if s != nil && strings.TrimSpace(s.cfg.Server.AdminAuth.Basic.Realm) != "" {
 		realm = strings.TrimSpace(s.cfg.Server.AdminAuth.Basic.Realm)
 	}

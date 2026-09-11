@@ -1502,7 +1502,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	uiRR := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(uiRR, ui)
 	uiBody := uiRR.Body.String()
-	for _, want := range []string{"Metrum Smart Router Admin Reports", `id="root"`, `type="module"`, "./static/assets/admin-", ".js", ".css"} {
+	for _, want := range []string{"Metrum AI Router Admin Reports", `id="root"`, `type="module"`, "./static/assets/admin-", ".js", ".css"} {
 		if !strings.Contains(uiBody, want) {
 			t.Fatalf("ui missing %q: status=%d body=%s", want, uiRR.Code, uiBody)
 		}
@@ -1575,7 +1575,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	exportReq.SetBasicAuth("admin", "yell-yell-yum")
 	exportRR := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(exportRR, exportReq)
-	if exportRR.Code != http.StatusOK || !strings.Contains(exportRR.Body.String(), "# Smart LLM Router Usage Report") {
+	if exportRR.Code != http.StatusOK || !strings.Contains(exportRR.Body.String(), "# Metrum AI Router Usage Report") {
 		t.Fatalf("export status=%d body=%s", exportRR.Code, exportRR.Body.String())
 	}
 	for _, want := range []string{"Total Tokens", "Input Tokens", "Output Tokens", "Downstream Write Output tok/s", "Upstream Total tok/s"} {
@@ -2781,7 +2781,7 @@ func TestAdminMarkdownSummaryExportUsesSQLTotalsAndTopN(t *testing.T) {
 		t.Fatalf("summary export status=%d body=%s", rr.Code, body)
 	}
 	for _, want := range []string{
-		"# Smart LLM Router Usage Summary",
+		"# Metrum AI Router Usage Summary",
 		"Mode: `summary`",
 		"Scope: full-window SQL totals with bounded top-N aggregate sections; no raw request rows are included.",
 		"Requests: `3`",
@@ -3710,6 +3710,11 @@ func TestModelsEndpointIncludesCompatibilityModelsField(t *testing.T) {
 	} else if first, ok := models[0].(map[string]any); !ok || first["slug"] == "" || first["display_name"] == "" || first["base_instructions"] == "" || first["context_window"] == nil || first["max_context_window"] == nil || first["shell_type"] == "" || first["supported_in_api"] != true {
 		t.Fatalf("missing model compatibility fields: %#v", body)
 	}
+	for _, want := range []string{"Metrum AI Router model group", "Use Metrum AI Router as the model gateway.", "Default Metrum AI Router service tier"} {
+		if !strings.Contains(rr.Body.String(), want) {
+			t.Fatalf("models response missing canonical product text %q: %s", want, rr.Body.String())
+		}
+	}
 }
 
 func TestCodexModelsEndpointAuthenticatesFiltersAndMapsSafeCatalog(t *testing.T) {
@@ -4131,7 +4136,7 @@ func TestCodexModelsEndpointInstalledCLIFetchThenRunSmoke(t *testing.T) {
 		"-c", `model="catalog-smoke"`,
 		"-c", `model_provider="metrum-router"`,
 		"-c", `model_catalog_json="`+catalogPath+`"`,
-		"-c", `model_providers.metrum-router.name="Metrum Router"`,
+		"-c", `model_providers.metrum-router.name="Metrum AI Router"`,
 		"-c", `model_providers.metrum-router.base_url="`+routerServer.URL+`/v1"`,
 		"-c", `model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"`,
 		"-c", `model_providers.metrum-router.wire_api="responses"`,
@@ -4294,7 +4299,7 @@ func TestEmbeddedDocsAreServedUnderDocs(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), "GenAI Smart Router") {
+	if !strings.Contains(rr.Body.String(), "Metrum AI Router") {
 		t.Fatalf("root did not serve docs HTML: %s", rr.Body.String())
 	}
 	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {

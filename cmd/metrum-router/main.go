@@ -50,7 +50,7 @@ func main() {
 
 	errs := make(chan error, 1)
 	go func() {
-		log.Printf("smart-llmrouter listening on %s", cfg.Server.Listen)
+		log.Printf("Metrum AI Router listening on %s", cfg.Server.Listen)
 		errs <- srv.ListenAndServe()
 	}()
 

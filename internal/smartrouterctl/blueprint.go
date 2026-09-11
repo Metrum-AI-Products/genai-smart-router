@@ -279,7 +279,7 @@ func overlayProfileName(profile string) string {
 func writeArchitecture(path string, intent *StackIntent) error {
 	kv := "omitted (optional; not enabled for this blueprint)"
 	if intent.KVCache.Enabled {
-		kv = "enabled (operator-owned; not managed by Smart Router)"
+		kv = "enabled (operator-owned; not managed by Metrum AI Router)"
 	}
 	gpuLine := "disabled"
 	if intent.GPUOperator.Enabled {
@@ -296,11 +296,11 @@ func writeArchitecture(path string, intent *StackIntent) error {
 	servingLayer := "In-cluster OpenAI-compatible vLLM Deployments"
 	routerNotes := "4. Point router providers only at in-cluster Service DNS names from this blueprint."
 	if intent.Profile == "nvidia-llmd-compat" && intent.LLMD != nil {
-		servingLayer = "llm-d standalone router in front of a labeled vLLM model server (Smart Router does not own llm-d)"
+		servingLayer = "llm-d standalone router in front of a labeled vLLM model server (Metrum AI Router does not own llm-d)"
 		routerNotes = fmt.Sprintf(`4. Install llm-d with `+"`overlays/nvidia-llmd-compat/llm-d/install.example.sh`"+` after Gateway API Inference Extension CRDs and the model server are Ready.
 5. Point router providers only at the llm-d frontend Service DNS (`+"`%s`"+`).`, intent.LLMD.FrontendService)
 	}
-	body := fmt.Sprintf(`# GenAI Smart Router architecture blueprint
+	body := fmt.Sprintf(`# Metrum AI Router architecture blueprint
 
 **Profile:** %s  
 **Namespace:** %s  
@@ -313,7 +313,7 @@ func writeArchitecture(path string, intent *StackIntent) error {
 | Layer | Role in this blueprint |
 |---|---|
 | vLLM Semantic Router | Optional / off for this profile |
-| GenAI Smart Router | Caller auth, quotas, model-group selection, usage; ClusterIP on port 8080 |
+| Metrum AI Router | Caller auth, quotas, model-group selection, usage; ClusterIP on port 8080 |
 | Serving replicas | %s |
 | NVIDIA GPU Operator | %s |
 | LMCache / Mooncake | %s |
@@ -525,7 +525,7 @@ func writeLLMDHelmValues(path string, intent *StackIntent) error {
 	ms := intent.LLMD.ModelServer
 	body := fmt.Sprintf(`# Generated llm-d standalone Helm values for profile %s.
 # Install only after Gateway API Inference Extension CRDs are present in the cluster.
-# Smart Router does not install or manage llm-d; apply with install.example.sh.
+# Metrum AI Router does not install or manage llm-d; apply with install.example.sh.
 router:
   modelServers:
     matchLabels:
