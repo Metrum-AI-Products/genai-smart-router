@@ -1,0 +1,66 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+
+name: API compatibility live status
+
+# Optional reporter for issue #94 live differential readiness.
+# Missing live secrets yield disposition blocked with exit 0 so the default
+# PR gate (go.yml / make test) stays credential-free and green.
+
+on:
+  pull_request:
+    paths:
+      - "Makefile"
+      - "scripts/api_compat_live.py"
+      - "scripts/api_compat_live_test.py"
+      - "tests/api_compat/testdata/live/**"
+      - "docs-site/docs/reference/api-compatibility.md"
+      - ".github/workflows/api-compat-live.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Makefile"
+      - "scripts/api_compat_live.py"
+      - "scripts/api_compat_live_test.py"
+      - "tests/api_compat/testdata/live/**"
+      - ".github/workflows/api-compat-live.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "41 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  live-unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Credential-free live runner contracts
+        run: python3 scripts/api_compat_live_test.py
+
+  live-secrets-status:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      API_COMPAT_LIVE_BASE_URL: ${{ secrets.API_COMPAT_LIVE_BASE_URL }}
+      API_COMPAT_LIVE_CREDENTIAL: ${{ secrets.API_COMPAT_LIVE_CREDENTIAL }}
+      API_COMPAT_LIVE_MATRIX: ${{ vars.API_COMPAT_LIVE_MATRIX }}
+      API_COMPAT_LIVE_ENVIRONMENT: ${{ vars.API_COMPAT_LIVE_ENVIRONMENT }}
+      API_COMPAT_LIVE_CALLER: ${{ vars.API_COMPAT_LIVE_CALLER }}
+      API_COMPAT_LIVE_CONFIRM: ${{ vars.API_COMPAT_LIVE_CONFIRM }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Report blocked when live secrets are missing
+        run: |
+          mkdir -p tmp/api-compat-live
+          python3 scripts/api_compat_live.py --ci-report | tee tmp/api-compat-live/status.json
+      - name: Upload blocked/ready evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: api-compat-live-status
+          path: tmp/api-compat-live/status.json
+          if-no-files-found: ignore
+          retention-days: 7

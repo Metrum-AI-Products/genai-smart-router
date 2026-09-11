@@ -13,7 +13,7 @@ pairs:
     outbound: openai-responses
     features: [text, tools, tool_choice, stream]
     disposition: native_supported
-    notes: Same-dialect passthrough; native Responses streaming is a separate product claim.
+    notes: Same-dialect passthrough; native Responses streaming is covered by RESP P0 contracts (#103). Historical synthetic Responses SSE was not native streaming proof.
 
   - inbound: anthropic
     outbound: anthropic

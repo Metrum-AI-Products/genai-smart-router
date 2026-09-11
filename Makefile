@@ -339,8 +339,9 @@ harbor-local:
 	PYTHONDONTWRITEBYTECODE=1 UV_OFFLINE=1 \
 	uv run --locked --offline pytest -p no:cacheprovider
 
-# Deliberately not a normal test/build/package target. Live execution awaits a
-# human-approved non-production matrix and least-privilege caller identity.
+# Deliberately not a normal test/build/package target. Live execution requires a
+# human-approved non-production matrix, least-privilege caller, and budget caps.
+# Missing credentials report blocked (nonzero) and never green certification.
 API_COMPAT_LIVE_MATRIX ?=
 API_COMPAT_LIVE_ENVIRONMENT ?=
 API_COMPAT_LIVE_CALLER ?=
@@ -355,7 +356,7 @@ api-compat-live:
 	@test -n "$${API_COMPAT_LIVE_BASE_URL}" || { echo "API_COMPAT_LIVE_BASE_URL is required" >&2; exit 2; }
 	@test -f "$${API_COMPAT_LIVE_CREDENTIAL_FILE}" && test "$$(stat -c '%a' "$${API_COMPAT_LIVE_CREDENTIAL_FILE}")" = 600 || { echo "API_COMPAT_LIVE_CREDENTIAL_FILE must be a mode-0600 protected file" >&2; exit 2; }
 	@test "$${API_COMPAT_LIVE_CONFIRM}" = "$${API_COMPAT_LIVE_MATRIX}:$${API_COMPAT_LIVE_ENVIRONMENT}" || { echo "API_COMPAT_LIVE_CONFIRM must bind the selected matrix and environment" >&2; exit 2; }
-	@echo "api-compat-live is intentionally unavailable until its human-approved matrix is implemented." >&2; exit 2
+	@$(PYTHON) scripts/api_compat_live.py
 
 outcome-calibrated-demo: outcome-calibrated-synthetic-demo
 
@@ -385,6 +386,7 @@ secret-check:
 	python3 scripts/validate_docker_context.py
 	python3 scripts/harness_security_test.py
 	python3 scripts/makefile_security_test.py
+	python3 scripts/api_compat_live_test.py
 	python3 scripts/bootstrap_eks_session_test.py
 	python3 scripts/eks_discover_test.py
 	python3 scripts/validate_eks_make_args_test.py

@@ -1,0 +1,64 @@
+{
+  "schema_version": "api-compat-live/v1",
+  "matrix_id": "smoke-nonprod",
+  "approved": true,
+  "description": "Bounded non-production live differential smoke for Chat, Responses, and Messages text. Not a Harbor or agent certification matrix.",
+  "caps": {
+    "max_requests": 6,
+    "max_tokens": 1024,
+    "max_wall_seconds": 120,
+    "max_spend_usd": 0.25
+  },
+  "cost_per_1k_tokens_usd": 0.01,
+  "cases": [
+    {
+      "id": "LIVE-CHAT-TEXT-01",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply with exactly the word ok."
+          }
+        ],
+        "max_tokens": 16,
+        "stream": false
+      },
+      "expected_status": 200,
+      "token_budget": 32
+    },
+    {
+      "id": "LIVE-RESP-TEXT-01",
+      "method": "POST",
+      "path": "/v1/responses",
+      "body": {
+        "input": "Reply with exactly the word ok.",
+        "max_output_tokens": 16,
+        "stream": false
+      },
+      "expected_status": 200,
+      "token_budget": 32
+    },
+    {
+      "id": "LIVE-ANTH-TEXT-01",
+      "method": "POST",
+      "path": "/anthropic/v1/messages",
+      "body": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply with exactly the word ok."
+          }
+        ],
+        "max_tokens": 16,
+        "stream": false
+      },
+      "expected_status": 200,
+      "token_budget": 32,
+      "headers": {
+        "anthropic-version": "2023-06-01"
+      }
+    }
+  ]
+}

@@ -262,9 +262,9 @@ should contain incremental `delta.tool_calls`, terminal
 `stream_options.include_usage: true`. Compatible `stream_options` are
 forwarded to the selected target. Canceling the caller request cancels the
 upstream call; after the first native event is written, the router does not
-retry, replay, or fall back to another target. OpenAI Responses and
-cross-dialect bridges continue to use unary upstream calls with router-encoded
-caller streaming.
+retry, replay, or fall back to another target. Same-dialect OpenAI Responses
+streaming also proxies native upstream SSE. Cross-dialect bridges continue to
+use unary upstream calls with router-encoded caller streaming.
 
 Expected shape when the model chooses the tool:
 
