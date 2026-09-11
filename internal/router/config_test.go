@@ -50,6 +50,15 @@ func TestUsageDBMigrationPolicyValidation(t *testing.T) {
 		t.Fatalf("migration policy default = %q", cfg.Server.UsageDB.MigrationPolicy)
 	}
 }
+
+func TestAdminBasicAuthRealmDefaultsToCanonicalProductName(t *testing.T) {
+	cfg := &Config{}
+	cfg.setDefaults()
+	if got := cfg.Server.AdminAuth.Basic.Realm; got != "Metrum AI Router Admin" {
+		t.Fatalf("admin Basic Auth realm = %q", got)
+	}
+}
+
 func TestUsageDBDefaultsToSQLiteBesideStatePath(t *testing.T) {
 	cfg := &Config{StatePath: "/var/lib/smart-llmrouter/router-state.json"}
 	cfg.setDefaults()

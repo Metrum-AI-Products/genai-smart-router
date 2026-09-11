@@ -36,7 +36,7 @@ func TestCommandVersionFlags(t *testing.T) {
 				t.Fatalf("%s --version: %v\n%s", name, err, raw)
 			}
 			text := string(raw)
-			for _, want := range []string{"test-version", "test-commit", "2026-06-17T05:00:00Z"} {
+			for _, want := range []string{"Metrum AI Router", "test-version", "test-commit", "2026-06-17T05:00:00Z"} {
 				if !strings.Contains(text, want) {
 					t.Fatalf("%s --version missing %q: %s", name, want, text)
 				}

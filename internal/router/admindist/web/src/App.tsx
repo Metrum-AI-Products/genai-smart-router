@@ -157,7 +157,7 @@ export default function App() {
           <div className="flex min-w-0 items-center gap-4" data-admin-header-brand>
             <img className="w-44 max-w-[42vw]" src="static/metrum_logo_white_new.png" alt="Metrum AI" />
             <div className="min-w-0">
-              <p className="font-mono text-xs uppercase text-white/58">GenAI Smart Router</p>
+              <p className="font-mono text-xs uppercase text-white/58">Metrum AI Router</p>
               <h1 className="font-display text-3xl text-white">Admin Reports</h1>
               <p className="text-sm text-white/58">Operational usage, savings, routing, and security reporting.</p>
               {version && (

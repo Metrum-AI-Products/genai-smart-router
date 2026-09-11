@@ -951,7 +951,7 @@ func (c *Config) setDefaults() {
 		c.Server.Listen = ":8080"
 	}
 	if c.Server.AdminAuth.Basic.Realm == "" {
-		c.Server.AdminAuth.Basic.Realm = "GenAI Smart Router Admin"
+		c.Server.AdminAuth.Basic.Realm = "Metrum AI Router Admin"
 	}
 	if c.Server.AdminAuth.OIDC.GroupsClaim == "" {
 		c.Server.AdminAuth.OIDC.GroupsClaim = "groups"
@@ -1718,7 +1718,7 @@ func validateAdminBasicAuth(basic AdminBasicAuthConfig) error {
 	}
 	realm := strings.TrimSpace(basic.Realm)
 	if realm == "" {
-		realm = "GenAI Smart Router Admin"
+		realm = "Metrum AI Router Admin"
 	}
 	if strings.ContainsAny(realm, "\"\\\r\n") {
 		return fmt.Errorf("server admin_auth.basic realm contains unsupported characters")

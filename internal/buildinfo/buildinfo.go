@@ -37,7 +37,7 @@ func Current() Info {
 
 func Text() string {
 	info := Current()
-	return fmt.Sprintf("smart-llmrouter version=%s commit=%s build_date=%s go=%s %s/%s", info.Version, info.Commit, info.BuildDate, info.GoVersion, info.GOOS, info.GOARCH)
+	return fmt.Sprintf("Metrum AI Router version=%s commit=%s build_date=%s go=%s %s/%s", info.Version, info.Commit, info.BuildDate, info.GoVersion, info.GOOS, info.GOARCH)
 }
 
 func JSON() string {

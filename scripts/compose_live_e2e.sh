@@ -373,7 +373,7 @@ mkdir -p "$CODEX_WORK"
       -C "$CODEX_WORK" \
       -c "model=\"${CODEX_TEXT_GROUP}\"" \
       -c 'model_provider="metrum-router"' \
-      -c 'model_providers.metrum-router.name="Metrum Router"' \
+      -c 'model_providers.metrum-router.name="Metrum AI Router"' \
       -c "model_providers.metrum-router.base_url=\"${BASE_URL}/v1\"" \
       -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
       -c 'model_providers.metrum-router.wire_api="responses"' \
@@ -394,7 +394,7 @@ mkdir -p "$CODEX_TOOL_WORK"
       -C "$CODEX_TOOL_WORK" \
       -c "model=\"${CODEX_TOOL_GROUP}\"" \
       -c 'model_provider="metrum-router"' \
-      -c 'model_providers.metrum-router.name="Metrum Router"' \
+      -c 'model_providers.metrum-router.name="Metrum AI Router"' \
       -c "model_providers.metrum-router.base_url=\"${BASE_URL}/v1\"" \
       -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
       -c 'model_providers.metrum-router.wire_api="responses"' \

@@ -2364,7 +2364,7 @@ func renderAdminReportSummaryMarkdown(from, to time.Time, total *agg, sections [
 		total = &agg{}
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Smart LLM Router Usage Summary\n\n")
+	fmt.Fprintf(&b, "# Metrum AI Router Usage Summary\n\n")
 	fmt.Fprintf(&b, "- Mode: `summary`\n")
 	fmt.Fprintf(&b, "- Period UTC: `%s` to `%s`\n", formatUsageTime(from), formatUsageTime(to))
 	fmt.Fprintf(&b, "- Scope: full-window SQL totals with bounded top-N aggregate sections; no raw request rows are included.\n")
