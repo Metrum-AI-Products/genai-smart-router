@@ -938,6 +938,16 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		s.writeError(w, rc, http.StatusBadRequest, "provider-hosted-tools-forbidden")
 		return
 	}
+	// Background and WebSocket Responses surfaces are not advertised. Reject
+	// them before upstream so they cannot silently succeed as unary HTTP 200.
+	if dialect == "openai-responses" && requestWantsResponsesBackground(req) {
+		s.writeError(w, rc, http.StatusBadRequest, "responses-background-unsupported")
+		return
+	}
+	if dialect == "openai-responses" && requestWantsWebSocketUpgrade(r) {
+		s.writeError(w, rc, http.StatusBadRequest, "responses-websocket-unsupported")
+		return
+	}
 	rc.rec.Stream = req.Stream
 
 	if !rc.caller.allow[req.Model] {
@@ -2970,6 +2980,17 @@ func requestHasForbiddenProviderHostedTools(req *IRRequest) bool {
 		}
 	}
 	return false
+}
+
+func requestWantsResponsesBackground(req *IRRequest) bool {
+	return req != nil && boolValue(req.Raw["background"])
+}
+
+func requestWantsWebSocketUpgrade(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("Upgrade")), "websocket")
 }
 
 func forbiddenProviderHostedResponsesToolType(value string) bool {
