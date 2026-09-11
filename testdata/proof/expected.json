@@ -1,0 +1,24 @@
+[
+  {
+    "modelGroup": "proof-routing",
+    "requestedModel": "proof-routing",
+    "selectedCandidateIndex": 0,
+    "selectedModel": "cheap-summarizer",
+    "selectedProvider": "mock",
+    "strategy": "dynamic_score",
+    "termNames": [
+      "summarize_cheap"
+    ]
+  },
+  {
+    "modelGroup": "proof-routing",
+    "requestedModel": "proof-routing",
+    "selectedCandidateIndex": 1,
+    "selectedModel": "validated-coder",
+    "selectedProvider": "mock",
+    "strategy": "dynamic_score",
+    "termNames": [
+      "code_validated"
+    ]
+  }
+]

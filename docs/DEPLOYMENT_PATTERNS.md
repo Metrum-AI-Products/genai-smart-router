@@ -1,6 +1,6 @@
 # Deployment Pattern Runbook
 
-Use this runbook when a customer or internal team asks whether Metrum AI Router fits its deployment, governance, network, or organization structure. Keep notes privacy-safe: do not record raw provider keys, router tokens, token hashes, prompts, images, tool outputs, full configs, private hostnames, SSH paths, or customer-specific license payloads.
+Use this runbook when a customer or internal team asks whether Metrum Smart Router fits its deployment, governance, network, or organization structure. Keep notes privacy-safe: do not record raw provider keys, router tokens, token hashes, prompts, images, tool outputs, full configs, private hostnames, SSH paths, or customer-specific license payloads.
 
 Public companion page: `docs-site/docs/operations/deployment-patterns.md`.
 

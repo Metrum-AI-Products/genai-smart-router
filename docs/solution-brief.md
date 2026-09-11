@@ -1,6 +1,6 @@
-# Metrum AI Router Solution Brief
+# Metrum Smart Router Solution Brief
 
-Metrum AI Router is a provider-neutral, self-managed router and governance layer for enterprise LLM traffic. It lets teams expose one controlled API endpoint to applications and developer tools while routing requests across multiple upstream model providers using policy, cost, availability, observed performance, caller identity, and workload-specific rules.
+Metrum Smart Router is a provider-neutral, self-managed LLM smart router and governance layer for enterprise LLM traffic. It selects an upstream model per request from a deployment-owned policy, then records why. Teams expose one controlled API endpoint to applications and developer tools while routing across multiple upstream providers using policy, cost, availability, observed performance, caller identity, and workload-specific rules.
 
 The result is a simpler operating model: applications integrate once, operators keep provider keys and routing policy server-side, and platform teams get consistent authentication, quotas, cache behavior, audit logs, metrics, and usage reports across heterogeneous LLM backends.
 
@@ -8,13 +8,13 @@ The result is a simpler operating model: applications integrate once, operators 
 
 Modern AI teams often need more than one model provider. Different models may be better for coding, summarization, data extraction, low-latency chat, or high-reasoning workflows. Provider availability, pricing, rate limits, and access permissions also change over time. Hard-coding provider-specific endpoints into each application creates operational risk, pins throughput to one upstream limit, and makes migration expensive.
 
-Metrum AI Router centralizes that complexity behind one internal API surface. Clients can speak OpenAI-style or Anthropic-style APIs; the router authenticates the caller, selects an allowed model group, chooses an upstream target, injects the provider credential, normalizes responses, records usage, and returns the response in the caller's expected dialect.
+Metrum Smart Router centralizes that complexity behind one internal API surface. Clients can speak OpenAI-style or Anthropic-style APIs; the router authenticates the caller, selects an allowed model group, chooses an upstream target, injects the provider credential, normalizes responses, records usage, and returns the response in the caller's expected dialect.
 
 Quality decisions should be evidence-first. For router-versus-fixed-model complaints or buyer evaluations, use [Evaluation Evidence Playbook](EVALUATION_EVIDENCE_PLAYBOOK.md) to compare a routed group, fixed model, or previous policy with workload, client, tools, versions, token caps, and scoring held constant.
 
 ```mermaid
 flowchart LR
-  App[Applications and AI tools] --> Router[Metrum AI Router]
+  App[Applications and AI tools] --> Router[Metrum Smart Router]
   Router --> Auth[Caller auth, quotas, limits]
   Router --> Policy[Routing policy and model groups]
   Router --> Cache[Response cache]
@@ -27,7 +27,7 @@ flowchart LR
 
 ## Buyer Value
 
-Metrum AI Router is useful when an organization wants the flexibility of multiple LLM providers without distributing provider credentials, rewriting every client, or losing cost and usage visibility.
+Metrum Smart Router is useful when an organization wants the flexibility of multiple LLM providers without distributing provider credentials, rewriting every client, or losing cost and usage visibility.
 
 Technical buyers typically evaluate it for:
 
@@ -44,7 +44,7 @@ Technical buyers typically evaluate it for:
 
 Enterprise AI spend is moving from predictable software licensing toward variable inference consumption. This is especially visible in agentic workflows, where one user action can trigger planning, retrieval, tool calls, retries, subagents, and multiple model invocations. EY describes token costs as a visible signal of changing agentic AI economics and argues that leaders need broader Agent FinOps discipline to manage total cost, value, and risk. See EY, ["Unlocking agentic value: a new investment discipline for the agentic era"](https://www.ey.com/en_us/insights/ai/agentic-ai-token-costs), June 1, 2026.
 
-Metrum AI Router addresses the controllable layer of that problem:
+Metrum Smart Router addresses the controllable layer of that problem:
 
 - Route routine traffic toward lower-cost model groups while reserving premium routes for approved users, projects, or workloads.
 - Apply per-caller allow lists, rate limits, quotas, and lifetime token budgets before any upstream provider call is made.
@@ -55,7 +55,7 @@ Metrum AI Router addresses the controllable layer of that problem:
 
 ## What It Provides
 
-Metrum AI Router is designed for platform teams that need a controlled, observable, multi-provider LLM layer.
+Metrum Smart Router is designed for platform teams that need a controlled, observable, multi-provider LLM layer.
 
 Core capabilities:
 
@@ -83,7 +83,7 @@ flowchart TB
     C3[Agents and services]
   end
 
-  subgraph Router[Metrum AI Router]
+  subgraph Router[Metrum Smart Router]
     I[Ingress dialect adapter]
     A[Authentication and caller policy]
     R[Routing engine]
@@ -400,7 +400,7 @@ For cache misses and cache-bypassed requests, token-budget admission reserves es
 
 ## Observability And Usage Reporting
 
-Metrum AI Router produces operational data at three levels:
+Metrum Smart Router produces operational data at three levels:
 
 - Structured JSONL request logs for audit/debugging.
 - Metrics-admin-only Prometheus-compatible `/metrics` for dashboards and alerting.
@@ -531,7 +531,7 @@ codex exec --ignore-user-config --ephemeral \
   --skip-git-repo-check \
   -c "model=\"$ROUTER_MODEL\"" \
   -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
   -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
@@ -548,7 +548,7 @@ export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
 codex \
   -c "model=\"$ROUTER_MODEL\"" \
   -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
   -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"'
@@ -595,7 +595,7 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
     -C /workspace \
     -c 'model="agent-tools-smoke"' \
     -c 'model_provider="metrum-router"' \
-    -c 'model_providers.metrum-router.name="Metrum AI Router"' \
+    -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
     -c "model_providers.metrum-router.base_url=\"${ROUTER_BASE_URL}/v1\"" \
     -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
     -c 'model_providers.metrum-router.wire_api="responses"' \
@@ -608,7 +608,7 @@ The caller token must allow the selected `ROUTER_MODEL`. Deployment admins decid
 
 ## Security And Governance Posture
 
-Metrum AI Router is intended to support enterprise control over LLM access:
+Metrum Smart Router is intended to support enterprise control over LLM access:
 
 - Centralized provider credential management.
 - Per-caller token issuance and revocation.

@@ -14,6 +14,45 @@ this page. The version banner, `/docs/releases`, and `/version` are the
 authoritative sources for its exact router version and build timestamp; do not
 infer the running version from a date written in documentation.
 
+## v1.4.1 - 2026-09-11
+
+### Highlights
+
+- Public positioning now leads with **Metrum Smart Router**, an open-source LLM
+  smart router. Gateway functions remain available underneath routing rather than
+  as the leading product classifier.
+- Learned Routing Policy is linked from the public routing strategy table and
+  decision tree, with checked-in synthetic holdout figures labeled as
+  non-promotable wiring evidence.
+- Offline `make proof-routing` proves one `dynamic_score` group can select
+  different upstreams for trivial vs complex fixtures via request-evidence.
+- Docs embed `/docs/llms.txt` for machine-readable product classification.
+
+### Operator Impact
+
+- No runtime config schema, strategy name, metric, CLI flag, or binary rename.
+- Embedded docs title/tagline and fallback docs HTML now say Metrum Smart Router.
+- Runtime banners, admin realms, and generated Helm/blueprint display strings may
+  still say Metrum AI Router until a separate runtime rename. <!-- branding-exception: documents unchanged runtime display identity -->
+- Package docs allowlist is unchanged; `llms.txt` ships in the embedded
+  Docusaurus tree.
+
+### Upgrade
+
+Standard image upgrade. No configuration migration is required for this release.
+
+### Validation
+
+- `make docs-qa && make docs-build`
+- `make proof-routing`
+- `make test`
+- After deploy: `/readyz`, `/version`, `/docs/`, `/docs/llms.txt`
+
+### Rollback
+
+Redeploy the previous package/image. No database or config rollback is required
+for this documentation/positioning release.
+
 ## v1.2.0 - 2026-09-09
 
 ### Highlights

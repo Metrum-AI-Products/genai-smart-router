@@ -106,12 +106,18 @@ STALE_CURRENT_ROUTE_PATTERNS = [
     ),
 ]
 
-# Canonical current product display name. Obsolete display names below are
-# rejected wherever they name the current product; company-only "Metrum AI",
-# generic "router"/"routing" prose, third-party router names and hyphenated or
-# concatenated technical identifiers (genai-smart-router, smart-llmrouter,
-# smartrouterctl, metrum-router, ...) are deliberately not branding errors.
-CANONICAL_PRODUCT_TITLE = "Metrum AI Router"
+# Canonical current product display name for public docs, site metadata, and
+# operator-facing prose. Obsolete display names below are rejected wherever they
+# name the current product; company-only "Metrum AI", generic "router"/"routing"
+# prose, third-party router names and hyphenated or concatenated technical
+# identifiers (genai-smart-router, smart-llmrouter, smartrouterctl,
+# metrum-router, ...) are deliberately not branding errors.
+#
+# Runtime banners, admin realms, generated Helm/blueprint text, and CLI
+# integration display names may still say "Metrum AI Router" until a separate
+# runtime rename. Those paths are allowlisted below.
+CANONICAL_PRODUCT_TITLE = "Metrum Smart Router"
+RUNTIME_PRODUCT_TITLE = "Metrum AI Router"
 
 # Display names are whitespace-separated words. Requiring real whitespace
 # between the words is what keeps command names, package names, schema keys,
@@ -134,6 +140,9 @@ def _title_pattern(*words: str) -> re.Pattern[str]:
 
 # Ordered longest-first: the first pattern that matches a span wins, so
 # "Metrum GenAI Smart Router" reports one precise diagnostic instead of three.
+# Bare "Smart Router" is not obsolete: category prose and the canonical title
+# both use those words. "Metrum AI Router" remains the runtime display name and
+# is rejected only outside RUNTIME_BRANDING_PREFIXES.
 OBSOLETE_PRODUCT_TITLE_PATTERNS = [
     (
         "malformed product title",
@@ -156,10 +165,6 @@ OBSOLETE_PRODUCT_TITLE_PATTERNS = [
         _title_pattern(r"Metrum", r"Smart", r"LLM", r"Router"),
     ),
     (
-        "obsolete product title Metrum Smart Router",
-        _title_pattern(r"Metrum", r"Smart" + _OPTWS + r"Router"),
-    ),
-    (
         "obsolete product title GenAI Smart Router",
         _title_pattern(r"Gen" + _OPTWS + r"AI", r"Smart" + _OPTWS + r"Router"),
     ),
@@ -168,14 +173,26 @@ OBSOLETE_PRODUCT_TITLE_PATTERNS = [
         _title_pattern(r"Smart", r"LLM", r"Router"),
     ),
     (
-        "obsolete product title Smart Router",
-        _title_pattern(r"Smart", r"Router"),
+        "obsolete product title Metrum AI Router",
+        _title_pattern(r"Metrum", r"AI", r"Router"),
     ),
     (
         "obsolete product title Metrum Router",
         _title_pattern(r"Metrum", r"Router"),
     ),
 ]
+
+# Paths that may keep the runtime display title until a separate rename lands.
+RUNTIME_BRANDING_PREFIXES = (
+    Path("internal"),
+    Path("cmd"),
+    Path("services"),
+    Path("evaluators"),
+    Path("scripts"),
+    Path("examples"),
+    Path("deploy"),
+    Path("Makefile"),
+)
 
 # Backwards-compatible alias for callers that import the previous name.
 STALE_PRODUCT_TITLE_PATTERNS = OBSOLETE_PRODUCT_TITLE_PATTERNS
@@ -421,6 +438,14 @@ def branding_line_errors(
     return rel_branding_errors(path.relative_to(ROOT), line_no, line, prev_line)
 
 
+def is_runtime_branding_path(rel: Path) -> bool:
+    """Return True when the path may keep the runtime display title."""
+
+    if rel in RUNTIME_BRANDING_PREFIXES:
+        return True
+    return any(rel == prefix or prefix in rel.parents for prefix in RUNTIME_BRANDING_PREFIXES if prefix.parts)
+
+
 def rel_branding_errors(
     rel: Path,
     line_no: int,
@@ -446,6 +471,7 @@ def rel_branding_errors(
     if marker_exception_reason(line, prev_line) is not None:
         return
 
+    runtime_ok = is_runtime_branding_path(rel)
     for match in matches:
         start, end = match.span()
         if contextual_exception_reason(rel, line, start, end) is not None:
@@ -455,6 +481,30 @@ def rel_branding_errors(
             for name, value in match.groupdict().items()
             if value is not None
         )
+        # Runtime banners, realms, and CLI integration strings keep the prior
+        # display title until a separate functional rename.
+        if (
+            runtime_ok
+            and label == "obsolete product title Metrum AI Router"
+            and match.group(0).casefold() == RUNTIME_PRODUCT_TITLE.casefold()
+        ):
+            continue
+        # TRADEMARKS.md, NOTICE, and related legal files remain the source for
+        # registered-mark / attribution text and are not rewritten by docs
+        # positioning changes.
+        if (
+            rel in {
+                Path("TRADEMARKS.md"),
+                Path("NOTICE"),
+                Path("THIRD_PARTY_NOTICES.md"),
+                Path("GOVERNANCE.md"),
+                Path("SECURITY.md"),
+                Path("MODEL_LICENSES.md"),
+            }
+            and label == "obsolete product title Metrum AI Router"
+            and match.group(0).casefold() == RUNTIME_PRODUCT_TITLE.casefold()
+        ):
+            continue
         yield (
             f"{rel}:{line_no}: contains {label} {match.group(0)!r}; "
             f"use {CANONICAL_PRODUCT_TITLE} "

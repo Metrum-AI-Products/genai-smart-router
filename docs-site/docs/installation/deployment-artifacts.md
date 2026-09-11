@@ -5,7 +5,7 @@ doc_type: howto
 
 # Deployment Artifacts
 
-Metrum AI Router is delivered as release artifacts. Deployment hosts do not need language runtimes, documentation tooling, compilers, or package-build tooling.
+Metrum Smart Router is delivered as release artifacts. Deployment hosts do not need language runtimes, documentation tooling, compilers, or package-build tooling.
 
 ## Artifact Types
 

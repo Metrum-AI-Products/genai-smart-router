@@ -2,7 +2,7 @@
 
 ## Scope
 
-This record supports subissue **#967, Technology governance structure**, under parent issue **#961** for Metrum AI Router. It records only repository-visible evidence of documented authority, role ownership, approval gates, and escalation paths. It does not establish that the documented controls operated in a production environment or that SOC 2 or ISO/IEC 27001 certification requirements have been met.
+This record supports subissue **#967, Technology governance structure**, under parent issue **#961** for Metrum Smart Router. It records only repository-visible evidence of documented authority, role ownership, approval gates, and escalation paths. It does not establish that the documented controls operated in a production environment or that SOC 2 or ISO/IEC 27001 certification requirements have been met.
 
 ## Evidence collected
 

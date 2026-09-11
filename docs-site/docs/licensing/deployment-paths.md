@@ -5,7 +5,7 @@ doc_type: howto
 
 # Deployment Paths
 
-Metrum AI Router is self-managed software. Operators run it in their own cloud,
+Metrum Smart Router is self-managed software. Operators run it in their own cloud,
 on-premises, or air-gapped infrastructure. A signed runtime license is an
 optional operator policy, not a required key for OSS use.
 

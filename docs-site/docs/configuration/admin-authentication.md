@@ -5,7 +5,7 @@ doc_type: howto
 
 # Admin Authentication
 
-Metrum AI Router separates caller API authentication from browser-admin authentication.
+Metrum Smart Router separates caller API authentication from browser-admin authentication.
 
 - Router caller tokens authenticate applications and CLI users for `/v1/*` model APIs.
 - Metrics-admin caller tokens read `/metrics`.
@@ -24,7 +24,7 @@ server:
   admin_auth:
     basic:
       enabled: true
-      realm: Metrum AI Router Admin
+      realm: Metrum Smart Router Admin
       allow_insecure_http: false
       trusted_proxy_cidrs:
         - 127.0.0.1/32
@@ -146,7 +146,7 @@ Example response:
 ```http
 HTTP/1.1 401 Unauthorized
 Cache-Control: no-store
-WWW-Authenticate: Basic realm="Metrum AI Router Admin", charset="UTF-8"
+WWW-Authenticate: Basic realm="Metrum Smart Router Admin", charset="UTF-8"
 ```
 
 Invalid credentials return the same status without revealing which field was wrong:

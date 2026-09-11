@@ -4,10 +4,11 @@
 
 """Tests for the public-face docs guardrails, focused on product branding.
 
-The branding policy is that "Metrum AI Router" is the canonical current
-product display name and the previously accepted names are obsolete. These
-tests pin that policy, the narrow historical/technical exceptions and the path
-coverage, without depending on the repository's current branding content.
+The branding policy is that "Metrum Smart Router" is the canonical current
+product display name for public docs. "Metrum AI Router" remains allowed only
+as the runtime display identity. These tests pin that policy, the narrow
+historical/technical exceptions and the path coverage, without depending on
+the repository's current branding content.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from unittest import mock
 import check_docs_public_face as checker
 
 
-CANONICAL = "Metrum AI Router"
+CANONICAL = "Metrum Smart Router"
 README = checker.ROOT / "README.md"
 
 
@@ -36,12 +37,12 @@ class CanonicalBrandTest(unittest.TestCase):
 
     def test_canonical_title_keeps_grammar_in_composed_labels(self) -> None:
         for line in (
-            "# Metrum AI Router",
-            "Metrum AI Router Admin Reports",
-            "Metrum AI Router Usage Report",
-            "Evaluate Metrum AI Router",
-            "title: Metrum AI Router | Metrum AI",
-            'realm := "Metrum AI Router"',
+            "# Metrum Smart Router",
+            "Metrum Smart Router Admin Reports",
+            "Metrum Smart Router Usage Report",
+            "Evaluate Metrum Smart Router",
+            "title: Metrum Smart Router | Metrum AI",
+            'Layout title="Metrum Smart Router"',
         ):
             with self.subTest(line=line):
                 self.assertEqual([], branding(line))
@@ -69,8 +70,7 @@ class ObsoleteTitleTest(unittest.TestCase):
             ("GenAI Smart Router", "obsolete product title GenAI Smart Router"),
             ("Gen AI Smart Router", "obsolete product title GenAI Smart Router"),
             ("Metrum GenAI Smart Router", "obsolete product title Metrum GenAI Smart Router"),
-            ("Metrum Smart Router", "obsolete product title Metrum Smart Router"),
-            ("Smart Router", "obsolete product title Smart Router"),
+            ("Metrum AI Router", "obsolete product title Metrum AI Router"),
             ("Smart LLM Router", "obsolete product title Smart LLM Router"),
             ("Metrum AI Smart Router", "obsolete product title Metrum AI Smart Router"),
         ):
@@ -87,6 +87,7 @@ class ObsoleteTitleTest(unittest.TestCase):
             "genai smart router",
             "GENAI SMART ROUTER",
             "smart llm router",
+            "METRUM AI ROUTER",
         ):
             with self.subTest(line=line):
                 self.assertEqual(1, len(branding(line)), line)
@@ -99,7 +100,7 @@ class ObsoleteTitleTest(unittest.TestCase):
             "GenAI  Smart  Router",
             "Gen  AI Smart Router",
             "GenAI SmartRouter",
-            "Metrum SmartRouter",
+            "Metrum  AI  Router",
             "Smart  LLM\tRouter",
         ):
             with self.subTest(line=line):
@@ -122,9 +123,9 @@ class ObsoleteTitleTest(unittest.TestCase):
     def test_reports_obsolete_names_inside_code_and_markup(self) -> None:
         for line in (
             'name = "Metrum Router"',
-            "<title>Metrum Smart Router</title>",
+            "<title>Metrum AI Router</title>",
             "  description: GenAI Smart Router admin API",
-            "    Router[Smart Router]",
+            "    Router[Metrum Router]",
         ):
             with self.subTest(line=line):
                 self.assertEqual(1, len(branding(line)), line)
@@ -149,6 +150,8 @@ class ExemptPatternTest(unittest.TestCase):
             "Routing policy is evaluated per request.",
             "OpenRouter is one supported upstream provider.",
             "Compare smart routers before buying one.",
+            "Metrum Smart Router selects a different upstream per request.",
+            "An open-source LLM smart router.",
         ):
             with self.subTest(line=line):
                 self.assertEqual([], branding(line))
@@ -167,6 +170,23 @@ class ExemptPatternTest(unittest.TestCase):
         ):
             with self.subTest(line=line):
                 self.assertEqual([], branding(line))
+
+    def test_runtime_paths_may_keep_metrum_ai_router(self) -> None:
+        line = 'realm := "Metrum AI Router"'
+        for relative in (
+            "internal/router/service.go",
+            "cmd/metrum-router/main.go",
+            "scripts/local_launch_path_smoke.py",
+            "examples/external-routing-policy/prompt_size_policy.py",
+            "Makefile",
+        ):
+            with self.subTest(relative=relative):
+                self.assertEqual([], branding(line, path=checker.ROOT / relative))
+
+    def test_docs_reject_metrum_ai_router_without_exception(self) -> None:
+        errors = branding("Metrum AI Router is an open-source product.")
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("obsolete product title Metrum AI Router", errors[0])
 
     def test_policy_source_files_may_spell_out_rejected_names(self) -> None:
         for name in sorted(checker.POLICY_SOURCE_FILES):
@@ -255,7 +275,7 @@ class ContextualExceptionTest(unittest.TestCase):
     def test_historical_case_study_is_no_longer_branding_exempt(self) -> None:
         for name in sorted(checker.HISTORICAL_FILES):
             with self.subTest(name=str(name)):
-                errors = branding("## Related Smart Router Docs", path=checker.ROOT / name)
+                errors = branding("## Related Metrum Router Docs", path=checker.ROOT / name)
                 self.assertEqual(1, len(errors), errors)
 
 
@@ -478,7 +498,7 @@ class EntryPointTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             tree = Path(raw)
             (tree / "docs").mkdir()
-            (tree / "README.md").write_text("# Metrum AI Router\n", encoding="utf-8")
+            (tree / "README.md").write_text("# Metrum Smart Router\n", encoding="utf-8")
             stale = tree / "docs" / "internal-playbook.md"
             stale.write_text(
                 "# GenAI Smart Router playbook\n\nThe router routes requests.\n",
@@ -494,7 +514,7 @@ class EntryPointTest(unittest.TestCase):
             )
 
             stale.write_text(
-                "# Metrum AI Router playbook\n\nThe router routes requests.\n",
+                "# Metrum Smart Router playbook\n\nThe router routes requests.\n",
                 encoding="utf-8",
             )
             code, stdout, _ = self.run_main(tree)

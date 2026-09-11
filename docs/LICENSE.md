@@ -1,8 +1,8 @@
-# Metrum AI Router License
+# Metrum Smart Router License
 
 Copyright 2026 Metrum AI
 
-All Metrum AI Router first-party content is licensed under the Apache License,
+All Metrum Smart Router first-party content is licensed under the Apache License,
 Version 2.0, reproduced below. Third-party components and content remain subject
 to their respective licenses and notices.
 
@@ -17,7 +17,7 @@ artifact together:
 
 | File | Scope |
 | --- | --- |
-| `LICENSE` | Apache License 2.0 terms for Metrum AI Router first-party content. |
+| `LICENSE` | Apache License 2.0 terms for Metrum Smart Router first-party content. |
 | `NOTICE` | Notices distributed with the first-party work and any attribution that confirmed source terms require there. |
 | `THIRD_PARTY_NOTICES.md` | Dependency and asset inventory, provenance evidence, distribution surface, and applicable third-party license information. It is not a blanket grant of rights. |
 | `MODEL_LICENSES.md` | Boundaries and recorded terms for model or dataset references and download surfaces. The project license does not grant rights to separately obtained model weights or datasets. |

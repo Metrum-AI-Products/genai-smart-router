@@ -168,7 +168,7 @@ def main() -> int:
             status, body, rid = request(base, "/readyz")
             record("ready", status, status == 200 and check_json(body, "ok", True), rid)
             status, body, rid = request(base, "/docs/")
-            record("hosted-docs", status, status == 200 and b"Metrum AI Router" in body, rid)
+            record("hosted-docs", status, status == 200 and b"Metrum Smart Router" in body, rid)
             status, body, rid = request(base, "/v1/models", token=allowed_token)
             model_ids = [item.get("id") for item in json.loads(body).get("data", [])]
             record("authenticated-models", status, status == 200 and model_ids == ["local-smoke"], rid)

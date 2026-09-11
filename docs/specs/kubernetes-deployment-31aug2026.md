@@ -2,7 +2,7 @@
 
 **Status:** Historical proposed interim; package boundaries updated 2026-09-09
 **Date:** 2026-08-31  
-**Applies to:** Metrum AI Router release builds\
+**Applies to:** Metrum Smart Router release builds\
 **Supersedes for review:** `docs/specs/kubernetes-deployment.md` dated 2026-08-28  
 
 This document is a historical interim design artifact. Current installation
@@ -201,7 +201,7 @@ requirement.
 ```mermaid
 flowchart LR
     Client[Client] --> Semantic[vLLM Semantic Router]
-    Semantic --> Router[Metrum AI Router]
+    Semantic --> Router[Metrum Smart Router]
     Router --> Pool[InferencePool endpoint picker]
     Pool --> Replica[Serving replica]
     GPU[GPU Operator] --> Replica
@@ -212,12 +212,12 @@ flowchart LR
 | Layer | Does | Does not do |
 |---|---|---|
 | vLLM Semantic Router | Classifies a request and advises a routing choice. | It does not enforce caller quotas, choose a model group, own provider credentials, or choose a serving replica. |
-| Metrum AI Router | Authenticates the caller, enforces caller limits, selects a model group and target, records usage, and calls the selected upstream. | It does not schedule GPUs, tune replica topology, select a replica inside an inference pool, or own node drivers. |
+| Metrum Smart Router | Authenticates the caller, enforces caller limits, selects a model group and target, records usage, and calls the selected upstream. | It does not schedule GPUs, tune replica topology, select a replica inside an inference pool, or own node drivers. |
 | llm-d or Gateway API Inference Extension endpoint picker | Selects a replica inside an `InferencePool`. | It does not choose the caller's model group or enforce router caller contracts. |
 | GPU and Network Operators | Own node drivers, devices, RDMA, and network operands. | They do not make model-routing decisions or own router configuration. |
 | LMCache or Mooncake | Provide optional KV-cache tiers or transfer for serving stacks. | They do not authenticate callers or select router model groups. |
 
-This boundary makes llm-d complementary. Metrum AI Router selects the target pool or
+This boundary makes llm-d complementary. Metrum Smart Router selects the target pool or
 external provider URL. llm-d or the Inference Extension endpoint picker selects a
 healthy replica in that pool.
 
@@ -768,7 +768,7 @@ exists. It MUST NOT become its own router CRD. Without LMCache, the selected ser
 target continues without the cache integration.
 
 LMCache MAY use Mooncake Store as a remote storage backend. That composition remains a
-serving-stack concern, not a Metrum AI Router CRD.
+serving-stack concern, not a Metrum Smart Router CRD.
 
 ### Mooncake
 
@@ -777,11 +777,11 @@ Mooncake Kubernetes docs stand up a shareable Store with ordinary `Deployment` a
 `Service` objects: one `mooncake-master` plus replicated `mooncake-store` nodes. The
 Store needs no GPUs. Prefill and decode services use Transfer Engine over RDMA or TCP.
 
-Mooncake has no first-party CRD in current upstream docs. Do not invent a Metrum AI Router
-Mooncake CRD. Do not treat OME `KVCachePool` as a Metrum AI Router resource.
+Mooncake has no first-party CRD in current upstream docs. Do not invent a Metrum Smart Router
+Mooncake CRD. Do not treat OME `KVCachePool` as a Metrum Smart Router resource.
 
 llm-d MAY use Mooncake Store as a vLLM KV offload tier and `MooncakeConnector` for
-prefill/decode transfer. Metrum AI Router still selects the model group and target URL or
+prefill/decode transfer. Metrum Smart Router still selects the model group and target URL or
 pool. Mooncake remains under the serving layer.
 
 Without Mooncake, static provider URLs and Level 1 packaging continue unchanged.
@@ -789,17 +789,17 @@ Without Mooncake, static provider URLs and Level 1 packaging continue unchanged.
 ### llm-d
 
 Use llm-d `v0.9` or later for disaggregated serving. Install its Helm charts and
-documented overlays as the llm-d project documents. Do not add a Metrum AI Router controller
+documented overlays as the llm-d project documents. Do not add a Metrum Smart Router controller
 for llm-d. llm-d is a CNCF Sandbox project and remains pre-1.0.
 
-Metrum AI Router selects the model group and pool. llm-d selects the replica within the
+Metrum Smart Router selects the model group and pool. llm-d selects the replica within the
 pool. llm-d topology and disaggregation policies remain llm-d concerns.
 
 ### NVIDIA Dynamo
 
 Use Dynamo `v1.4.2` or later. New Dynamo graph resources use `nvidia.com/v1beta1`
 `DynamoGraphDeployment`. `DynamoGraphDeploymentRequest` is the recommended intent and
-profiling API. DGDR already performs profiling-driven topology tuning. Metrum AI Router
+profiling API. DGDR already performs profiling-driven topology tuning. Metrum Smart Router
 MUST NOT duplicate that tuning.
 
 A future discovery adapter may use the Dynamo frontend endpoint after router config
@@ -810,7 +810,7 @@ external provider URL.
 
 Use KServe `v0.20.0` or later when KServe is the selected serving system. Gateway API
 `HTTPRoute` uses `gateway.networking.k8s.io/v1`. KServe owns its serving resources.
-Metrum AI Router treats the exposed endpoint as a normal upstream after the configuration
+Metrum Smart Router treats the exposed endpoint as a normal upstream after the configuration
 is written.
 
 ### Kueue
@@ -818,7 +818,7 @@ is written.
 Use current Kueue for accelerator workload admission. Current API is
 `kueue.x-k8s.io/v1beta2`. Its terms `nominalQuota`, `borrowingLimit`, `lendingLimit`,
 `cohort`, and `preemption` can guide future caller contention design. Kueue does not
-admit router HTTP requests. Metrum AI Router continues to enforce `callers[].rate`,
+admit router HTTP requests. Metrum Smart Router continues to enforce `callers[].rate`,
 `traffic_shape`, `quota`, and `key`.
 
 ### External Metrics adapter
@@ -832,7 +832,7 @@ identifiers, raw request content, or provider credentials through metric labels.
 
 Organizations with an existing Envoy gateway MAY add an `ext_proc` bridge as a local
 Level 3 integration. Envoy marks the filter API as work-in-progress and outside its
-security threat model. It is outside router architecture. It is not the Metrum AI Router
+security threat model. It is outside router architecture. It is not the Metrum Smart Router
 caller-facing edge. The product default edge remains Caddy. This footnote MUST preserve
 the standalone router API and the Level 0 to Level 2 deployment paths.
 
@@ -989,7 +989,7 @@ YAML field. Unknown fields MUST fail admission.
 | Alternate gateway plumbing | Gateway API HTTPRoute `gateway.networking.k8s.io/v1` | Alternate edge only when a gateway is already present. Not the product default. |
 | Alternate Ingress plumbing | `networking.k8s.io/v1` Ingress | Alternate edge only. Mutually exclusive with Caddy and HTTPRoute. |
 | Service mesh | none | Istio, Linkerd, and similar are non-goals for product packaging. |
-| Disaggregated serving | llm-d `v0.9+` | Helm charts and overlays, not a Metrum AI Router operator. CNCF Sandbox. |
+| Disaggregated serving | llm-d `v0.9+` | Helm charts and overlays, not a Metrum Smart Router operator. CNCF Sandbox. |
 | Alternative serving | Dynamo DGD / DGDR `nvidia.com/v1beta1` | DGDR already does profiling-driven topology tuning. Pin Dynamo `v1.4.2+`. |
 | NVIDIA nodes | GPU Operator `ClusterPolicy`, `NVIDIADriver` | Table stakes for serving. Default operator OFF when AMI owns drivers. |
 | AMD nodes | GPU Operator `DeviceConfig`, `draDriver` | First GPU Helm profile. Pin operator `v1.5.1`, ROCm `7.13+`. DRA and device plugin are mutually exclusive per DeviceConfig. |

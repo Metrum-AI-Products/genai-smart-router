@@ -1,5 +1,11 @@
 # Learned Routing Policy operator runbook
 
+Customer-facing explanation:
+[Learned Routing Policy](https://docs.metrum.ai/docs/routing/learned-routing-policy)
+(source: `docs-site/docs/routing/learned-routing-policy.md`). This file remains
+the operator/maintainer source of truth for train, serve, promotion, and
+rollback procedure.
+
 Different models complete different jobs to different degrees. The objective is
 the cheapest model or mix that still completes the workload, established by
 objective outcomes. LRP trains per-target quality and output-token models and

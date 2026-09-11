@@ -5,7 +5,7 @@ doc_type: reference
 
 # API Compatibility
 
-Metrum AI Router exposes OpenAI-compatible and Anthropic-compatible HTTP surfaces so clients can keep familiar SDKs while routing, provider credentials, policy, quotas, and accounting stay server-side.
+Metrum Smart Router exposes OpenAI-compatible and Anthropic-compatible HTTP surfaces so clients can keep familiar SDKs while routing, provider credentials, policy, quotas, and accounting stay server-side.
 
 The router endpoint is deployment-specific. Use the base URL and model groups issued by your administrator or Metrum-managed instance.
 

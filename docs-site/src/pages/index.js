@@ -26,18 +26,20 @@ export default function Home() {
   const logoUrl = useBaseUrl("/img/metrum_logo_white_new.png");
   return (
     <Layout
-      title="Metrum AI Router"
-      description="Customer documentation for Metrum AI Router"
+      title="Metrum Smart Router"
+      description="Customer documentation for Metrum Smart Router, an open-source LLM smart router"
     >
       <main className={styles.main}>
         <section className={styles.hero}>
           <div className={styles.heroInner}>
             <img src={logoUrl} alt="Metrum AI" className={styles.logo} />
             <p className={styles.eyebrow}>Metrum AI Product Documentation</p>
-            <h1>Metrum AI Router</h1>
+            <h1>Metrum Smart Router</h1>
             <p className={styles.lede}>
-              A deployable enterprise gateway that keeps GenAI clients stable while routing policy, provider keys,
-              model selection, budgets, telemetry, and request-time cost accounting stay under platform control.
+              An open-source LLM smart router that selects a different upstream model per request from a
+              deployment-owned policy, then records why. Gateway functions underneath routing keep GenAI
+              clients stable while provider keys, budgets, telemetry, and request-time cost accounting stay
+              under platform control.
             </p>
             <div className={styles.actions}>
               <Link className={clsx("button", styles.primary)} to="/overview">
