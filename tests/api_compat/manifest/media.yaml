@@ -1,0 +1,147 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# Images, files and multimodal routing catalog (issue #94 Wave 1).
+cases:
+  - id: MEDIA-01
+    priority: P0
+    owner: api-compat
+    component: media
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions|/v1/responses|/anthropic/v1/messages
+    outbound_dialect: openai-chat|openai-responses|anthropic
+    capability_profile: vision
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - native dialect image payloads preserve base64 bytes by sha256 hash upstream
+      - URL and data/base64 representations reach an image-capable target
+      - mixed text and image blocks are not dropped
+    evidence_paths:
+      - tests/api_compat/tests/test_media_eligibility.py
+      - tests/api_compat/manifest/media.yaml
+    test_id: test_media_01_native_dialect_images_preserve_hash
+
+  - id: MEDIA-02
+    priority: P0
+    owner: api-compat
+    component: media
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    capability_profile: vision
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - multiple distinct images preserve multiplicity and order upstream
+      - interleaved text and duplicate image hashes survive forwarding
+      - images in earlier turns remain part of the image requirement
+    evidence_paths:
+      - tests/api_compat/tests/test_media_eligibility.py
+    test_id: test_media_02_multi_image_order_and_history
+
+  - id: MEDIA-03
+    priority: P0
+    owner: api-compat
+    component: media
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    capability_profile: vision-mix
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - text-only targets are filtered out of image-bearing requests
+      - vision upstream failure does not fall back by discarding the image
+      - tools plus image stay within the capability intersection
+    evidence_paths:
+      - tests/api_compat/tests/test_media_eligibility.py
+    test_id: test_media_03_capability_intersection_never_strips_image
+
+  - id: MEDIA-04
+    priority: P1
+    owner: api-compat
+    component: media
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: blocked
+    assertions:
+      - JPEG/PNG/WebP/GIF profile and detail variants need a follow-up matrix
+    rationale: deferred linked issue — format/detail/OCR live matrix not in Wave 1 P0
+
+  - id: MEDIA-05
+    priority: P1
+    owner: api-compat
+    component: media
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: policy_rejection
+    assertions:
+      - unsupported image URL scheme rejects without upstream call
+    evidence_paths:
+      - tests/api_compat/tests/test_media_eligibility.py
+    test_id: test_media_05_empty_image_data_rejects
+    rationale: Broader invalid MIME/truncated-binary matrix deferred; unsupported scheme is the cheap P1 gate.
+
+  - id: MEDIA-06
+    priority: P1
+    owner: api-compat
+    component: media
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: policy_rejection
+    assertions:
+      - loopback and link-local image URLs are rejected without upstream fetch
+    evidence_paths:
+      - tests/api_compat/tests/test_media_eligibility.py
+    test_id: test_media_06_private_image_url_rejected
+    rationale: Router validates image URLs without downloading; private destinations stay forbidden.
+
+  - id: MEDIA-07
+    priority: P1
+    owner: api-compat
+    component: media
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: blocked
+    assertions:
+      - provider file_id and document blocks need explicit supported-route coverage
+    rationale: deferred linked issue — opaque file_id/PDF matrix not in Wave 1 P0
+
+  - id: MEDIA-08
+    priority: P1
+    owner: api-compat
+    component: media
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: n/a
+    disposition: blocked
+    assertions:
+      - image canaries in PII/cache/artifact paths need OPS-linked follow-up
+    rationale: deferred linked issue — redaction canaries for images tracked with OPS-10
+
+  - id: MEDIA-09
+    priority: P2
+    owner: api-compat
+    component: media
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/images/generations
+    transport: unary
+    disposition: unsupported
+    assertions:
+      - image generation endpoint is not advertised and returns 404 or 405
+    evidence_paths:
+      - tests/api_compat/tests/test_media_eligibility.py
+    test_id: test_media_09_image_generation_unsupported
+    rationale: Image input support does not imply image generation APIs.
