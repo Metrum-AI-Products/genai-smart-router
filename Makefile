@@ -278,8 +278,15 @@ api-compat-bootstrap:
 # #694 shell-data quoting at that sole consumer so explicit Make command-line
 # values remain literal configuration data.
 api-compat-bootstrap-go-provision:
-	@GOMODCACHE=$${GOMODCACHE:-$${API_COMPAT_BOOTSTRAP_ROOT}/go-mod-cache} \
-	GOCACHE=$${GOCACHE:-$${API_COMPAT_BOOTSTRAP_ROOT}/go-build-cache} \
+	@modcache="$${GOMODCACHE}"; \
+	buildcache="$${GOCACHE}"; \
+	if [ -n "$${API_COMPAT_BOOTSTRAP_ROOT}" ]; then \
+		modcache="$${API_COMPAT_BOOTSTRAP_ROOT}/go-mod-cache"; \
+		buildcache="$${API_COMPAT_BOOTSTRAP_ROOT}/go-build-cache"; \
+	fi; \
+	GOMODCACHE="$$modcache" \
+	GOCACHE="$$buildcache" \
+	GOTOOLCHAIN=local \
 	GOPROXY=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_PROXY) GOSUMDB=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_SUMDB) go mod download
 
 # Deterministic caller-boundary tests: the locally built router and fake
@@ -287,7 +294,7 @@ api-compat-bootstrap-go-provision:
 # Go dependency resolution cannot use the network. It intentionally has no
 # bootstrap prerequisite so clean-cache failure remains directly testable.
 api-compat-mock-offline:
-	cd tests/api_compat && PYTHONDONTWRITEBYTECODE=1 UV_OFFLINE=1 GOPROXY=off GOSUMDB=off uv run --locked --offline pytest -p no:cacheprovider
+	cd tests/api_compat && PYTHONDONTWRITEBYTECODE=1 UV_OFFLINE=1 GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local uv run --locked --offline pytest -p no:cacheprovider
 
 # Keep the default target usable on a clean supported runner while preserving
 # the separately invokable fail-closed offline conformance phase. The shared
@@ -295,7 +302,7 @@ api-compat-mock-offline:
 # dependency caches in the source tree.
 api-compat-mock:
 	@api_compat_root=$$(mktemp -d); \
-	trap 'rm -rf "$$api_compat_root"' EXIT; \
+	trap 'chmod -R u+w "$$api_compat_root" 2>/dev/null; rm -rf "$$api_compat_root"' EXIT; \
 	$(MAKE) $(call api_compat_effective_dry_run_flag) $(call api_compat_dry_run_transport) api-compat-bootstrap API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root" \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_PROXY) \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_SUMDB) && \
@@ -303,6 +310,7 @@ api-compat-mock:
 	UV_PROJECT_ENVIRONMENT="$$api_compat_root/venv" \
 	GOMODCACHE="$$api_compat_root/go-mod-cache" \
 	GOCACHE="$$api_compat_root/go-build-cache" \
+	GOTOOLCHAIN=local \
 	env -u API_COMPAT_BOOTSTRAP_GO_PROXY -u API_COMPAT_BOOTSTRAP_GO_SUMDB \
 		-u MAKEFLAGS -u MAKEOVERRIDES \
 		$(MAKE) $(call api_compat_effective_dry_run_flag) --no-print-directory api-compat-mock-offline
