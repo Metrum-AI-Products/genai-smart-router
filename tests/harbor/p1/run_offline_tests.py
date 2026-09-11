@@ -2,11 +2,10 @@
 # Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
-"""Offline self-test for Harbor P1 stubs/verifiers (issue #94)."""
+"""Offline self-test for Harbor P1/P2 stubs/verifiers (issue #94 / #104)."""
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -27,6 +26,8 @@ from verifiers import (  # noqa: E402
     verify_harbor_14,
     verify_harbor_15,
     verify_harbor_16,
+    verify_harbor_17,
+    verify_harbor_18,
 )
 
 
@@ -39,9 +40,18 @@ def main() -> int:
     catalog = (ROOT / "catalog.yaml").read_text(encoding="utf-8")
     for case_id in [f"HARBOR-{i:02d}" for i in range(7, 19)]:
         require(case_id in catalog, f"catalog missing {case_id}")
-    require("issues/104" in catalog, "HARBOR-17/18 must link deferred issue #104")
-    require((task_dir("HARBOR-17") / "BLOCKED.md").is_file(), "HARBOR-17 BLOCKED.md missing")
-    require((task_dir("HARBOR-18") / "BLOCKED.md").is_file(), "HARBOR-18 BLOCKED.md missing")
+    for case_id in ("HARBOR-17", "HARBOR-18"):
+        require((task_dir(case_id) / "instruction.md").is_file(), f"{case_id} instruction.md missing")
+        require(not (task_dir(case_id) / "BLOCKED.md").is_file(), f"{case_id} BLOCKED.md must be removed")
+        idx = catalog.index(f"id: {case_id}")
+        # Next case or EOF bounds the snippet so we only inspect this row.
+        next_ids = [catalog.find(f"id: HARBOR-{i:02d}", idx + 1) for i in range(7, 19)]
+        next_ids = [n for n in next_ids if n > idx]
+        end = min(next_ids) if next_ids else len(catalog)
+        snippet = catalog[idx:end]
+        require("disposition: offline_stub" in snippet, f"{case_id} must be offline_stub")
+        require("deferred_issue" not in snippet, f"{case_id} deferred_issue must be cleared")
+        require("disposition: blocked" not in snippet, f"{case_id} must not remain blocked")
 
     # HARBOR-07
     verify_harbor_07(load_json(task_dir("HARBOR-07") / "fixtures" / "reference.json"), expect_pass=True)
@@ -88,6 +98,17 @@ def main() -> int:
     # HARBOR-16
     verify_harbor_16(load_json(task_dir("HARBOR-16") / "fixtures" / "reference.json"), expect_pass=True)
     verify_harbor_16(load_json(task_dir("HARBOR-16") / "fixtures" / "starter.json"), expect_pass=False)
+
+    # HARBOR-17
+    verify_harbor_17(load_json(task_dir("HARBOR-17") / "fixtures" / "reference.json"), expect_pass=True)
+    verify_harbor_17(load_json(task_dir("HARBOR-17") / "fixtures" / "starter.json"), expect_pass=False)
+    verify_harbor_17(load_json(task_dir("HARBOR-17") / "fixtures" / "wrong_result.json"), expect_pass=False)
+
+    # HARBOR-18
+    verify_harbor_18(load_json(task_dir("HARBOR-18") / "fixtures" / "supported_ack.json"), expect_pass=True)
+    verify_harbor_18(load_json(task_dir("HARBOR-18") / "fixtures" / "unsupported_clean_reject.json"), expect_pass=True)
+    verify_harbor_18(load_json(task_dir("HARBOR-18") / "fixtures" / "silent_drop.json"), expect_pass=False)
+    verify_harbor_18(load_json(task_dir("HARBOR-18") / "fixtures" / "false_green.json"), expect_pass=False)
 
     require(missing_credentials_disposition(False) == "blocked", "missing credentials must be blocked")
     require(missing_credentials_disposition(True) == "ready", "present credentials should be ready")

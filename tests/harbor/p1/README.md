@@ -1,6 +1,7 @@
-# Harbor P1 offline stubs (HARBOR-07..16)
+# Harbor P1/P2 offline stubs (HARBOR-07..18)
 
-Offline task stubs and independent verifiers for [issue #94](https://github.com/metrum-ai/router/issues/94).
+Offline task stubs and independent verifiers for [issue #94](https://github.com/metrum-ai/router/issues/94)
+and P2 gap closure in [#104](https://github.com/metrum-ai/router/issues/104).
 These do **not** run live Harbor or providers in CI. They prove verifier integrity:
 reference solutions pass, starter/no-op and decoy artifacts fail.
 
@@ -16,7 +17,8 @@ reference solutions pass, starter/no-op and decoy artifacts fail.
 | HARBOR-14 | Cancel/timeout; incomplete ≠ completed |
 | HARBOR-15 | Structured JSON schema + refusal/truncation |
 | HARBOR-16 | Concurrent caller nonce isolation |
-| HARBOR-17/18 | **blocked** → [#104](https://github.com/metrum-ai/router/issues/104) |
+| HARBOR-17 | Multi-file Python + C repair; held-out tests + protocol obs |
+| HARBOR-18 | Agent canary; explicit supported/unsupported (no silent drop) |
 
 Run:
 

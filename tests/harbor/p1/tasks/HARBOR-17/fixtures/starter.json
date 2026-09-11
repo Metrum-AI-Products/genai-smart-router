@@ -1,0 +1,23 @@
+{
+  "python": {
+    "files_edited": [],
+    "held_out_passed": false,
+    "add_result": null,
+    "mul_result": null
+  },
+  "c": {
+    "files_edited": [],
+    "held_out_passed": false,
+    "gcd_result": null,
+    "lcm_result": null,
+    "compile_exit_code": 1,
+    "compile_stderr": ""
+  },
+  "protocol_observations": {
+    "search": false,
+    "read": false,
+    "edit": false,
+    "shell_tests": false,
+    "noisy_compiler_output_seen": false
+  }
+}

@@ -2,7 +2,7 @@
 # Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
-"""Independent offline verifiers for Harbor P1 stubs (issue #94)."""
+"""Independent offline verifiers for Harbor P1/P2 stubs (issue #94 / #104)."""
 
 from __future__ import annotations
 
@@ -159,6 +159,63 @@ def verify_harbor_16(artifacts: dict[str, dict[str, Any]], *, expect_pass: bool)
         and str(b.get("nonce")) not in json.dumps(a, sort_keys=True)
     )
     require(ok == expect_pass, f"HARBOR-16 expected pass={expect_pass}, got ok={ok}")
+
+
+def verify_harbor_17(artifact: dict[str, Any], *, expect_pass: bool) -> None:
+    """Held-out multi-language repair: Python + C; starter/wrong results fail."""
+    py = artifact.get("python") or {}
+    c = artifact.get("c") or {}
+    obs = artifact.get("protocol_observations") or {}
+    py_ok = (
+        bool(py.get("held_out_passed"))
+        and int(py.get("add_result") or -1) == 42
+        and int(py.get("mul_result") or -1) == 120
+        and isinstance(py.get("files_edited"), list)
+        and len(py.get("files_edited") or []) >= 1
+    )
+    c_ok = (
+        bool(c.get("held_out_passed"))
+        and int(c.get("gcd_result") or -1) == 6
+        and int(c.get("lcm_result") or -1) == 36
+        and int(c.get("compile_exit_code") if c.get("compile_exit_code") is not None else 1) == 0
+        and isinstance(c.get("files_edited"), list)
+        and len(c.get("files_edited") or []) >= 1
+        and "warning" in str(c.get("compile_stderr", "")).lower()
+    )
+    protocol_ok = all(
+        bool(obs.get(key))
+        for key in ("search", "read", "edit", "shell_tests", "noisy_compiler_output_seen")
+    )
+    ok = py_ok and c_ok and protocol_ok
+    require(ok == expect_pass, f"HARBOR-17 expected pass={expect_pass}, got ok={ok} artifact={artifact}")
+
+
+def verify_harbor_18(artifact: dict[str, Any], *, expect_pass: bool) -> None:
+    """Canary must be explicitly supported or unsupported; silent drop / false green fail."""
+    disposition = str(artifact.get("disposition", ""))
+    acknowledged = bool(artifact.get("acknowledged"))
+    forwarded = bool(artifact.get("forwarded"))
+    dropped = bool(artifact.get("canary_dropped"))
+    completed = bool(artifact.get("trial_completed"))
+    canary = artifact.get("canary") or {}
+    has_canary = bool(canary.get("name") or canary.get("header") or canary.get("tool_descriptor"))
+
+    if disposition == "supported":
+        ok = has_canary and acknowledged and forwarded and not dropped and completed
+    elif disposition == "unsupported":
+        reject = str(artifact.get("reject_reason", ""))
+        ok = (
+            has_canary
+            and acknowledged
+            and not forwarded
+            and not dropped
+            and not completed
+            and bool(reject)
+        )
+    else:
+        # Missing or ambiguous disposition (e.g. silent "ok") is never a pass.
+        ok = False
+    require(ok == expect_pass, f"HARBOR-18 expected pass={expect_pass}, got ok={ok} artifact={artifact}")
 
 
 def missing_credentials_disposition(credentials_present: bool) -> str:
