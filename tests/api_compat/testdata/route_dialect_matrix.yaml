@@ -1,0 +1,74 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# Machine-readable inbound/outbound dialect compatibility matrix (ROUTE-01).
+# Disposition describes the router contract; provider skin alone never implies support.
+pairs:
+  - inbound: openai-chat
+    outbound: openai-chat
+    features: [text, tools, tool_choice, stream]
+    disposition: native_supported
+    notes: Same-dialect passthrough.
+
+  - inbound: openai-responses
+    outbound: openai-responses
+    features: [text, tools, tool_choice, stream]
+    disposition: native_supported
+    notes: Same-dialect passthrough; native Responses streaming is a separate product claim.
+
+  - inbound: anthropic
+    outbound: anthropic
+    features: [text, client_tools, stream]
+    disposition: native_supported
+    notes: Same-dialect passthrough.
+
+  - inbound: openai-responses
+    outbound: openai-chat
+    features: [text, function_tools, tool_choice]
+    disposition: supported_translation
+    requires: [responses_to_chat.enabled, validation_status=passed]
+    notes: Opt-in Responses→Chat bridge.
+
+  - inbound: openai-chat
+    outbound: openai-responses
+    features: [text, tools, tool_choice]
+    disposition: supported_translation
+    requires: [bridges.chat_to_responses.enabled]
+    notes: Opt-in Chat→Responses bridge.
+
+  - inbound: openai-responses
+    outbound: openai-chat
+    features: [stream]
+    disposition: policy_rejection
+    requires: [responses_to_chat.streaming=true]
+    notes: Streaming through Responses→Chat is rejected unless explicitly enabled.
+
+  - inbound: openai-chat
+    outbound: openai-responses
+    features: [stream]
+    disposition: policy_rejection
+    notes: Chat→Responses streaming is currently unsupported.
+
+  - inbound: openai-responses
+    outbound: openai-chat
+    features: [previous_response_id]
+    disposition: policy_rejection
+    notes: Native-only previous-response state is not admitted on the unary bridge.
+
+  - inbound: openai-responses
+    outbound: openai-chat
+    features: [structured_output]
+    disposition: policy_rejection
+    notes: Structured outputs are not silently stripped to admit the text bridge.
+
+  - inbound: openai-responses
+    outbound: openai-chat
+    features: [text]
+    disposition: policy_rejection
+    requires: [responses_to_chat.enabled=false]
+    notes: Bridge opt-in disabled; incorrect chat provider skin is not enough.
+
+  - inbound: openai-chat
+    outbound: openai-chat
+    features: [tools]
+    disposition: policy_rejection
+    notes: Fallback targets missing tool_support must never receive tool requests.
