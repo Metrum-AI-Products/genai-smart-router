@@ -5,7 +5,7 @@ doc_type: howto
 
 # Installation
 
-Metrum Router is self-managed software. Choose the release artifact that
+Metrum AI Router is self-managed software. Choose the release artifact that
 matches the host architecture and the operating model your team can secure,
 back up, upgrade, and troubleshoot.
 

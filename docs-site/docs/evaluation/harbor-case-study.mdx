@@ -9,20 +9,20 @@ import HarborCharts from "@site/src/components/HarborCharts";
 
 This case study shows how a platform team can use outcome-based evaluation before changing routing weights. A routing decision is an operational claim: the deployed model group should complete the workload at the expected quality, cost, latency, and reliability envelope. Harbor is one way to test that claim with repeatable agent tasks instead of anecdotal "felt better" or "felt worse" reports.
 
-The model group names shown here are deployment examples from a Metrum-branded reference environment. Metrum Router does not require names such as `big-coder`, and customer deployments can expose different model groups, providers, and policies.
+The model group names shown here are deployment examples from a Metrum-branded reference environment. Metrum AI Router does not require names such as `big-coder`, and customer deployments can expose different model groups, providers, and policies.
 
 ## What Harbor Is
 
 [Harbor](https://harborframework.com/) is an open-source framework for evaluating AI agents in sandboxed, reproducible environments. Its [documentation](https://harbor-framework-harbor.mintlify.app/introduction) and [GitHub repository](https://github.com/harbor-framework/harbor) describe running agents against tasks and benchmarks, capturing trajectories and artifacts, and scoring results with verifiers.
 
-Harbor is relevant to Smart Router because it can hold the task, agent, agent version, prompts, tools, seeds, and scoring constant while changing only the model endpoint or router model group. That lets a team compare:
+Harbor is relevant to Metrum AI Router because it can hold the task, agent, agent version, prompts, tools, seeds, and scoring constant while changing only the model endpoint or router model group. That lets a team compare:
 
 - final task outcome, such as reward or pass/fail;
 - cost, token usage, cache behavior, and latency;
 - selected upstream provider/model families, retries, and fallbacks;
 - client compatibility for agent traffic such as OpenAI Responses, Anthropic Messages, or OpenAI Chat.
 
-Harbor's public docs describe support for multiple coding-agent clients, including Codex CLI, Claude Code, Aider, OpenCode, Cursor CLI, OpenHands, Goose, Gemini CLI, Cline, and Mini SWE Agent. That public list was checked on June 30, 2026. It is agent-context only: it does not mean every listed client has been validated against a particular Smart Router deployment.
+Harbor's public docs describe support for multiple coding-agent clients, including Codex CLI, Claude Code, Aider, OpenCode, Cursor CLI, OpenHands, Goose, Gemini CLI, Cline, and Mini SWE Agent. That public list was checked on June 30, 2026. It is agent-context only: it does not mean every listed client has been validated against a particular Metrum AI Router deployment.
 
 ## Terminal-Bench Connection
 
@@ -88,7 +88,7 @@ Use the same dataset/task, agent, agent version, seed policy, token caps, timeou
 # Install Harbor in an isolated tool environment.
 uv tool install harbor
 
-# A: routed model group through Metrum Router.
+# A: routed model group through Metrum AI Router.
 export ROUTER_BASE_URL="https://<router-host>"
 export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 
@@ -125,6 +125,6 @@ For practical context beyond the primary Harbor and Terminal-Bench sources, see 
 - [How to Evaluate AI Agents: An Introduction to Harbor](https://tessl.io/blog/how-to-evaluate-ai-agents-an-introduction-to-harbor/)
 - [Improving deep agents with harness engineering](https://www.langchain.com/blog/improving-deep-agents-with-harness-engineering)
 
-## Related Smart Router Docs
+## Related Metrum AI Router Docs
 
 For a general router-versus-fixed-model evidence template, including non-Harbor workloads and rollout decisions, see [Prove Router Quality](./prove-router-quality). For model-group contracts and promotion criteria, see [Model Group Quality Criteria](./model-group-quality). For coding-agent setup and compatibility checks, see [Coding-Agent Client Matrix](../getting-started/coding-agent-clients). For report evidence, see [Usage Reporting](../operations/usage-reporting) and [Admin Browser Reports](../operations/admin-browser-reports).

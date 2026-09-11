@@ -26,15 +26,15 @@ export default function Home() {
   const logoUrl = useBaseUrl("/img/metrum_logo_white_new.png");
   return (
     <Layout
-      title="Metrum Metrum Router"
-      description="Customer documentation for Metrum Metrum Router"
+      title="Metrum AI Router"
+      description="Customer documentation for Metrum AI Router"
     >
       <main className={styles.main}>
         <section className={styles.hero}>
           <div className={styles.heroInner}>
             <img src={logoUrl} alt="Metrum AI" className={styles.logo} />
             <p className={styles.eyebrow}>Metrum AI Product Documentation</p>
-            <h1>Metrum Router</h1>
+            <h1>Metrum AI Router</h1>
             <p className={styles.lede}>
               A deployable enterprise gateway that keeps GenAI clients stable while routing policy, provider keys,
               model selection, budgets, telemetry, and request-time cost accounting stay under platform control.

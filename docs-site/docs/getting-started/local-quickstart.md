@@ -5,7 +5,7 @@ doc_type: tutorial
 
 # Local Quickstart
 
-Run Metrum Router on a laptop or workstation in about ten minutes. This
+Run Metrum AI Router on a laptop or workstation in about ten minutes. This
 path is for local development: one OpenAI Chat upstream, one `static` model
 group named `local`, SQLite with `auto-safe` migrations, and an operator-issued
 runtime `license.json`. Packaged production installs use

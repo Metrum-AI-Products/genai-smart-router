@@ -3,9 +3,9 @@ title: Solution Brief
 doc_type: explanation
 ---
 
-# Metrum Router Solution Brief
+# Metrum AI Router Solution Brief
 
-Metrum Router is a self-managed, provider-neutral gateway for teams that
+Metrum AI Router is a self-managed, provider-neutral gateway for teams that
 need stable client APIs with deployment-owned routing, access control, budgets,
 and operational evidence.
 

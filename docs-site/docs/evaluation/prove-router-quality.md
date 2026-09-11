@@ -15,7 +15,7 @@ Anecdotes are useful bug reports. They are not sufficient evidence for changing 
 
 Compare a router group against a fixed model or previous-policy control with the workload, client, agent, tools, prompt shape, seed policy, versions, token caps, timeouts, and scoring held constant. Change only the model selection: routed group versus fixed model, or new policy versus previous policy.
 
-Teams own their routing destiny. Metrum Router makes routing policy controllable, measurable, and reversible; it does not guarantee every workload improves automatically. Use evidence to decide whether to promote a routed group, keep a fixed model, split the workload, or collect more data before rollout.
+Teams own their routing destiny. Metrum AI Router makes routing policy controllable, measurable, and reversible; it does not guarantee every workload improves automatically. Use evidence to decide whether to promote a routed group, keep a fixed model, split the workload, or collect more data before rollout.
 
 ## Admissible Evidence
 
@@ -140,7 +140,7 @@ Reports should sum stored request-time cost values. Do not reprice historical ac
 | Mixed results | Split by task category, model group, request shape, user/project, or policy label. |
 | Evidence inconclusive | Gather more tasks/seeds, improve the rubric, or use shadow mode before production rollout. |
 
-## Prove It, Do Not Feel It: Auditing a Smart Router Against a Fixed Model
+## Prove It, Do Not Feel It: Auditing a Metrum AI Router Against a Fixed Model
 
 ```mermaid
 flowchart LR

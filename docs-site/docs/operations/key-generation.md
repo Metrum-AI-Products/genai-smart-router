@@ -5,7 +5,7 @@ doc_type: howto
 
 # User Key Generation
 
-Router caller tokens authenticate applications, users, or evaluation jobs to Metrum Router. Tokens use a readable prefix for traceability plus a random secret suffix. The router stores only token hashes.
+Router caller tokens authenticate applications, users, or evaluation jobs to Metrum AI Router. Tokens use a readable prefix for traceability plus a random secret suffix. The router stores only token hashes.
 
 `router-token-gen` is an administrative CLI shipped in the release package for platform administrators. Run it from a secure server console, deployment host shell, or controlled administrator workstation, and distribute only the generated router tokens to approved callers.
 

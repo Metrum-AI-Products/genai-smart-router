@@ -28,7 +28,7 @@ export default function NotFound() {
   }, [docsBaseUrl]);
 
   return (
-    <Layout title="Page Not Found" description="Metrum Router documentation page not found">
+    <Layout title="Page Not Found" description="Metrum AI Router documentation page not found">
       <main className={styles.main}>
         <section className={clsx(styles.hero, styles.notFoundHero)}>
           <div className={styles.heroInner}>
@@ -42,7 +42,7 @@ export default function NotFound() {
             <form className={styles.searchForm} action="https://www.google.com/search" method="get">
               <input type="hidden" name="sitesearch" value={docsSearchScope} />
               <input
-                aria-label="Search Metrum Router docs"
+                aria-label="Search Metrum AI Router docs"
                 name="q"
                 type="search"
                 placeholder="Search docs"
@@ -53,7 +53,7 @@ export default function NotFound() {
               </button>
             </form>
             <div className={styles.actions}>
-              <Link className={clsx("button", styles.secondary)} href="mailto:contact@metrum.ai?subject=GenAI%20Smart%20Router%20docs%20404">
+              <Link className={clsx("button", styles.secondary)} href="mailto:contact@metrum.ai?subject=Metrum%20AI%20Router%20docs%20404">
                 Was this useful?
               </Link>
               <Link className={clsx("button", styles.secondary)} to="/overview">

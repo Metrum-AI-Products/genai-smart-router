@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Operational Readiness
 
-Operational readiness proves that a Metrum Router deployment can be run, observed, updated, and rolled back predictably.
+Operational readiness proves that a Metrum AI Router deployment can be run, observed, updated, and rolled back predictably.
 
 The checked-in `make launch-operational-readiness` target runs deterministic, secret-free repository contracts and writes a safe scalar JSON record under `tmp/`. That output is preflight evidence only. It does not prove the identity of a promoted artifact, a credential-backed deployment smoke, a rollback rehearsal, a named operational owner, or an approved public support commitment. Record those deployment-owned results separately and bind them to the exact artifact digest, environment, timestamp, and approver without publishing credentials or private endpoints.
 
