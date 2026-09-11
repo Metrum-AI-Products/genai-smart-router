@@ -1,8 +1,8 @@
 # Trademarks
 
 METRUM AI is a registered trademark of Metrum AI, Inc. "Metrum AI Router,"
-formerly also referred to as "Metrum Router" or "GenAI Smart Router," and
-the Metrum AI logo and lockup are trademarks of Metrum AI, Inc. The Apache-2.0
+formerly also referred to as "Metrum Router," "GenAI Smart Router," or "Metrum Smart Router,"
+and the Metrum AI logo and lockup are trademarks of Metrum AI, Inc. The Apache-2.0
 license for this code does not grant any right to use these marks (see
 Apache-2.0, Section 6).
 

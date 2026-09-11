@@ -1,6 +1,6 @@
 # Customer Scenario Playbook
 
-Use this internal playbook when a buyer, evaluator, support lead, or customer team asks whether Metrum Smart Router will fit their deployment. Keep responses concrete, proof-oriented, and deployment-defined. Do not promise that routing improves every workload; prove the workload outcome and show the operator evidence.
+Use this internal playbook when a buyer, evaluator, support lead, or customer team asks whether Metrum AI Router will fit their deployment. Keep responses concrete, proof-oriented, and deployment-defined. Do not promise that routing improves every workload; prove the workload outcome and show the operator evidence.
 
 Public counterpart: `docs-site/docs/evaluation/enterprise-faq.md`.
 

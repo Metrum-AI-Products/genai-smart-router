@@ -14,7 +14,7 @@ gateway" with:
 | `og:description` | `Apache-2.0 open-source LLM smart router. Selects a different upstream model per request from a deployment-owned policy, then records why.` |
 | `twitter:description` | `Apache-2.0 open-source LLM smart router. Selects a different upstream model per request from a deployment-owned policy, then records why.` |
 
-Canonical product noun: **Metrum Smart Router**.
+Canonical product noun: **Metrum AI Router**.
 
 ## Capability comparison matrix accessibility
 

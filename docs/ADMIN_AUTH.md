@@ -41,7 +41,7 @@ server:
   admin_auth:
     basic:
       enabled: true
-      realm: Metrum Smart Router Admin
+      realm: Metrum AI Router Admin
       allow_insecure_http: false
       trusted_proxy_cidrs:
         - 127.0.0.1/32

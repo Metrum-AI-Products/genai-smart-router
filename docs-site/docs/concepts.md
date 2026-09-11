@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Concepts And Glossary
 
-Metrum Smart Router keeps client integrations stable by separating caller-facing names from upstream provider/model details.
+Metrum AI Router keeps client integrations stable by separating caller-facing names from upstream provider/model details.
 
 ## Request Flow
 

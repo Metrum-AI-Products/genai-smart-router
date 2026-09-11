@@ -39,7 +39,7 @@ if (
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: "Metrum Smart Router",
+  title: "Metrum AI Router",
   tagline: "An open-source LLM smart router",
   favicon: "img/favicon/favicon.ico",
   url: process.env.DOCS_SITE_URL || "https://docs.metrum.ai",
@@ -95,7 +95,7 @@ const config = {
         respectPrefersColorScheme: false,
       },
       navbar: {
-        title: "Metrum Smart Router",
+        title: "Metrum AI Router",
         logo: {
           alt: "Metrum AI",
           src: "img/metrum_logo_white_new.png",

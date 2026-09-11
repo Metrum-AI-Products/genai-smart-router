@@ -5,7 +5,7 @@ doc_type: howto
 
 # Usage Reporting
 
-Metrum Smart Router records durable usage data for cost management, auditability, request troubleshooting, and model-group validation.
+Metrum AI Router records durable usage data for cost management, auditability, request troubleshooting, and model-group validation.
 
 `router-usage-report` is an administrative CLI shipped in the release package. It is intended for platform administrators and is run from a secure server console, deployment host shell, or controlled admin workstation with access to the usage database. Deployments may also enable the authenticated browser reporting surface at `/admin/reports/`; it is separate from public `/docs/` and requires browser-admin authentication plus policy-based authorization.
 

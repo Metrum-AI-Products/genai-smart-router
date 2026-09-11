@@ -478,7 +478,7 @@ codex exec --ignore-user-config --ephemeral \
   -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_catalog_json="~/.codex/metrum-models.json"' \
-  -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
+  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
   -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
@@ -495,7 +495,7 @@ codex \
   -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_catalog_json="~/.codex/metrum-models.json"' \
-  -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
+  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
   -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"'
@@ -547,7 +547,7 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
     -c 'model="agent-tools-smoke"' \
     -c 'model_provider="metrum-router"' \
     -c 'model_catalog_json="/workspace/metrum-models.json"' \
-    -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
+    -c 'model_providers.metrum-router.name="Metrum AI Router"' \
     -c "model_providers.metrum-router.base_url=\"${ROUTER_BASE_URL}/v1\"" \
     -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
     -c 'model_providers.metrum-router.wire_api="responses"' \

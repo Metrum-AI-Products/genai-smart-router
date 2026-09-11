@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Deployment Readiness
 
-Plan and validate Metrum Smart Router as a deployment-owned GenAI control plane. A production-ready deployment proves more than API reachability: it defines the [deployment pattern](../operations/deployment-patterns), model-group quality targets, security controls, client compatibility, cost policy, operational readiness, and rollout criteria for every model group exposed to callers.
+Plan and validate Metrum AI Router as a deployment-owned GenAI control plane. A production-ready deployment proves more than API reachability: it defines the [deployment pattern](../operations/deployment-patterns), model-group quality targets, security controls, client compatibility, cost policy, operational readiness, and rollout criteria for every model group exposed to callers.
 
 Model groups are deployment contracts. Each group should state who it is for, which API shapes it supports, which modalities and tools it can serve, what task outcomes it is expected to complete, and what cost/latency envelope it should stay inside. The goal is not to route every request to the most expensive model. The goal is to maintain the required outcome for each workload while using the lowest-cost reliable provider/model mix that passes the group criteria.
 

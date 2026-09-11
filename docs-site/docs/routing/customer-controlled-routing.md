@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Customer-Controlled Routing
 
-Metrum Smart Router is not a black-box global model chooser. A caller requests one allowed, deployment-defined model group, and the deployment owner controls which providers, private upstreams, capabilities, policies, validation gates, and fallback paths exist inside that group.
+Metrum AI Router is not a black-box global model chooser. A caller requests one allowed, deployment-defined model group, and the deployment owner controls which providers, private upstreams, capabilities, policies, validation gates, and fallback paths exist inside that group.
 
 Use this page as the routing-policy ownership map. Start with the [Routing Strategy Decision Tree](./strategy-decision-tree) when choosing between static, failover, weighted, dynamic score, TypeScript, external, or contract-backed routing. The detailed reference pages remain the source of truth for [router config](../configuration/router-config), [model metadata](../reference/model-metadata), [dynamic score routing](../configuration/dynamic-score-routing), [TypeScript routing](../configuration/routing-typescript), [external policy services](../configuration/external-routing-policy), [model-group contracts](../configuration/model-group-contracts), [PII filtering](../configuration/pii-filtering), [usage reporting](../operations/usage-reporting), and [deployment readiness](../evaluation/deployment-readiness).
 
@@ -290,7 +290,7 @@ Policy changes should be evidence-driven:
 | Report window | Usage report or admin report showing selected target mix, latency, throughput, cost, attempts, fallbacks, and safe policy labels |
 | Rollback trigger | Concrete threshold for disabling a target, reducing weight, relaxing a contract, or reverting to a simpler strategy |
 
-See [Model Group Quality Criteria](../evaluation/model-group-quality), [Evaluate Metrum Smart Router](../evaluation/evaluate-smart-router), [Deployment Readiness](../evaluation/deployment-readiness), [Operational Acceptance](../evaluation/operational-acceptance), and [Cost Governance](../evaluation/cost-governance) for rollout and acceptance planning.
+See [Model Group Quality Criteria](../evaluation/model-group-quality), [Evaluate Metrum AI Router](../evaluation/evaluate-smart-router), [Deployment Readiness](../evaluation/deployment-readiness), [Operational Acceptance](../evaluation/operational-acceptance), and [Cost Governance](../evaluation/cost-governance) for rollout and acceptance planning.
 
 ## What Not To Do
 

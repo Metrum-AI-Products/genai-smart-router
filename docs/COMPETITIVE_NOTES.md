@@ -6,7 +6,7 @@ Last reviewed: 2026-06-19.
 
 ## Public Positioning Rule
 
-Position Metrum Smart Router as a governed enterprise LLM smart router with deployment-defined routing control, detailed usage/cost accounting, private upstream support, and agent-client compatibility. Gateway functions are subordinate to routing.
+Position Metrum AI Router as a governed enterprise LLM smart router with deployment-defined routing control, detailed usage/cost accounting, private upstream support, and agent-client compatibility. Gateway functions are subordinate to routing.
 
 Do not position it as:
 
@@ -37,16 +37,16 @@ Use these primary links for public docs:
 
 Safe public claims:
 
-- Metrum Smart Router supports deployment-defined model groups.
-- Metrum Smart Router supports OpenAI Chat, OpenAI Responses, and Anthropic Messages API shapes.
-- Metrum Smart Router supports dialect-specific tool routing based on configured metadata.
-- Metrum Smart Router supports image-aware routing when upstream metadata includes validated image modality.
-- Metrum Smart Router records request-time cost values in usage rows.
-- Metrum Smart Router can route to private OpenAI-compatible upstreams such as vLLM and SGLang when configured and validated.
+- Metrum AI Router supports deployment-defined model groups.
+- Metrum AI Router supports OpenAI Chat, OpenAI Responses, and Anthropic Messages API shapes.
+- Metrum AI Router supports dialect-specific tool routing based on configured metadata.
+- Metrum AI Router supports image-aware routing when upstream metadata includes validated image modality.
+- Metrum AI Router records request-time cost values in usage rows.
+- Metrum AI Router can route to private OpenAI-compatible upstreams such as vLLM and SGLang when configured and validated.
 
 Avoid or qualify:
 
 - Exact competitor prices.
 - Claims that competitors lack a feature unless primary docs clearly show that.
-- Claims that Metrum Smart Router has enterprise dashboard/SSO/compliance UI features unless implemented.
+- Claims that Metrum AI Router has enterprise dashboard/SSO/compliance UI features unless implemented.
 - Claims that the router automatically improves quality or cost for every workload.

@@ -5,7 +5,7 @@ doc_type: howto
 
 # Image Analysis And VLM Routing
 
-Metrum Smart Router accepts image inputs through the OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API shapes. Image-bearing requests can use the same deployment-defined router model-group names as text requests, but the router only selects upstream targets that advertise `image` in `input_modalities` and are validated for the inbound API skin and request shape.
+Metrum AI Router accepts image inputs through the OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API shapes. Image-bearing requests can use the same deployment-defined router model-group names as text requests, but the router only selects upstream targets that advertise `image` in `input_modalities` and are validated for the inbound API skin and request shape.
 
 Model-group modality metadata is aggregate metadata. For example, a group can advertise image input because it contains a validated Responses target while having no eligible Anthropic Messages image target. Validate Chat, Responses, and Messages independently. If an authorized group returns `502 no-eligible-target`, inspect the requested dialect, image modality, tools, and output-cap requirements instead of treating another skin's image pass as sufficient.
 
@@ -182,7 +182,7 @@ codex exec --ignore-user-config --ephemeral --skip-git-repo-check \
   --image tmp/router-vision-smoke/receipt.png \
   -c 'model="<allowed-vlm-model-group>"' \
   -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
+  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
   -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \

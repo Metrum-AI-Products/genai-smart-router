@@ -5,13 +5,13 @@ doc_type: reference
 
 # Architecture, Platforms, And Limitations
 
-Metrum Smart Router is a self-managed reverse proxy between authenticated AI
+Metrum AI Router is a self-managed reverse proxy between authenticated AI
 clients and operator-configured upstream providers or private model servers.
 
 ```mermaid
 flowchart LR
   Client[Applications and agent clients] --> Ingress[TLS ingress]
-  Ingress --> Router[Metrum Smart Router]
+  Ingress --> Router[Metrum AI Router]
   Router --> Policy[Model-group eligibility and routing]
   Policy --> Provider[External provider APIs]
   Policy --> Private[Private OpenAI-compatible upstreams]

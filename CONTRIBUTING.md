@@ -1,4 +1,4 @@
-# Contributing to Metrum Smart Router
+# Contributing to Metrum AI Router
 
 Thank you for contributing.
 

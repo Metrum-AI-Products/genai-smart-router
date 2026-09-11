@@ -1,6 +1,6 @@
 # PII Filtering Design Notes
 
-Metrum Smart Router supports model-group-level PII filtering through `models.<group>.pii_filter`.
+Metrum AI Router supports model-group-level PII filtering through `models.<group>.pii_filter`.
 
 ## Design
 
