@@ -1,0 +1,6 @@
+{
+  "merchant": "Acme Cafe",
+  "total_usd": 12.47,
+  "currency": "USD",
+  "image_sha256_prefix": "deadbeef"
+}

@@ -1,0 +1,133 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# Harbor P1/P2 catalog rows for issue #94 (offline stubs/verifiers).
+# A skip is never a pass. Missing live credentials must report blocked, not pass.
+cases:
+  - id: HARBOR-07
+    priority: P1
+    disposition: offline_stub
+    title: Vision/receipt extract with text-only decoy exclusion
+    assertions:
+      - extracted JSON matches ground-truth receipt facts
+      - text-only decoy target cannot satisfy the verifier
+      - starter/no-op artifact fails
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-07/
+      - tests/harbor/p1/verifiers.py
+
+  - id: HARBOR-08
+    priority: P1
+    disposition: offline_stub
+    title: Tool returns image plus text; both modalities required
+    assertions:
+      - verifier requires facts unique to image and to text
+      - image-only or text-only artifacts fail
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-08/
+      - tests/harbor/p1/verifiers.py
+
+  - id: HARBOR-09
+    priority: P1
+    disposition: offline_stub
+    title: Multi-turn reasoning plus tools with opaque reasoning preserved
+    assertions:
+      - protocol checker confirms opaque reasoning fields survive
+      - no demand to score private reasoning text
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-09/
+      - tests/harbor/p1/verifiers.py
+
+  - id: HARBOR-10
+    priority: P1
+    disposition: offline_stub
+    title: Long history and large tool catalog near limits
+    assertions:
+      - late edge-case instruction honored or explicit limit error
+      - silent history/tool truncation fails the verifier
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-10/
+      - tests/harbor/p1/verifiers.py
+
+  - id: HARBOR-11
+    priority: P1
+    disposition: offline_stub
+    title: Stateful continuation across simulated router restart
+    assertions:
+      - final artifact requires facts from before and after restart
+      - duplicated or lost pre-restart facts fail
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-11/
+      - tests/harbor/p1/verifiers.py
+
+  - id: HARBOR-12
+    priority: P1
+    disposition: offline_stub
+    title: Pre-commit retryable primary failure with eligible backup
+    assertions:
+      - verifier passes only when serving route is eligible backup
+      - unauthorized or missing-capability target fails
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-12/
+      - tests/harbor/p1/verifiers.py
+
+  - id: HARBOR-13
+    priority: P1
+    disposition: offline_stub
+    title: Mid-run quota exhaustion with recoverable budget profile
+    assertions:
+      - forged success while quota-exhausted fails
+      - partial artifacts classified as incomplete/blocked
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-13/
+      - tests/harbor/p1/verifiers.py
+
+  - id: HARBOR-14
+    priority: P1
+    disposition: offline_stub
+    title: Cancellation or agent timeout mid tool/stream
+    assertions:
+      - late output after cancel is not counted as completed trial
+      - incomplete disposition distinct from verifier pass
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-14/
+      - tests/harbor/p1/verifiers.py
+
+  - id: HARBOR-15
+    priority: P1
+    disposition: offline_stub
+    title: Structured JSON with nullable fields, arrays, enums, Unicode
+    assertions:
+      - independent schema and semantic validation
+      - refusal or truncated JSON is not a pass
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-15/
+      - tests/harbor/p1/verifiers.py
+
+  - id: HARBOR-16
+    priority: P1
+    disposition: offline_stub
+    title: Concurrent callers with distinct secret nonces
+    assertions:
+      - each artifact contains only its own nonce facts
+      - cross-talk between callers fails
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-16/
+      - tests/harbor/p1/verifiers.py
+
+  - id: HARBOR-17
+    priority: P2
+    disposition: blocked
+    title: Multi-file multi-language repository repair
+    deferred_issue: https://github.com/metrum-ai/router/issues/104
+    assertions:
+      - held-out tests pass for Python and a compiled-language task
+    rationale: Deferred P2 breadth beyond offline P1 stubs; tracked in #104.
+
+  - id: HARBOR-18
+    priority: P2
+    disposition: blocked
+    title: Agent version canary with new content block or tool descriptor
+    deferred_issue: https://github.com/metrum-ai/router/issues/104
+    assertions:
+      - explicit supported/unsupported disposition; no silent loss or false green
+    rationale: Deferred P2 canary coverage; tracked in #104.

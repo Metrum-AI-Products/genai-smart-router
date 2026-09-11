@@ -1,0 +1,14 @@
+{
+  "tool_loop_completed": true,
+  "turns": [
+    {
+      "reasoning": {"opaque": "opaque:enc-abc", "summary": ""},
+      "assistant_text": "calling tool",
+      "tool_calls": [{"id": "c1", "name": "lookup"}]
+    },
+    {
+      "tool_results": [{"id": "c1", "content": "42"}],
+      "assistant_text": "done"
+    }
+  ]
+}

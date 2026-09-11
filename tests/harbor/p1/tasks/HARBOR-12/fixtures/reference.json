@@ -1,0 +1,6 @@
+{
+  "serving_route": "eligible-backup",
+  "attempts": ["primary-retryable", "eligible-backup"],
+  "unauthorized_target": "",
+  "task_passed": true
+}

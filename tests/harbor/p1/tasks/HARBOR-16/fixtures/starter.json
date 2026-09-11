@@ -1,0 +1,4 @@
+{
+  "caller_a": {"nonce": "NONCE-A-SECRET", "prompt_label": "shared", "leaked": "NONCE-B-SECRET"},
+  "caller_b": {"nonce": "NONCE-B-SECRET", "prompt_label": "shared", "leaked": "NONCE-A-SECRET"}
+}

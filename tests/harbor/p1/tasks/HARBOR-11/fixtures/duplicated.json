@@ -1,0 +1,5 @@
+{
+  "pre_restart_fact": "ALPHA-BEFORE",
+  "post_restart_fact": "BETA-AFTER",
+  "duplicated_pre_restart_work": true
+}
