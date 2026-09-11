@@ -1,0 +1,130 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# HTTP auth, discovery, and official SDK surface (issue #94).
+cases:
+  - id: HTTP-01
+    priority: P0
+    owner: api-compat
+    component: sdk-clients
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    sdk_client_version: "openai==1.109.1,anthropic==0.68.1"
+    inbound_route: /v1/*
+    outbound_dialect: mixed
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - OpenAI Python SDK lists models and completes chat without custom parsers
+      - Anthropic Python SDK completes messages unary against /anthropic
+      - emitted paths and model groups reach the scripted upstream correctly
+    evidence_paths:
+      - tests/api_compat/tests/test_http_sdk.py
+      - tests/api_compat/manifest/http.yaml
+    test_id: test_openai_sdk_lists_models_and_chat_unary
+
+  - id: HTTP-02
+    priority: P0
+    owner: api-compat
+    component: auth
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/*
+    transport: unary
+    disposition: policy_rejection
+    assertions:
+      - missing caller credentials reject with SDK-visible 401
+      - zero upstream calls on auth rejection
+    evidence_paths:
+      - tests/api_compat/tests/test_http_sdk.py
+      - tests/api_compat/tests/test_http_smoke.py
+    test_id: test_openai_sdk_missing_auth_rejects_with_zero_upstream
+
+  - id: HTTP-03
+    priority: P0
+    owner: api-compat
+    component: discovery
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/models
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - OpenAI SDK models.list returns caller-filtered model groups
+      - private upstream metadata stays hidden from the caller catalog
+    evidence_paths:
+      - tests/api_compat/tests/test_http_sdk.py
+      - tests/api_compat/tests/test_http_smoke.py
+    test_id: test_openai_sdk_lists_models_and_chat_unary
+
+  - id: HTTP-04
+    priority: P1
+    owner: api-compat
+    component: http-negatives
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: blocked
+    assertions:
+      - trailing slash, wrong method, unknown endpoint, and malformed JSON reject deterministically
+    rationale: deferred linked issue
+
+  - id: HTTP-05
+    priority: P1
+    owner: api-compat
+    component: model-admission
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: blocked
+    assertions:
+      - omitted, nonexistent, and unauthorized model groups yield distinct safe errors
+    rationale: deferred linked issue
+
+  - id: HTTP-06
+    priority: P1
+    owner: api-compat
+    component: anthropic-headers
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    transport: unary
+    disposition: blocked
+    assertions:
+      - anthropic-version and beta header policy applied consistently
+    rationale: deferred linked issue
+
+  - id: HTTP-07
+    priority: P1
+    owner: api-compat
+    component: error-surface
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: blocked
+    assertions:
+      - SDK exceptions stay usable without leaking keys, provider URLs, or raw bodies
+    rationale: deferred linked issue
+
+  - id: HTTP-08
+    priority: P1
+    owner: api-compat
+    component: limits
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: blocked
+    assertions:
+      - payload size and slow-body limits bound processing and recover for a healthy follow-up
+    rationale: deferred linked issue
+
+  - id: HTTP-09
+    priority: P2
+    owner: api-compat
+    component: sdk-versions
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: mixed
+    disposition: blocked
+    assertions:
+      - baseline versus canary SDK versions and cancel/reuse behavior are identified independently
+    rationale: deferred linked issue
