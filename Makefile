@@ -100,11 +100,12 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X github.com/metrum-ai/router/internal/buildinfo.Version=$${VERSION} -X github.com/metrum-ai/router/internal/buildinfo.Commit=$${COMMIT} -X github.com/metrum-ai/router/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help test test-k8s-nvidia-local-serving test-k8s-amd-instinct-local-serving test-migration-operational-postgres test-migration-data-jobs-postgres test-migration-data-job-ownership-postgres test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live harbor-local harbor-local-offline outcome-calibrated-demo outcome-calibrated-synthetic-demo adaptive-signal-policy-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-artifact-inventory release-security-evidence launch-operational-readiness release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-package-binaries build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all dist-backup package-dist-backup compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
+.PHONY: help test test-k8s-nvidia-local-serving test-k8s-amd-instinct-local-serving test-migration-operational-postgres test-migration-data-jobs-postgres test-migration-data-job-ownership-postgres test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live harbor-local harbor-local-offline harbor-adapter-test outcome-calibrated-demo outcome-calibrated-synthetic-demo adaptive-signal-policy-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-artifact-inventory release-security-evidence launch-operational-readiness release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-package-binaries build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all dist-backup package-dist-backup compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
 
 help:
 	@echo "GenAI Smart Router make targets. Fleet ops: docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md"
 	@echo "  test                   run default test suite"
+	@echo "  harbor-adapter-test    offline Harbor agent-adapter contracts (AGENT-01..06)"
 	@echo "  test-tenant-deploy-all Fleet offline contract tests"
 	@echo "  package-docker         build customer Docker packages"
 	@echo "  docs-build             build embedded public docs"
@@ -233,10 +234,16 @@ test: secret-check capability-smoke-unit
 	go test ./...
 	python3 scripts/outcome_calibrated_policy_test.py
 	python3 scripts/api_compat_bootstrap_test.py
+	"$${MAKE:-make}" harbor-adapter-test
 	"$${MAKE:-make}" api-compat-mock \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_PROXY) \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_SUMDB)
 	"$${MAKE:-make}" harbor-local
+
+# Offline AGENT-01..06 adapter contracts. Stdlib unittest only: no Harbor
+# install, no provider network, and missing credentials stay blocked evidence.
+harbor-adapter-test:
+	$(PYTHON) -m unittest discover -s tests/harbor -p 'test_adapter*.py' -q
 
 # Provision the locked Python and Go dependency sets before entering the
 # isolated conformance run. API_COMPAT_BOOTSTRAP_GO_PROXY and

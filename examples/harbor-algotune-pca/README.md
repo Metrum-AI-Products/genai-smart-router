@@ -12,17 +12,33 @@ Current production Harbor runs use one reusable Harbor caller token with access 
 
 ## Prerequisites
 
-Install Harbor with `uv`:
+Install the **pinned** Harbor baseline (AGENT-01). Do not use unbounded
+`latest` inside a required reproducibility run. Canary versions are reported
+separately; see `tests/harbor/pins.py`.
 
 ```bash
-uv tool install harbor
+uv tool install 'harbor==0.13.2'
 ```
+
+Pinned agent CLI baselines for required runs:
+
+| Client | Pin |
+|---|---|
+| Harbor | `0.13.2` |
+| Codex CLI (`@openai/codex`) | `0.153.4` |
+| Claude Code | `2.1.220` |
 
 Install and verify the local agent CLIs:
 
 ```bash
 codex --version
 claude --version
+```
+
+Offline adapter contract tests (no live Harbor / providers):
+
+```bash
+make harbor-adapter-test
 ```
 
 Build the local router tools if they are not already present:

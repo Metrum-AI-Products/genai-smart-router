@@ -6,6 +6,11 @@ import shlex
 import tempfile
 from pathlib import Path
 
+from adapter_contract import (
+    assess_codex_router_credentials,
+    build_codex_router_config,
+    resolve_router_model_group,
+)
 from harbor.agents.installed.codex import Codex
 from harbor.agents.installed.base import with_prompt_template
 from harbor.environments.base import BaseEnvironment
@@ -22,10 +27,8 @@ class MetrumCodex(Codex):
     ) -> None:
         escaped_instruction = shlex.quote(instruction)
 
-        if not self.model_name:
-            raise ValueError("Model name is required")
-
-        model = self.model_name.split("/")[-1]
+        # Preserve slash-containing router group IDs (do not split('/')[-1]).
+        model = resolve_router_model_group(self.model_name)
         cli_flags = self.build_cli_flags()
         cli_flags_arg = (cli_flags + " ") if cli_flags else ""
 
@@ -40,6 +43,17 @@ class MetrumCodex(Codex):
             or self._get_env("OPENAI_BASE_URL")
             or ""
         )
+        credential = assess_codex_router_credentials(
+            {
+                "METRUM_ROUTER_KEY": router_key,
+                "METRUM_ROUTER_BASE_URL": router_base_url,
+            }
+        )
+        if not credential.ready:
+            raise ValueError(
+                f"router-mode Codex trial blocked: {credential.reason} "
+                f"(disposition={credential.disposition})"
+            )
 
         env: dict[str, str] = {
             "CODEX_HOME": remote_codex_home,
@@ -68,14 +82,9 @@ class MetrumCodex(Codex):
             finally:
                 Path(auth_json_path).unlink(missing_ok=True)
 
-        config_text = (
-            f'model = "{model}"\n'
-            'model_provider = "metrum-router"\n'
-            '\n[model_providers."metrum-router"]\n'
-            'name = "Metrum Router"\n'
-            f'base_url = "{router_base_url}"\n'
-            'env_key = "METRUM_ROUTER_KEY"\n'
-            'wire_api = "responses"\n'
+        config_text = build_codex_router_config(
+            model_group=model,
+            base_url=router_base_url,
         )
         with tempfile.NamedTemporaryFile("w", delete=False) as tmp:
             tmp.write(config_text)
