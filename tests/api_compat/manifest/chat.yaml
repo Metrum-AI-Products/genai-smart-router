@@ -1,0 +1,166 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# OpenAI Chat Completions catalog (issue #94 Wave 1).
+cases:
+  - id: CHAT-01
+    priority: P0
+    owner: api-compat
+    component: openai-chat
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - system/developer/user/assistant/tool roles and order reach upstream unchanged
+      - string and content-part array user content are preserved
+      - empty and null assistant content with tool_calls survive turn-two forwarding
+    evidence_paths:
+      - tests/api_compat/tests/test_chat_roles.py
+    test_id: test_chat_roles_content_parts_and_tool_message_shapes
+
+  - id: CHAT-02
+    priority: P0
+    owner: api-compat
+    component: openai-chat
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - full request to tool call to tool result to final response preserves call IDs and argument bytes
+      - mixed text plus tool_calls is not collapsed to plain prose
+    evidence_paths:
+      - tests/api_compat/tests/test_chat_tools_multiturn.py
+    test_id: test_chat_full_tool_loop_preserves_call_ids
+
+  - id: CHAT-03
+    priority: P0
+    owner: api-compat
+    component: openai-chat
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - parallel tool calls match by id regardless of result arrival order
+      - duplicate function names remain distinct by call id
+    evidence_paths:
+      - tests/api_compat/tests/test_chat_tools_multiturn.py
+    test_id: test_chat_parallel_tool_calls_match_by_id
+
+  - id: CHAT-04
+    priority: P0
+    owner: api-compat
+    component: openai-chat
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - streamed tool id/name arrive in the initial fragment
+      - argument fragments split across JSON escape boundaries reassemble exactly
+      - partial JSON is not treated as an executable tool payload
+    evidence_paths:
+      - tests/api_compat/tests/test_chat_stream.py
+    test_id: test_chat_streamed_tool_argument_fragments
+
+  - id: CHAT-05
+    priority: P0
+    owner: api-compat
+    component: openai-chat
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - stream_options.include_usage true yields usage-only choices empty chunk over HTTP
+      - parsers must not index empty choices
+      - omitted and false include_usage still settle terminal usage via accepted provider variants
+    evidence_paths:
+      - tests/api_compat/tests/test_chat_tools_multiturn.py
+      - tests/api_compat/harness/oracles.py
+    test_id: test_chat_include_usage_empty_choices_http
+
+  - id: CHAT-06
+    priority: P1
+    owner: api-compat
+    component: openai-chat
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: blocked
+    assertions:
+      - tool_choice auto/none/required/named and parallel_tool_calls matrix beyond smoke coverage
+      - omitted tools requests do not invent tool_choice
+    rationale: Deferred beyond Wave 1 P0; expand tool_choice/parallel_tool_calls matrix in a follow-up linked to issue #94.
+
+  - id: CHAT-07
+    priority: P1
+    owner: api-compat
+    component: openai-chat
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: blocked
+    assertions:
+      - function parameter schemas including nested objects enums nullable and ref are not mutated on native chat
+    rationale: Deferred beyond Wave 1 P0; strict-output/schema fidelity matrix tracked under issue #94 follow-up.
+
+  - id: CHAT-08
+    priority: P1
+    owner: api-compat
+    component: openai-chat
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: blocked
+    assertions:
+      - response_format json_object and json_schema are forwarded on native chat
+      - finish_reason length and content-filter remain distinguishable from stop
+    rationale: Deferred beyond Wave 1 P0; structured-output and refusal/content-filter matrix tracked under issue #94 follow-up.
+
+  - id: CHAT-09
+    priority: P1
+    owner: api-compat
+    component: openai-chat
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: blocked
+    assertions:
+      - max_tokens and max_completion_tokens precedence for chat target encoding
+      - invalid zero/negative caps reject before upstream
+    rationale: Deferred beyond Wave 1 P0; token-cap precedence already covered in Go dialect tests; HTTP matrix follow-up under issue #94.
+
+  - id: CHAT-10
+    priority: P1
+    owner: api-compat
+    component: openai-chat
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: blocked
+    assertions:
+      - temperature top_p seed n and stop reach upstream unchanged
+      - store and metadata are stripped on provider passthrough by design
+    rationale: Deferred beyond Wave 1 P0; sampling/passthrough stripping follow-up under issue #94.
