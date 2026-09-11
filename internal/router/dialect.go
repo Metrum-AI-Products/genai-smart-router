@@ -17,6 +17,10 @@ func decodeRequest(dialect string, body []byte, h http.Header) (*IRRequest, erro
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, err
 	}
+	// json.Unmarshal accepts top-level null into a nil map; treat it as invalid.
+	if raw == nil {
+		return nil, fmt.Errorf("request body must be a JSON object")
+	}
 	req := &IRRequest{Raw: raw}
 	if v, _ := raw["model"].(string); v != "" {
 		req.Model = v
