@@ -165,6 +165,19 @@ Make routing changes only when the evidence maps to the model-group contract:
 
 For config-only rollback, restore the timestamped config backup, restart the router, verify `/readyz`, confirm local and remote config hashes when applicable, and rerun the failing smoke or evaluation slice. For a targeted weight change, patch the group with structured YAML, validate config, run router-level smokes for affected request shapes, and regenerate the usage/report excerpt for the rollout window.
 
+## Same-Group Different-Upstream Proof
+
+Offline gate: `make proof-routing` runs
+`TestProofRoutingSameGroupDifferentUpstream` against mock upstreams and compares
+projected `/admin/reports/api/request-evidence` fields to
+`testdata/proof/expected.json`. The committed golden shows one requested group
+(`proof-routing`) selecting `cheap-summarizer` for the trivial summarize fixture
+and `validated-coder` for the code/tool fixture under `dynamic_score`.
+
+Keep the public curl example labeled as illustrative against a pre-warmed
+deployment. Cold-start weights and default affinity can pin both requests; the
+Make target is the reproducible proof.
+
 ## Public Playbook
 
 The public customer-facing version is in `docs-site/docs/evaluation/prove-router-quality.md`. Keep it generic, placeholder-safe, and clear that Harbor is one harness rather than a requirement.

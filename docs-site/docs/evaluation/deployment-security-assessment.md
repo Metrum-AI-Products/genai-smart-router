@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Deployment Security Assessment
 
-Use this checklist to assess a Metrum AI Router deployment before production rollout or after a major routing, provider, auth, or telemetry change.
+Use this checklist to assess a Metrum Smart Router deployment before production rollout or after a major routing, provider, auth, or telemetry change.
 
 ## Secrets And Authentication
 

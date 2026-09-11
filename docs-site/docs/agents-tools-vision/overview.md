@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Agents, Tools, And Vision
 
-Metrum AI Router keeps agent clients on stable caller-facing model groups while filtering each request to upstream targets that have passed the exact API-skin and capability checks needed for that turn.
+Metrum Smart Router keeps agent clients on stable caller-facing model groups while filtering each request to upstream targets that have passed the exact API-skin and capability checks needed for that turn.
 
 This matters because ordinary text, function tools, client tools, image input, structured outputs, and reasoning controls are separate compatibility surfaces. A model that works for one surface is not automatically safe for another.
 

@@ -3,11 +3,12 @@ title: Solution Brief
 doc_type: explanation
 ---
 
-# Metrum AI Router Solution Brief
+# Metrum Smart Router Solution Brief
 
-Metrum AI Router is a self-managed, provider-neutral gateway for teams that
-need stable client APIs with deployment-owned routing, access control, budgets,
-and operational evidence.
+Metrum Smart Router is a self-managed, provider-neutral LLM smart router for
+teams that need stable client APIs with deployment-owned routing, access
+control, budgets, and operational evidence. Gateway functions underneath
+routing keep provider keys, quotas, and usage evidence enforceable.
 
 Clients use OpenAI-compatible or Anthropic-compatible APIs and request a model
 group rather than a raw upstream model. The router authenticates the caller,

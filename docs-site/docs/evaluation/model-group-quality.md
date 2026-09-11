@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Model Group Quality Criteria
 
-Model groups are the caller-facing quality and cost contracts in Metrum AI Router. A group name should mean something operational: what work it is intended to handle, what clients can use it, what modalities and tools it supports, and what outcome it must preserve while the router optimizes cost, latency, and provider mix behind the scenes.
+Model groups are the caller-facing quality and cost contracts in Metrum Smart Router. A group name should mean something operational: what work it is intended to handle, what clients can use it, what modalities and tools it supports, and what outcome it must preserve while the router optimizes cost, latency, and provider mix behind the scenes.
 
 This is the key product principle: not every task needs the most expensive model. Expensive targets should be reserved for workloads that require them. Simpler text, extraction, summarization, and routine coding work can often be served by lower-cost routes when validation shows the group still meets its objective.
 

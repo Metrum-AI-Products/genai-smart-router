@@ -4299,7 +4299,7 @@ func TestEmbeddedDocsAreServedUnderDocs(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), "Metrum AI Router") {
+	if !strings.Contains(rr.Body.String(), "Metrum Smart Router") {
 		t.Fatalf("root did not serve docs HTML: %s", rr.Body.String())
 	}
 	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {

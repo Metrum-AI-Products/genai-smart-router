@@ -4,7 +4,7 @@
 
 ## Scope
 
-This record captures only technology-objective evidence visible in the checked-in Metrum AI Router source and documentation as collected on 2026-09-03. It is not evidence of an approved organization-wide objective register, achievement of a target, or management review.
+This record captures only technology-objective evidence visible in the checked-in Metrum Smart Router source and documentation as collected on 2026-09-03. It is not evidence of an approved organization-wide objective register, achievement of a target, or management review.
 
 ## Evidence collected
 
@@ -24,7 +24,7 @@ This record captures only technology-objective evidence visible in the checked-i
 
 ## Evidence gaps and compliance-owner handoff
 
-- **Approved technology objectives:** No checked-in approved objective register, objective statement, approval record, or linkage from organization objectives to Metrum AI Router objectives was found. The compliance/ISMS owner should supply the approved objectives, version, approver, effective period, and mapping to the applicable SOC 2 technology-objective governance control and ISO/IEC 27001 information-security-objectives control.
+- **Approved technology objectives:** No checked-in approved objective register, objective statement, approval record, or linkage from organization objectives to Metrum Smart Router objectives was found. The compliance/ISMS owner should supply the approved objectives, version, approver, effective period, and mapping to the applicable SOC 2 technology-objective governance control and ISO/IEC 27001 information-security-objectives control.
 - **Measures and targets:** The repository requires per-model-group quality and operational targets but does not provide approved organization-level target values, baselines, thresholds, or measurement results. The product/engineering control owner should supply the approved metric definitions, data source, baseline, target, and reporting period. Example validation values in `docs/MODEL_GROUP_CONTRACTS.md` lines 36–45 are configuration examples, not evidence of achieved objectives.
 - **Cadence and review:** A release-triggered package-review requirement is evidenced, but no periodic technology-objectives review cadence, meeting record, management review, or resulting decision is present. The compliance/ISMS owner should provide the review schedule and retained review or management-review evidence.
 - **Accountability:** `docs/MODEL_GROUP_CONTRACTS.md` requires defining a workload owner, but no named owner or responsibility assignment for the organization-wide objectives is present. The engineering leadership or ISMS owner should supply the accountable role/person and responsibility record.

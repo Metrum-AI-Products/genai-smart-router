@@ -138,11 +138,11 @@ func writeFallbackDocsStatus(w http.ResponseWriter, status int) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Metrum AI Router Docs</title>
+  <title>Metrum Smart Router Docs</title>
 </head>
 <body>
   <main>
-    <h1>Metrum AI Router Docs</h1>
+    <h1>Metrum Smart Router Docs</h1>
     <p>Run <code>make docs-build</code> before release builds to embed the full Docusaurus site.</p>
     <p>Solution Brief</p>
   </main>

@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Observability
 
-Metrum AI Router exposes operational signals for health, readiness, metrics, logs, usage reporting, and request-level diagnostics. These surfaces are designed to help operators answer two questions: whether callers are receiving reliable service, and which upstream provider/model paths explain latency, cost, errors, or fallback pressure.
+Metrum Smart Router exposes operational signals for health, readiness, metrics, logs, usage reporting, and request-level diagnostics. These surfaces are designed to help operators answer two questions: whether callers are receiving reliable service, and which upstream provider/model paths explain latency, cost, errors, or fallback pressure.
 
 ## Surfaces
 

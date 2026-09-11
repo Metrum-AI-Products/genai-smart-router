@@ -3,11 +3,33 @@ title: Learned routing policy
 doc_type: explanation
 ---
 
+# Learned Routing Policy
+
 Learned Routing Policy (LRP) recommends the lowest-cost eligible target predicted
 to meet an operator-defined quality floor. Different models are good at different
 jobs and to different degrees. Teams establish the cheapest sufficient model mix
 using objective outcomes, such as unit tests, extraction accuracy, tool-call
 correctness, browser tasks or product acceptance tests.
+
+## What it does and what evidence it produces
+
+LRP trains per-target quality and output-token models offline, calibrates those
+predictions, evaluates them on a held-out split, and serves a versioned bundle
+through the router's `strategy: external` interface. For each request the router
+still authenticates the caller, filters targets for request shape and contract
+gates, then asks LRP only among eligible targets. The service returns a target
+recommendation and bounded labels; the router records the decision as usage and
+request-evidence telemetry.
+
+Evidence operators can inspect includes:
+
+- held-out quality, cost, floor-violation, and baseline comparisons;
+- calibration and coverage gates that must pass before promotion;
+- shadow-mode recommendations that do not change serving traffic;
+- selected provider/model, policy labels, and request IDs on live or staging traffic.
+
+The operator/maintainer source of truth remains
+[docs/LEARNED_ROUTING_POLICY.md](https://github.com/metrum-ai/router/blob/main/docs/LEARNED_ROUTING_POLICY.md).
 
 ## What callers request
 
@@ -25,7 +47,7 @@ quality. Unknown pricing cannot make a target appear free. Fallbacks remain
 within eligible targets. Predictions are estimates; a quality floor is an
 operator's selection criterion, not a guarantee that every answer passes.
 
-## Training and evaluation
+## Training, calibration, and held-out evaluation
 
 The standalone `lrp` training CLI collects approved datasets, fans requests out to
 candidate targets, verifies or judges responses, builds shared features, trains
@@ -38,6 +60,10 @@ and threshold sensitivity without exporting request content. See the operator
 Small or undertrained models are excluded. Model bundles bind their embedding
 artifacts and feature definitions for consistent training and serving.
 
+Protected datasets and judgments stay in operator-controlled storage. Ordinary
+router request logs contain metadata and cannot reconstruct prompts. Third-party
+judging requires operator approval for that content transfer.
+
 Evaluation compares learned decisions with cheapest, anchor, weighted-random,
 strength-only and oracle baselines. Operators review quality, stored cost,
 coverage, floor violations, calibration and performance, including response
@@ -45,10 +71,31 @@ duration and time to first byte. When aggregator backends expose an actual
 upstream serving provider, evaluation reports outcome, cost and latency variance
 by that identity while preserving the exact catalog model id and marking missing
 provider evidence separately. A cost saving is useful when workload outcomes
-remain acceptable. Synthetic demonstrations prove wiring and evaluate gates;
-provider-backed outcomes and actual embedding latency establish promotion evidence.
-The shipped sample configuration is the source of truth for catalog pricing
-evidence; live experiments refresh provider metadata before recording costs.
+remain acceptable.
+
+### Checked-in synthetic holdout snapshot
+
+The following figures come from the checked-in synthetic public training snapshot
+dated 2026-09-09 in
+[`docs/evidence/learned-routing-policy/public-training.json`](https://github.com/metrum-ai/router/blob/main/docs/evidence/learned-routing-policy/public-training.json)
+(`schema_version: lrp.public-training.v1`, seed `42`, 800 requests, splits
+569 / 118 / 113, quality floor `0.8`). `promotable` is `false`. Gates
+`cost_vs_anchor` and `real_data_and_embedding` failed. These numbers are wiring
+and gate evidence only.
+
+| Policy | Holdout n | Quality mean | Floor violation rate | Observed cost USD |
+|---|---:|---:|---:|---:|
+| LRP | 113 | 1.0 | 0.0 | 0.1507895 |
+| Oracle | 113 | 1.0 | 0.0 | 0.1507895 |
+| Always anchor / BT | 113 | 1.0 | 0.0 | 0.151829 |
+| Weighted random | 113 | 0.7168141592920354 | 0.2831858407079646 | 0.076697 |
+| Always cheapest | 113 | 0.48672566371681414 | 0.5132743362831859 | 0.0151829 |
+
+Command blocks, router YAML, sidecar notes, and additional evidence tables:
+[Train And Serve Learned Routing Policy](lrp-train-and-serve.md).
+After installing the service project with uv, each command can be invoked as
+`uv run --project services/learned-routing-policy --locked lrp COMMAND`
+(`collect`, `fanout`, `judge`, `featurize`, `train`, `eval`, `validate`, `serve`).
 
 ## A complete workload-to-routing scenario
 
@@ -109,18 +156,23 @@ approved workload dataset
   → validated bundle → shadow → staging enforcement → workload acceptance
 ```
 
-The CLI exposes `collect`, `fanout`, `judge`, `featurize`, `train`, `eval`,
-`validate` and `serve`. Copy-paste command blocks, router YAML, sidecar notes,
-and the checked-in synthetic evidence tables are in
-[Train And Serve Learned Routing Policy](lrp-train-and-serve.md).
-After installing the service project with uv, each command
-can be invoked as `uv run --project services/learned-routing-policy --locked lrp COMMAND`.
-
 Each target needs at least 200 training rows to participate in learned selection.
 This is a minimum sample count, not a guarantee of workload coverage. Inspect
 held-out coverage, calibration, quality, spend and performance against all six
 baselines. Review the quality-floor sweep before choosing a floor. Failed gates
 remain visible and prevent promotion.
+
+## How it plugs in as `strategy: external`
+
+Configure the model group with `strategy: external` and point
+`external_policy.url` at the loopback LRP serve endpoint in the router's network
+namespace. Use `mode: shadow` first so recommendations are recorded while the
+router continues serving the configured baseline order, then move a restricted
+staging group to `enforce` only after workload and security acceptance.
+
+See [External Routing Policy Service](../configuration/external-routing-policy)
+for the request/response contract, allow-lists, timeouts, and fail-closed
+behavior.
 
 ## Recorded case study and performance limits
 
@@ -182,7 +234,13 @@ is known, the service uses first eligible order and records that condition.
 Policy failures produce `502 routing-policy-error` when the operator selected
 fail-closed behavior. See [Error Responses](../reference/errors.md).
 
-## Staging and rollback
+## Rollout: staging, promotion, and rollback
+
+Synthetic demonstrations prove wiring and evaluate gates; they do **not**
+authorize live target promotion. Provider-backed outcomes and actual embedding
+latency establish promotion evidence. The shipped sample configuration is the
+source of truth for catalog pricing evidence; live experiments refresh provider
+metadata before recording costs.
 
 Native external-policy shadow mode records the learned recommendation while the
 router serves first eligible configured order. This baseline differs from weighted

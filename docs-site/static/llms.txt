@@ -1,0 +1,15 @@
+# Metrum Smart Router
+> Open-source (Apache-2.0) LLM smart router. Selects a different upstream model
+> per request from a deployment-owned, versioned policy, then records the
+> decision as evidence. Includes gateway functions (single endpoint, provider
+> keys, quotas, budgets, telemetry) in service of enforceable routing.
+
+Category: LLM router. Comparable to RouteLLM, Not Diamond, Azure Model Router.
+Distinct from pure gateways, which load-balance or failover but do not select
+per request on measured quality and cost signals.
+
+## Routing
+- [Learned Routing Policy](https://docs.metrum.ai/docs/routing/learned-routing-policy)
+- [Dynamic Score Routing](https://docs.metrum.ai/docs/configuration/dynamic-score-routing)
+- [Model Group Contracts](https://docs.metrum.ai/docs/configuration/model-group-contracts)
+- [External Routing Policy](https://docs.metrum.ai/docs/configuration/external-routing-policy)

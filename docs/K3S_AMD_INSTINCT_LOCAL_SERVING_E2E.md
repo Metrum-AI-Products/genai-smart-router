@@ -6,9 +6,9 @@
 **Out of scope:** Shadeform, Fleet, Metrum EKS, llm-d / GAIE, cloud LLM APIs.
 
 This document is the operator runbook **and** the architecture/usage reference for
-running Metrum AI Router in front of in-cluster vLLM/ROCm on AMD Instinct.
+running Metrum Smart Router in front of in-cluster vLLM/ROCm on AMD Instinct.
 Client applications never talk to vLLM directly in the intended workflow. They
-call Metrum AI Router with a **router model-group name** and a **router caller
+call Metrum Smart Router with a **router model-group name** and a **router caller
 token**.
 
 The current blueprint CLI does not implement an AMD profile. Serving uses
@@ -33,7 +33,7 @@ flowchart LR
   subgraph node [On-prem k3s node]
     PF[optional localhost port-forward :18080]
     subgraph ns [namespace smart-llmrouter]
-      R[Metrum AI Router<br/>no GPU]
+      R[Metrum Smart Router<br/>no GPU]
       T[vllm-tiny<br/>amd.com/gpu: 1]
       C[vllm-chat<br/>amd.com/gpu: 1]
       D[vllm-coder<br/>amd.com/gpu: 1]
@@ -60,7 +60,7 @@ flowchart LR
 |---|---|
 | AMD GPU Operator | Advertises `amd.com/gpu` (device-plugin mode). Does **not** serve tokens. Host-owned ROCm/amdgpu stays in place when `deviceConfig.spec.driver.enable` is `false`. |
 | vLLM Deployments | One GPU each. OpenAI-compatible `/v1` on port 8000. `--served-model-name` equals the router group. |
-| Metrum AI Router | Auth (SHA-256 of caller token), allow-list, static routing to in-cluster Service DNS, license check, usage SQLite, `/readyz`. **No** `amd.com/gpu` request. |
+| Metrum Smart Router | Auth (SHA-256 of caller token), allow-list, static routing to in-cluster Service DNS, license check, usage SQLite, `/readyz`. **No** `amd.com/gpu` request. |
 | Helm wrapper | Issues a self-managed Ed25519 license on the operator host, writes Secret `smart-llmrouter-secrets` (`config.yaml`, `env.json`, `license.json`, `license.pub`), installs the generated chart. |
 
 ### Request path
@@ -360,7 +360,7 @@ kubectl -n smart-llmrouter exec deploy/vllm-tiny -- python3 -c \
   'import urllib.request,json; print(json.load(urllib.request.urlopen("http://127.0.0.1:8000/v1/models"))["data"][0]["id"])'
 ```
 
-## 7. Install Metrum AI Router (Helm + license)
+## 7. Install Metrum Smart Router (Helm + license)
 
 ```bash
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml

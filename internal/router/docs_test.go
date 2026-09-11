@@ -39,6 +39,33 @@ func TestDocsHandlerServesEmbedded404ForMissingDocsPage(t *testing.T) {
 	}
 }
 
+func TestDocsHandlerServesLLMsTxtWhenEmbedded(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/docs/llms.txt", nil)
+	rr := httptest.NewRecorder()
+	docsHandler().ServeHTTP(rr, req)
+
+	// Without a docs build the file may be missing; when present it must be plain text.
+	if rr.Code == http.StatusNotFound {
+		t.Skip("docsdist has no llms.txt until make docs-build embeds docs-site/static/llms.txt")
+	}
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	ct := rr.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/plain") {
+		t.Fatalf("content-type=%q, want text/plain", ct)
+	}
+	body := rr.Body.String()
+	for _, required := range []string{"# Metrum Smart Router", "Category: LLM router", "Learned Routing Policy"} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("llms.txt missing %q: %s", required, body)
+		}
+	}
+	if strings.Contains(body, "<html") {
+		t.Fatalf("llms.txt served HTML fallback: %s", body)
+	}
+}
+
 func TestSecurityTextHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/security.txt", nil)
 	rr := httptest.NewRecorder()

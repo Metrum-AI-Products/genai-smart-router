@@ -1,0 +1,7 @@
+{
+  "model": "proof-routing",
+  "messages": [
+    {"role": "user", "content": "summarize this: hello world"}
+  ],
+  "max_tokens": 16
+}

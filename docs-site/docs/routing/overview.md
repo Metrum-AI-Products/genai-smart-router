@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Routing
 
-Metrum AI Router lets callers request a stable, deployment-defined model group while operators change the provider and model mix behind that group. The caller sends `model: "<group-name>"`; the router checks caller access, filters the group's targets for the request shape, applies the configured routing strategy, and forwards the request to one eligible upstream target.
+Metrum Smart Router lets callers request a stable, deployment-defined model group while operators change the provider and model mix behind that group. The caller sends `model: "<group-name>"`; the router checks caller access, filters the group's targets for the request shape, applies the configured routing strategy, and forwards the request to one eligible upstream target.
 
 Group names are deployment-defined. Names such as `fast`, `high`, `big-coder`, or `vision` may appear in examples from a reference or hosted deployment, but they are not product-required names. Callers should discover allowed groups from [`/v1/models`](../getting-started/available-models).
 
@@ -35,16 +35,18 @@ Routing](../configuration/dynamic-score-routing).
 
 | Strategy | Use When | Notes |
 | --- | --- | --- |
-| Static | One exact upstream target should serve the group. | Best for smoke groups, canaries, and tightly controlled workloads. |
-| Weighted | Validated targets should share traffic by configured percentages. | Common choice for conservative production mixes and gradual promotion. |
-| Failover | Targets should be tried in a deterministic priority order. | Useful when one target is primary and others are fallback only. |
+| Learned policy | The router should pick the cheapest eligible target that clears a measured quality floor, using per-target models calibrated on your own outcome data. | See [Learned Routing Policy](./learned-routing-policy). |
 | Dynamic score | The router should adapt within the group using cost, latency, throughput, reliability, request shape, and validation signals. | See [Dynamic Score Routing](../configuration/dynamic-score-routing). |
-| TypeScript policy | Routing policy should be deployment-local and programmable inside the router process. | See [TypeScript Routing Policy](../configuration/routing-typescript). |
 | External policy | Routing policy should live in a trusted standalone service with its own deployment and observability. | See [External Routing Policy Service](../configuration/external-routing-policy). |
+| TypeScript policy | Routing policy should be deployment-local and programmable inside the router process. | See [TypeScript Routing Policy](../configuration/routing-typescript). |
+| Model-group contract | The group needs explicit workload requirements, quality floors, and validation gates before selection. | A contract is a pre-filter used with another strategy, not a standalone selector. See [Model Group Contracts](../configuration/model-group-contracts). |
+| Failover | Targets should be tried in a deterministic priority order. | Useful when one target is primary and others are fallback only. |
+| Weighted | Validated targets should share traffic by configured percentages. | Common choice for conservative production mixes and gradual promotion. |
+| Static | One exact upstream target should serve the group. | Best for smoke groups, canaries, and tightly controlled workloads. |
 
 Use an optional model-group `contract` together with one of the strategies above when the group needs explicit workload requirements, quality floors, and validation gates before selection. A contract is a pre-filter, not a seventh selector. See [Model Group Contracts](../configuration/model-group-contracts).
 
-Legacy compatibility selectors named `latency`, `cost`, and `semantic` still parse for older configs. They are stubs: `latency`/`cost` rank configured integer fields, and `semantic` uses keyword classification, not embeddings or live quality observations. Do not treat them as mature adaptive routers. Prefer `dynamic_score` for config-only observed-signal scoring, or `script`/`external` for programmable policy.
+Legacy compatibility selectors are documented in [Deprecated Selectors](../reference/deprecated-selectors). Prefer `dynamic_score` for config-only observed-signal scoring, or `script`/`external` for programmable policy.
 
 ## Capability Filtering
 

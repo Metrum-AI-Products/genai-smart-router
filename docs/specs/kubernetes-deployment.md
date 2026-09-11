@@ -2,7 +2,7 @@
 
 **Status:** Proposed  
 **Date:** 2026-08-28  
-**Applies to:** Metrum AI Router release builds
+**Applies to:** Metrum Smart Router release builds
 
 ## Scope and non-goals
 
@@ -86,7 +86,7 @@ A feature that cannot run on the air-gapped single node MUST NOT ship.
 ```mermaid
 flowchart LR
     Client[Client] --> Semantic[vLLM Semantic Router]
-    Semantic --> Router[Metrum AI Router]
+    Semantic --> Router[Metrum Smart Router]
     Router --> Pool[InferencePool endpoint picker\nllm-d or GIE]
     Pool --> Replica[Serving replica]
     GPU[GPU Operator] --> Replica
@@ -96,11 +96,11 @@ flowchart LR
 | Layer | Does | Does not do |
 |---|---|---|
 | vLLM Semantic Router | Classifies a request and advises a routing choice. | It does not enforce caller quotas, choose a model group, own provider credentials, or choose a serving replica. |
-| Metrum AI Router | Authenticates the caller, enforces caller limits, selects a model group and target, records usage, and calls the selected upstream. | It does not schedule GPUs, tune replica topology, or select a replica inside an inference pool. |
+| Metrum Smart Router | Authenticates the caller, enforces caller limits, selects a model group and target, records usage, and calls the selected upstream. | It does not schedule GPUs, tune replica topology, or select a replica inside an inference pool. |
 | llm-d or Gateway API Inference Extension endpoint picker | Selects a replica inside an `InferencePool`. | It does not choose the caller's model group or enforce router caller contracts. |
 | GPU and Network Operators | Own node drivers, devices, RDMA, and network operands. | They do not make model-routing decisions or own router configuration. |
 
-This boundary makes llm-d complementary. Metrum AI Router selects the target pool. llm-d
+This boundary makes llm-d complementary. Metrum Smart Router selects the target pool. llm-d
 selects a healthy replica in that pool.
 
 ## Level 0: router
@@ -515,16 +515,16 @@ Without LMCache, the selected serving target continues without the cache integra
 ### llm-d
 
 Use llm-d `v0.9` or later for disaggregated serving. Install its Helm charts as the
-llm-d project documents. Do not add a Metrum AI Router controller for llm-d.
+llm-d project documents. Do not add a Metrum Smart Router controller for llm-d.
 
-Metrum AI Router selects the model group and pool. llm-d selects the replica within the
+Metrum Smart Router selects the model group and pool. llm-d selects the replica within the
 pool. llm-d topology and disaggregation policies remain llm-d concerns.
 
 ### NVIDIA Dynamo
 
 Use Dynamo `v1.4.1` or later. New Dynamo graph resources use
 `nvidia.com/v1beta1` `DynamoGraphDeployment`. DynamoGraphDeploymentRouter may already
-perform profiling-driven topology tuning. Metrum AI Router MUST NOT duplicate that tuning.
+perform profiling-driven topology tuning. Metrum Smart Router MUST NOT duplicate that tuning.
 
 A future discovery adapter may use the Dynamo frontend endpoint after router config
 supports discovery references. Without that adapter, configure the frontend as a normal
@@ -534,14 +534,14 @@ external provider URL.
 
 Use KServe `v0.20.0` or later when KServe is the selected serving system. Gateway API
 `HTTPRoute` uses `gateway.networking.k8s.io/v1`. KServe owns its serving resources.
-Metrum AI Router treats the exposed endpoint as a normal upstream after the configuration
+Metrum Smart Router treats the exposed endpoint as a normal upstream after the configuration
 is written.
 
 ### Kueue
 
 Use current Kueue for accelerator workload admission. Its terms `nominalQuota`,
 `borrowingLimit`, `lendingLimit`, `cohort`, and `preemption` can guide future caller
-contention design. Kueue does not admit router HTTP requests. Metrum AI Router continues to
+contention design. Kueue does not admit router HTTP requests. Metrum Smart Router continues to
 enforce `callers[].rate`, `traffic_shape`, `quota`, and `key`.
 
 ### External Metrics adapter

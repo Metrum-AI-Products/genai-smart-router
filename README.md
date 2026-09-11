@@ -1,8 +1,15 @@
-# Metrum AI Router
+# Metrum Smart Router
 
-**Metrum AI Router** is an open-source AI model gateway: OpenAI and Anthropic
-dialects in, any provider or local model out; configurable model groups,
-per-caller quotas, usage attribution, and optional decision diagnostics.
+**Metrum Smart Router** is an open-source LLM smart router: it selects a different
+upstream model per request from a policy you own and version, then records why.
+Selection runs on request shape, capability contracts, measured
+cost/latency/reliability, and optionally a Learned Routing Policy trained on
+your own outcome data.
+
+Routing is the product. The gateway functions underneath it — one
+OpenAI/Anthropic-compatible endpoint, server-side provider keys, quotas,
+budgets, caching, PII redaction, per-request cost attribution — exist so the
+routing decision is enforceable and auditable.
 Apache-2.0, no license key required by default, runs on your hardware.
 
 Works with Claude Code and Codex CLI. Routes to Anthropic, OpenAI, Replicate,
@@ -44,7 +51,7 @@ unary upstream response.
 ## Software License And Notices
 
 The repository-root [LICENSE](LICENSE) contains the Apache License 2.0 terms
-for Metrum AI Router first-party content. Keep it together with
+for Metrum Smart Router first-party content. Keep it together with
 [NOTICE](NOTICE), the dependency and asset inventory in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the model-term boundaries
 in [MODEL_LICENSES.md](MODEL_LICENSES.md) when copying or redistributing a
@@ -58,10 +65,11 @@ copyright license and not a replacement for any of the files above. See
 [docs/LICENSE.md](docs/LICENSE.md) for the complete scope map and Apache terms.
 
 Current MVP capabilities:
-- Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses ingress.
-- Anthropic token-count estimate endpoint for Claude Code startup.
-- Bearer-token auth using configured SHA-256 token hashes.
-- Config-driven model groups with shipped strategies: `static`, `weighted`, `failover`, `dynamic_score`, TypeScript `script`, and `external` policy services. External policy `shadow`, `enforce`, and `baseline` modes provide explicit promotion and rollback while selection remains limited to post-eligibility targets. Optional model-group `contract` gates run before strategy selection. Legacy selectors named `latency`, `cost`, and `semantic` remain for compatibility only (configured RPM/cost ranks and stub keyword classification); they are not observed-signal routers. `strategy: intelligent` is a licensed baseline-only config contract, not an active decision-model picker.
+
+### Routing
+
+- Config-driven model groups with decision-making strategies first: `dynamic_score`, TypeScript `script`, and `external` policy services (including Learned Routing Policy). Optional model-group `contract` gates and request-shape eligibility filtering run before strategy selection. Fallback stays inside the requested group.
+- External policy `shadow`, `enforce`, and `baseline` modes provide explicit promotion and rollback while selection remains limited to post-eligibility targets.
 - Dynamic-score conversation affinity is enabled by default, caller-isolated,
   process-local, TTL-bounded, and subordinate to current eligibility.
 - TypeScript routing scripts for custom model-selection logic inside the Go
@@ -71,6 +79,13 @@ Current MVP capabilities:
   with safe request, caller, target, pricing, tool, and modality context,
   connection reuse, bounded timeouts, and reversible baseline/shadow/enforce
   modes.
+- Conservative traffic-mix strategies remain available: `static`, `weighted`, and `failover`.
+
+### Gateway and governance
+
+- Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses ingress.
+- Anthropic token-count estimate endpoint for Claude Code startup.
+- Bearer-token auth using configured SHA-256 token hashes.
 - Separate caller dialects from upstream provider adapters: callers can use
   Anthropic/OpenAI wire formats while targets route to Anthropic,
   OpenAI-compatible, Replicate, or evidence-gated unary-text Gemini
@@ -86,6 +101,71 @@ Current MVP capabilities:
 - Disk-persisted quota/key state.
 - JSONL request logs using the SRS schema.
 - Metrics-admin-only Prometheus-compatible `/metrics` with caller/user/project labels.
+- Usage reports, admin browser reports, and optional signed runtime-policy licensing.
+
+Legacy selectors named `latency`, `cost`, and `semantic`, plus licensed
+`strategy: intelligent`, are documented under
+[Deprecated Selectors](docs-site/docs/reference/deprecated-selectors.md).
+
+## Proof: same group, different upstream
+
+One caller-facing model group can select different upstream models for different
+request shapes. The committed offline proof seeds observations, disables
+affinity/cache, posts `testdata/proof/trivial.json` and
+`testdata/proof/complex.json` through `dynamic_score`, then projects
+`/admin/reports/api/request-evidence` fields:
+
+```bash
+make proof-routing
+```
+
+Expected output (generated by the mock harness, not hand-written):
+
+```json
+[
+  {
+    "modelGroup": "proof-routing",
+    "requestedModel": "proof-routing",
+    "selectedCandidateIndex": 0,
+    "selectedModel": "cheap-summarizer",
+    "selectedProvider": "mock",
+    "strategy": "dynamic_score",
+    "termNames": ["summarize_cheap"]
+  },
+  {
+    "modelGroup": "proof-routing",
+    "requestedModel": "proof-routing",
+    "selectedCandidateIndex": 1,
+    "selectedModel": "validated-coder",
+    "selectedProvider": "mock",
+    "strategy": "dynamic_score",
+    "termNames": ["code_validated"]
+  }
+]
+```
+
+Illustrative curl against a **pre-warmed** router with decision telemetry and
+admin drilldown enabled (cold-start weights and default affinity can pin both
+requests to one target; use `make proof-routing` as the reproducible gate):
+
+```bash
+for f in testdata/proof/trivial.json testdata/proof/complex.json; do
+  RID=$(curl -sS "$ROUTER/v1/chat/completions" \
+        -H "Authorization: Bearer $ROUTER_TOKEN" \
+        -H 'Content-Type: application/json' -d @"$f" \
+        -D - -o /dev/null | awk -F': ' '/[Xx]-Request-Id/{print $2}' | tr -d '\r')
+  curl -sS "$ROUTER/admin/reports/api/request-evidence?request_id=$RID" \
+       -u "$ADMIN_USER:$ADMIN_PASS" | jq '{
+         requestedModel: .request.requestedModel,
+         modelGroup: .request.modelGroup,
+         selectedProvider: .request.provider,
+         selectedModel: .request.model,
+         strategy: .decisionTelemetry.routingDecisions[0].strategy,
+         selectedCandidateIndex: .decisionTelemetry.routingDecisions[0].selectedCandidateIndex,
+         termNames: [.decisionTelemetry.dynamicScoreTerms[] | select(.selected==true) | .termName]
+       }'
+done
+```
 
 ## Quick Start From Source
 
@@ -292,7 +372,7 @@ In a packaged deployment, put provider keys in `config/env.json` beside `config/
 
 ## Runtime Policy License Enforcement
 
-All Metrum AI Router first-party content is licensed under the Apache License
+All Metrum Smart Router first-party content is licensed under the Apache License
 2.0. Copyright 2026 Metrum AI, Inc. The Apache license grants the rights to use,
 modify, and distribute those materials; no EULA acceptance or runtime-policy
 file is a condition of those rights.
@@ -701,7 +781,8 @@ A demo PII-aware routing policy lives in `examples/typescript-pii-policy/`. It d
 
 ## External Routing Policy Service
 
-[Learned Routing Policy](docs/LEARNED_ROUTING_POLICY.md) adds a standalone
+[Learned Routing Policy](docs-site/docs/routing/learned-routing-policy.md)
+([operator runbook](docs/LEARNED_ROUTING_POLICY.md)) adds a standalone
 outcome-trained service and offline `lrp` CLI. It recommends the cheapest eligible
 target above a configured quality floor, with calibrated per-target models,
 protected datasets and held-out evaluation. Start with `make lrp-synthetic-demo`;
@@ -1225,7 +1306,7 @@ codex exec --ignore-user-config --ephemeral \
   -c "model=\"$ROUTER_MODEL\"" \
   -c 'model_provider="metrum-router"' \
   -c "model_catalog_json=\"$WORK/metrum-models.json\"" \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
   -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
@@ -1243,7 +1324,7 @@ codex \
   -c "model=\"$ROUTER_MODEL\"" \
   -c 'model_provider="metrum-router"' \
   -c "model_catalog_json=\"$WORK/metrum-models.json\"" \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
   -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"'
@@ -1279,7 +1360,7 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
     -c 'model="agent-tools-smoke"' \
     -c 'model_provider="metrum-router"' \
     -c 'model_catalog_json="/workspace/metrum-models.json"' \
-    -c 'model_providers.metrum-router.name="Metrum AI Router"' \
+    -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
     -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
     -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
     -c 'model_providers.metrum-router.wire_api="responses"' \
