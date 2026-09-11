@@ -6,6 +6,11 @@ license = "Apache-2.0"
 license-files = []
 classifiers = ["License :: OSI Approved :: Apache Software License"]
 requires-python = ">=3.11"
+# AGENT-01 pinned baselines for required reproducibility runs (see tests/harbor/pins.py):
+#   harbor==0.13.2   (Python >=3.12 host; install via: uv tool install 'harbor==0.13.2')
+#   codex-cli 0.153.4 (@openai/codex@0.153.4)
+#   claude-code 2.1.220
+# Canary track is separately reported current-stable and never replaces required pins.
 dependencies = []
 
 [tool.uv]

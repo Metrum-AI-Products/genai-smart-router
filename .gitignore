@@ -76,6 +76,7 @@ tests/api_compat/.venv/
 tests/harbor/.venv/
 tests/api_compat/**/__pycache__/
 tests/harbor/**/__pycache__/
+tests/harbor/.pytest_cache/
 internal/router/docsdist/*
 !internal/router/docsdist/.keep
 router-key-inventory-and-delivery-20260729.csv

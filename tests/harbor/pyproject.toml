@@ -1,6 +1,7 @@
 [project]
 name = "smart-llmrouter-harbor-local"
 version = "0.0.0"
+description = "Harbor local-task and offline agent-adapter contract tests (issue #94)."
 license = "Apache-2.0"
 license-files = []
 classifiers = ["License :: OSI Approved :: Apache Software License"]
@@ -9,6 +10,9 @@ dependencies = [
   "pytest==8.3.5",
   "PyYAML==6.0.2",
 ]
+
+[tool.uv]
+package = false
 
 [tool.pytest.ini_options]
 addopts = "-q"
