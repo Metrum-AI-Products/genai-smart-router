@@ -1,0 +1,191 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# OpenAI Responses catalog (issue #94 Wave 1) — native streaming + P0 contracts.
+cases:
+  - id: RESP-01
+    priority: P0
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - string input and item-array history reach upstream unchanged
+      - instructions are preserved
+      - tool-only output items are not assumed to be text messages
+    evidence_paths:
+      - tests/api_compat/tests/test_responses_shapes.py
+    test_id: test_responses_string_and_item_array_shapes
+
+  - id: RESP-02
+    priority: P0
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - upstream receives stream true on same-dialect native path
+      - caller observes first text event before gate release and upstream completion
+    evidence_paths:
+      - tests/api_compat/tests/test_responses_stream.py
+      - tests/api_compat/harness/scripted_upstream.py
+    test_id: test_responses_native_stream_gated_first_event
+
+  - id: RESP-03
+    priority: P0
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - created/in-progress/output-item/content-part/text/completed lifecycle is forwarded
+      - sequence numbers and item ids remain stable through the stream
+    evidence_paths:
+      - tests/api_compat/tests/test_responses_stream.py
+    test_id: test_responses_lifecycle_events_forwarded
+
+  - id: RESP-04
+    priority: P0
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - function-call argument deltas reassemble exactly
+      - output-item id and call_id remain distinct
+    evidence_paths:
+      - tests/api_compat/tests/test_responses_stream.py
+    test_id: test_responses_function_call_argument_deltas
+
+  - id: RESP-05
+    priority: P0
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - failed terminal status is forwarded without synthesizing completed
+      - incomplete terminal status is distinguishable from completed
+    evidence_paths:
+      - tests/api_compat/tests/test_responses_stream.py
+    test_id: test_responses_failed_and_incomplete_terminals
+
+  - id: RESP-06
+    priority: P0
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - terminal lifecycle settles at response.completed without requiring Chat [DONE]
+    evidence_paths:
+      - tests/api_compat/tests/test_responses_stream.py
+      - tests/api_compat/harness/oracles.py
+    test_id: test_responses_terminal_without_done_sentinel
+
+  - id: RESP-07
+    priority: P1
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: unary
+    disposition: blocked
+    assertions:
+      - previous_response_id multi-turn and stale/mismatched id behavior
+    rationale: Stateful previous_response_id matrix deferred; existing Go bridge-session coverage remains authoritative until a dedicated follow-up lands.
+
+  - id: RESP-08
+    priority: P1
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: mixed
+    disposition: blocked
+    assertions:
+      - opaque encrypted reasoning item replay without logging secrets
+    rationale: Reasoning-item opacity and redaction matrix deferred to a follow-up; do not fabricate unavailable reasoning in this slice.
+
+  - id: RESP-09
+    priority: P1
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: unary
+    disposition: blocked
+    assertions:
+      - text.format JSON Schema and reasoning/store control overrides
+    rationale: Independent schema-validation matrix deferred; Go dialect conformance covers basic text.format forwarding today.
+
+  - id: RESP-10
+    priority: P1
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: unary
+    disposition: blocked
+    assertions:
+      - namespace/custom/hosted/MCP tool support-strip-reject matrix
+    rationale: Hosted-tool policy remains in Go tests; full public HTTP matrix deferred.
+
+  - id: RESP-11
+    priority: P1
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: n/a
+    disposition: blocked
+    assertions:
+      - background/retrieve/cancel/WebSocket capability-boundary reject
+    rationale: Background and WebSocket surfaces are not advertised by the router; explicit public boundary tests deferred to avoid silent 200 claims.
+
+  - id: RESP-12
+    priority: P1
+    owner: api-compat
+    component: openai-responses
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-responses
+    transport: mixed
+    disposition: blocked
+    assertions:
+      - Responses-shaped body on Chat endpoint with stream/tools/state under the opt-in switch
+    rationale: Covered partially by Go openai_compatibility tests; public api-compat expansion deferred to avoid conflicting with the HTTP catalog slice.
