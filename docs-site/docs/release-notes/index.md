@@ -14,6 +14,13 @@ this page. The version banner, `/docs/releases`, and `/version` are the
 authoritative sources for its exact router version and build timestamp; do not
 infer the running version from a date written in documentation.
 
+## v1.4.2 - 2026-09-11
+
+Packaged republish of the merged smart-router positioning commit as GitHub Release
+`v1.4.2`. Prefer these release assets for deploy. The `v1.4.1` tag/ref was locked by
+repository immutable-release rules after the initial asset-upload failure; product
+content matches the v1.4.1 notes below.
+
 ## v1.4.1 - 2026-09-11
 
 ### Highlights
