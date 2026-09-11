@@ -14,10 +14,14 @@ from harness.scripted_upstream import ScriptedScenario, ScriptedUpstreamError
 
 def test_manifest_loads_arch_cases():
     cases = load_manifests()
-    ids = {c["id"] for c in cases}
-    assert "ARCH-01" in ids
-    assert "CHAT-USAGE-01" in ids
-    assert "RESP-DONE-01" in ids
+    by_id = {c["id"]: c for c in cases}
+    assert "ARCH-01" in by_id
+    assert "CHAT-USAGE-01" in by_id
+    assert "RESP-DONE-01" in by_id
+    assert "RESP-01" in by_id
+    assert "RESP-02" in by_id
+    assert "RESP-06" in by_id
+    assert by_id["RESP-07"]["disposition"] == "blocked"
     assert all(c["disposition"] for c in cases)
 
 

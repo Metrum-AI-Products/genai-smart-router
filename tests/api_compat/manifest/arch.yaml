@@ -98,7 +98,7 @@ cases:
     inbound_route: /v1/responses
     outbound_dialect: openai-responses
     transport: mixed
-    disposition: supported_translation
+    disposition: native_supported
     assertions:
       - tool calls preserved
       - terminal lifecycle does not require Chat [DONE]
@@ -106,7 +106,7 @@ cases:
       - tests/api_compat/tests/test_responses_smoke.py
       - tests/api_compat/harness/oracles.py
     test_id: test_responses_tool_and_sse_terminal_usage
-    rationale: Downstream SSE may be synthesized from unary upstream today; native Responses streaming is a separate linked change.
+    rationale: Same-dialect Responses streaming is native; smoke covers tools unary plus stream terminal usage.
 
   - id: RESP-DONE-01
     priority: P0

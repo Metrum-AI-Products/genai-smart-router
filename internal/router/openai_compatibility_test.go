@@ -5,6 +5,7 @@ package router
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -326,7 +327,10 @@ func TestResponsesBodyOnChatEndpointStreamingUsesResponsesSSE(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
 			t.Fatal(err)
 		}
-		writeJSON(w, http.StatusOK, responsesCompatUpstreamResponse(stringValue(upstreamBody["model"]), "stream ok"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_compat\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"responses-model\"}}\n\n")
+		fmt.Fprint(w, "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"stream ok\"}\n\n")
+		fmt.Fprint(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_compat\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"responses-model\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"total_tokens\":3}}}\n\n")
 	}))
 	defer upstream.Close()
 
@@ -351,8 +355,10 @@ func TestResponsesBodyOnChatEndpointStreamingUsesResponsesSSE(t *testing.T) {
 	if !strings.Contains(rr.Header().Get("Content-Type"), "text/event-stream") || !strings.Contains(rr.Body.String(), "response.created") {
 		t.Fatalf("not a Responses SSE stream: headers=%v body=%s", rr.Header(), rr.Body.String())
 	}
-	if upstreamBody["stream"] != false {
-		t.Fatalf("upstream stream=%#v, want router unary upstream", upstreamBody["stream"])
+	// Compatibility remaps the Chat route to Responses dialect; same-dialect
+	// native streaming asks the upstream for stream=true.
+	if upstreamBody["stream"] != true {
+		t.Fatalf("upstream stream=%#v, want true for native Responses streaming", upstreamBody["stream"])
 	}
 }
 

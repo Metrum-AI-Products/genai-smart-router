@@ -273,9 +273,10 @@ func encodeResponsesPassthrough(model string, req *IRRequest, target Target) ([]
 	if tools, ok := body["tools"]; ok {
 		body["tools"] = filterResponsesToolsForUpstream(tools)
 	}
-	// The router's first tool-capable path is unary. Non-streaming Responses
-	// payloads keep usage accounting deterministic for compatible clients.
-	body["stream"] = false
+	// Same-dialect native streaming keeps stream=true so the upstream emits
+	// provider SSE. Unary requests stay false; enableNativeUpstreamStream is a
+	// belt-and-suspenders rewrite on the native path.
+	body["stream"] = req != nil && req.Stream
 	if target.ForceStoreFalse {
 		body["store"] = false
 	}

@@ -21,7 +21,7 @@ func nativeStreamEligible(req *IRRequest, callerDialect, upstreamDialect string)
 		return false
 	}
 	switch normalizeDialect(upstreamDialect) {
-	case "openai-chat", "anthropic":
+	case "openai-chat", "openai-responses", "anthropic":
 		return true
 	default:
 		return false
@@ -166,6 +166,25 @@ func accumulateNativeSSE(resp *IRResponse, dialect string, frame []byte) (done, 
 				resp.StopReason = finishReason
 				terminal = true
 			}
+		}
+	case "openai-responses":
+		switch stringValue(payload["type"]) {
+		case "response.output_text.delta":
+			resp.Text += stringValue(payload["delta"])
+		case "response.completed", "response.failed", "response.incomplete":
+			if response, ok := payload["response"].(map[string]any); ok {
+				if id := stringValue(response["id"]); id != "" {
+					resp.ID = id
+				}
+				if upstreamModel := stringValue(response["model"]); upstreamModel != "" {
+					resp.Model = upstreamModel
+				}
+				if status := stringValue(response["status"]); status != "" {
+					resp.StopReason = status
+				}
+				mergeStreamUsage(&resp.Usage, usageFromMap(response["usage"]))
+			}
+			return true, true
 		}
 	case "anthropic":
 		switch stringValue(payload["type"]) {

@@ -40,6 +40,7 @@ class ScriptedScenario:
         content_type: str | None = None,
         split_sse_bytes: int | None = None,
         gate: threading.Event | None = None,
+        gate_after_frames: int | None = None,
         close_socket: bool = False,
         delay_s: float = 0.0,
     ) -> ScriptedScenario:
@@ -53,6 +54,7 @@ class ScriptedScenario:
                 "content_type": content_type,
                 "split_sse_bytes": split_sse_bytes,
                 "gate": gate,
+                "gate_after_frames": gate_after_frames,
                 "close_socket": close_socket,
                 "delay_s": delay_s,
             }
@@ -125,6 +127,24 @@ def default_messages_stream_frames() -> list[str]:
     ]
 
 
+def default_responses_stream_frames(*, include_done: bool = False) -> list[str]:
+    """Default Responses SSE ending at response.completed (no Chat [DONE] by default)."""
+    frames = [
+        'event: response.created\ndata: {"type":"response.created","sequence_number":1,"response":{"id":"resp_synthetic","object":"response","status":"in_progress","model":"synthetic-responses","output":[]}}\n\n',
+        'event: response.in_progress\ndata: {"type":"response.in_progress","sequence_number":2,"response":{"id":"resp_synthetic","object":"response","status":"in_progress","model":"synthetic-responses","output":[]}}\n\n',
+        'event: response.output_item.added\ndata: {"type":"response.output_item.added","sequence_number":3,"output_index":0,"item":{"id":"msg_synthetic","type":"message","status":"in_progress","role":"assistant","content":[]}}\n\n',
+        'event: response.content_part.added\ndata: {"type":"response.content_part.added","sequence_number":4,"item_id":"msg_synthetic","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}\n\n',
+        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","sequence_number":5,"item_id":"msg_synthetic","output_index":0,"content_index":0,"delta":"synthetic responses"}\n\n',
+        'event: response.output_text.done\ndata: {"type":"response.output_text.done","sequence_number":6,"item_id":"msg_synthetic","output_index":0,"content_index":0,"text":"synthetic responses"}\n\n',
+        'event: response.content_part.done\ndata: {"type":"response.content_part.done","sequence_number":7,"item_id":"msg_synthetic","output_index":0,"content_index":0,"part":{"type":"output_text","text":"synthetic responses"}}\n\n',
+        'event: response.output_item.done\ndata: {"type":"response.output_item.done","sequence_number":8,"output_index":0,"item":{"id":"msg_synthetic","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"synthetic responses"}]}}\n\n',
+        'event: response.completed\ndata: {"type":"response.completed","sequence_number":9,"response":{"id":"resp_synthetic","object":"response","status":"completed","usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}\n\n',
+    ]
+    if include_done:
+        frames.append("data: [DONE]\n\n")
+    return frames
+
+
 class FakeUpstream(BaseHTTPRequestHandler):
     """Backward-compatible synthetic upstream used by the session router fixture.
 
@@ -182,7 +202,10 @@ class FakeUpstream(BaseHTTPRequestHandler):
         if step.get("delay_s"):
             time.sleep(float(step["delay_s"]))
         gate = step.get("gate")
-        if gate is not None:
+        gate_after = step.get("gate_after_frames")
+        # Pre-response gate (existing): block before any bytes.
+        # Mid-stream gate: emit gate_after_frames first, then wait.
+        if gate is not None and gate_after is None:
             gate.wait(timeout=30)
         if step.get("close_socket"):
             self.close_connection = True
@@ -203,6 +226,14 @@ class FakeUpstream(BaseHTTPRequestHandler):
             return
 
         if isinstance(response, list):
+            if gate is not None and gate_after is not None:
+                self._write_sse_gated(
+                    response,
+                    gate=gate,
+                    after_frames=int(gate_after),
+                    status=status,
+                )
+                return
             payload = "".join(response)
             self._write_sse(payload, split_bytes=step.get("split_sse_bytes"), status=status)
             return
@@ -249,6 +280,9 @@ class FakeUpstream(BaseHTTPRequestHandler):
                 "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
             }
         elif self.path.endswith("/responses"):
+            if stream:
+                self._write_sse("".join(default_responses_stream_frames()), status=status)
+                return
             output: list[dict[str, Any]] = [
                 {
                     "type": "message",
@@ -312,6 +346,34 @@ class FakeUpstream(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
+
+    def _write_sse_gated(
+        self,
+        frames: list[str],
+        *,
+        gate: threading.Event,
+        after_frames: int,
+        status: int = 200,
+    ) -> None:
+        """Emit the first N SSE frames, wait on gate, then emit the remainder."""
+        if after_frames < 0 or after_frames > len(frames):
+            raise ScriptedUpstreamError(
+                f"gate_after_frames={after_frames} out of range for {len(frames)} frames"
+            )
+        first = "".join(frames[:after_frames]).encode()
+        rest = "".join(frames[after_frames:]).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        # Omit Content-Length so the client can observe the first frame before gate release.
+        self.end_headers()
+        if first:
+            self.wfile.write(first)
+            self.wfile.flush()
+        gate.wait(timeout=30)
+        if rest:
+            self.wfile.write(rest)
+            self.wfile.flush()
 
     def _write_sse(
         self,

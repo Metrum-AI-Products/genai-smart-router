@@ -125,6 +125,76 @@ func TestST2AnthropicNativeStreamPreservesToolUseEvents(t *testing.T) {
 	}
 }
 
+func TestSTResponsesNativeStreamFlushesIncrementally(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Error(err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		for i, text := range []string{"one", "two", "three"} {
+			fmt.Fprintf(w, "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":%q}\n\n", text)
+			flusher.Flush()
+			if i < 2 {
+				time.Sleep(60 * time.Millisecond)
+			}
+		}
+		fmt.Fprint(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_st\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"native-responses\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"total_tokens\":5}}}\n\n")
+		flusher.Flush()
+	}))
+	defer upstream.Close()
+
+	svc := nativeStreamTestService(t, upstream.URL, "openai-responses", []Target{{Provider: "native", Model: "native-responses"}})
+	routerServer := httptest.NewServer(svc.Handler())
+	defer routerServer.Close()
+
+	req, err := http.NewRequest(http.MethodPost, routerServer.URL+"/v1/responses", strings.NewReader(`{"model":"native-stream","stream":true,"input":"hello"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	start := time.Now()
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	reader := bufio.NewReader(resp.Body)
+	firstDelta := time.Duration(0)
+	deltas := 0
+	sawCompleted := false
+	for {
+		line, readErr := reader.ReadString('\n')
+		if strings.Contains(line, "response.output_text.delta") {
+			deltas++
+			if firstDelta == 0 {
+				firstDelta = time.Since(start)
+			}
+		}
+		if strings.Contains(line, "response.completed") {
+			sawCompleted = true
+		}
+		if sawCompleted || readErr != nil {
+			break
+		}
+	}
+	total := time.Since(start)
+	if upstreamBody["stream"] != true {
+		t.Fatalf("upstream stream=%#v, want true", upstreamBody["stream"])
+	}
+	if deltas < 2 {
+		t.Fatalf("deltas=%d, want at least 2", deltas)
+	}
+	if !sawCompleted {
+		t.Fatal("missing response.completed")
+	}
+	if firstDelta == 0 || float64(firstDelta)/float64(total) >= 0.75 {
+		t.Fatalf("first delta=%s total=%s ratio=%.2f, want incremental delivery", firstDelta, total, float64(firstDelta)/float64(total))
+	}
+}
+
 func TestST3ResponsesToChatBridgeRemainsUnary(t *testing.T) {
 	var upstreamBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

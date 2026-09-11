@@ -4551,21 +4551,12 @@ func TestOpenAIResponsesToolPassthroughPreservesToolsAndRawOutput(t *testing.T) 
 		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
 			t.Fatal(err)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"id":     "resp_upstream_tool",
-			"object": "response",
-			"status": "requires_action",
-			"model":  "gpt-tool",
-			"output": []map[string]any{{
-				"id":        "call_1",
-				"type":      "function_call",
-				"name":      "shell",
-				"call_id":   "call_1",
-				"arguments": `{"cmd":"cat > /app/solver.py"}`,
-				"status":    "completed",
-			}},
-			"usage": map[string]any{"input_tokens": 11, "output_tokens": 7, "total_tokens": 18},
-		})
+		// Native same-dialect streaming: emit provider Responses SSE, not unary JSON.
+		w.Header().Set("Content-Type", "text/event-stream")
+		item := `{"id":"call_1","type":"function_call","name":"shell","call_id":"call_1","arguments":"{\"cmd\":\"cat > /app/solver.py\"}","status":"completed"}`
+		completed := `{"id":"resp_upstream_tool","object":"response","status":"requires_action","model":"gpt-tool","output":[` + item + `],"usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18}}`
+		fmt.Fprintf(w, "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":%s}\n\n", item)
+		fmt.Fprintf(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":%s}\n\n", completed)
 	}))
 	defer upstream.Close()
 
@@ -4596,8 +4587,8 @@ func TestOpenAIResponsesToolPassthroughPreservesToolsAndRawOutput(t *testing.T) 
 	if upstreamBody["model"] != "gpt-tool" {
 		t.Fatalf("upstream model=%q", upstreamBody["model"])
 	}
-	if upstreamBody["stream"] != false {
-		t.Fatalf("upstream stream=%#v, want false", upstreamBody["stream"])
+	if upstreamBody["stream"] != true {
+		t.Fatalf("upstream stream=%#v, want true for native Responses streaming", upstreamBody["stream"])
 	}
 	if tools, ok := upstreamBody["tools"].([]any); !ok || len(tools) != 1 {
 		t.Fatalf("tools not preserved upstream: %#v", upstreamBody)
