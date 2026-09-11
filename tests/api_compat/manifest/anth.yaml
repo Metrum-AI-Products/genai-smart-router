@@ -1,0 +1,190 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# Anthropic Messages catalog (issue #94 Wave 1).
+cases:
+  - id: ANTH-01
+    priority: P0
+    owner: api-compat
+    component: anthropic
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: mixed
+    disposition: native_supported
+    assertions:
+      - Claude-style turn-two preserves system blocks, text, thinking, signatures, tool_use/results, and cache_control
+      - unary and streamed first turns both survive continuation via scripted upstream
+    evidence_paths:
+      - tests/api_compat/tests/test_anthropic_turn_two.py
+      - tests/api_compat/manifest/anth.yaml
+    test_id: test_anthropic_unary_turn_two_preserves_thinking_and_tools
+
+  - id: ANTH-02
+    priority: P0
+    owner: api-compat
+    component: anthropic
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - sequential and parallel tool_use IDs are preserved
+      - string, empty, content-array, and is_error tool_result shapes reach upstream unchanged
+    evidence_paths:
+      - tests/api_compat/tests/test_anthropic_turn_two.py
+    test_id: test_anthropic_parallel_tools_and_result_shapes
+
+  - id: ANTH-03
+    priority: P0
+    owner: api-compat
+    component: anthropic
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - tool_result blocks adjacent to their tool_use turn are preserved in caller order
+      - deliberately wrong tool_use_id order is forwarded without silent reordering
+    evidence_paths:
+      - tests/api_compat/tests/test_anthropic_turn_two.py
+    test_id: test_anthropic_tool_result_ordering_preserved
+
+  - id: ANTH-04
+    priority: P0
+    owner: api-compat
+    component: anthropic
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - message_start, indexed block start/delta/stop, message_delta/stop, and pings are forwarded
+      - text and input_json fragments reconstruct; pings do not become text
+    evidence_paths:
+      - tests/api_compat/tests/test_anthropic_turn_two.py
+    test_id: test_anthropic_sse_lifecycle_and_pings
+
+  - id: ANTH-05
+    priority: P0
+    owner: api-compat
+    component: anthropic
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: mixed
+    disposition: native_supported
+    assertions:
+      - thinking and signature deltas plus redacted_thinking opaque data survive stream and turn-two continuation
+      - opaque signature/data bytes are not truncated or synthesized by the router
+    evidence_paths:
+      - tests/api_compat/tests/test_anthropic_turn_two.py
+    test_id: test_anthropic_thinking_deltas_and_redacted_blocks
+
+  - id: ANTH-06
+    priority: P1
+    owner: api-compat
+    component: anthropic-thinking-controls
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: unary
+    disposition: blocked
+    assertions:
+      - manual/adaptive/disabled/omitted thinking and effort/budget combinations follow capability profiles
+    rationale: deferred linked issue
+
+  - id: ANTH-07
+    priority: P1
+    owner: api-compat
+    component: anthropic-fine-grained-tools
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: sse
+    disposition: blocked
+    assertions:
+      - per-tool eager_input_streaming and legacy beta interactions are capability-gated
+    rationale: deferred linked issue — do not assume fine-grained tool streaming support
+
+  - id: ANTH-08
+    priority: P1
+    owner: api-compat
+    component: anthropic-stop-reasons
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: unary
+    disposition: blocked
+    assertions:
+      - end_turn, tool_use, stop_sequence, max_tokens, refusal, and pause_turn remain distinguishable
+    rationale: deferred linked issue
+
+  - id: ANTH-09
+    priority: P1
+    owner: api-compat
+    component: anthropic-structured-output
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: unary
+    disposition: blocked
+    assertions:
+      - native output_config.format and strict tools are capability-gated, not inferred from OpenAI fields
+    rationale: deferred linked issue — capability candidate, not assumed supported
+
+  - id: ANTH-10
+    priority: P1
+    owner: api-compat
+    component: anthropic-count-tokens
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages/count_tokens
+    outbound_dialect: anthropic
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - /messages/count_tokens and /anthropic alias return nonnegative local estimates
+      - forbidden models reject with zero generation upstream calls
+    evidence_paths:
+      - tests/api_compat/tests/test_anthropic_turn_two.py
+    test_id: test_anthropic_count_tokens_aliases
+
+  - id: ANTH-11
+    priority: P1
+    owner: api-compat
+    component: anthropic-images
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: unary
+    disposition: blocked
+    assertions:
+      - URL/base64/file images and images nested in tool results trigger eligibility and preserve order
+    rationale: deferred linked issue
+
+  - id: ANTH-12
+    priority: P1
+    owner: api-compat
+    component: anthropic-server-tools
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: unary
+    disposition: blocked
+    assertions:
+      - versioned server tools, citations, and unknown future blocks have explicit preserve-or-reject dispositions
+    rationale: deferred linked issue
