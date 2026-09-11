@@ -4,8 +4,8 @@
 **Issue:** GitHub #948  
 **KV cache:** off — do not install LMCache or Mooncake for this run.
 
-This run validates Smart Router against an in-cluster **llm-d v0.9+** standalone
-OpenAI-compatible frontend. Smart Router does **not** install or control llm-d;
+This run validates Metrum AI Router against an in-cluster **llm-d v0.9+** standalone
+OpenAI-compatible frontend. Metrum AI Router does **not** install or control llm-d;
 llm-d owns replica selection inside its `InferencePool`.
 
 Reuse Shadeform host provisioning, k3sup, and GPU Operator steps from
@@ -71,7 +71,7 @@ Install the **v1** InferencePool CRDs required by llm-d **v0.9+** before the Hel
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.5.0/v1-manifests.yaml
 ```
 
-Do not add a Smart Router controller for llm-d.
+Do not add a Metrum AI Router controller for llm-d.
 
 ## 5. Install llm-d standalone
 
@@ -89,7 +89,7 @@ kubectl run curl-llmd --rm -i --restart=Never -n smart-llmrouter --image=curlima
   curl -fsS "http://llm-d-local-epp:8081/v1/models"
 ```
 
-## 6. Smart Router
+## 6. Metrum AI Router
 
 Build/import the router image, render Helm values from blueprint output, install
 with `scripts/helm_install_with_license.sh`, and wait for `/readyz`.
@@ -108,7 +108,7 @@ Usage rows must show a local in-cluster target, not a cloud provider.
 
 Same cleanup contract as #943:
 
-- Uninstall Smart Router Helm release
+- Uninstall Metrum AI Router Helm release
 - Delete serving manifests / llm-d release
 - Uninstall GPU Operator if installed only for this test
 - Terminate the Shadeform instance

@@ -186,7 +186,7 @@ def build_codex_router_config(
         f'model_provider = "{provider_name}"\n'
         "\n"
         f'[model_providers."{provider_name}"]\n'
-        'name = "Metrum Router"\n'
+        'name = "Metrum AI Router"\n'
         f'base_url = "{url}"\n'
         f'env_key = "{env_key}"\n'
         f'wire_api = "{wire_api}"\n'

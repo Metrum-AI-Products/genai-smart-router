@@ -1,6 +1,6 @@
 # OSS Launch Readiness Register (Launch A)
 
-Product display name: **Metrum Router**. Snapshot for this register should be
+Product display name: **Metrum AI Router**. Snapshot for this register should be
 recorded at release time with commit SHA, tag, and artifact checksums.
 
 ## Claim ledger
@@ -38,7 +38,7 @@ Withheld / separately gated:
 | U07 | Narrowed; unit evidence present | Native stream + affinity unit tests; provider-backed matrix remains A3 operator evidence |
 | U08 | Accepted scoped | Loopback sidecar remains documented supported private-policy pattern |
 | U09 | Accepted partial | Go module versions reconciled in `THIRD_PARTY_NOTICES.md`; release workflow publishes checksummed assets |
-| U10 | Accepted | Public display name Metrum Router; docs QA blocks stale titles |
+| U10 | Accepted | Public display name Metrum AI Router; docs QA blocks stale titles |
 | U11 | Deferred promotion gate | Learned-routing case study failed cost gate remains visible |
 | U12 | Deferred promotion gate | AMD MI355X ≠ XE7745/MI350P |
 | U13 | Closed by monorepo boundary | Commerce/fleet optional; request path must not import them |

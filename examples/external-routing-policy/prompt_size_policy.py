@@ -2,7 +2,7 @@
 # Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
-"""Demo external routing policy service for GenAI Smart Router.
+"""Demo external routing policy service for Metrum AI Router.
 
 The router POSTs a JSON policy request containing safe derived request context,
 caller metadata, and the eligible target list. This service selects a target

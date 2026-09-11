@@ -3,7 +3,7 @@
 **Profile:** `nvidia-local-serving`  
 **KV cache:** off — do not install LMCache or Mooncake for this run.
 
-This is the live, single-node k3s validation path for GenAI Smart Router. It uses
+This is the live, single-node k3s validation path for Metrum AI Router. It uses
 only in-cluster OpenAI-compatible Services as router upstreams. Do not use Fleet,
 OpenRouter, OpenAI, Anthropic, a router CRD controller, or a cloud inference API.
 

@@ -1,6 +1,6 @@
 # External Routing Policy Service Demo
 
-This demo service implements prompt-size routing for GenAI Smart Router's `strategy: external`.
+This demo service implements prompt-size routing for Metrum AI Router's `strategy: external`.
 
 Run it locally:
 

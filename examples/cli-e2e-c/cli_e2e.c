@@ -140,7 +140,7 @@ static int test_codex(const char *expect) {
     char base_cfg[700];
     snprintf(base_cfg, sizeof(base_cfg), "model_providers.metrum-router.base_url=\"%s\"", base_v1);
     char *q_base_cfg = shell_quote(base_cfg);
-    char *q_name_cfg = shell_quote("model_providers.metrum-router.name=\"Metrum Router\"");
+    char *q_name_cfg = shell_quote("model_providers.metrum-router.name=\"Metrum AI Router\"");
     char *q_key_cfg = shell_quote("model_providers.metrum-router.env_key=\"METRUM_ROUTER_KEY\"");
     char wire_cfg[128];
     snprintf(wire_cfg, sizeof(wire_cfg), "model_providers.metrum-router.wire_api=\"%s\"", wire_api);

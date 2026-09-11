@@ -1,6 +1,6 @@
 # Harbor Agentic Coding Case Study
 
-This example compares GenAI Smart Router model groups on Harbor's `aider/polyglot_python_two-bucket` agentic coding task. The canonical task command is:
+This example compares Metrum AI Router model groups on Harbor's `aider/polyglot_python_two-bucket` agentic coding task. The canonical task command is:
 
 ```bash
 harbor run -t aider/polyglot_python_two-bucket
@@ -201,7 +201,7 @@ model = "<model-group>"
 model_provider = "metrum-router"
 
 [model_providers."metrum-router"]
-name = "Metrum Router"
+name = "Metrum AI Router"
 base_url = "<router-base-url>/v1"
 env_key = "METRUM_ROUTER_KEY"
 wire_api = "responses"

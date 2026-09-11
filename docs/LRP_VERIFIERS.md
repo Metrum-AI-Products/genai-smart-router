@@ -3,7 +3,7 @@
 **Audience:** operators running the offline LRP training pipeline.
 **Related issues:** [#37](https://github.com/metrum-ai/router/issues/37).
 
-Deterministic verifiers beat LLM judges when ground truth exists. GenAI Smart
+Deterministic verifiers beat LLM judges when ground truth exists. Metrum AI
 Router LRP runs them **only** inside the bubblewrap isolated worker described in
 [`services/learned-routing-policy/lrp/judge/README.md`](../services/learned-routing-policy/lrp/judge/README.md).
 There is no host-process fallback, no dataset-supplied shell, and no network or

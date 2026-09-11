@@ -1,6 +1,6 @@
 # Examples
 
-Start here for operator-owned demos of Metrum Router extensibility:
+Start here for operator-owned demos of Metrum AI Router extensibility:
 
 | Example | What it shows |
 |---|---|

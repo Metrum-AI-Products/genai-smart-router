@@ -2,7 +2,7 @@
 # Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
-"""Outcome-calibrated external routing reference for GenAI Smart Router.
+"""Outcome-calibrated external routing reference for Metrum AI Router.
 
 The router calls ``serve`` before an upstream request. ``collect`` drives
 synthetic calibration cases through that same router path, while ``calibrate``

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
-"""Deployment-owned adaptive external routing policy for GenAI Smart Router.
+"""Deployment-owned adaptive external routing policy for Metrum AI Router.
 
 This is a reference policy service, not built-in router state. Wire it with
 `strategy: external` and, when content classification is required,
