@@ -146,7 +146,10 @@ cases:
     disposition: blocked
     assertions:
       - text.format JSON Schema and reasoning/store control overrides
-    rationale: Independent schema-validation matrix deferred; Go dialect conformance covers basic text.format forwarding today.
+    rationale: >-
+      Still blocked: Go dialect conformance already covers text.format
+      forwarding, and an independent public HTTP schema-validation matrix
+      would expand beyond this RESP-11 capability-boundary slice.
 
   - id: RESP-10
     priority: P1
@@ -171,10 +174,16 @@ cases:
     inbound_route: /v1/responses
     outbound_dialect: openai-responses
     transport: n/a
-    disposition: blocked
+    disposition: unsupported
     assertions:
-      - background/retrieve/cancel/WebSocket capability-boundary reject
-    rationale: Background and WebSocket surfaces are not advertised by the router; explicit public boundary tests deferred to avoid silent 200 claims.
+      - background true rejects before upstream (not unary success)
+      - retrieve/cancel/delete/input-items/conversation/compaction routes return 404 or 405
+      - WebSocket Upgrade on /v1/responses rejects before upstream
+      - zero upstream calls on every boundary rejection
+    evidence_paths:
+      - tests/api_compat/tests/test_responses_boundaries.py
+      - internal/router/service.go
+    test_id: test_resp_11_capability_boundaries_reject
 
   - id: RESP-12
     priority: P1

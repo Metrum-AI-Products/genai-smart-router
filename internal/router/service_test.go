@@ -10680,6 +10680,85 @@ func TestOpenAIResponsesRejectsRemoteProviderHostedToolsBeforeUpstream(t *testin
 	}
 }
 
+func TestOpenAIResponsesRejectsUnadvertisedBackgroundAndWebSocket(t *testing.T) {
+	upstreamCalls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":     "resp_should_not_run",
+			"object": "response",
+			"status": "completed",
+			"model":  "synthetic",
+			"output": []map[string]any{{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "nope"}}}},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["responses"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:    "responses",
+		Model:       "synthetic-responses",
+		ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "responses")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	t.Run("background", func(t *testing.T) {
+		upstreamCalls = 0
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"responses","input":"hi","background":true}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		if !strings.Contains(rr.Body.String(), `"type":"responses-background-unsupported"`) {
+			t.Fatalf("body=%s, want responses-background-unsupported", rr.Body.String())
+		}
+		if upstreamCalls != 0 {
+			t.Fatal("upstream called for background Responses request")
+		}
+	})
+
+	t.Run("websocket_upgrade", func(t *testing.T) {
+		upstreamCalls = 0
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"responses","input":"hi"}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		req.Header.Set("Upgrade", "websocket")
+		req.Header.Set("Connection", "Upgrade")
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		if !strings.Contains(rr.Body.String(), `"type":"responses-websocket-unsupported"`) {
+			t.Fatalf("body=%s, want responses-websocket-unsupported", rr.Body.String())
+		}
+		if upstreamCalls != 0 {
+			t.Fatal("upstream called for WebSocket Responses request")
+		}
+	})
+
+	t.Run("background_false_allowed", func(t *testing.T) {
+		upstreamCalls = 0
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"responses","input":"hi","background":false}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		if upstreamCalls != 1 {
+			t.Fatalf("upstreamCalls=%d, want 1", upstreamCalls)
+		}
+	})
+}
+
 func TestOpenAIResponsesStripsGenericHostedToolsBeforeUpstream(t *testing.T) {
 	var gotTools []any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
