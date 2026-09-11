@@ -48,6 +48,44 @@ def sse_events(raw: bytes | str) -> list[tuple[str, object]]:
     return out
 
 
+def classify_sse_payload(raw: bytes | str) -> str:
+    """Distinguish well-formed SSE (incl. unsupported events) from malformed JSON data.
+
+    Returns ``ok``, ``unsupported_event``, or ``malformed_json``. Comment-only and
+    blank frames are ignored by ``parse_sse_frames`` and do not fail classification.
+    """
+    frames = parse_sse_frames(raw)
+    if not frames:
+        return "ok"
+    known_chat = {"", "message"}
+    known_responses_prefixes = ("response.",)
+    known_anthropic = {
+        "message_start",
+        "message_delta",
+        "message_stop",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_stop",
+        "ping",
+        "error",
+    }
+    saw_unsupported = False
+    for name, data in frames:
+        if data not in {"", "[DONE]"}:
+            try:
+                json.loads(data)
+            except json.JSONDecodeError:
+                return "malformed_json"
+        if not name:
+            continue
+        if name in known_chat or name in known_anthropic:
+            continue
+        if name.startswith(known_responses_prefixes):
+            continue
+        saw_unsupported = True
+    return "unsupported_event" if saw_unsupported else "ok"
+
+
 def iter_sse_incremental(chunks: Iterator[bytes]) -> Iterator[tuple[str, str]]:
     """Yield complete SSE frames as bytes arrive (CRLF/LF safe)."""
     buf = bytearray()

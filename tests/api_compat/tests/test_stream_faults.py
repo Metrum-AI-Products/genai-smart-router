@@ -26,15 +26,21 @@ from conftest import (
 )
 from harness.oracles import assert_chat_terminal_usage
 from harness.scripted_upstream import FakeUpstream, ScriptedScenario, start_fake_upstream
-from harness.sse import sse_events
+from harness.sse import classify_sse_payload, parse_sse_frames, sse_events
 from harness.stream_faults import (
     attach_stream_faults,
+    chat_frames_until_finish,
+    chat_refusal_frames,
+    chat_truncated_tool_frames,
     first_chat_content_event,
     open_stream,
     read_sse_until,
     reconstruct_sse_from_byte_splits,
+    responses_error_event_frames,
+    responses_incomplete_frames,
     rich_chat_stream_frames,
     safe_close,
+    sse_semantics_chat_frames,
     stream_fault_writes,
 )
 
@@ -83,6 +89,214 @@ def test_stream_01_byte_split_reconstruction(api, router):
     assert status == 200 and "text/event-stream" in headers["Content-Type"]
     assert_chat_terminal_usage(raw, expected_content='synthetic "café" line\u2014ok')
     scenario.assert_complete()
+
+
+def test_stream_02_sse_field_semantics(api, router):
+    """STREAM-02: LF/CRLF, comments, multiline data, optional-space; malformed ≠ unsupported."""
+    # Local oracle: malformed JSON data is distinct from an unsupported event name.
+    assert classify_sse_payload('event: vendor.x\ndata: {"ok":true}\n\n') == "unsupported_event"
+    assert classify_sse_payload("data: {not-json\n\n") == "malformed_json"
+    assert classify_sse_payload("data: [DONE]\n\n") == "ok"
+
+    frames = sse_semantics_chat_frames(content="sse-field-ok")
+    wire = "".join(frames)
+    # Comments are skipped; optional-space / multiline / CRLF still yield JSON events.
+    parsed = parse_sse_frames(wire)
+    assert any(name == "vendor.obfuscation" for name, _ in parsed)
+    assert classify_sse_payload(wire) == "unsupported_event"
+    assert any(
+        isinstance(payload, dict)
+        and (payload.get("choices") or [{}])[0].get("delta", {}).get("content") == "sse-field-ok"
+        for _, payload in sse_events(wire)
+    )
+
+    scenario = ScriptedScenario()
+    scenario.expect(path_suffix="/chat/completions", response=frames)
+    FakeUpstream.scenario = scenario
+
+    status, headers, raw = api("/v1/chat/completions", _chat_stream_payload())
+    assert status == 200 and "text/event-stream" in headers["Content-Type"]
+    # Unsupported additive event must forward without blocking Chat reconstruction.
+    assert b"vendor.obfuscation" in raw
+    assert_chat_terminal_usage(raw, expected_content="sse-field-ok")
+    scenario.assert_complete()
+
+
+def _read_stream_or_error(base: str, path: str, payload: dict) -> tuple[int, str, bytes]:
+    """Return status, content-type, body for both success streams and JSON errors."""
+    headers = {
+        "Authorization": f"Bearer {CALLER}",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
+    data = json.dumps(payload).encode()
+    try:
+        with urlopen(Request(base + path, data=data, headers=headers), timeout=5) as resp:
+            return resp.status, resp.headers.get("Content-Type", ""), resp.read()
+    except HTTPError as error:
+        return error.code, error.headers.get("Content-Type", ""), error.read()
+    except (URLError, TimeoutError, ConnectionError) as error:
+        return 0, "", str(error).encode()
+
+
+def test_stream_06_eof_class_classification(api, router):
+    """STREAM-06: EOF before first / partial / after finish / after terminal classify correctly."""
+    base = router["base"]
+
+    # --- Before first frame: empty SSE body → caller-visible failure, no invented content ---
+    FakeUpstream.reset_state()
+    empty = ScriptedScenario()
+    empty.expect(path_suffix="/chat/completions", response=[])
+    attach_stream_faults(empty, close_after_frames=0)
+    FakeUpstream.scenario = empty
+    with stream_fault_writes():
+        status, content_type, body = _read_stream_or_error(
+            base, "/v1/chat/completions", _chat_stream_payload()
+        )
+    assert status != 200 or "event-stream" not in content_type, body
+    assert b'"error_class":"empty_stream"' in body or b"empty_stream" in body
+    # No invented SSE transcript — JSON error body only.
+    assert b"data:" not in body and b"[DONE]" not in body
+    empty.assert_complete()
+
+    # --- After partial frame: committed interruption; no finish/[DONE]/invented usage ---
+    FakeUpstream.reset_state()
+    partial_frames = chat_frames_until_finish(content="partial-eof", include_done=True)
+    first = partial_frames[0].encode()
+    cut = max(16, len(first) // 2)
+    partial = ScriptedScenario()
+    partial.expect(path_suffix="/chat/completions", response=partial_frames)
+    attach_stream_faults(partial, truncate_bytes=cut)
+    FakeUpstream.scenario = partial
+    with stream_fault_writes():
+        status, content_type, body = _read_stream_or_error(
+            base, "/v1/chat/completions", _chat_stream_payload()
+        )
+    assert status == 200
+    assert "event-stream" in content_type
+    assert b"[DONE]" not in body
+    assert b'"finish_reason":"stop"' not in body
+    # Must not synthesize a full successful terminal usage settlement for the client.
+    assert b'"prompt_tokens":3' not in body
+    partial.assert_complete()
+
+    # --- After finish reason before [DONE] sentinel: Chat success without inventing content ---
+    FakeUpstream.reset_state()
+    pre_done = ScriptedScenario()
+    pre_done.expect(
+        path_suffix="/chat/completions",
+        response=chat_frames_until_finish(content="finish-no-done", include_done=False),
+    )
+    FakeUpstream.scenario = pre_done
+    status, headers, raw = api("/v1/chat/completions", _chat_stream_payload())
+    assert status == 200 and "text/event-stream" in headers["Content-Type"]
+    assert b"[DONE]" not in raw
+    assert_chat_terminal_usage(raw, expected_content="finish-no-done")
+    pre_done.assert_complete()
+
+    # --- After terminal (with sentinel): full success ---
+    FakeUpstream.reset_state()
+    terminal = ScriptedScenario()
+    terminal.expect(
+        path_suffix="/chat/completions",
+        response=chat_frames_until_finish(content="after-terminal", include_done=True),
+    )
+    FakeUpstream.scenario = terminal
+    status, headers, raw = api("/v1/chat/completions", _chat_stream_payload())
+    assert status == 200 and "text/event-stream" in headers["Content-Type"]
+    assert b"[DONE]" in raw
+    assert_chat_terminal_usage(raw, expected_content="after-terminal")
+    terminal.assert_complete()
+
+
+def test_stream_07_error_refusal_incomplete_never_success(api, router):
+    """STREAM-07: error-in-200, truncated tools, refusal, incomplete Responses ≠ success."""
+
+    def accumulate_tool_args(raw: bytes) -> tuple[str, str | None]:
+        args = ""
+        finish = None
+        for _, payload in sse_events(raw):
+            if payload == "[DONE]" or not isinstance(payload, dict):
+                continue
+            choices = payload.get("choices") or []
+            if not choices:
+                continue
+            choice = choices[0]
+            if choice.get("finish_reason"):
+                finish = choice["finish_reason"]
+            for tool in (choice.get("delta") or {}).get("tool_calls") or []:
+                fragment = (tool.get("function") or {}).get("arguments")
+                if isinstance(fragment, str):
+                    args += fragment
+        return args, finish
+
+    # --- Truncated tool arguments: partial JSON must not execute ---
+    FakeUpstream.reset_state()
+    trunc = ScriptedScenario()
+    trunc.expect(path_suffix="/chat/completions", response=chat_truncated_tool_frames())
+    attach_stream_faults(trunc, close_after_frames=2)
+    FakeUpstream.scenario = trunc
+    with stream_fault_writes():
+        status, content_type, body = _read_stream_or_error(
+            router["base"], "/v1/chat/completions", _chat_stream_payload(tools=True)
+        )
+    assert status == 200 and "event-stream" in content_type
+    args, finish = accumulate_tool_args(body)
+    assert args == '{"q":"par'
+    assert finish is None
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(args)
+    trunc.assert_complete()
+
+    # --- Refusal / content_filter midstream: distinguishable from stop success ---
+    FakeUpstream.reset_state()
+    refusal = ScriptedScenario()
+    refusal.expect(path_suffix="/chat/completions", response=chat_refusal_frames())
+    FakeUpstream.scenario = refusal
+    status, _, raw = api("/v1/chat/completions", _chat_stream_payload())
+    assert status == 200
+    events = sse_events(raw)
+    finish_reasons = [
+        (p.get("choices") or [{}])[0].get("finish_reason")
+        for _, p in events
+        if isinstance(p, dict) and (p.get("choices") or [{}])[0].get("finish_reason")
+    ]
+    assert "content_filter" in finish_reasons
+    assert "stop" not in finish_reasons
+    refusal.assert_complete()
+
+    # --- Responses error event inside HTTP 200: never synthesize completed ---
+    FakeUpstream.reset_state()
+    err_sc = ScriptedScenario()
+    err_sc.expect(path_suffix="/responses", response=responses_error_event_frames())
+    FakeUpstream.scenario = err_sc
+    status, headers, raw = api(
+        "/v1/responses",
+        {"model": "responses", "stream": True, "input": PROMPT_CANARY},
+    )
+    assert status == 200 and "text/event-stream" in headers["Content-Type"]
+    names = [n for n, _ in sse_events(raw)]
+    assert "error" in names
+    assert "response.completed" not in names
+    err_sc.assert_complete()
+
+    # --- Incomplete Responses terminal: incomplete ≠ completed ---
+    FakeUpstream.reset_state()
+    incomplete = ScriptedScenario()
+    incomplete.expect(path_suffix="/responses", response=responses_incomplete_frames())
+    FakeUpstream.scenario = incomplete
+    status, _, raw = api(
+        "/v1/responses",
+        {"model": "responses", "stream": True, "input": PROMPT_CANARY},
+    )
+    assert status == 200
+    events = sse_events(raw)
+    names = [n for n, _ in events]
+    assert "response.incomplete" in names
+    assert "response.completed" not in names
+    payload = next(p for n, p in events if n == "response.incomplete")
+    assert payload["response"]["status"] == "incomplete"
+    incomplete.assert_complete()
 
 
 def test_stream_03_gated_incremental_delivery(api, router):
