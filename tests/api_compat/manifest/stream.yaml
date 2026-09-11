@@ -1,0 +1,187 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# SSE transport / stream fault catalog (issue #94 Wave 1).
+cases:
+  - id: STREAM-01
+    priority: P0
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - same transcript reconstructs across every-byte segmentation including UTF-8 and JSON escapes
+      - router forwards byte-split upstream Chat SSE without lost or duplicated content
+    evidence_paths:
+      - tests/api_compat/tests/test_stream_faults.py
+      - tests/api_compat/harness/stream_faults.py
+    test_id: test_stream_01_byte_split_reconstruction
+
+  - id: STREAM-02
+    priority: P0
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: sse
+    disposition: blocked
+    assertions:
+      - LF/CRLF comments multiline data and optional-space SSE fields parse per semantics
+    evidence_paths:
+      - tests/api_compat/manifest/stream.yaml
+    rationale: Deferred linked follow-up; STREAM-01 covers CRLF frame separators via rich transcript.
+
+  - id: STREAM-03
+    priority: P0
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - gated first event is observable before later frames are released
+      - synchronization uses Event barriers rather than elapsed-time-only assertions
+    evidence_paths:
+      - tests/api_compat/tests/test_stream_faults.py
+      - tests/api_compat/harness/stream_faults.py
+    test_id: test_stream_03_gated_incremental_delivery
+
+  - id: STREAM-04
+    priority: P0
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - cancel after first downstream event still allows a healthy follow-up stream
+      - Go ST4 covers upstream context cancel propagation; HTTP contract covers non-wedged recovery
+    evidence_paths:
+      - tests/api_compat/tests/test_stream_faults.py
+      - internal/router/native_stream_test.go
+    test_id: test_stream_04_cancel_mid_stream_then_healthy
+
+  - id: STREAM-05
+    priority: P0
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - 5xx before stream commitment may fallback to the next static target
+      - after a committed tool/text event the router must not fallback or replay
+    evidence_paths:
+      - tests/api_compat/tests/test_stream_faults.py
+      - internal/router/native_stream_test.go
+    test_id: test_stream_05_pre_commit_fallback_vs_post_commit_no_replay
+
+  - id: STREAM-06
+    priority: P0
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: sse
+    disposition: blocked
+    assertions:
+      - EOF classes before first frame partial frame and after terminal classify correctly
+    evidence_paths:
+      - tests/api_compat/manifest/stream.yaml
+    rationale: Deferred linked follow-up; Go ST7 covers truncated settlement.
+
+  - id: STREAM-07
+    priority: P0
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: sse
+    disposition: blocked
+    assertions:
+      - error-in-200 truncated tools refusal and incomplete Responses never look like success
+    evidence_paths:
+      - tests/api_compat/manifest/stream.yaml
+    rationale: Deferred linked follow-up after Responses native stream lands.
+
+  - id: STREAM-08
+    priority: P1
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: sse
+    disposition: blocked
+    assertions:
+      - huge lines tiny frames stream limits and idle timeout stay bounded
+    evidence_paths:
+      - tests/api_compat/manifest/stream.yaml
+    rationale: Deferred linked issue for soak/limit matrix.
+
+  - id: STREAM-09
+    priority: P1
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: sse
+    disposition: blocked
+    assertions:
+      - duplicate terminals and unknown additive events do not double-settle usage
+    evidence_paths:
+      - tests/api_compat/manifest/stream.yaml
+    rationale: Deferred linked issue.
+
+  - id: STREAM-10
+    priority: P1
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: sse
+    disposition: blocked
+    assertions:
+      - HTTP/1.1 vs HTTP/2 and reverse-proxy buffering keep first-event incremental
+    evidence_paths:
+      - tests/api_compat/manifest/stream.yaml
+    rationale: Deferred deployment/proxy configuration follow-up.
+
+  - id: STREAM-11
+    priority: P1
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: sse
+    disposition: blocked
+    assertions:
+      - SDK retry plus router retry budget has an explicit total attempt ceiling
+    evidence_paths:
+      - tests/api_compat/manifest/stream.yaml
+    rationale: Deferred linked issue.
+
+  - id: STREAM-12
+    priority: P2
+    owner: api-compat
+    component: sse-transport
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: sse
+    disposition: blocked
+    assertions:
+      - concurrent mixed streams and cancel cycles stay race-free and leak-free
+    evidence_paths:
+      - tests/api_compat/manifest/stream.yaml
+    rationale: Deferred soak follow-up.
