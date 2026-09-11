@@ -2,12 +2,25 @@
 # Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
-"""Check public-facing docs for private markers and stale current-route claims."""
+"""Check public-facing docs for private markers, stale routes and stale branding.
+
+Three independent rule sets run over two independent path lists:
+
+* PUBLIC_DOC_PATHS keeps the privacy, stale-route and doc_type coverage.
+* BRANDING_PATHS carries the wider product-branding coverage (root/community
+  docs, internal and package docs, docs-site config and components, issue
+  templates, product-facing runtime/generator sources and the tracked
+  generated admin UI output).
+
+Widening branding coverage never adds privacy rules to a file, and the
+historical-file privacy exemptions never exempt a file from branding rules.
+"""
 
 from __future__ import annotations
 
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -35,6 +48,9 @@ PUBLIC_DOC_PATHS = [
     ROOT / "examples" / "customer-lifecycle" / "onboard-acme.sandbox.example.json",
 ]
 
+# Exempt from the privacy rules only. Branding rules still apply to these
+# files: a case study may keep historical commands and results, but must not
+# keep an obsolete current-product title or navigation label.
 HISTORICAL_FILES = {
     Path("docs-site/docs/evaluation/harbor-case-study.mdx"),
     Path("docs/harbor-case-study.md"),
@@ -90,22 +106,235 @@ STALE_CURRENT_ROUTE_PATTERNS = [
     ),
 ]
 
-# Current product display name is Metrum Router. Historical aliases may appear
-# only when explicitly marked as former names (for example in TRADEMARKS.md).
-STALE_PRODUCT_TITLE_PATTERNS = [
+# Canonical current product display name. Obsolete display names below are
+# rejected wherever they name the current product; company-only "Metrum AI",
+# generic "router"/"routing" prose, third-party router names and hyphenated or
+# concatenated technical identifiers (genai-smart-router, smart-llmrouter,
+# smartrouterctl, metrum-router, ...) are deliberately not branding errors.
+CANONICAL_PRODUCT_TITLE = "Metrum AI Router"
+
+# Display names are whitespace-separated words. Requiring real whitespace
+# between the words is what keeps command names, package names, schema keys,
+# Kubernetes labels and Helm chart IDs out of the branding rules.
+_WS = r"[ \t\u00a0]+"
+# Optional whitespace covers concatenated display spellings such as
+# "Metrum SmartRouter" while still refusing to match "smartrouterctl".
+_OPTWS = r"[ \t\u00a0]*"
+# Reject adjacency with identifier characters so hyphenated/underscored/slashed
+# identifiers and longer words ("Smart Routing") never match.
+_LEFT = r"(?<![\w./-])"
+_RIGHT = r"(?![\w/-])"
+
+
+def _title_pattern(*words: str) -> re.Pattern[str]:
+    """Build a case-insensitive, spacing-tolerant display-name pattern."""
+
+    return re.compile(_LEFT + _WS.join(words) + _RIGHT, re.IGNORECASE)
+
+
+# Ordered longest-first: the first pattern that matches a span wins, so
+# "Metrum GenAI Smart Router" reports one precise diagnostic instead of three.
+OBSOLETE_PRODUCT_TITLE_PATTERNS = [
     (
-        "stale product title Metrum AI Router",
-        re.compile(r"\bMetrum AI Router\b"),
+        "malformed product title",
+        _title_pattern(r"Metrum", r"Metrum(?:" + _WS + r"AI)?", r"Router"),
     ),
     (
-        "stale product title GenAI Smart Router",
-        re.compile(r"\bGenAI Smart Router\b"),
+        "malformed product title",
+        _title_pattern(r"Metrum", r"AI", r"AI", r"Router"),
+    ),
+    (
+        "obsolete product title Metrum GenAI Smart Router",
+        _title_pattern(r"Metrum", r"Gen" + _OPTWS + r"AI", r"Smart" + _OPTWS + r"Router"),
+    ),
+    (
+        "obsolete product title Metrum AI Smart Router",
+        _title_pattern(r"Metrum", r"AI", r"Smart" + _OPTWS + r"Router"),
+    ),
+    (
+        "obsolete product title Metrum Smart LLM Router",
+        _title_pattern(r"Metrum", r"Smart", r"LLM", r"Router"),
+    ),
+    (
+        "obsolete product title Metrum Smart Router",
+        _title_pattern(r"Metrum", r"Smart" + _OPTWS + r"Router"),
+    ),
+    (
+        "obsolete product title GenAI Smart Router",
+        _title_pattern(r"Gen" + _OPTWS + r"AI", r"Smart" + _OPTWS + r"Router"),
+    ),
+    (
+        "obsolete product title Smart LLM Router",
+        _title_pattern(r"Smart", r"LLM", r"Router"),
+    ),
+    (
+        "obsolete product title Smart Router",
+        _title_pattern(r"Smart", r"Router"),
+    ),
+    (
+        "obsolete product title Metrum Router",
+        _title_pattern(r"Metrum", r"Router"),
     ),
 ]
 
-PRODUCT_TITLE_ALLOWLIST = {
-    Path("TRADEMARKS.md"),
+# Backwards-compatible alias for callers that import the previous name.
+STALE_PRODUCT_TITLE_PATTERNS = OBSOLETE_PRODUCT_TITLE_PATTERNS
+
+# One alternation over all display names. Regex alternation prefers earlier
+# alternatives at the same start offset, so the longest-first ordering above
+# yields exactly one diagnostic per occurrence instead of nested duplicates.
+OBSOLETE_TITLE_LABELS = {
+    f"b{index}": label for index, (label, _) in enumerate(OBSOLETE_PRODUCT_TITLE_PATTERNS)
 }
+OBSOLETE_TITLE_SCANNER = re.compile(
+    "|".join(
+        f"(?P<b{index}>{pattern.pattern})"
+        for index, (_, pattern) in enumerate(OBSOLETE_PRODUCT_TITLE_PATTERNS)
+    ),
+    re.IGNORECASE,
+)
+
+# Any line may keep an obsolete display name when it carries an explicit,
+# reasoned marker, on the line itself or on the line immediately above:
+#   <!-- branding-exception: published v1.2.0 release title -->
+BRANDING_EXCEPTION_MARKER = re.compile(r"branding-exception:[ \t]*(?P<reason>\S.*?)\s*(?:-->|\*/)?\s*$")
+
+
+BRANDING_EXCEPTION_WINDOW = 80
+
+
+@dataclass(frozen=True)
+class BrandingException:
+    """Narrow contextual exception for one kind of genuine historical usage.
+
+    The exception is evaluated per occurrence rather than per line or per file,
+    against a bounded window of the text immediately before and after the
+    matched name. A line that lists former names therefore still fails when it
+    also presents an obsolete name as the current product.
+    """
+
+    path: Path
+    reason: str
+    before: re.Pattern[str] | None = None
+    after: re.Pattern[str] | None = None
+
+    def allows(self, rel: Path, line: str, start: int, end: int) -> bool:
+        if self.path != rel:
+            return False
+        if self.before is not None:
+            prefix = line[max(0, start - BRANDING_EXCEPTION_WINDOW) : start]
+            if not self.before.search(prefix):
+                return False
+        if self.after is not None:
+            suffix = line[end : end + BRANDING_EXCEPTION_WINDOW]
+            if not self.after.search(suffix):
+                return False
+        return True
+
+
+# Precise contextual exceptions replace the previous blanket per-file
+# exemptions. Anything not covered here needs an explicit per-line marker.
+BRANDING_EXCEPTIONS = (
+    BrandingException(
+        path=Path("TRADEMARKS.md"),
+        reason="former-name enumeration needed for trademark history",
+        # The former-name wording must precede the name, inside the same
+        # sentence, so a line cannot smuggle in a current-product claim.
+        before=re.compile(
+            r"\b(?:former|formerly|former name|previously|prior name|historical|"
+            r"historically|no longer used)\b[^.]*$",
+            re.IGNORECASE,
+        ),
+    ),
+    BrandingException(
+        path=Path("docs-site/docs/release-notes/index.md"),
+        reason="published release titles are immutable artifact identity",
+        # Only "<obsolete name> v1.2.3" survives: prose about the current
+        # product in the same file is still rejected.
+        after=re.compile(r"^\s+v\d+\.\d+\.\d+\b"),
+    ),
+)
+
+# The policy definition itself necessarily spells out the rejected names.
+POLICY_SOURCE_FILES = {
+    Path("scripts/check_docs_public_face.py"),
+    Path("scripts/check_docs_public_face_test.py"),
+}
+
+# Branding coverage is intentionally wider than the privacy/version coverage in
+# PUBLIC_DOC_PATHS, and is evaluated independently so neither check is weakened
+# by the other's path list.
+BRANDING_PATHS = [
+    # Root / community / shared configuration.
+    ROOT / "README.md",
+    ROOT / "CONTRIBUTING.md",
+    ROOT / "CODE_OF_CONDUCT.md",
+    ROOT / "GOVERNANCE.md",
+    ROOT / "SUPPORT.md",
+    ROOT / "SECURITY.md",
+    ROOT / "TRADEMARKS.md",
+    ROOT / "NOTICE",
+    ROOT / "MODEL_LICENSES.md",
+    ROOT / "THIRD_PARTY_NOTICES.md",
+    ROOT / "Makefile",
+    ROOT / "config.example.yaml",
+    ROOT / "config.minimal.example.yaml",
+    ROOT / ".github" / "CODEOWNERS",
+    ROOT / ".github" / "PULL_REQUEST_TEMPLATE.md",
+    ROOT / ".github" / "ISSUE_TEMPLATE",
+    # Internal / operator / package documentation.
+    ROOT / "docs",
+    # Public documentation and website source, including Docusaurus config and
+    # React components that render titles, navbar, footer and metadata.
+    ROOT / "docs-site" / "docs",
+    ROOT / "docs-site" / "src",
+    ROOT / "docs-site" / "docusaurus.config.js",
+    ROOT / "docs-site" / "sidebars.js",
+    ROOT / "docs-site" / "package.json",
+    # Examples and deployment metadata.
+    ROOT / "examples",
+    ROOT / "deploy",
+    # Product-facing runtime and generator sources (admin reports, fallback
+    # docs, model catalog, config defaults, blueprints, Helm metadata, CLI
+    # help) plus the admin UI source and the tracked generated admin output.
+    ROOT / "internal",
+    ROOT / "cmd",
+    ROOT / "services",
+    ROOT / "evaluators",
+    # Harness and generator scripts that emit product-facing display names,
+    # for example agent provider names written into generated client config.
+    ROOT / "scripts",
+]
+
+BRANDING_SUFFIXES = {
+    ".md",
+    ".mdx",
+    ".txt",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".html",
+    ".css",
+    ".go",
+    ".py",
+    ".c",
+    ".h",
+    ".sh",
+}
+
+# Extensionless files worth scanning when they appear in BRANDING_PATHS.
+BRANDING_EXTRA_NAMES = {"Makefile", "NOTICE", "CODEOWNERS"}
+
+# Generated or vendored trees, lockfiles and test files are excluded: lockfiles
+# carry only package identifiers, and tests hold deliberate negative fixtures
+# and expected-output literals that their own suites own.
+BRANDING_EXCLUDED_DIRS = {"node_modules", "docsdist", "build", ".docusaurus", "dist"}
+BRANDING_EXCLUDED_NAMES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml"}
 
 
 def iter_public_files() -> Iterable[Path]:
@@ -122,8 +351,124 @@ def iter_public_files() -> Iterable[Path]:
             yield path
 
 
-def line_errors(path: Path, line_no: int, line: str) -> Iterable[str]:
-    rel = path.relative_to(ROOT)
+def iter_branding_files() -> Iterable[Path]:
+    for path in BRANDING_PATHS:
+        if path.is_dir():
+            yield from sorted(p for p in path.rglob("*") if is_branding_file(p))
+        elif path.exists():
+            yield path
+
+
+def is_branding_file(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    if path.name in BRANDING_EXCLUDED_NAMES:
+        return False
+    if BRANDING_EXCLUDED_DIRS.intersection(path.parts):
+        return False
+    if path.stem.endswith("_test") or path.stem.startswith("test_"):
+        return False
+    return path.suffix in BRANDING_SUFFIXES or path.name in BRANDING_EXTRA_NAMES
+
+
+COMMENT_TERMINATORS = ("-->", "*/}", "*/", "#}", "}}")
+
+
+def strip_comment_terminator(reason: str) -> str:
+    """Drop trailing comment syntax so HTML, Go, JSX and Jinja markers agree."""
+
+    reason = reason.strip()
+    changed = True
+    while changed:
+        changed = False
+        for terminator in COMMENT_TERMINATORS:
+            if reason.endswith(terminator):
+                reason = reason[: -len(terminator)].strip()
+                changed = True
+    return reason
+
+
+def marker_exception_reason(line: str, prev_line: str = "") -> str | None:
+    """Return the reason from an explicit per-line branding exception marker."""
+
+    for candidate in (line, prev_line):
+        match = BRANDING_EXCEPTION_MARKER.search(candidate)
+        if not match:
+            continue
+        reason = strip_comment_terminator(match.group("reason"))
+        if reason:
+            return reason
+    return None
+
+
+def contextual_exception_reason(rel: Path, line: str, start: int, end: int) -> str | None:
+    """Return the reason when a narrow historical context covers a match."""
+
+    for exception in BRANDING_EXCEPTIONS:
+        if exception.allows(rel, line, start, end):
+            return exception.reason
+    return None
+
+
+def branding_line_errors(
+    path: Path,
+    line_no: int,
+    line: str,
+    prev_line: str = "",
+) -> Iterable[str]:
+    """Report obsolete current-product display names on a single line."""
+
+    return rel_branding_errors(path.relative_to(ROOT), line_no, line, prev_line)
+
+
+def rel_branding_errors(
+    rel: Path,
+    line_no: int,
+    line: str,
+    prev_line: str = "",
+) -> Iterable[str]:
+    if rel in POLICY_SOURCE_FILES:
+        return
+
+    if "branding-exception:" in line and marker_exception_reason(line) is None:
+        yield f"{rel}:{line_no}: branding-exception marker needs a written reason"
+        return
+
+    # Every obsolete display name ends in "router"; the substring test keeps the
+    # regex pass off the overwhelming majority of lines in large source files.
+    if "router" not in line.lower():
+        return
+
+    matches = list(OBSOLETE_TITLE_SCANNER.finditer(line))
+    if not matches:
+        return
+
+    if marker_exception_reason(line, prev_line) is not None:
+        return
+
+    for match in matches:
+        start, end = match.span()
+        if contextual_exception_reason(rel, line, start, end) is not None:
+            continue
+        label = next(
+            OBSOLETE_TITLE_LABELS[name]
+            for name, value in match.groupdict().items()
+            if value is not None
+        )
+        yield (
+            f"{rel}:{line_no}: contains {label} {match.group(0)!r}; "
+            f"use {CANONICAL_PRODUCT_TITLE} "
+            "or annotate the line with 'branding-exception: <reason>'"
+        )
+
+
+def privacy_line_errors(path: Path, line_no: int, line: str) -> Iterable[str]:
+    """Report private markers and stale current-route claims on a single line."""
+
+    yield from rel_privacy_errors(path.relative_to(ROOT), line_no, line)
+
+
+def rel_privacy_errors(rel: Path, line_no: int, line: str) -> Iterable[str]:
     if rel not in HISTORICAL_FILES:
         for label, pattern in PRIVATE_PATTERNS:
             if pattern.search(line):
@@ -133,10 +478,10 @@ def line_errors(path: Path, line_no: int, line: str) -> Iterable[str]:
         if pattern.search(line):
             yield f"{rel}:{line_no}: contains {label}; mark historical or update to config.example.yaml"
 
-    if rel not in PRODUCT_TITLE_ALLOWLIST and rel not in HISTORICAL_FILES:
-        for label, pattern in STALE_PRODUCT_TITLE_PATTERNS:
-            if pattern.search(line):
-                yield f"{rel}:{line_no}: contains {label}; use Metrum Router"
+
+def line_errors(path: Path, line_no: int, line: str, prev_line: str = "") -> Iterable[str]:
+    yield from privacy_line_errors(path, line_no, line)
+    yield from branding_line_errors(path, line_no, line, prev_line)
 
 
 def doc_type_error(path: Path, text: str) -> str | None:
@@ -159,18 +504,38 @@ def doc_type_error(path: Path, text: str) -> str | None:
     return None
 
 
+def file_errors(path: Path, text: str, *, privacy: bool, branding: bool) -> Iterable[str]:
+    rel = path.relative_to(ROOT)
+    if privacy:
+        doc_type = doc_type_error(path, text)
+        if doc_type:
+            yield doc_type
+    prev_line = ""
+    for idx, line in enumerate(text.splitlines(), start=1):
+        if privacy:
+            yield from rel_privacy_errors(rel, idx, line)
+        if branding:
+            yield from rel_branding_errors(rel, idx, line, prev_line)
+        prev_line = line
+
+
 def main() -> int:
     errors: list[str] = []
-    for path in iter_public_files():
+    public_files = set(iter_public_files())
+    branding_files = set(iter_branding_files())
+    for path in sorted(public_files | branding_files):
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        doc_type = doc_type_error(path, text)
-        if doc_type:
-            errors.append(doc_type)
-        for idx, line in enumerate(text.splitlines(), start=1):
-            errors.extend(line_errors(path, idx, line))
+        errors.extend(
+            file_errors(
+                path,
+                text,
+                privacy=path in public_files,
+                branding=path in branding_files,
+            )
+        )
 
     if errors:
         print("public docs QA failed:", file=sys.stderr)

@@ -424,7 +424,11 @@ docs-diag-schema:
 docs-diag-schema-check:
 	go run ./cmd/docs-diag-schema --check
 
-docs-qa: docs-diag-schema-check
+.PHONY: docs-brand-policy-test
+docs-brand-policy-test:
+	python3 scripts/check_docs_public_face_test.py
+
+docs-qa: docs-diag-schema-check docs-brand-policy-test
 	python3 scripts/check_docs_public_face.py
 	python3 scripts/validate_docs_versioning.py
 	python3 scripts/check_docs_sidebar.py
