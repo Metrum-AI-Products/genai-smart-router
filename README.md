@@ -1,6 +1,6 @@
-# Metrum Smart Router
+# Metrum AI Router
 
-**Metrum Smart Router** is an open-source LLM smart router: it selects a different
+**Metrum AI Router** is an open-source LLM smart router: it selects a different
 upstream model per request from a policy you own and version, then records why.
 Selection runs on request shape, capability contracts, measured
 cost/latency/reliability, and optionally a Learned Routing Policy trained on
@@ -51,7 +51,7 @@ unary upstream response.
 ## Software License And Notices
 
 The repository-root [LICENSE](LICENSE) contains the Apache License 2.0 terms
-for Metrum Smart Router first-party content. Keep it together with
+for Metrum AI Router first-party content. Keep it together with
 [NOTICE](NOTICE), the dependency and asset inventory in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the model-term boundaries
 in [MODEL_LICENSES.md](MODEL_LICENSES.md) when copying or redistributing a
@@ -372,7 +372,7 @@ In a packaged deployment, put provider keys in `config/env.json` beside `config/
 
 ## Runtime Policy License Enforcement
 
-All Metrum Smart Router first-party content is licensed under the Apache License
+All Metrum AI Router first-party content is licensed under the Apache License
 2.0. Copyright 2026 Metrum AI, Inc. The Apache license grants the rights to use,
 modify, and distribute those materials; no EULA acceptance or runtime-policy
 file is a condition of those rights.
@@ -1306,7 +1306,7 @@ codex exec --ignore-user-config --ephemeral \
   -c "model=\"$ROUTER_MODEL\"" \
   -c 'model_provider="metrum-router"' \
   -c "model_catalog_json=\"$WORK/metrum-models.json\"" \
-  -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
+  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
   -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
@@ -1324,7 +1324,7 @@ codex \
   -c "model=\"$ROUTER_MODEL\"" \
   -c 'model_provider="metrum-router"' \
   -c "model_catalog_json=\"$WORK/metrum-models.json\"" \
-  -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
+  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
   -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"'
@@ -1360,7 +1360,7 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
     -c 'model="agent-tools-smoke"' \
     -c 'model_provider="metrum-router"' \
     -c 'model_catalog_json="/workspace/metrum-models.json"' \
-    -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
+    -c 'model_providers.metrum-router.name="Metrum AI Router"' \
     -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
     -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
     -c 'model_providers.metrum-router.wire_api="responses"' \

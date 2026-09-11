@@ -1,6 +1,6 @@
 # Package Bootstrap
 
-This package contains a packaged Metrum Smart Router runtime plus a small offline documentation set. The full external administrator documentation is embedded in the router binary and is available at `/docs/` after the service starts.
+This package contains a packaged Metrum AI Router runtime plus a small offline documentation set. The full external administrator documentation is embedded in the router binary and is available at `/docs/` after the service starts.
 
 ## What Is Included
 

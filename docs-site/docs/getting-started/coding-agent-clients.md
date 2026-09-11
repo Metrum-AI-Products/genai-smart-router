@@ -5,7 +5,7 @@ doc_type: reference
 
 # Coding-Agent Client Matrix
 
-Metrum Smart Router can serve coding-agent clients through deployment-defined model groups. Use `/v1/models` with your router token to see the groups your token may request; hosted examples may use names such as `big-coder`, but your deployment can choose different names.
+Metrum AI Router can serve coding-agent clients through deployment-defined model groups. Use `/v1/models` with your router token to see the groups your token may request; hosted examples may use names such as `big-coder`, but your deployment can choose different names.
 
 ## Compatibility Matrix
 
@@ -49,7 +49,7 @@ codex exec --ignore-user-config --ephemeral \
   -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_catalog_json="~/.codex/metrum-models.json"' \
-  -c 'model_providers.metrum-router.name="Metrum Smart Router"' \
+  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
   -c 'model_providers.metrum-router.base_url="https://<router-host>/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
@@ -130,7 +130,7 @@ Edit `~/.config/opencode/opencode.json` and add or merge a provider that uses `@
   "provider": {
     "metrum": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Metrum Smart Router",
+      "name": "Metrum AI Router",
       "options": {
         "baseURL": "https://<router-host>/v1",
         "apiKey": "{file:~/.config/opencode/metrum-router.key}"

@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Structured Outputs
 
-Structured-output requests ask an upstream model to return JSON matching a caller-provided schema. Metrum Smart Router treats these requests as routing requirements: it selects only targets that have explicit structured-output metadata for the caller API skin, then forwards the schema payload to the selected upstream.
+Structured-output requests ask an upstream model to return JSON matching a caller-provided schema. Metrum AI Router treats these requests as routing requirements: it selects only targets that have explicit structured-output metadata for the caller API skin, then forwards the schema payload to the selected upstream.
 
 The router does not currently perform application-level JSON Schema validation, provider-specific schema-subset enforcement, or output repair. A target can be eligible and still return an upstream error if the provider rejects a schema feature, strictness setting, or combination of fields.
 

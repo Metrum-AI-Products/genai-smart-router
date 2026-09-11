@@ -1,11 +1,11 @@
 ---
-title: Evaluate Metrum Smart Router
+title: Evaluate Metrum AI Router
 doc_type: explanation
 ---
 
-# Evaluate Metrum Smart Router
+# Evaluate Metrum AI Router
 
-Use this checklist to evaluate Metrum Smart Router in a self-managed deployment.
+Use this checklist to evaluate Metrum AI Router in a self-managed deployment.
 The goal is to verify client compatibility, governance, routing behavior, cost
 evidence, and operational trust signals before rollout. For deployment shape,
 start with [Deployment Patterns](../operations/deployment-patterns).

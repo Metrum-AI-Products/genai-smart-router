@@ -14,20 +14,53 @@ this page. The version banner, `/docs/releases`, and `/version` are the
 authoritative sources for its exact router version and build timestamp; do not
 infer the running version from a date written in documentation.
 
+## v1.4.3 - 2026-09-11
+
+### Highlights
+
+- Public docs, site title, `/docs/llms.txt`, and the branding lint now use
+  **Metrum AI Router** as the only current product name. "LLM smart router"
+  remains the category description, not a second product title.
+- Example configs and admin-auth docs align the Basic-auth realm example with
+  the runtime default (`Metrum AI Router Admin`).
+
+### Operator Impact
+
+- No runtime config schema, strategy name, metric, CLI flag, or binary rename.
+- Technical identifiers (`metrum-router`, `smartrouterctl`, Helm chart IDs,
+  Kubernetes labels) are unchanged.
+- Admin Basic-auth realm default was already `"Metrum AI Router Admin"`.
+
+### Upgrade
+
+Standard image upgrade. No configuration migration is required for this release.
+
+### Validation
+
+- `make docs-qa && make docs-build`
+- `make test`
+- After deploy: `/readyz`, `/version` reports v1.4.3, `/docs/` and
+  `/docs/llms.txt` name Metrum AI Router
+
+### Rollback
+
+Redeploy the previous package/image (`v1.4.2`). No database or config rollback
+is required for this documentation/branding release.
+
 ## v1.4.2 - 2026-09-11
 
 Packaged republish of the merged smart-router positioning commit as GitHub Release
-`v1.4.2`. Prefer these release assets for deploy. The `v1.4.1` tag/ref was locked by
-repository immutable-release rules after the initial asset-upload failure; product
-content matches the v1.4.1 notes below.
+`v1.4.2`. Prefer these release assets for deploy when remaining on that tag. The
+`v1.4.1` tag/ref was locked by repository immutable-release rules after the
+initial asset-upload failure; product content matches the v1.4.1 notes below.
 
 ## v1.4.1 - 2026-09-11
 
 ### Highlights
 
-- Public positioning now leads with **Metrum Smart Router**, an open-source LLM
-  smart router. Gateway functions remain available underneath routing rather than
-  as the leading product classifier.
+- Public positioning leads with Metrum AI Router as an open-source LLM smart
+  router. Gateway functions remain available underneath routing rather than as
+  the leading product classifier.
 - Learned Routing Policy is linked from the public routing strategy table and
   decision tree, with checked-in synthetic holdout figures labeled as
   non-promotable wiring evidence.
@@ -38,9 +71,6 @@ content matches the v1.4.1 notes below.
 ### Operator Impact
 
 - No runtime config schema, strategy name, metric, CLI flag, or binary rename.
-- Embedded docs title/tagline and fallback docs HTML now say Metrum Smart Router.
-- Runtime banners, admin realms, and generated Helm/blueprint display strings may
-  still say Metrum AI Router until a separate runtime rename. <!-- branding-exception: documents unchanged runtime display identity -->
 - Package docs allowlist is unchanged; `llms.txt` ships in the embedded
   Docusaurus tree.
 

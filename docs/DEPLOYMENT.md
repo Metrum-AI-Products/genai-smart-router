@@ -1,4 +1,4 @@
-# Metrum Smart Router Deployment
+# Metrum AI Router Deployment
 
 Source-only operator runbook. Do not add this file to `scripts/package_docs_allowlist.txt`; package-safe external bootstrap deployment guidance belongs in `docs/PACKAGE_README.md`, `docs/BINARY_INSTALL.md`, `docs/DOCKER_COMPOSE_INSTALL.md`, and the router-served Docusaurus installation docs.
 
@@ -359,7 +359,7 @@ Create `/etc/systemd/system/smart-llmrouter.service`:
 
 ```ini
 [Unit]
-Description=Metrum Smart Router
+Description=Metrum AI Router
 After=network-online.target
 Wants=network-online.target
 

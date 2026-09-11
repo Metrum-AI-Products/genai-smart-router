@@ -1,4 +1,4 @@
-# Metrum Smart Router
+# Metrum AI Router
 > Open-source (Apache-2.0) LLM smart router. Selects a different upstream model
 > per request from a deployment-owned, versioned policy, then records the
 > decision as evidence. Includes gateway functions (single endpoint, provider

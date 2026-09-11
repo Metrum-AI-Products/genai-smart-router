@@ -1,6 +1,6 @@
 # Self-Hosted vLLM And SGLang Upstreams
 
-Metrum Smart Router can route to enterprise-owned inference services that expose OpenAI-compatible APIs, including vLLM and SGLang. Keep these services on private network names, expose the router as the governed ingress point, and use router model groups as the caller-facing contract.
+Metrum AI Router can route to enterprise-owned inference services that expose OpenAI-compatible APIs, including vLLM and SGLang. Keep these services on private network names, expose the router as the governed ingress point, and use router model groups as the caller-facing contract.
 
 Hosted OpenAI-compatible providers such as Crusoe Managed Inference, Baseten Model APIs, or OpenRouter use the same provider catalog shape but are not self-hosted upstreams. Configure their public `/v1` endpoints with `dialect: openai-chat` and provider API keys, then run the same direct and router-level validation gates before activation. Keep hosted provider examples in public docs free of private hostnames and deployment-specific secrets.
 

@@ -28,7 +28,7 @@ If metrics are enabled for a metrics-admin subject, inspect safe license gauges 
 | `license-invalid` | The file is malformed, unverifiable, uses an unknown key, or has been edited. | Restore or replace it with a valid operator-issued file. |
 | `license-expired` | The valid license is past expiry. | Install a renewed license and restart or wait for recheck. |
 | `license-not-yet-valid` | The license start time is in the future. | Check system time and issued dates. |
-| `license-product-mismatch` | The license was not issued for Metrum Smart Router. | Install the correct product license. |
+| `license-product-mismatch` | The license was not issued for Metrum AI Router. | Install the correct product license. |
 | `license-feature-forbidden` | The request or config uses an unlicensed feature. | Disable the feature or re-issue the local `license.json` with the required feature. |
 | `license-limit-exceeded` | A licensed deployment limit is exceeded. | Reduce configured usage or install an updated license. |
 | `license-volume-exceeded` | License-wide volume is exhausted. | Install a top-up or replacement license. |

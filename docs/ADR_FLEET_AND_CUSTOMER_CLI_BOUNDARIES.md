@@ -144,7 +144,7 @@ protected profile plus the recorded security/operations review in
 
 Fleet, commerce, licensing, and customer-lifecycle packages remain in this
 Apache-2.0 monorepo as **optional operator tooling**. They are not required to
-run Community Metrum Smart Router. Request-path packages (`cmd/metrum-router`,
+run Community Metrum AI Router. Request-path packages (`cmd/metrum-router`,
 `internal/router`, customer-local `metrum-routerctl`) must not import
 `internal/commerce`, `internal/fleet`, or `internal/customerlifecycle`.
 Customer Docker images continue to omit Fleet-only binaries. Local Stripe and

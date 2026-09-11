@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Self-Managed Licensing
 
-All Metrum Smart Router first-party content is licensed under Apache-2.0. In this
+All Metrum AI Router first-party content is licensed under Apache-2.0. In this
 section, "license" refers only to an optional operator-created runtime policy
 file. It is not a copyright license or commercial-use condition and does not
 narrow the rights granted by Apache-2.0.

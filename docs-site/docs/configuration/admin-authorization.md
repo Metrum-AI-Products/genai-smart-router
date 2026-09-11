@@ -5,7 +5,7 @@ doc_type: howto
 
 # Admin Authorization
 
-Metrum Smart Router uses deployment-owned policy rules for authorization decisions on operator surfaces. Authentication still happens first:
+Metrum AI Router uses deployment-owned policy rules for authorization decisions on operator surfaces. Authentication still happens first:
 
 - router bearer tokens authenticate API and machine callers;
 - HTTP Basic can authenticate simple browser-admin users;

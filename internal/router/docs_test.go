@@ -56,7 +56,7 @@ func TestDocsHandlerServesLLMsTxtWhenEmbedded(t *testing.T) {
 		t.Fatalf("content-type=%q, want text/plain", ct)
 	}
 	body := rr.Body.String()
-	for _, required := range []string{"# Metrum Smart Router", "Category: LLM router", "Learned Routing Policy"} {
+	for _, required := range []string{"# Metrum AI Router", "Category: LLM router", "Learned Routing Policy"} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("llms.txt missing %q: %s", required, body)
 		}

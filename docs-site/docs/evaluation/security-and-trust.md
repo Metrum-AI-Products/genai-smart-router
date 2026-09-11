@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Security And Trust
 
-Metrum Smart Router is designed to keep provider credentials, private upstream endpoints, routing policy, and operational telemetry under deployment control while giving applications a stable API.
+Metrum AI Router is designed to keep provider credentials, private upstream endpoints, routing policy, and operational telemetry under deployment control while giving applications a stable API.
 
 ## What Stays Server-Side
 

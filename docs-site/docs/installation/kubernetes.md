@@ -5,7 +5,7 @@ doc_type: howto
 
 # Deploy To Kubernetes
 
-Use Kubernetes when Metrum Smart Router needs to run inside a **customer-operated** cluster with cluster-native ingress, Secrets, and operational controls. The generic base defaults to a serialized single-writer SQLite deployment on its `/app/state` PVC; PostgreSQL is an explicit option for multi-replica or externally managed database designs. This is the canonical Kubernetes installation page for teams that operate their own cluster; post-deployment topology guidance lives in [Enterprise Deployment Patterns](../operations/deployment-patterns).
+Use Kubernetes when Metrum AI Router needs to run inside a **customer-operated** cluster with cluster-native ingress, Secrets, and operational controls. The generic base defaults to a serialized single-writer SQLite deployment on its `/app/state` PVC; PostgreSQL is an explicit option for multi-replica or externally managed database designs. This is the canonical Kubernetes installation page for teams that operate their own cluster; post-deployment topology guidance lives in [Enterprise Deployment Patterns](../operations/deployment-patterns).
 
 The project maintains Kustomize-friendly manifests as a production-oriented
 starting point. Review them against your cluster's ingress controller, network
@@ -85,7 +85,7 @@ deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml
 ### NVIDIA local-serving profile
 
 When the cluster already runs OpenAI-compatible serving stacks on NVIDIA GPUs, use the
-`nvidia-local-serving` overlay so Metrum Smart Router points only at in-cluster Service DNS
+`nvidia-local-serving` overlay so Metrum AI Router points only at in-cluster Service DNS
 names. The router Pod does **not** request `nvidia.com/gpu`; serving Deployments do.
 LMCache and Mooncake stay off unless you enable them separately.
 
@@ -103,9 +103,9 @@ operator runbooks; cloud/cluster login is a prerequisite, never a CLI workflow s
 ### NVIDIA llm-d compatibility profile
 
 Use `nvidia-llmd-compat` only when the cluster operator has separately chosen
-llm-d and Gateway API Inference Extension. Metrum Smart Router selects a model group
+llm-d and Gateway API Inference Extension. Metrum AI Router selects a model group
 and sends OpenAI-compatible traffic to `llm-d-local-epp:8081`; llm-d then
-selects a serving replica. Metrum Smart Router is not an llm-d controller and does not
+selects a serving replica. Metrum AI Router is not an llm-d controller and does not
 install cluster prerequisites.
 
 Render from
@@ -125,7 +125,7 @@ policy, and rollback in the target cluster before exposing the group.
 
 For operator-controlled k3s or Kubernetes clusters with AMD Instinct GPUs, the
 manual `k3s-amd-instinct-local-serving` overlay deploys one vLLM/ROCm Service per
-router model group. Serving Pods request `amd.com/gpu`; the Metrum Smart Router Pod does
+router model group. Serving Pods request `amd.com/gpu`; the Metrum AI Router Pod does
 not. Upstreams remain in-cluster `*.svc.cluster.local` endpoints, and LMCache,
 Mooncake, llm-d, and cloud LLM APIs are outside this profile.
 
