@@ -1,0 +1,13 @@
+{
+  "canary": {
+    "kind": "content_block",
+    "name": "thinking_v2",
+    "header": "X-Agent-Canary: thinking_v2",
+    "tool_descriptor": "tools.thinking_v2"
+  },
+  "disposition": "ok",
+  "acknowledged": false,
+  "forwarded": false,
+  "trial_completed": true,
+  "canary_dropped": true
+}

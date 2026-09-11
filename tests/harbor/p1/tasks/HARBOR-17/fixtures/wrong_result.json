@@ -1,0 +1,23 @@
+{
+  "python": {
+    "files_edited": ["calc/__init__.py", "calc/ops.py"],
+    "held_out_passed": true,
+    "add_result": 41,
+    "mul_result": 120
+  },
+  "c": {
+    "files_edited": ["math_ops.c", "math_ops.h"],
+    "held_out_passed": true,
+    "gcd_result": 6,
+    "lcm_result": 42,
+    "compile_exit_code": 0,
+    "compile_stderr": "warning: unused variable 'tmp' [-Wunused-variable]\n"
+  },
+  "protocol_observations": {
+    "search": true,
+    "read": true,
+    "edit": true,
+    "shell_tests": true,
+    "noisy_compiler_output_seen": true
+  }
+}

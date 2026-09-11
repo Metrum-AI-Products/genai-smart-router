@@ -116,18 +116,25 @@ cases:
 
   - id: HARBOR-17
     priority: P2
-    disposition: blocked
+    disposition: offline_stub
     title: Multi-file multi-language repository repair
-    deferred_issue: https://github.com/metrum-ai/router/issues/104
     assertions:
       - held-out tests pass for Python and a compiled-language task
-    rationale: Deferred P2 breadth beyond offline P1 stubs; tracked in #104.
+      - starter/no-op and wrong-result artifacts fail
+      - protocol observations cover search/read/edit/shell-tests with noisy compiler output
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-17/
+      - tests/harbor/p1/verifiers.py
+    notes: Offline P2 stub for #104; live credentials remain blocked elsewhere (skip ≠ pass).
 
   - id: HARBOR-18
     priority: P2
-    disposition: blocked
+    disposition: offline_stub
     title: Agent version canary with new content block or tool descriptor
-    deferred_issue: https://github.com/metrum-ai/router/issues/104
     assertions:
       - explicit supported/unsupported disposition; no silent loss or false green
-    rationale: Deferred P2 canary coverage; tracked in #104.
+      - supported_ack and unsupported_clean_reject pass; silent_drop and false_green fail
+    evidence_paths:
+      - tests/harbor/p1/tasks/HARBOR-18/
+      - tests/harbor/p1/verifiers.py
+    notes: Offline P2 stub for #104; missing live credentials still blocked (skip ≠ pass).
