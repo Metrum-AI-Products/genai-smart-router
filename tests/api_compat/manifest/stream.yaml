@@ -26,13 +26,19 @@ cases:
     component: sse-transport
     source_url: https://github.com/metrum-ai/router/issues/94
     reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
     transport: sse
-    disposition: blocked
+    disposition: native_supported
     assertions:
       - LF/CRLF comments multiline data and optional-space SSE fields parse per semantics
+      - malformed JSON data is distinguishable from unsupported additive event names
+      - router forwards supported framing so Chat content still reconstructs
     evidence_paths:
-      - tests/api_compat/manifest/stream.yaml
-    rationale: Deferred linked follow-up; STREAM-01 covers CRLF frame separators via rich transcript.
+      - tests/api_compat/tests/test_stream_faults.py
+      - tests/api_compat/harness/stream_faults.py
+      - tests/api_compat/harness/sse.py
+    test_id: test_stream_02_sse_field_semantics
 
   - id: STREAM-03
     priority: P0
@@ -94,13 +100,19 @@ cases:
     component: sse-transport
     source_url: https://github.com/metrum-ai/router/issues/94
     reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
     transport: sse
-    disposition: blocked
+    disposition: native_supported
     assertions:
-      - EOF classes before first frame partial frame and after terminal classify correctly
+      - EOF before first frame is a caller-visible failure with no invented content
+      - EOF after a partial frame interrupts without finish or [DONE] success framing
+      - EOF after finish reason before [DONE] still settles Chat without inventing content
+      - EOF after terminal sentinel remains a successful stream
     evidence_paths:
-      - tests/api_compat/manifest/stream.yaml
-    rationale: Deferred linked follow-up; Go ST7 covers truncated settlement.
+      - tests/api_compat/tests/test_stream_faults.py
+      - tests/api_compat/harness/stream_faults.py
+    test_id: test_stream_06_eof_class_classification
 
   - id: STREAM-07
     priority: P0
@@ -108,13 +120,19 @@ cases:
     component: sse-transport
     source_url: https://github.com/metrum-ai/router/issues/94
     reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
     transport: sse
-    disposition: blocked
+    disposition: native_supported
     assertions:
-      - error-in-200 truncated tools refusal and incomplete Responses never look like success
+      - truncated tool argument streams are not executable JSON and lack tool finish
+      - content_filter refusal midstream is distinguishable from stop success
+      - Responses error event inside HTTP 200 never synthesizes response.completed
+      - response.incomplete terminal never looks like completed success
     evidence_paths:
-      - tests/api_compat/manifest/stream.yaml
-    rationale: Deferred linked follow-up after Responses native stream lands.
+      - tests/api_compat/tests/test_stream_faults.py
+      - tests/api_compat/harness/stream_faults.py
+    test_id: test_stream_07_error_refusal_incomplete_never_success
 
   - id: STREAM-08
     priority: P1

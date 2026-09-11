@@ -50,6 +50,161 @@ def rich_chat_stream_frames(
     ]
 
 
+def sse_semantics_chat_frames(
+    *,
+    content: str = "sse-field-ok",
+    usage: dict[str, int] | None = None,
+) -> list[str]:
+    """STREAM-02: LF/CRLF, comments, multiline data, optional-space, named events."""
+    usage = usage or EXPECTED_CHAT_USAGE
+    # Multiline data joins with \\n; keep JSON valid by splitting between tokens.
+    content_frame = (
+        ": keepalive comment\n"
+        "event: message\n"
+        'data:{"id":"chatcmpl_stream02","object":"chat.completion.chunk","choices":[{'
+        "\n"
+        f'data: "index":0,"delta":{{"role":"assistant","content":{json_dumps(content)}}},'
+        '"finish_reason":null}]}\n'
+        "\n"
+    )
+    finish_frame = (
+        "event:message\r\n"
+        "data: "
+        '{"id":"chatcmpl_stream02","object":"chat.completion.chunk",'
+        '"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\r\n'
+        "\r\n"
+    )
+    usage_frame = (
+        f'data: {{"id":"chatcmpl_stream02","object":"chat.completion.chunk",'
+        f'"choices":[],"usage":{json_dumps(usage)}}}\n\n'
+    )
+    # Unsupported additive event must not break subsequent Chat parsing.
+    unsupported = 'event: vendor.obfuscation\ndata: {"nonce":"stream02"}\n\n'
+    return [unsupported, content_frame, finish_frame, usage_frame, "data:[DONE]\n\n"]
+
+
+def chat_frames_until_finish(*, content: str, include_done: bool = False) -> list[str]:
+    """Content + finish+usage; optional [DONE] for STREAM-06 terminal classes."""
+    frames = [
+        (
+            f'data: {{"id":"chatcmpl_eof","object":"chat.completion.chunk",'
+            f'"choices":[{{"index":0,"delta":{{"role":"assistant","content":{json_dumps(content)}}},'
+            f'"finish_reason":null}}]}}\n\n'
+        ),
+        (
+            'data: {"id":"chatcmpl_eof","object":"chat.completion.chunk",'
+            '"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],'
+            f'"usage":{json_dumps(EXPECTED_CHAT_USAGE)}}}\n\n'
+        ),
+    ]
+    if include_done:
+        frames.append("data: [DONE]\n\n")
+    return frames
+
+
+def chat_refusal_frames(*, content: str = "partial-before-refusal") -> list[str]:
+    """Midstream refusal/content_filter terminal — not a successful stop."""
+    return [
+        (
+            f'data: {{"id":"chatcmpl_refusal","object":"chat.completion.chunk",'
+            f'"choices":[{{"index":0,"delta":{{"role":"assistant","content":{json_dumps(content)}}},'
+            f'"finish_reason":null}}]}}\n\n'
+        ),
+        (
+            'data: {"id":"chatcmpl_refusal","object":"chat.completion.chunk",'
+            '"choices":[{"index":0,"delta":{},"finish_reason":"content_filter"}]}\n\n'
+        ),
+        "data: [DONE]\n\n",
+    ]
+
+
+def chat_truncated_tool_frames() -> list[str]:
+    """Tool id/name plus incomplete argument fragment (no finish_reason)."""
+    return [
+        (
+            "data: "
+            + json.dumps(
+                {
+                    "id": "chatcmpl_trunc_tool",
+                    "object": "chat.completion.chunk",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "role": "assistant",
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_trunc",
+                                        "type": "function",
+                                        "function": {"name": "lookup", "arguments": ""},
+                                    }
+                                ],
+                            },
+                            "finish_reason": None,
+                        }
+                    ],
+                },
+                separators=(",", ":"),
+            )
+            + "\n\n"
+        ),
+        (
+            "data: "
+            + json.dumps(
+                {
+                    "id": "chatcmpl_trunc_tool",
+                    "object": "chat.completion.chunk",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "tool_calls": [
+                                    {"index": 0, "function": {"arguments": '{"q":"par'}}
+                                ]
+                            },
+                            "finish_reason": None,
+                        }
+                    ],
+                },
+                separators=(",", ":"),
+            )
+            + "\n\n"
+        ),
+    ]
+
+
+def responses_error_event_frames() -> list[str]:
+    """Top-level Responses error event inside HTTP 200 (no completed terminal)."""
+    return [
+        (
+            "event: response.output_text.delta\n"
+            'data: {"type":"response.output_text.delta","delta":"before-error"}\n\n'
+        ),
+        (
+            "event: error\n"
+            'data: {"type":"error","error":{"code":"server_error","message":"upstream boom"}}\n\n'
+        ),
+    ]
+
+
+def responses_incomplete_frames(*, delta: str = "incomplete-partial") -> list[str]:
+    return [
+        (
+            "event: response.output_text.delta\n"
+            f'data: {{"type":"response.output_text.delta","delta":{json_dumps(delta)}}}\n\n'
+        ),
+        (
+            "event: response.incomplete\n"
+            "data: "
+            '{"type":"response.incomplete","response":{"id":"resp_incomplete",'
+            '"object":"response","status":"incomplete",'
+            '"incomplete_details":{"reason":"max_output_tokens"},'
+            '"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}\n\n'
+        ),
+    ]
+
+
 def reconstruct_sse_from_byte_splits(raw: bytes, *, split_bytes: int = 1) -> list[tuple[str, object]]:
     """Reassemble SSE events from fixed-size byte slices (STREAM-01 oracle)."""
     if split_bytes < 1:
