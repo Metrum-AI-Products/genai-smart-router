@@ -64,7 +64,7 @@ Router API compatibility is protected by deterministic release validation in add
 | Surface | What the conformance suite proves |
 |---|---|
 | OpenAI Chat Completions | Plain text, native same-dialect SSE timing/chunks/cancellation, optional final usage, `max_tokens`, `max_completion_tokens`, same-dialect tool passthrough, `tool_choice`, JSON-schema `response_format`, and `reasoning_effort` forwarding when the selected target supports reasoning. |
-| OpenAI Responses | `max_output_tokens`, same-dialect function/namespace tool passthrough, JSON-schema `text.format`, generic hosted search/image descriptor stripping, and remote provider-hosted tool rejection before upstream. |
+| OpenAI Responses | `max_output_tokens`, same-dialect function/namespace tool passthrough, JSON-schema `text.format`, generic hosted search/image descriptor stripping, remote provider-hosted tool rejection before upstream, and same-dialect native SSE lifecycle (created/in-progress/output deltas/completed) with gated first-event proof. |
 | Anthropic Messages | Message payload encoding, native same-dialect SSE text/tool-use/usage events and cancellation, caller `max_tokens`, and `thinking` forwarding when the selected target supports Anthropic token-budget reasoning. |
 | Gemini `generateContent` target | Unary text encode/decode, exact model-specific endpoint construction, fail-closed unsupported shapes, and direct-plus-router activation evidence. This is an outbound adapter, not a caller endpoint. |
 
@@ -114,34 +114,57 @@ relax the offline mock phase.
 
 The current caller-contract matrix covers `/v1/models`, OpenAI Chat
 Completions, OpenAI Responses, Anthropic Messages, function tools and tool
-choice, terminal SSE usage, authorization and model access, caller-visible
-errors, and the non-streaming text/function-tool paths of both explicit
-stateless bridges. Each represented pre-upstream rejection asserts that the
-fake upstream received zero requests; generated artifacts are scanned for the
-synthetic redaction canaries.
+choice, terminal SSE usage (including Chat empty-choices usage-only chunks),
+authorization and model access, caller-visible errors, native same-dialect
+streaming for Chat/Responses/Messages, and the non-streaming text/function-tool
+paths of both explicit stateless bridges. Each represented pre-upstream
+rejection asserts that the fake upstream received zero requests; generated
+artifacts are scanned for the synthetic redaction canaries.
 
-To add a case, extend `tests/api_compat/tests/test_api_compat.py` with a
-synthetic request and explicit caller-visible response/upstream-shape
-assertions. Add both a positive case and the relevant pre-upstream negative
-case when a request shape can be rejected. This suite is router compatibility
-evidence, not provider capability certification; it does not cover images,
-reasoning, structured outputs, hosted tools, stateful bridges, or live
-providers.
+To add a case, extend the focused modules under `tests/api_compat/tests/` with
+a synthetic request and explicit caller-visible response/upstream-shape
+assertions, and add a matching row under `tests/api_compat/manifest/`. Add both
+a positive case and the relevant pre-upstream negative case when a request
+shape can be rejected. This suite is router compatibility evidence, not
+provider capability certification; live providers require `make api-compat-live`
+with an approved non-production matrix.
+
+### Validation evidence (offline)
+
+| Item | Value |
+|---|---|
+| Catalog tracker | [Issue #94](https://github.com/metrum-ai/router/issues/94) |
+| Native Responses streaming | [PR #103](https://github.com/metrum-ai/router/pull/103) (`feat(router): native OpenAI Responses streaming + RESP P0 contracts`) |
+| Evidence date | 2026-09-11 |
+| Evidence tip SHA | `d9a05eda611689808d7c470537ac8b0050945367` (main at Wave 3 docs refresh; re-record after merges) |
+| What is validated offline | Manifest-backed HTTP/SDK, Chat/Responses/Messages P0 shapes, MEDIA/STREAM/ROUTE/OPS/Harbor adapter contracts against loopback fake upstreams |
+| What is not claimed | Real provider entitlement, Harbor statistical certification, or production spend without operator-gated live evidence |
+
+**Limitation (historical):** Older offline Responses smoke paths synthesized
+caller SSE after a unary upstream call. That synthetic path was **not** native
+streaming proof. Same-dialect native Responses streaming is now implemented and
+covered by the RESP-02..06 contracts landed with #103. Cross-dialect bridges
+remain unary upstream with router-encoded caller SSE unless a bridge explicitly
+validates streaming.
 
 `make api-compat-live` is deliberately fail-closed and is not part of test,
-build, package, or release targets. It requires a human-named approved matrix,
-non-production environment, least-privilege caller identity, explicit base
-URL, a protected mode-0600 credential file, and a confirmation bound to the
-matrix and environment. Until those inputs and a separate approved live matrix
-exist, the target exits without making a request and does not print the URL or
-credential.
+build, package, or release targets. It keeps the operator gates for a
+human-named approved matrix (`tests/api_compat/testdata/live/matrices/<id>.json`),
+non-production environment, least-privilege caller identity, explicit base URL,
+a protected mode-0600 credential file, and a confirmation bound to
+`matrix:environment`. The runner then enforces hard request/token/time/spend
+caps from the matrix (clamped by script ceilings). Missing or empty credentials
+report disposition `blocked` with a nonzero exit and **never** count as
+certification. Optional CI job `.github/workflows/api-compat-live.yml` reports
+the same blocked disposition when live secrets are absent and does not fail the
+default PR `make test` gate.
 
 ## Compatibility Matrix
 
 | Capability | Chat Completions | Responses | Messages |
 |---|---|---|---|
 | Text input/output | Supported | Supported | Supported |
-| Streaming | Same-dialect native upstream SSE is proxied incrementally | Caller SSE after unary upstream | Same-dialect native upstream SSE is proxied incrementally |
+| Streaming | Same-dialect native upstream SSE is proxied incrementally | Same-dialect native upstream SSE is proxied incrementally | Same-dialect native upstream SSE is proxied incrementally |
 | Tool calls | Requires `tool_support.openai_chat` | Requires `tool_support.openai_responses` | Requires `tool_support.anthropic_messages` |
 | Structured outputs | `response_format` requires `tool_support.openai_chat: [structured_outputs]` | `text.format` requires `tool_support.openai_responses: [structured_outputs]` | No OpenAI structured-output equivalent |
 | Reasoning/thinking | `reasoning_effort` requires target `reasoning` metadata | `reasoning` requires target `reasoning` metadata | `thinking` requires target `reasoning` metadata or validated target default thinking |
@@ -150,7 +173,7 @@ credential.
 | Cache eligibility | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests |
 | Usage and cost rows | Recorded | Recorded | Recorded |
 
-For same-dialect OpenAI Chat and Anthropic Messages targets, caller `stream: true` requests set upstream streaming and proxy native SSE events incrementally, including compatible tool and usage events. Once any event is committed downstream, the router does not replay the request to a fallback target; caller cancellation cancels the upstream request. OpenAI Responses and cross-dialect bridges remain unary upstream calls with dialect-correct synthesized caller SSE.
+For same-dialect OpenAI Chat, OpenAI Responses, and Anthropic Messages targets, caller `stream: true` requests set upstream streaming and proxy native SSE events incrementally, including compatible tool and usage events. Once any event is committed downstream, the router does not replay the request to a fallback target; caller cancellation cancels the upstream request. Cross-dialect bridges remain unary upstream calls with dialect-correct synthesized caller SSE unless a bridge explicitly validates streaming.
 
 If a request includes tools, structured-output fields, images, or an explicit max-token cap, the router filters the model group's target list before policy selection. Targets that do not satisfy the request shape are skipped. If no compatible target remains, the router returns `502 no-eligible-target` before sending an upstream request.
 

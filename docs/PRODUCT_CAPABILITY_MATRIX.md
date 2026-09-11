@@ -7,7 +7,7 @@ This matrix records what is visible in this repository and current docs. Keep it
 | OpenAI Chat Completions | Implemented | `/v1/chat/completions` request shape supported. |
 | OpenAI Responses | Implemented | Used by Codex CLI and Responses-compatible tool flows. |
 | Anthropic Messages | Implemented | Used by Claude Code CLI and Anthropic-compatible clients. |
-| Native same-dialect streaming | Implemented | OpenAI Chat and Anthropic Messages proxy incremental upstream SSE; Responses and cross-dialect paths use unary upstream calls with router-encoded caller streaming. A committed native stream cannot fall back. |
+| Native same-dialect streaming | Implemented | OpenAI Chat, OpenAI Responses, and Anthropic Messages proxy incremental upstream SSE on same-dialect paths; cross-dialect bridges remain unary upstream with router-encoded caller streaming unless a bridge explicitly validates streaming. A committed native stream cannot fall back. Historical synthetic Responses SSE after a unary upstream was not native streaming proof; native Responses streaming landed with #103. |
 | Gemini `generateContent` adapter | Implemented, evidence-gated | Outbound unary-text codec only; activation requires exact-model operator-attested direct and restricted router evidence. No caller-facing Gemini endpoint, tools, images, reasoning, structured output, or streaming. |
 | Filtered model discovery | Implemented | `/v1/models` returns groups allowed for the caller token. |
 | Caller tokens | Implemented | Raw tokens are generated once; config stores hashes. |

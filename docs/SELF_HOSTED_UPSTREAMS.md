@@ -121,8 +121,9 @@ containing `delta.tool_calls`, terminal `finish_reason: "tool_calls"`, and a
 usage event when the caller requested `stream_options.include_usage`. Canceling
 the downstream request must cancel the upstream call. Once the router writes
 the first native event, it cannot safely retry, replay, or fall back to another
-target. OpenAI Responses and cross-dialect bridge paths remain unary upstream
-calls with router-encoded caller streaming.
+target. Same-dialect OpenAI Responses streaming proxies native upstream SSE.
+Cross-dialect bridge paths remain unary upstream calls with router-encoded
+caller streaming.
 
 ## Structured-Output Notes
 

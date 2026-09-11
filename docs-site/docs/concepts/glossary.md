@@ -31,7 +31,7 @@ Use this glossary for short canonical definitions. For the request flow and mode
 | input modality | A target-supported input type such as text or image. | [Model Metadata](../reference/model-metadata) |
 | metrics-admin | An operator subject authorized to read global `/metrics`; ordinary caller tokens receive `403 metrics-forbidden`. | [Observability](../operations/observability) |
 | model group | A caller-facing, deployment-defined policy name that owns a target list and routing strategy. | [Concepts](../concepts) |
-| native streaming | Incremental proxying of same-dialect OpenAI Chat or Anthropic Messages upstream SSE; after the first event the response is committed and cannot fall back. | [API Compatibility](../reference/api-compatibility) |
+| native streaming | Incremental proxying of same-dialect OpenAI Chat, OpenAI Responses, or Anthropic Messages upstream SSE; after the first event the response is committed and cannot fall back. | [API Compatibility](../reference/api-compatibility) |
 | output modality | A target-supported output type, normally text unless validated otherwise. | [Model Metadata](../reference/model-metadata) |
 | owner user | The configured owner identity for caller tokens, reporting, access, and usage grouping. | [Router Configuration](../configuration/router-config) |
 | policies | Authentication, authorization, routing, limits, contracts, traffic shaping, retention, and deployment rules that govern requests. | [Customer-Controlled Routing](../routing/customer-controlled-routing) |
