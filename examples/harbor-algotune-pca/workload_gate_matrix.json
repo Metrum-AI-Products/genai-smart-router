@@ -1,6 +1,8 @@
 {
   "name": "harbor-coding-agent-smoke",
-  "description": "Example outcome gate for Harbor or equivalent coding-agent workload runs. Group names and thresholds are deployment examples.",
+  "description": "Example outcome gate for Harbor or equivalent coding-agent workload runs. Group names and thresholds are deployment examples. This checked-in matrix is smoke/documentation-only: fixed_model_controls is intentionally empty so --promotion cannot pass. Copy and fill fixed_model_controls (direct provider and/or fixed router model IDs) before using promotion mode.",
+  "mode": "smoke",
+  "evidence_note": "Canonical dated production evidence lives in docs/harbor-case-study.md (2026-06-29). Do not treat older June 15 matrix summaries as current proof.",
   "gates": {
     "required_clients": ["codex", "claude-code"],
     "required_model_groups": ["small"],
@@ -17,7 +19,15 @@
     "reward": "Harbor reward must be 1.0 for every smoke run",
     "clients": ["codex", "claude-code"],
     "model_groups": ["small"],
+    "control_modes": ["direct_provider", "fixed_router", "dynamic_router_group"],
+    "outcome_dimensions": [
+      "protocol_pass",
+      "sdk_parse_pass",
+      "tool_execution_pass",
+      "verifier_reward"
+    ],
     "attempts_per_cell": 1,
+    "min_attempts_per_cell": 1,
     "fixed_model_controls": [],
     "local_results": "runs/<CASE_ID>/results.tsv",
     "safe_usage_rows": "reports/<CASE_ID>/usage-rows.json"

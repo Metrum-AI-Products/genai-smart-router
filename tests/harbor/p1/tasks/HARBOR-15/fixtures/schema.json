@@ -1,0 +1,7 @@
+{
+  "required": ["status", "label", "tags", "kind", "note"],
+  "enums": {
+    "kind": ["alpha", "beta"],
+    "status": ["complete", "refusal", "truncated"]
+  }
+}

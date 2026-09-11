@@ -1,0 +1,6 @@
+{
+  "serving_route": "unauthorized-text-only",
+  "attempts": ["primary-retryable", "unauthorized-text-only"],
+  "unauthorized_target": "unauthorized-text-only",
+  "task_passed": true
+}

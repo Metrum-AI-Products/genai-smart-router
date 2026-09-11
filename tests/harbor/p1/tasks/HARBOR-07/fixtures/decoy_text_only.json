@@ -1,0 +1,7 @@
+{
+  "merchant": "Acme Cafe",
+  "total_usd": 12.47,
+  "currency": "USD",
+  "source_modality": "text_decoy",
+  "note": "looked up from OCR-free menu text only"
+}

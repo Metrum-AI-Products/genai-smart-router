@@ -120,13 +120,24 @@ export DRY_RUN=1
 
 ## Evaluate The Outcome Gate
 
-`workload_gate_matrix.json` is a safe example matrix for a minimal Harbor promotion gate. It records the task, verifier, reward rule, client matrix, deployment-defined model groups, and thresholds for pass rate, reward, p95 latency, cost per successful task, error rate, and fallback rate. Adjust the thresholds for the deployment before using the gate for promotion.
+`workload_gate_matrix.json` is a safe **smoke/example** matrix. It records the task, verifier, reward rule, client matrix, deployment-defined model groups, outcome dimensions, and thresholds for pass rate, reward, p95 latency, cost per successful task, error rate, and fallback rate. Its `fixed_model_controls` list is intentionally empty so documentation examples cannot produce a promotion pass. Copy the matrix, fill nonempty fixed-model controls (direct provider and/or fixed router model IDs), and raise `min_attempts_per_cell` before using `--promotion`.
 
 After `run_case_study.sh` writes `runs/$CASE_ID/results.tsv`, evaluate the outcome gate locally:
 
 ```bash
 cd examples/harbor-algotune-pca
 python3 ../../scripts/evaluate_workload_gate.py \
+  --matrix workload_gate_matrix.json \
+  --results "runs/$CASE_ID/results.tsv" \
+  --out-json "reports/$CASE_ID/workload-gate.json" \
+  --out-md "reports/$CASE_ID/workload-gate.md"
+```
+
+Promotion mode (requires nonempty `fixed_model_controls` and present baseline cells; missing baseline, missing task, or insufficient sample size exits `2` as **blocked**, not pass):
+
+```bash
+python3 ../../scripts/evaluate_workload_gate.py \
+  --promotion \
   --matrix workload_gate_matrix.json \
   --results "runs/$CASE_ID/results.tsv" \
   --out-json "reports/$CASE_ID/workload-gate.json" \
@@ -148,9 +159,10 @@ CI and local development can validate the gate logic without Harbor or live prov
 
 ```bash
 python3 scripts/evaluate_workload_gate_test.py
+python3 tests/harbor/p1/run_offline_tests.py
 ```
 
-The gate exits non-zero when configured thresholds fail unless `--no-fail` is supplied for exploratory reporting. Its outputs omit raw router tokens, token hashes, provider keys, authorization headers, raw prompts, images, and tool outputs.
+The gate exits `1` when thresholds fail and `2` when promotion requirements are incomplete (`blocked`), unless `--no-fail` is supplied for exploratory reporting. Its outputs omit raw router tokens, token hashes, provider keys, authorization headers, raw prompts, images, and tool outputs.
 
 For a different Harbor task, override `HARBOR_TASK`, `HARBOR_ARTIFACTS`, and `EXTRA_INSTRUCTION_PATHS` together so the captured artifact and task-specific self-check instructions match the task being evaluated.
 
@@ -245,13 +257,13 @@ The generated `reports/$CASE_ID/case-study.md` includes:
 
 ## Latest Recorded Case Study
 
-The checked-in report at `docs/harbor-case-study.md` records a full production run on June 15, 2026:
+The canonical dated evidence is `docs/harbor-case-study.md` (and the aligned public page `docs-site/docs/evaluation/harbor-case-study.mdx`), captured **2026-06-29** on router build `762592b` for model group `big-coder`:
 
 - Task: `aider/polyglot_python_two-bucket`
-- Agents: Codex CLI and Claude Code CLI
-- Model groups: `default`, `fast`, `small`, `medium`, `high`, `big-coder`
-- Outcome: 12/12 Harbor trials passed with reward `1.0`
-- Production usage window: 121 router requests, 1,682,613 total tokens, 1 upstream error with fallback, and no Harbor exceptions
+- Agents: Codex CLI (`0.142.0`) and Claude Code CLI (`2.1.186`); Harbor CLI `0.13.2`
+- Codex: status ok, reward `1`, 0 Harbor errors
+- Claude Code: status failed, reward `0`, 0 Harbor errors — starter `pass` artifact left unchanged with a repeated-read / no-edit trajectory
+- Do **not** present older June 15 full-matrix (12/12) summaries as current production proof; that run is historical only and is superseded by the dated June 29 evidence above
 
 ## Notes
 

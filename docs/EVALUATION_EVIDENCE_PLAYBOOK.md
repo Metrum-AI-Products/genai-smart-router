@@ -90,12 +90,15 @@ For non-Harbor evaluations, keep the external result table normalized enough to 
 
 ## Outcome Gate Command
 
-Use `scripts/evaluate_workload_gate.py` to turn Harbor or equivalent workload results into a deterministic pass/fail artifact. The gate accepts Harbor `results.tsv` or JSON result rows, plus an optional safe usage-report JSON export. It reports pass rate, Wilson confidence interval, reward, p95 latency, cost per successful task, error rate, fallback rate, selected upstream distribution, and request IDs for correlation.
+Use `scripts/evaluate_workload_gate.py` to turn Harbor or equivalent workload results into a deterministic pass/fail artifact. The gate accepts Harbor `results.tsv` or JSON result rows, plus an optional safe usage-report JSON export. It reports pass rate, Wilson confidence interval, reward, p95 latency, cost per successful task, error rate, fallback rate, selected upstream distribution, outcome dimensions, failure classes, and request IDs for correlation.
+
+Smoke mode (default) may use example matrices with empty `fixed_model_controls`. **Promotion mode** (`--promotion` or `"mode": "promotion"`) requires nonempty applicable `fixed_model_controls`; missing direct/fixed baseline, missing required task, or insufficient `min_attempts_per_cell` yields status `blocked` (exit `2`), not a silent pass. Checked-in example matrices must not be able to produce a promotion pass while controls remain empty.
 
 Mock CI check:
 
 ```bash
 python3 scripts/evaluate_workload_gate_test.py
+python3 tests/harbor/p1/run_offline_tests.py
 ```
 
 Example Harbor gate:
@@ -109,7 +112,17 @@ python3 scripts/evaluate_workload_gate.py \
   --out-md examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.md
 ```
 
-The matrix must define the reward/verifier, clients, model groups, attempts/seeds, fixed-model or previous-policy controls where practical, pass/fail criteria, cost and latency thresholds, and rollback criteria. A gate failure should block promotion unless the reviewer explicitly records why the failure is outside the changed route scope.
+Promotion example (after copying the matrix and filling `fixed_model_controls`):
+
+```bash
+python3 scripts/evaluate_workload_gate.py --promotion \
+  --matrix /path/to/promotion_matrix.json \
+  --results examples/harbor-algotune-pca/runs/<CASE_ID>/results.tsv \
+  --out-json examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.json \
+  --out-md examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.md
+```
+
+The matrix must define the reward/verifier, clients, model groups, attempts/seeds, fixed-model or previous-policy controls where practical, pass/fail criteria, cost and latency thresholds, and rollback criteria. A gate failure should block promotion unless the reviewer explicitly records why the failure is outside the changed route scope. Generated summaries should state evidence date, build, matrix completeness, and limitations; a prior passing run must not override a newer failing cell.
 
 For a second, non-agent baseline, use the preregistered OCR-style example in
 `examples/fixed-model-ocr-baseline/`. It compares one candidate with one named

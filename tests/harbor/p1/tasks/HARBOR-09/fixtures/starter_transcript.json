@@ -1,0 +1,9 @@
+{
+  "tool_loop_completed": false,
+  "turns": [
+    {
+      "reasoning": {"summary": "I thought about it"},
+      "assistant_text": "please score my private reasoning"
+    }
+  ]
+}
