@@ -1,0 +1,23 @@
+version = "1.0"
+name = "harbor-01-read-edit-repair"
+
+[metadata]
+author_name = "Metrum AI"
+category = "agent-protocol"
+tags = ["HARBOR-01", "P0", "read-edit-repair", "no-edit-regression"]
+difficulty_explanation = "Read two files, edit a stub, fix a failing edge case."
+case_id = "HARBOR-01"
+priority = "P0"
+
+[verifier]
+timeout_sec = 60.0
+
+[agent]
+timeout_sec = 600.0
+
+[environment]
+build_timeout_sec = 120.0
+cpus = 1
+memory_mb = 1024
+# Pinned env stub: offline CI does not build this image.
+docker_image = "python:3.11.13-slim-bookworm"
