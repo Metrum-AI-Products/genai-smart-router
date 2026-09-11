@@ -1,111 +1,46 @@
 # Copyright 2026 Metrum AI
 # SPDX-License-Identifier: Apache-2.0
 
-import hashlib
 import json
 import os
 import socket
 import subprocess
-import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
 
-
-CALLER = "synthetic-api-compat-caller"
-DENIED_CALLER = "synthetic-api-compat-denied"
-CALLER_DIGEST = hashlib.sha256(CALLER.encode()).hexdigest()
-DENIED_CALLER_DIGEST = hashlib.sha256(DENIED_CALLER.encode()).hexdigest()
-PROMPT_CANARY = "api-compat-prompt-canary"
-TOOL_CANARY = "api-compat-tool-canary"
-FORBIDDEN_ARTIFACT_VALUES = {
+from harness import (
     CALLER,
-    DENIED_CALLER,
     CALLER_DIGEST,
+    DENIED_CALLER,
     DENIED_CALLER_DIGEST,
-    "Authorization:",
+    FORBIDDEN_ARTIFACT_VALUES,
     PROMPT_CANARY,
     TOOL_CANARY,
-}
+)
+from harness.scripted_upstream import FakeUpstream, start_fake_upstream
+
+__all__ = [
+    "CALLER",
+    "DENIED_CALLER",
+    "CALLER_DIGEST",
+    "DENIED_CALLER_DIGEST",
+    "PROMPT_CANARY",
+    "TOOL_CANARY",
+    "FORBIDDEN_ARTIFACT_VALUES",
+    "assert_generated_artifacts_redacted",
+    "request",
+    "unused_port",
+]
 
 
 def unused_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
-
-
-class FakeUpstream(BaseHTTPRequestHandler):
-    calls = []
-
-    def log_message(self, _format, *args):
-        pass
-
-    def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        self.__class__.calls.append({"path": self.path, "body": body})
-        model = body.get("model", "")
-        stream = bool(body.get("stream"))
-        if self.path.endswith("/chat/completions"):
-            if stream:
-                # Native same-dialect chat streaming proxies provider SSE as-is.
-                frames = [
-                    'data: {"id":"chatcmpl_synthetic","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"synthetic chat"},"finish_reason":null}]}\n\n',
-                    'data: {"id":"chatcmpl_synthetic","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}\n\n',
-                    "data: [DONE]\n\n",
-                ]
-                self._write_sse("".join(frames))
-                return
-            message = {"role": "assistant", "content": "synthetic chat"}
-            if body.get("tools"):
-                message["tool_calls"] = [{"id": "call_synthetic", "type": "function", "function": {"name": "lookup", "arguments": "{}"}}]
-            response = {"id": "chatcmpl_synthetic", "object": "chat.completion", "choices": [{"index": 0, "message": message, "finish_reason": "tool_calls" if body.get("tools") else "stop"}], "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}}
-        elif self.path.endswith("/responses"):
-            output = [{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "synthetic responses"}]}]
-            if body.get("tools"):
-                output = [{"type": "function_call", "id": "fc_synthetic", "call_id": "call_synthetic", "name": "lookup", "arguments": "{}"}]
-            response = {"id": "resp_synthetic", "object": "response", "model": model, "status": "completed", "output": output, "output_text": "synthetic responses", "usage": {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5}}
-        elif self.path.endswith("/messages"):
-            if stream:
-                # Native Anthropic streaming proxies provider SSE event frames.
-                frames = [
-                    'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_synthetic","type":"message","role":"assistant","model":"synthetic-messages","content":[],"usage":{"input_tokens":3,"output_tokens":0}}}\n\n',
-                    'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
-                    'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"synthetic messages"}}\n\n',
-                    'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n',
-                    'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}\n\n',
-                    'event: message_stop\ndata: {"type":"message_stop"}\n\n',
-                ]
-                self._write_sse("".join(frames))
-                return
-            content = [{"type": "text", "text": "synthetic messages"}]
-            stop_reason = "end_turn"
-            if body.get("tools"):
-                content = [{"type": "tool_use", "id": "toolu_synthetic", "name": "lookup", "input": {}}]
-                stop_reason = "tool_use"
-            response = {"id": "msg_synthetic", "type": "message", "role": "assistant", "model": model, "stop_reason": stop_reason, "content": content, "usage": {"input_tokens": 3, "output_tokens": 2}}
-        else:
-            self.send_error(404)
-            return
-        raw = json.dumps(response).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
-
-    def _write_sse(self, payload: str):
-        raw = payload.encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
 
 
 def request(base, path, payload=None, token=CALLER):
@@ -125,11 +60,8 @@ def request(base, path, payload=None, token=CALLER):
 @pytest.fixture(scope="session")
 def router(tmp_path_factory):
     work = tmp_path_factory.mktemp("api-compat")
-    FakeUpstream.calls = []
-    upstream = ThreadingHTTPServer(("127.0.0.1", 0), FakeUpstream)
-    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
-    thread.start()
-    upstream_url = f"http://127.0.0.1:{upstream.server_port}"
+    FakeUpstream.reset_state()
+    upstream, thread, upstream_url = start_fake_upstream(FakeUpstream)
     port = unused_port()
     config = f'''server:
   listen: "127.0.0.1:{port}"
@@ -158,10 +90,26 @@ callers:
 '''
     config_path = work / "config.yaml"
     config_path.write_text(config)
-    build_env = os.environ | {"GOPROXY": "off", "GOSUMDB": "off"}
+    # GOTOOLCHAIN=local avoids re-verifying a downloaded toolchain when GOSUMDB=off.
+    build_env = os.environ | {"GOPROXY": "off", "GOSUMDB": "off", "GOTOOLCHAIN": "local"}
     router_binary = work / "router"
-    subprocess.run(["go", "build", "-tags", "dev_no_license", "-o", str(router_binary), "./cmd/metrum-router"], cwd=Path(__file__).parents[3], env=build_env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    process = subprocess.Popen([str(router_binary), "-config", "config.yaml"], cwd=work, env=build_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    subprocess.run(
+        ["go", "build", "-tags", "dev_no_license", "-o", str(router_binary), "./cmd/metrum-router"],
+        cwd=Path(__file__).parents[3],
+        env=build_env,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    process = subprocess.Popen(
+        [str(router_binary), "-config", "config.yaml"],
+        cwd=work,
+        env=build_env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
     base = f"http://127.0.0.1:{port}"
     for _ in range(100):
         try:
@@ -173,15 +121,16 @@ callers:
         process.terminate()
         raise RuntimeError(process.stderr.read())
     config_path.unlink()
-    yield {"base": base, "work": work, "upstream": FakeUpstream}
+    yield {"base": base, "work": work, "upstream": FakeUpstream, "server": upstream}
     process.terminate()
     process.wait(timeout=5)
     upstream.shutdown()
+    thread.join(timeout=5)
 
 
 @pytest.fixture(autouse=True)
 def clear_calls(router):
-    router["upstream"].calls.clear()
+    FakeUpstream.reset_state()
     yield
     assert_generated_artifacts_redacted(router)
 

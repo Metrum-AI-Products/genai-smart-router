@@ -1,0 +1,175 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# Compatibility manifest rows for ARCH harness and existing smoke coverage (issue #94).
+cases:
+  - id: ARCH-01
+    priority: P0
+    owner: api-compat
+    component: manifest
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: n/a
+    disposition: native_supported
+    assertions:
+      - machine-readable case rows load and validate
+      - skip is never a pass
+    evidence_paths:
+      - tests/api_compat/harness/manifest_loader.py
+      - tests/api_compat/tests/test_arch_harness.py
+    test_id: test_manifest_loads_arch_cases
+
+  - id: ARCH-03
+    priority: P0
+    owner: api-compat
+    component: scripted_upstream
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: mixed
+    disposition: native_supported
+    assertions:
+      - unexpected upstream calls fail the scenario
+      - request bodies remain in ephemeral test memory
+    evidence_paths:
+      - tests/api_compat/harness/scripted_upstream.py
+    test_id: test_scripted_upstream_rejects_unexpected_calls
+
+  - id: ARCH-08
+    priority: P1
+    owner: api-compat
+    component: mutations
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: n/a
+    disposition: native_supported
+    assertions:
+      - deliberately bad fixtures make intended checks fail
+    evidence_paths:
+      - tests/api_compat/harness/mutations.py
+    test_id: test_mutations_are_detected
+
+  - id: HTTP-DISC-01
+    priority: P0
+    owner: api-compat
+    component: discovery
+    inbound_route: /v1/models
+    outbound_dialect: n/a
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - caller allow-list filters model groups
+    evidence_paths:
+      - tests/api_compat/tests/test_http_smoke.py
+    test_id: test_models_are_caller_filtered
+
+  - id: CHAT-SMOKE-01
+    priority: P0
+    owner: api-compat
+    component: openai-chat
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: mixed
+    disposition: native_supported
+    assertions:
+      - tools and tool_choice reach upstream
+      - SSE terminal usage settles
+    evidence_paths:
+      - tests/api_compat/tests/test_chat_smoke.py
+    test_id: test_chat_tools_tool_choice_and_sse_usage
+
+  - id: CHAT-USAGE-01
+    priority: P0
+    owner: api-compat
+    component: openai-chat
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - official include_usage empty-choices chunk does not require indexing choices[0]
+    evidence_paths:
+      - tests/api_compat/harness/oracles.py
+      - tests/api_compat/tests/test_arch_harness.py
+    test_id: test_chat_include_usage_empty_choices_oracle
+
+  - id: RESP-SMOKE-01
+    priority: P0
+    owner: api-compat
+    component: openai-responses
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: mixed
+    disposition: supported_translation
+    assertions:
+      - tool calls preserved
+      - terminal lifecycle does not require Chat [DONE]
+    evidence_paths:
+      - tests/api_compat/tests/test_responses_smoke.py
+      - tests/api_compat/harness/oracles.py
+    test_id: test_responses_tool_and_sse_terminal_usage
+    rationale: Downstream SSE may be synthesized from unary upstream today; native Responses streaming is a separate linked change.
+
+  - id: RESP-DONE-01
+    priority: P0
+    owner: api-compat
+    component: openai-responses
+    inbound_route: /v1/responses
+    outbound_dialect: openai-responses
+    transport: sse
+    disposition: native_supported
+    assertions:
+      - oracle accepts response.completed without trailing [DONE]
+    evidence_paths:
+      - tests/api_compat/tests/test_arch_harness.py
+    test_id: test_responses_oracle_without_done_sentinel
+
+  - id: ANTH-SMOKE-01
+    priority: P0
+    owner: api-compat
+    component: anthropic
+    inbound_route: /anthropic/v1/messages
+    outbound_dialect: anthropic
+    transport: mixed
+    disposition: native_supported
+    assertions:
+      - tool_choice and SSE usage ordering preserved
+    evidence_paths:
+      - tests/api_compat/tests/test_anthropic_smoke.py
+    test_id: test_anthropic_messages_tool_choice_and_sse_usage
+
+  - id: HTTP-AUTH-01
+    priority: P0
+    owner: api-compat
+    component: auth
+    inbound_route: /v1/*
+    transport: unary
+    disposition: policy_rejection
+    assertions:
+      - missing/invalid/denied tokens reject with zero upstream calls
+    evidence_paths:
+      - tests/api_compat/tests/test_http_smoke.py
+    test_id: test_auth_model_access_and_invalid_shape_reject_before_upstream
+
+  - id: ROUTE-BRIDGE-01
+    priority: P0
+    owner: api-compat
+    component: bridges
+    transport: unary
+    disposition: supported_translation
+    assertions:
+      - responses-to-chat and chat-to-responses preserve text/tools
+      - stateful previous_response_id and streaming bridges reject without upstream
+    evidence_paths:
+      - tests/api_compat/tests/test_route_bridge_smoke.py
+    test_id: test_stateless_responses_to_chat_and_chat_to_responses_bridges
+
+  - id: OPS-REDACT-01
+    priority: P0
+    owner: api-compat
+    component: artifacts
+    transport: n/a
+    disposition: native_supported
+    assertions:
+      - generated artifacts redact auth and prompt/tool canaries
+    evidence_paths:
+      - tests/api_compat/tests/test_ops_redaction_smoke.py
+    test_id: test_generated_artifacts_redact_synthetic_auth_and_provider_values
