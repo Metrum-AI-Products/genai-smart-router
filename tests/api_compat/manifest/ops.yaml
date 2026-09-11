@@ -1,0 +1,127 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# Usage / cache / ops / redaction catalog (issue #94 Wave 1).
+cases:
+  - id: OPS-01
+    priority: P0
+    owner: api-compat
+    component: usage
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - unary chat returns canonical prompt/completion/total usage fields
+      - total equals prompt plus completion with no double counting
+      - usage_db sqlite records matching input/output/total tokens
+    evidence_paths:
+      - tests/api_compat/tests/test_ops_usage.py
+      - tests/api_compat/manifest/ops.yaml
+    test_id: test_ops01_unary_chat_usage_fields
+    rationale: Streaming and multi-API matrix deferred; unary chat usage_db profile lands first.
+
+  - id: OPS-02
+    priority: P0
+    owner: api-compat
+    component: usage
+    transport: mixed
+    disposition: blocked
+    assertions:
+      - abort truncation timeout and late usage settle exactly once
+    rationale: deferred linked issue — abort/settlement race fixtures not yet CI-bounded
+
+  - id: OPS-03
+    priority: P0
+    owner: api-compat
+    component: quota
+    transport: mixed
+    disposition: blocked
+    assertions:
+      - parallel admissions at quota boundary do not overshoot reservations
+    rationale: deferred linked issue — quota race harness requires dedicated fixtures
+
+  - id: OPS-04
+    priority: P1
+    owner: api-compat
+    component: cache
+    transport: unary
+    disposition: blocked
+    assertions:
+      - cache-read/write and reasoning details attribute correctly
+    rationale: deferred linked issue — cache-enabled profile attribution matrix
+
+  - id: OPS-05
+    priority: P1
+    owner: api-compat
+    component: cache
+    transport: unary
+    disposition: blocked
+    assertions:
+      - semantically different cache keys never collide
+    rationale: deferred linked issue — cache key collision matrix
+
+  - id: OPS-06
+    priority: P1
+    owner: api-compat
+    component: anthropic-cache
+    transport: unary
+    disposition: blocked
+    assertions:
+      - native Anthropic cache-control breakpoints remain consistent
+    rationale: deferred linked issue — Anthropic cache-control fixtures
+
+  - id: OPS-07
+    priority: P1
+    owner: api-compat
+    component: errors
+    transport: unary
+    disposition: blocked
+    assertions:
+      - nuanced retry classes preserved across caller dialects
+    rationale: deferred linked issue — full error-class retry matrix
+
+  - id: OPS-08
+    priority: P1
+    owner: api-compat
+    component: errors
+    transport: unary
+    disposition: blocked
+    assertions:
+      - Retry-After and unreachable fallback remain bounded and sanitized
+    rationale: deferred linked issue — Retry-After and fallback policy fixtures
+
+  - id: OPS-09
+    priority: P1
+    owner: api-compat
+    component: usage
+    transport: mixed
+    disposition: blocked
+    assertions:
+      - usage DB unavailable or restart does not duplicate settlement
+    rationale: deferred linked issue — fault-injection against usage_db/redis profiles
+
+  - id: OPS-10
+    priority: P0
+    owner: api-compat
+    component: artifacts
+    transport: n/a
+    disposition: native_supported
+    assertions:
+      - auth prompt tool-result image and reasoning canaries absent from generated artifacts
+      - failure paths (401/403) do not persist canaries
+    evidence_paths:
+      - tests/api_compat/tests/test_ops_usage.py
+      - tests/api_compat/tests/test_ops_redaction_smoke.py
+    test_id: test_ops10_extended_canaries_absent_from_artifacts
+
+  - id: OPS-11
+    priority: P2
+    owner: api-compat
+    component: fuzz
+    transport: mixed
+    disposition: blocked
+    assertions:
+      - fuzz seeds do not panic or corrupt semantics
+    rationale: deferred linked issue — decoder/SSE fuzz corpus is expensive for default CI
