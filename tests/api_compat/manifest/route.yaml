@@ -1,0 +1,145 @@
+# Copyright 2026 Metrum AI
+# SPDX-License-Identifier: Apache-2.0
+# Routing, bridge eligibility, and capability-safe fallback (issue #94).
+cases:
+  - id: ROUTE-01
+    priority: P0
+    owner: api-compat
+    component: route-matrix
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: mixed
+    disposition: native_supported
+    assertions:
+      - machine-readable allowed/rejected inbound/outbound dialect matrix loads
+      - incorrect provider skin metadata cannot imply compatibility
+    evidence_paths:
+      - tests/api_compat/testdata/route_dialect_matrix.yaml
+      - tests/api_compat/tests/test_route_matrix.py
+    test_id: test_route_dialect_matrix_is_machine_readable
+
+  - id: ROUTE-02
+    priority: P0
+    owner: api-compat
+    component: bridges
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: policy_rejection
+    assertions:
+      - bridge opt-in disabled yields no-eligible-target with zero upstream calls
+      - unsupported feature combined with supported text rejects without silent stripping
+    evidence_paths:
+      - tests/api_compat/tests/test_route_matrix.py
+    test_id: test_route_rejections_make_zero_upstream_calls
+
+  - id: ROUTE-03
+    priority: P0
+    owner: api-compat
+    component: bridges
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-responses
+    transport: unary
+    disposition: supported_translation
+    assertions:
+      - unary chat-to-responses and responses-to-chat preserve tool call IDs and names
+      - documented bridge limits remain explicit rejections
+    evidence_paths:
+      - tests/api_compat/tests/test_route_matrix.py
+      - tests/api_compat/tests/test_route_bridge_smoke.py
+    test_id: test_route_unary_bridges_preserve_tool_semantics
+
+  - id: ROUTE-04
+    priority: P0
+    owner: api-compat
+    component: bridges
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: sse
+    disposition: policy_rejection
+    assertions:
+      - streaming through bridges currently restricted to unary stays rejected
+      - previous_response_id state on responses-to-chat rejects without upstream
+    evidence_paths:
+      - tests/api_compat/tests/test_route_matrix.py
+      - tests/api_compat/tests/test_route_bridge_smoke.py
+    test_id: test_route_streaming_and_stateful_bridges_remain_rejected
+
+  - id: ROUTE-05
+    priority: P0
+    owner: api-compat
+    component: fallback
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    inbound_route: /v1/chat/completions
+    outbound_dialect: openai-chat
+    transport: unary
+    disposition: native_supported
+    assertions:
+      - tool-capable primary failure does not call a cheaper fallback missing tools
+      - request-shape filters are not overridden by static fallback ordering
+    evidence_paths:
+      - tests/api_compat/tests/test_route_matrix.py
+    test_id: test_route_capability_fallback_skips_ineligible_target
+
+  - id: ROUTE-06
+    priority: P1
+    owner: api-compat
+    component: stateful-bridges
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: blocked
+    assertions:
+      - Chat→Responses continuation across two router processes sharing Redis
+    rationale: Requires Redis-backed bridge session profile; deferred linked issue.
+
+  - id: ROUTE-07
+    priority: P1
+    owner: api-compat
+    component: stateful-bridges
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: blocked
+    assertions:
+      - TTL, stale continuation ID, and Redis outage map to designated retry policy
+    rationale: Requires Redis-backed bridge session profile; deferred linked issue.
+
+  - id: ROUTE-08
+    priority: P1
+    owner: api-compat
+    component: stateful-bridges
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: blocked
+    assertions:
+      - cross-caller conversation key isolation at the HTTP boundary
+    rationale: Requires Redis-backed bridge session profile; deferred linked issue.
+
+  - id: ROUTE-09
+    priority: P1
+    owner: api-compat
+    component: stateful-bridges
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: blocked
+    assertions:
+      - target removal and affinity expiry never forward foreign opaque IDs
+    rationale: Requires Redis-backed bridge session profile; deferred linked issue.
+
+  - id: ROUTE-10
+    priority: P1
+    owner: api-compat
+    component: encoder-fidelity
+    source_url: https://github.com/metrum-ai/router/issues/94
+    reviewed_date: "2026-09-11"
+    transport: unary
+    disposition: blocked
+    assertions:
+      - omitted/null/false/zero field distinctions across bridge encoders
+    rationale: Deferred encoder property matrix; Redis not required but out of P0 ship scope.
