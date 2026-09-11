@@ -62,11 +62,18 @@ cases:
     component: http-negatives
     source_url: https://github.com/metrum-ai/router/issues/94
     reviewed_date: "2026-09-11"
+    inbound_route: /v1/*
     transport: unary
-    disposition: blocked
+    disposition: policy_rejection
     assertions:
-      - trailing slash, wrong method, unknown endpoint, and malformed JSON reject deterministically
-    rationale: deferred linked issue
+      - trailing slash, duplicated /v1, and unknown endpoints reject without redirect or upstream
+      - wrong method on a registered /v1 path rejects without docs HTML success or upstream
+      - malformed JSON and non-object top-level bodies reject with invalid-request
+      - wrong content-type with a non-JSON body rejects with invalid-request and zero upstream
+    evidence_paths:
+      - tests/api_compat/tests/test_http_negatives.py
+      - tests/api_compat/manifest/http.yaml
+    test_id: test_http_04_path_method_and_body_negatives
 
   - id: HTTP-05
     priority: P1
@@ -74,11 +81,18 @@ cases:
     component: model-admission
     source_url: https://github.com/metrum-ai/router/issues/94
     reviewed_date: "2026-09-11"
+    inbound_route: /v1/*
     transport: unary
-    disposition: blocked
+    disposition: policy_rejection
     assertions:
-      - omitted, nonexistent, and unauthorized model groups yield distinct safe errors
-    rationale: deferred linked issue
+      - omitted model with configured default uses default_model_group
+      - omitted model without default returns missing-model with zero upstream
+      - nonexistent and unauthorized groups return model-not-allowed
+      - /v1/models discovery and admission agree for the same caller
+    evidence_paths:
+      - tests/api_compat/tests/test_http_negatives.py
+      - tests/api_compat/manifest/http.yaml
+    test_id: test_http_05_model_admission_and_discovery_agree
 
   - id: HTTP-06
     priority: P1
