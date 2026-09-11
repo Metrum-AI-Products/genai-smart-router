@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Metrum Router includes, builds with, or refers to the dependencies below. The Apache-2.0 license in `LICENSE` applies only to first-party content. Metadata was audited on 2026-09-10 from pinned manifests and locks, with a focused version reconciliation against `go.mod` for redistributed Go modules. Package metadata is evidence, not a legal conclusion.
+Metrum AI Router includes, builds with, or refers to the dependencies below. The Apache-2.0 license in `LICENSE` applies only to first-party content. Metadata was audited on 2026-09-10 from pinned manifests and locks, with a focused version reconciliation against `go.mod` for redistributed Go modules. Package metadata is evidence, not a legal conclusion.
 
 ## Inventory summary
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "GenAI Smart Router production promotion manifest",
+  "title": "Metrum AI Router production promotion manifest",
   "description": "Safe metadata only. This manifest authorizes review, never an apply, migration, DNS, database, or cloud operation.",
   "type": "object",
   "additionalProperties": false,

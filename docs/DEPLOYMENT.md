@@ -1,4 +1,4 @@
-# Metrum Router Deployment
+# Metrum AI Router Deployment
 
 Source-only operator runbook. Do not add this file to `scripts/package_docs_allowlist.txt`; package-safe external bootstrap deployment guidance belongs in `docs/PACKAGE_README.md`, `docs/BINARY_INSTALL.md`, `docs/DOCKER_COMPOSE_INSTALL.md`, and the router-served Docusaurus installation docs.
 
@@ -234,7 +234,7 @@ Offline gate: `make test-k8s-nvidia-local-serving`. Live Shadeform steps:
 
 For an operator-selected llm-d frontend with a vLLM backend, use the separate
 `nvidia-llmd-compat` blueprint profile and
-`deploy/kubernetes/intents/shadeform-nvidia-llmd-compat.example.yaml`. Smart
+`deploy/kubernetes/intents/shadeform-nvidia-llmd-compat.example.yaml`. Metrum AI
 Router sends OpenAI-compatible traffic to `llm-d-local-epp:8081`; it does not
 control llm-d replica selection. Offline gate:
 `make test-k8s-nvidia-llmd-compat`. Live/operator procedure:
@@ -359,7 +359,7 @@ Create `/etc/systemd/system/smart-llmrouter.service`:
 
 ```ini
 [Unit]
-Description=Metrum Router
+Description=Metrum AI Router
 After=network-online.target
 Wants=network-online.target
 

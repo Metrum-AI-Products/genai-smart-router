@@ -5,7 +5,7 @@
 - `docs-site/docs/legal/terms-of-use.md` is the public Terms of Use served at
   `/docs/terms`.
 - `docs/LICENSE.md` is the package copy of the Apache License 2.0 notice for all
-  GenAI Smart Router first-party content. It is included in
+  Metrum AI Router first-party content. It is included in
   binary and Docker packages as `docs/LICENSE.md`.
 
 The product has no EULA. Terms of Use govern only the public website and do not

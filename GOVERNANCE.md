@@ -1,6 +1,6 @@
 # Project Governance
 
-Metrum Router uses a maintainer-led governance model.
+Metrum AI Router uses a maintainer-led governance model.
 
 ## Roles
 

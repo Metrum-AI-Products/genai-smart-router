@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible defect in GenAI Smart Router.
+description: Report a reproducible defect in Metrum AI Router.
 title: "[Bug]: "
 labels: ["bug"]
 body:

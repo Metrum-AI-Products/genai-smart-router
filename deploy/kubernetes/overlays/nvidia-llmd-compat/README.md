@@ -5,7 +5,7 @@ from `deploy/kubernetes/intents/shadeform-nvidia-llmd-compat.example.yaml`.
 It targets Gateway API Inference Extension v1.5.0 and an operator-managed llm-d
 OpenAI-compatible frontend at `llm-d-local-epp:8081`.
 
-Smart Router selects the deployment-defined model group; llm-d selects a
+Metrum AI Router selects the deployment-defined model group; llm-d selects a
 backend replica. The router does not install llm-d prerequisites or act as an
 llm-d controller. Review generated values and manifests before applying them.
 

@@ -12,7 +12,7 @@ Primary public sources checked for the external case study on **2026-06-30**:
 - Terminal-Bench: <https://www.tbench.ai/>
 - Terminal-Bench paper: <https://arxiv.org/html/2601.11868v1>
 
-Harbor is one repeatable agent-eval harness, not a Smart Router dependency. Terminal-Bench is one public benchmark family that uses the Harbor task format/harness for terminal and coding-agent tasks; it is not a universal proxy for customer success.
+Harbor is one repeatable agent-eval harness, not a Metrum AI Router dependency. Terminal-Bench is one public benchmark family that uses the Harbor task format/harness for terminal and coding-agent tasks; it is not a universal proxy for customer success.
 
 ## Run Metadata
 

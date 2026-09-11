@@ -6,11 +6,11 @@
 **Companion runbook:** [K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md](K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md)  
 **Overlay:** [deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/](../deploy/kubernetes/overlays/k3s-amd-instinct-local-serving/)
 
-This document is a detailed, renderable architecture for GenAI Smart Router in
+This document is a detailed, renderable architecture for Metrum AI Router in
 front of local AMD Instinct serving (vLLM/ROCm today; optional llm-d scale-out as
 a proposed target). It is aligned with publicly shared AMD and Dell AI Platform
 topologies, but **every claim is labeled by evidence status**. No AMD or Dell
-primary source names Metrum GenAI Smart Router. Placing Smart Router as the
+primary source names Metrum AI Router. Placing Metrum AI Router as the
 governed northbound OpenAI-compatible proxy is this repository’s proposed
 integration, not a vendor-mandated RA requirement.
 
@@ -24,7 +24,7 @@ configs, private hostnames, or SSH details in tickets, PRs, or diagrams.
 | Status | Meaning |
 |---|---|
 | **Validated (PR #954)** | Exercised or recorded as safe scalars in the merged AMD k3s overlay/runbook path. |
-| **Repo-supported** | Implemented in GenAI Smart Router / packaging in this repository, but **not** proven by the AMD #954 live matrix. |
+| **Repo-supported** | Implemented in Metrum AI Router / packaging in this repository, but **not** proven by the AMD #954 live matrix. |
 | **Public reference** | Stated by AMD or Dell primary sources (or closely related project docs such as llm-d / vLLM / OpenTelemetry). Cite the source. |
 | **Proposed** | Target-state design that fits those references and this product. **Not** claimed as validated. |
 
@@ -32,7 +32,7 @@ configs, private hostnames, or SSH details in tickets, PRs, or diagrams.
 
 | Component / claim | Status | Notes |
 |---|---|---|
-| On-prem k3s + Smart Router Helm + license wrapper | Validated (PR #954) | Manual overlay; NVIDIA blueprint used only as config/chart factory |
+| On-prem k3s + Metrum AI Router Helm + license wrapper | Validated (PR #954) | Manual overlay; NVIDIA blueprint used only as config/chart factory |
 | Instinct MI355X × 8, allocatable `amd.com/gpu=8` | Validated (PR #954) | Safe-scalar live note in the AMD E2E runbook |
 | AMD GPU Operator `v1.5.1`, device-plugin mode, host-owned driver | Validated (PR #954) | `driver.enable: false`; DRA disabled |
 | Metrics exporter / test runner / DCM / remediation | Proposed | Explicitly **disabled** in checked-in `gpu-operator-values.yaml` |
@@ -49,8 +49,8 @@ configs, private hostnames, or SSH details in tickets, PRs, or diagrams.
 | Dell XE9785 / XE9785L with 8× MI355X OAM | Public reference | Dell shop / AI Platform with AMD GPUs |
 | Dell management plane, frontend/backend/OOB fabrics, PowerScale | Public reference | Dell AI Platform design principles |
 | llm-d Router/EPP + InferencePool + ROCm vLLM | Proposed | Out of scope for #954; NVIDIA llm-d compat is a separate path |
-| OpenTelemetry Collector ingest of Prometheus + OTLP | Proposed | Smart Router has **no** native OTLP exporter today |
-| End-to-end `traceparent` through Smart Router | Proposed gap | Correlate via `X-Request-Id` + usage diagnostics |
+| OpenTelemetry Collector ingest of Prometheus + OTLP | Proposed | Metrum AI Router has **no** native OTLP exporter today |
+| End-to-end `traceparent` through Metrum AI Router | Proposed gap | Correlate via `X-Request-Id` + usage diagnostics |
 
 ### 1.2 Version scopes (do not conflate)
 
@@ -69,7 +69,7 @@ validated baseline.
 
 ### In scope
 
-- Enterprise self-hosted / on-prem pattern: Smart Router as the governed API edge.
+- Enterprise self-hosted / on-prem pattern: Metrum AI Router as the governed API edge.
 - AMD Instinct workers under Kubernetes (validated single-node k3s; multi-node as proposed).
 - Dell-aligned physical modularity: management vs GPU workers, traffic separation, storage options.
 - Routing policies, agentic workload contracts, metrics, and observability design.
@@ -79,7 +79,7 @@ validated baseline.
 
 - Metrum Fleet EKS production cutover or Compose production.
 - Shadeform NVIDIA SKUs as the AMD conformance matrix.
-- Claiming Smart Router schedules GPUs, owns ROCm drivers, or performs KV-aware replica pick.
+- Claiming Metrum AI Router schedules GPUs, owns ROCm drivers, or performs KV-aware replica pick.
 - Claiming Codex, tools, vision, or llm-d as AMD-validated without new evidence.
 - Publishing private hostnames, SSH, tokens, or full production configs.
 
@@ -208,7 +208,7 @@ flowchart LR
 
 | Layer | Owns | Does not own |
 |---|---|---|
-| Smart Router | Auth, allow lists, model-group policy, request-shape eligibility, usage, `/metrics` isolation | GPU scheduling, ROCm drivers, replica KV pick |
+| Metrum AI Router | Auth, allow lists, model-group policy, request-shape eligibility, usage, `/metrics` isolation | GPU scheduling, ROCm drivers, replica KV pick |
 | Optional llm-d | InferencePool discovery, EPP Filter→Score→Pick, optional P/D, pool autoscaling signals | Caller tokens, enterprise model-group contracts |
 | vLLM/ROCm | Model weights, batching, KV cache inside the engine, `/v1` and `/metrics` | Caller governance |
 | AMD GPU Operator | Device plugin / optional DRA, labels, optional exporter/test runner/DCM | HTTP inference |
@@ -298,7 +298,7 @@ Three Deployments/Services, each requesting `amd.com/gpu: "1"`, image
 | `local-small-chat` | `http://vllm-chat.smart-llmrouter.svc.cluster.local:8000/v1` | `Qwen/Qwen3.5-4B` | 1 |
 | `local-small-coder` | `http://vllm-coder.smart-llmrouter.svc.cluster.local:8000/v1` | `Qwen/Qwen3-8B` | 1 |
 
-Smart Router `config.yaml` (generated via NVIDIA local-serving blueprint as a
+Metrum AI Router `config.yaml` (generated via NVIDIA local-serving blueprint as a
 **factory only**) uses `strategy: static` and in-cluster `*.svc.cluster.local`
 provider URLs. The router Pod must not request `amd.com/gpu`.
 
@@ -316,17 +316,17 @@ provider URLs. The router Pod must not request `amd.com/gpu`.
 ### 6.2 Mode B — Proposed llm-d scale-out
 
 When a pool needs KV-aware load balancing, flow control, or prefill/decode
-disaggregation, add llm-d **behind** Smart Router:
+disaggregation, add llm-d **behind** Metrum AI Router:
 
 | Responsibility | Owner |
 |---|---|
-| Caller auth, allow list, model-group contract, enterprise policy | Smart Router |
-| Select OpenAI-compatible pool URL for the group | Smart Router (static or weighted to `llm-d-…` Service) |
+| Caller auth, allow list, model-group contract, enterprise policy | Metrum AI Router |
+| Select OpenAI-compatible pool URL for the group | Metrum AI Router (static or weighted to `llm-d-…` Service) |
 | Replica Filter → Score → Pick, queue depth, optional P/D | llm-d EPP |
 | Execute model on Instinct | vLLM ROCm (or SGLang where separately validated) |
 
 Do **not** run two competing “semantic routers” that both rewrite model identity
-for the same hop. Smart Router exposes **deployment-defined group names** to
+for the same hop. Metrum AI Router exposes **deployment-defined group names** to
 callers; llm-d sees the served model ID inside its InferencePool.
 
 NVIDIA llm-d compatibility evidence in this repository is a separate profile
@@ -344,7 +344,7 @@ flowchart LR
 
 ---
 
-## 7. Smart Router routing policies and agentic workloads
+## 7. Metrum AI Router routing policies and agentic workloads
 
 ### 7.1 Request path (validated baseline)
 
@@ -479,7 +479,7 @@ flowchart TB
   Usage -->|X_Request_Id_join| Graf
 ```
 
-### 9.2 Smart Router Prometheus families (repo-supported)
+### 9.2 Metrum AI Router Prometheus families (repo-supported)
 
 From [internal/router/metrics.go](../internal/router/metrics.go):
 
@@ -517,7 +517,7 @@ not OTLP spans).
 | Kubernetes | Pod CPU/memory, GPU allocatable/capacity, node conditions | Public |
 
 **Autoscaling:** Prefer vLLM waiting-queue / KV utilization or llm-d EPP flow-control
-metrics for HPA/KEDA. Do not scale from Smart Router `/metrics` series that carry
+metrics for HPA/KEDA. Do not scale from Metrum AI Router `/metrics` series that carry
 caller or token identity.
 
 ### 9.4 OpenTelemetry reality check
@@ -526,7 +526,7 @@ caller or token identity.
 |---|---|
 | OTel Collector scrape Prometheus and export OTLP/remote_write | Proposed pattern (OTel docs) |
 | vLLM `--otlp-traces-endpoint` / detailed traces | Public vLLM; optional overhead |
-| Smart Router native OTLP spans / `traceparent` propagation | **Not implemented** (repo search empty) |
+| Metrum AI Router native OTLP spans / `traceparent` propagation | **Not implemented** (repo search empty) |
 | Correlate Router ↔ upstream with one distributed trace ID | Proposed gap; use `X-Request-Id` today |
 
 Authenticated scrape sketch (secrets via mounted file; do not commit tokens):
@@ -576,7 +576,7 @@ receivers:
 | Single-node M1 | ≥1 allocatable `amd.com/gpu`; deploy only tiny | Validated pattern |
 | Three-group matrix | ≥3 GPUs; one GPU per Deployment | Validated target |
 | Remaining GPUs on 8× MI355X | Leave idle, add staging groups, or propose TP/llm-d pools | Design choice |
-| Smart Router replicas | SQLite usage → single writer / Recreate; Postgres for multi-replica | Repo-supported |
+| Metrum AI Router replicas | SQLite usage → single writer / Recreate; Postgres for multi-replica | Repo-supported |
 | Image pull | ROCm vLLM image is large; long startupFailure thresholds intentional | Validated |
 | Model cache | Prefer PVC/local cache after first download; tighten NetworkPolicy | Proposed hardening |
 
@@ -589,7 +589,7 @@ receivers:
 2. Install AMD GPU Operator with checked-in values; confirm allocatable
    `amd.com/gpu` and node labels.
 3. Deploy serving (tiny-only or full matrix); direct `/v1/models` + Chat smokes.
-4. Install Smart Router via `scripts/helm_install_with_license.sh`; assert **no**
+4. Install Metrum AI Router via `scripts/helm_install_with_license.sh`; assert **no**
    GPU request on the router Pod.
 5. Router smokes: `/readyz`, `/v1/models`, Chat, stream, 401/403.
 6. Optional promotion: enable metrics exporter, OTel collectors, llm-d, agent
@@ -601,7 +601,7 @@ receivers:
 
 ## 12. Validation matrix
 
-| Surface | Direct upstream | Through Smart Router | AMD #954 |
+| Surface | Direct upstream | Through Metrum AI Router | AMD #954 |
 |---|---|---|---|
 | `/readyz` | n/a | Required | Validated |
 | `/v1/models` allow list | Served IDs | Group names only | Validated |
@@ -687,5 +687,5 @@ When behavior, pins, or evidence change:
 3. Re-run `make test-k8s-amd-instinct-local-serving` after overlay edits.
 4. Cross-check `docs/K3S_AMD_INSTINCT_LOCAL_SERVING_E2E.md` and public
    `docs-site/docs/installation/kubernetes.md` for drift.
-5. Never claim OTel end-to-end tracing through Smart Router until the code
+5. Never claim OTel end-to-end tracing through Metrum AI Router until the code
    emits and propagates it.
