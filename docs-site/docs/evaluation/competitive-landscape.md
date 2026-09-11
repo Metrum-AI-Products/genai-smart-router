@@ -5,15 +5,15 @@ doc_type: explanation
 
 # Competitive Landscape
 
-Metrum Router is a governed enterprise gateway for LLM, VLM, and AI agent traffic. It is built for organizations that want one deployment-owned control point for approved model groups, provider keys, private upstreams, quotas, routing policy, usage accounting, and developer-agent compatibility.
+Metrum AI Router is a governed enterprise gateway for LLM, VLM, and AI agent traffic. It is built for organizations that want one deployment-owned control point for approved model groups, provider keys, private upstreams, quotas, routing policy, usage accounting, and developer-agent compatibility.
 
 The customer outcome is simple: teams can keep a stable router endpoint while platform owners change the validated provider/model mix behind each model group, prove the result with workload evidence, and attribute cost and reliability after each request.
 
 This comparison focuses on product shape and operational fit, not pricing. Vendor pricing and packaging change frequently, so use each vendor's current pricing page during procurement. Competitor references on this page were checked on June 19, 2026.
 
-## When To Choose Metrum Router
+## When To Choose Metrum AI Router
 
-Choose Metrum Router when the routing decision itself must be governed by the deployment: which caller can use which model group, which upstreams are eligible for a request shape, which provider accounts are protected by budgets or shaping, and how usage and cost are explained later.
+Choose Metrum AI Router when the routing decision itself must be governed by the deployment: which caller can use which model group, which upstreams are eligible for a request shape, which provider accounts are protected by budgets or shaping, and how usage and cost are explained later.
 
 The strongest fit is an enterprise gateway that must combine:
 
@@ -28,7 +28,7 @@ The strongest fit is an enterprise gateway that must combine:
 
 ## Buyer Task Flow
 
-| Buyer task | How Metrum Router helps | Proof to request |
+| Buyer task | How Metrum AI Router helps | Proof to request |
 |---|---|---|
 | Give developers one approved endpoint | Callers request deployment-defined model groups while the router owns upstream credentials and target policy. | `/v1/models` output for two caller tokens with different group access. |
 | Serve apps and coding agents | One deployment can support Chat, Responses, Anthropic Messages, tools, images, and private upstreams when the group has validated targets. | Chat, Codex Responses, Claude Code, tool, and image smokes against the same allowed group where applicable. |
@@ -37,11 +37,11 @@ The strongest fit is an enterprise gateway that must combine:
 | Add private models safely | Private vLLM, SGLang, Baseten-style, or hosted OpenAI-compatible endpoints are cataloged, smoke-tested, then introduced behind model groups. | Direct upstream smoke, router smoke, provider catalog status, and a rollback demonstration. |
 | Explain cost and incidents | Usage rows keep safe scalar request-time facts for selected provider/model, tokens, prices, latency, attempts, errors, cache, and fallback. | Request evidence and usage-report excerpts for the same request IDs. |
 
-## Where Metrum Router Is A Strong Fit
+## Where Metrum AI Router Is A Strong Fit
 
-Many products cover one or two pieces very well: public model access, generic proxying, observability, edge caching, guardrails, or broad API gateway management. Metrum Router is strongest when the gateway must combine the controls that matter for enterprise GenAI operations in the request path.
+Many products cover one or two pieces very well: public model access, generic proxying, observability, edge caching, guardrails, or broad API gateway management. Metrum AI Router is strongest when the gateway must combine the controls that matter for enterprise GenAI operations in the request path.
 
-| Requirement | Why Metrum Router is stronger |
+| Requirement | Why Metrum AI Router is stronger |
 |---|---|
 | Combine the major gateway controls | High-performance routing, telemetry, budgets, rate limits, quotas, caching, fallback, model metadata, request diagnostics, optional governed content capture, usage reporting, and request-time cost accounting are handled by the router instead of split across multiple systems. |
 | Optimize for outcomes, not only model preference | Validation harnesses such as Harbor can run real coding-agent workloads through model groups and compare success outcomes against cost, latency, token volume, fallback rate, and throughput. This lets teams adjust weights and group composition until the group maintains positive task results while capturing substantial cost benefits. |
@@ -65,22 +65,22 @@ Many products cover one or two pieces very well: public model access, generic pr
 
 ## Deployment Fit
 
-Metrum Router is best evaluated as the governed routing and accounting layer in an enterprise GenAI platform. It complements public model marketplaces, observability platforms, and broader API management products when those systems are already part of the environment. It is especially useful when the routing decision itself must be deployment-owned: which caller can use which model group, which upstreams are eligible for tools or images, which providers are allowed for a project, and how usage and cost are attributed after each request.
+Metrum AI Router is best evaluated as the governed routing and accounting layer in an enterprise GenAI platform. It complements public model marketplaces, observability platforms, and broader API management products when those systems are already part of the environment. It is especially useful when the routing decision itself must be deployment-owned: which caller can use which model group, which upstreams are eligible for tools or images, which providers are allowed for a project, and how usage and cost are attributed after each request.
 
 ## Capability Comparison
 
-| Product | Typical shape | Strong fit | Metrum Router fit |
+| Product | Typical shape | Strong fit | Metrum AI Router fit |
 |---|---|---|---|
-| Metrum Router | Self-hosted, enterprise cloud, or Metrum-managed gateway | Controlled multi-provider routing, private upstreams, multimodal and agent clients, detailed usage accounting | Strong fit when teams need high-performance routing, telemetry, budgets/rate limits, programmable policy, private upstreams, VLM/tool-aware eligibility, agent compatibility, outcome-oriented evaluation, and cost-allocation-ready accounting together. |
-| LiteLLM | Open-source proxy with enterprise features | Broad provider abstraction, virtual keys, budgets, and proxy management | Metrum Router also supports budgets and rate limits, then adds stronger deployment-defined model-group policy, validated target metadata, dialect-specific VLM/tool eligibility, TypeScript routing logic, private upstream rollout workflow, and durable request-time cost records. |
-| Bifrost | High-performance open-source AI gateway | Fast OpenAI-compatible gateway, failover, load balancing, and telemetry | Metrum Router also supports high-performance gateway deployment and telemetry, then adds stronger caller-key governance, budgets, multimodal/tool eligibility, request-time cost persistence, detailed usage reporting, and deployment-specific policy logic. |
-| OpenRouter | Public model marketplace and routing service | Easy access to many public hosted models | Metrum Router can use OpenRouter as one upstream while adding enterprise allow lists, quotas, private upstreams, programmable routing, model validation, and cost accounting under the customer's control. |
-| Portkey | AI gateway/control-plane SaaS | Observability, guardrails, gateway management, and hosted control-plane workflows | Metrum Router is stronger for teams that want the gateway itself deployed under their control with private/provider-neutral target control, programmable routing, per-key quotas, and durable usage/cost records. |
-| Helicone | Observability and AI gateway tooling | Request logs, cost tracking, debugging, and analytics | Metrum Router includes usage reporting and telemetry while also making routing decisions, quota enforcement, VLM/tool eligibility, private upstream control, and cost records part of the same request path. |
-| Cloudflare AI Gateway | Edge gateway and AI application control plane | Edge deployment, caching, logs, rate limiting, retries, and model fallback | Metrum Router is stronger where model policy must be provider-neutral and deployment-owned, with detailed model metadata, private upstream configuration, caller-key policy, agent/VLM eligibility, and request-time accounting in the router itself. |
-| Kong AI Gateway | API gateway platform with AI plugins | Existing Kong/API management environments | Metrum Router is purpose-built for GenAI routing, model-group governance, VLM/tool eligibility, quotas, cost reporting, private inference endpoints, and agent-client compatibility without requiring a broader API gateway rollout. |
-| TrueFoundry AI Gateway | Enterprise AI platform gateway | Platform-level governance and MLOps integration | Metrum Router is stronger for teams that want direct gateway-layer control over model groups, upstream weights, TypeScript policy, per-key access, cost accounting, and private inference endpoints. |
-| Martian | Model routing/intelligence product | Dynamic model selection and optimization | Metrum Router exposes explicit deployment-owned policy, validation, usage records, quotas, and upstream routing controls that operators can inspect and change. |
+| Metrum AI Router | Self-hosted, enterprise cloud, or Metrum-managed gateway | Controlled multi-provider routing, private upstreams, multimodal and agent clients, detailed usage accounting | Strong fit when teams need high-performance routing, telemetry, budgets/rate limits, programmable policy, private upstreams, VLM/tool-aware eligibility, agent compatibility, outcome-oriented evaluation, and cost-allocation-ready accounting together. |
+| LiteLLM | Open-source proxy with enterprise features | Broad provider abstraction, virtual keys, budgets, and proxy management | Metrum AI Router also supports budgets and rate limits, then adds stronger deployment-defined model-group policy, validated target metadata, dialect-specific VLM/tool eligibility, TypeScript routing logic, private upstream rollout workflow, and durable request-time cost records. |
+| Bifrost | High-performance open-source AI gateway | Fast OpenAI-compatible gateway, failover, load balancing, and telemetry | Metrum AI Router also supports high-performance gateway deployment and telemetry, then adds stronger caller-key governance, budgets, multimodal/tool eligibility, request-time cost persistence, detailed usage reporting, and deployment-specific policy logic. |
+| OpenRouter | Public model marketplace and routing service | Easy access to many public hosted models | Metrum AI Router can use OpenRouter as one upstream while adding enterprise allow lists, quotas, private upstreams, programmable routing, model validation, and cost accounting under the customer's control. |
+| Portkey | AI gateway/control-plane SaaS | Observability, guardrails, gateway management, and hosted control-plane workflows | Metrum AI Router is stronger for teams that want the gateway itself deployed under their control with private/provider-neutral target control, programmable routing, per-key quotas, and durable usage/cost records. |
+| Helicone | Observability and AI gateway tooling | Request logs, cost tracking, debugging, and analytics | Metrum AI Router includes usage reporting and telemetry while also making routing decisions, quota enforcement, VLM/tool eligibility, private upstream control, and cost records part of the same request path. |
+| Cloudflare AI Gateway | Edge gateway and AI application control plane | Edge deployment, caching, logs, rate limiting, retries, and model fallback | Metrum AI Router is stronger where model policy must be provider-neutral and deployment-owned, with detailed model metadata, private upstream configuration, caller-key policy, agent/VLM eligibility, and request-time accounting in the router itself. |
+| Kong AI Gateway | API gateway platform with AI plugins | Existing Kong/API management environments | Metrum AI Router is purpose-built for GenAI routing, model-group governance, VLM/tool eligibility, quotas, cost reporting, private inference endpoints, and agent-client compatibility without requiring a broader API gateway rollout. |
+| TrueFoundry AI Gateway | Enterprise AI platform gateway | Platform-level governance and MLOps integration | Metrum AI Router is stronger for teams that want direct gateway-layer control over model groups, upstream weights, TypeScript policy, per-key access, cost accounting, and private inference endpoints. |
+| Martian | Model routing/intelligence product | Dynamic model selection and optimization | Metrum AI Router exposes explicit deployment-owned policy, validation, usage records, quotas, and upstream routing controls that operators can inspect and change. |
 
 ## Proof Points To Verify
 

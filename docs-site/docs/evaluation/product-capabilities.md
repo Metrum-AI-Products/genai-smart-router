@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Product Capabilities
 
-This page summarizes Metrum Router capabilities for enterprise deployments.
+This page summarizes Metrum AI Router capabilities for enterprise deployments.
 
 ## Capabilities
 
@@ -31,7 +31,7 @@ This page summarizes Metrum Router capabilities for enterprise deployments.
 
 ## Best Fit
 
-Metrum Router is designed as the governed gateway layer for enterprise GenAI traffic. It works well when a platform team wants to:
+Metrum AI Router is designed as the governed gateway layer for enterprise GenAI traffic. It works well when a platform team wants to:
 
 - expose stable model-group names to developers and agents;
 - keep provider keys and private inference endpoints server-side;
@@ -61,7 +61,7 @@ Models can remain catalog-only until validation passes.
 
 ## Deployment Options
 
-Metrum Router can be deployed:
+Metrum AI Router can be deployed:
 
 - inside an enterprise network;
 - in a customer cloud account;

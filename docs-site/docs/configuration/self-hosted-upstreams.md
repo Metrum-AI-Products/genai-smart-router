@@ -5,21 +5,21 @@ doc_type: howto
 
 # Self-Hosted Upstreams
 
-Smart Router can complement llm-d: configure the llm-d OpenAI-compatible
-frontend as a private upstream, let Smart Router select the deployment-defined
+Metrum AI Router can complement llm-d: configure the llm-d OpenAI-compatible
+frontend as a private upstream, let Metrum AI Router select the deployment-defined
 model group, and let llm-d select a serving replica. The two policy layers are
-independent; Smart Router does not install, configure, or control llm-d. The
+independent; Metrum AI Router does not install, configure, or control llm-d. The
 `nvidia-llmd-compat` blueprint profile uses the in-cluster frontend
 `llm-d-local-epp:8081` as a reference integration and must pass its own direct
 upstream and router-level smokes before use.
 
-Metrum Router can sit inside an enterprise network and route to internally hosted inference services, including vLLM and SGLang deployments that expose OpenAI-compatible HTTP APIs. Applications continue to call one router endpoint and one set of governed model-group names, while platform teams keep GPU endpoints, model IDs, routing policy, caller allow lists, telemetry, and provider credentials server-side.
+Metrum AI Router can sit inside an enterprise network and route to internally hosted inference services, including vLLM and SGLang deployments that expose OpenAI-compatible HTTP APIs. Applications continue to call one router endpoint and one set of governed model-group names, while platform teams keep GPU endpoints, model IDs, routing policy, caller allow lists, telemetry, and provider credentials server-side.
 
 ## Enterprise Shape
 
 ```mermaid
 flowchart LR
-  App[Applications and developer tools] --> Router[Metrum Router]
+  App[Applications and developer tools] --> Router[Metrum AI Router]
   Router --> VL1[vLLM service: llama-large]
   Router --> VL2[vLLM service: qwen-coder-tools]
   Router --> SG1[SGLang service: kimi-tools]

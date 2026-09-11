@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Usage, Cost, And Reports
 
-Metrum Router records usage as operational evidence, not just a billing summary. Reports should explain who used the gateway, which model groups and upstream/provider models served requests, how much traffic cost at request time, where savings came from, and which provider/model routes were slow or unreliable.
+Metrum AI Router records usage as operational evidence, not just a billing summary. Reports should explain who used the gateway, which model groups and upstream/provider models served requests, how much traffic cost at request time, where savings came from, and which provider/model routes were slow or unreliable.
 
 ## What The Router Records
 

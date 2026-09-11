@@ -172,7 +172,7 @@ infer the running version from a date written in documentation.
 
 ## v1.0.2 - 2026-09-08
 
-Metrum Router v1.0.2 is a documentation packaging release. Caller-facing
+Metrum AI Router v1.0.2 is a documentation packaging release. Caller-facing
 routing, model groups, and API behavior are unchanged from v1.0.1.
 
 ### Highlights
@@ -212,7 +212,7 @@ routing, model groups, and API behavior are unchanged from v1.0.1.
 
 ## v1.0.1 - 2026-09-08
 
-Metrum Router v1.0.1 is a maintenance release focused on admin browser
+Metrum AI Router v1.0.1 is a maintenance release focused on admin browser
 report availability. Caller-facing routing, model groups, and API behavior are
 unchanged from v1.0.0.
 
@@ -259,7 +259,7 @@ unchanged from v1.0.0.
 
 ## v1.0.0 - 2026-09-07
 
-Metrum Router v1.0.0 is the first public open-source release package.
+Metrum AI Router v1.0.0 is the first public open-source release package.
 Use the docs banner, `/docs/releases`, and `/version` for the exact router
 version and build timestamp of the package that embeds this page.
 

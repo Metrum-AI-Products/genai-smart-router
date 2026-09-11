@@ -5,7 +5,7 @@ doc_type: reference
 
 # Diagnostics Schema
 
-This reference documents the relational diagnostics, usage, reporting, retention, security-access, and governed content-capture tables used by Metrum Router. It is derived from the current router diagnostics schema definitions and is intended for operators who troubleshoot by `X-Request-Id`, build reports, or review what data is safe to persist.
+This reference documents the relational diagnostics, usage, reporting, retention, security-access, and governed content-capture tables used by Metrum AI Router. It is derived from the current router diagnostics schema definitions and is intended for operators who troubleshoot by `X-Request-Id`, build reports, or review what data is safe to persist.
 
 The ordinary diagnostics schema stores scalar metadata only. It is designed for request tracing, usage accounting, latency and fallback triage, provider/model health, quota and traffic-shaping analysis, and report generation without storing raw request content.
 
