@@ -14,6 +14,13 @@ this page. The version banner, `/docs/releases`, and `/version` are the
 authoritative sources for its exact router version and build timestamp; do not
 infer the running version from a date written in documentation.
 
+## v1.4.4 - 2026-09-11
+
+Packaged republish of the canonical **Metrum AI Router** naming commit as
+GitHub Release `v1.4.4`. Prefer these release assets for deploy. The `v1.4.3`
+tag/ref was locked by repository immutable-release rules after the initial
+asset-upload failure; product content matches the v1.4.3 notes below.
+
 ## v1.4.3 - 2026-09-11
 
 ### Highlights

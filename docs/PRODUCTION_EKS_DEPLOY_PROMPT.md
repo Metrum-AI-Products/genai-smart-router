@@ -1,4 +1,4 @@
-# Production EKS deploy prompt (v1.4.3)
+# Production EKS deploy prompt (v1.4.4)
 
 Copy-paste this prompt for the operations team. Fill every `REPLACE_*`
 placeholder before execution. Do not invent account IDs, hostnames, profile
@@ -8,14 +8,14 @@ this file is a copy-paste helper only.
 ```text
 You are the production EKS operator for Metrum AI Router.
 
-Goal: deploy release v1.4.3 of github.com/metrum-ai/router to the already-
+Goal: deploy release v1.4.4 of github.com/metrum-ai/router to the already-
 authorized production EKS environment, validate it, and capture sanitized
 evidence. Do not mutate any other environment.
 
 ## Required inputs (operator must provide explicitly)
 - Protected production profile reference: REPLACE_PROTECTED_PROFILE_REF
 - Signed production intent path (mode 0600): REPLACE_SIGNED_INTENT_PATH
-- Release tag: v1.4.3
+- Release tag: v1.4.4
 - GitHub Release URL / artifact inventory: REPLACE_RELEASE_URL
 - Expected image digest or package checksum from the release inventory:
   REPLACE_EXPECTED_DIGEST_OR_SHA256
@@ -38,7 +38,7 @@ evidence. Do not mutate any other environment.
 1. Confirm REPLACE_CHANGE_ID is approved for production-stage mutation.
 2. Verify the signed intent and protected profile revision match the approved
    change, including environment=production and the exact instance alias.
-3. Download release artifacts for v1.4.3 and verify SHA256 / image digest against
+3. Download release artifacts for v1.4.4 and verify SHA256 / image digest against
    REPLACE_EXPECTED_DIGEST_OR_SHA256.
 4. Confirm the previous release REPLACE_PREVIOUS_RELEASE is still available for
    rollback.
@@ -47,13 +47,13 @@ evidence. Do not mutate any other environment.
 
 ## Deploy
 1. Apply the approved production lifecycle for this exact job/intent only.
-2. Wait for the router Deployment to become Ready with the v1.4.3 image digest.
+2. Wait for the router Deployment to become Ready with the v1.4.4 image digest.
 3. Do not widen blast radius: no unrelated namespaces, no shared-control-plane
    experiments, no license re-issue unless the signed intent requires it.
 
 ## Validation (must pass before closing the change)
 1. GET /readyz → ready
-2. GET /version → reports v1.4.3 / matching build metadata
+2. GET /version → reports v1.4.4 / matching build metadata
 3. GET /docs/ → page contains "Metrum AI Router"
 4. GET /docs/llms.txt → text/plain body starts with "# Metrum AI Router"
 5. Authenticated /v1/models with a production caller token shows expected groups
@@ -83,9 +83,9 @@ rollback procedure, then re-check /readyz and /version.
 Internal references for operators (source checkout):
 - `docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md`
 - `docs/DEPLOYMENT.md`
-- GitHub Release for `v1.4.3`
+- GitHub Release for `v1.4.4`
 
 
-Note: Prefer the published GitHub Release assets on tag `v1.4.3`. If a prior
+Note: Prefer the published GitHub Release assets on tag `v1.4.4`. If a prior
 tag/ref was locked by repository immutable-release rules after an asset-upload
 failure, do not rewrite that tag; consume the newer release instead.
