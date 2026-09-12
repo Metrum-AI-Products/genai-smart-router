@@ -169,7 +169,7 @@ done
 
 ## Quick Start From Source
 
-Hosted product docs: [docs.metrum.ai](https://docs.metrum.ai/docs/overview)
+Hosted product docs: [overview](https://llm-api.apps.metrum.ai/docs/overview)
 (also served from a running router at `/docs/`).
 
 Prerequisites are Go as declared in `go.mod` and Python 3 for the local

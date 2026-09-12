@@ -42,7 +42,7 @@ const config = {
   title: "Metrum AI Router",
   tagline: "An open-source LLM smart router",
   favicon: "img/favicon/favicon.ico",
-  url: process.env.DOCS_SITE_URL || "https://docs.metrum.ai",
+  url: process.env.DOCS_SITE_URL || "https://llm-api.apps.metrum.ai",
   baseUrl: "/docs/",
   organizationName: "metrum-ai",
   projectName: "router",

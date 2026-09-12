@@ -5,7 +5,7 @@ learned inference. Different models are sufficient for different jobs. The goal
 is the cheapest sufficient model mix, established by objective outcomes rather
 than model price or size alone. Start with the
 [operator scenario](LEARNED_ROUTING_POLICY.md#worked-scenario-choose-measure-learn-then-serve)
-for commands and the [caller-facing explanation](https://docs.metrum.ai/docs/routing/learned-routing-policy)
+for commands and the [caller-facing explanation](https://llm-api.apps.metrum.ai/docs/routing/learned-routing-policy)
 for request behavior.
 
 This snapshot records local validation on 2026-09-09. It contains **synthetic
