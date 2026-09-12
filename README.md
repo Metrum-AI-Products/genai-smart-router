@@ -1,21 +1,47 @@
 # Metrum AI Router
 
-Metrum AI Router is a self-hosted LLM gateway that selects an eligible upstream
-per request from a policy you own, including a Learned Routing Policy trained
-on your outcome data.
+Agent workloads often make dozens of model calls per task. Paying frontier
+price for each call is the default path, and token spend shows up after the
+monthly budget is gone. In one committed Harbor run, Codex on `big-coder` used
+48,470 Harbor input tokens in a single deterministic job
+([docs/harbor-case-study.md](docs/harbor-case-study.md)).
 
-It chooses the cheapest eligible target above a measured quality floor.
-Budgets, quotas, and eligibility run before any upstream spend.
-The binary, Compose, and Kubernetes paths run on hardware you control.
+A model group is a quality and cost contract you define. Routing picks the
+cheapest eligible candidate with evidence of meeting that contract. Evidence
+expires through the group `contract` field `max_eval_age_days`, so stale
+validation drops targets from eligibility. Learned Routing Policy abstains when
+uncertainty is high. Token budgets and quotas are admitted before any
+cache-miss upstream call.
+See [Model Group Contracts](#model-group-contracts) and
+[docs/MODEL_GROUP_CONTRACTS.md](docs/MODEL_GROUP_CONTRACTS.md).
 
-Request path:
+```mermaid
+flowchart LR
+  Caller[Caller] --> Admit[Auth and budget admission]
+  Admit --> Eligible[Request-shape eligibility]
+  Eligible --> LRP[Learned Routing Policy]
+  LRP --> Upstream[Selected upstream]
+  Upstream --> Feedback[Status usage cost latency]
+  Collect[Offline collect label train eval] --> Bundle[Validated policy bundle]
+  Bundle --> LRP
+```
 
-1. Caller hits the router with a model group.
-2. Auth, allow list, and token-budget admission run first.
-3. Request-shape eligibility drops ineligible targets.
-4. `strategy: external` asks Learned Routing Policy among remaining targets.
-5. The router calls the selected target with a server-side provider key.
-6. Feedback returns status, usage, cost, and latency. Quality labels arrive offline.
+**Who this is for**
+
+- Platform teams that own caller keys, model groups, and monthly token budgets
+  across many engineers (illustrative: 5,000 engineers sharing routed groups).
+- Teams that mix private OpenAI-compatible targets with hosted providers under
+  one group contract.
+- Operators willing to spend an afternoon on local bootstrap, then a longer
+  shadow window before enforce.
+
+**Who this is not for**
+
+- Teams that want a hosted service operated by someone else.
+- Teams with a single provider and no private models.
+- Teams that need the project to guarantee provider uptime, model quality, or
+  compliance outcomes
+  ([architecture-limitations](docs-site/docs/reference/architecture-limitations.md)).
 
 Community participation is governed by [CONTRIBUTING.md](CONTRIBUTING.md), the
 [Code of Conduct](CODE_OF_CONDUCT.md), and [GOVERNANCE.md](GOVERNANCE.md).
@@ -60,49 +86,100 @@ operator-owned boundaries and explicit non-goals.
 
 ## Learned Routing Policy
 
-Learned Routing Policy (LRP) is a standalone Python service behind
-`strategy: external`. The operator runbook is
+Static weights go stale when models and prices change. Generic learned routers
+often lack a quality floor, abstention, and operator-owned labels. Without those
+controls, cheap targets under-shoot acceptance tests and spend stays locked to
+the expensive anchor for weeks. Learned Routing Policy (LRP) trains offline on
+your outcome data. It selects only among router-eligible targets, abstains under
+uncertainty, and ships behind `strategy: external` with an explicit
+`external_policy.mode` promotion path you own. The operator runbook is
 [docs/LEARNED_ROUTING_POLICY.md](docs/LEARNED_ROUTING_POLICY.md). The service
 README is [services/learned-routing-policy/README.md](services/learned-routing-policy/README.md).
 
+### A worked example
+
+Synthetic holdout comparison (anchor vs routed) from
+[docs/evidence/learned-routing-policy/public-training.json](docs/evidence/learned-routing-policy/public-training.json)
+(seed 42, 800 requests, n=113 holdout). Abstention rate is not in that JSON.
+
+**Synthetic holdout: anchor vs routed (n=113)**
+
+| Policy | Cost USD | Quality mean | Floor violations | Abstention rate | n |
+|---|---|---|---|---|---|
+| always_anchor | 0.151829 | 1.0 | 0.0 | not measured | 113 |
+| lrp | 0.1507895 | 1.0 | 0.0 | not measured | 113 |
+| always_cheapest | 0.0151829 | 0.48672566371681414 | 0.5132743362831859 | not measured | 113 |
+| bt_only | 0.151829 | 1.0 | 0.0 | not measured | 113 |
+| oracle | 0.1507895 | 1.0 | 0.0 | not measured | 113 |
+
+`promotable` is false. Failed gates `cost_vs_anchor` and `real_data_and_embedding`
+show promotion gates working as designed on synthetic data. A real run needs
+real embeddings and real outcomes before any live enforce decision.
+See [learned-routing-case-study](docs-site/docs/evaluation/learned-routing-case-study.md)
+and [public-training.json](docs/evidence/learned-routing-policy/public-training.json).
+
+### What an operator does
+
+1. Define acceptance tests and a quality floor for the model group.
+2. Collect approved traffic with `lrp collect`.
+3. Label outcomes with `lrp fanout` and `lrp judge`.
+4. Train and gate with `lrp featurize`, `lrp train`, `lrp eval`, and `lrp validate`.
+5. Run `lrp serve` with `external_policy.mode: shadow` for at least the
+   documented 24-hour staging shadow window; treat 7-day staging enforce as a
+   separate later gate
+   ([docs/LEARNED_ROUTING_POLICY.md](docs/LEARNED_ROUTING_POLICY.md),
+   [lrp-train-and-serve](docs-site/docs/routing/lrp-train-and-serve.md)).
+6. Read shadow vs served comparison from decision telemetry and usage reports.
+7. Flip staging to `external_policy.mode: enforce`; rollback is one config
+   change to `mode: baseline`.
+
 ### What it predicts
 
-Per-target quality and output-token models are trained offline with LightGBM.
-Quality scores are isotonic-calibrated. Train and serve share the same feature
-definitions and embedding artifacts.
+Without per-target quality and length models, selection guesses from prices or
+static weights and under-shoots the floor. LRP trains per-target quality and
+output-token models offline with LightGBM. Quality scores are
+isotonic-calibrated. Train and serve share the same feature definitions and
+embedding artifacts.
 See [docs/LEARNED_ROUTING_POLICY.md](docs/LEARNED_ROUTING_POLICY.md).
 
 ### How it decides
 
-Among targets the router already marked eligible, LRP picks the cheapest
-predicted to meet the operator quality floor. If none meet the floor, it picks
-the highest predicted quality. Unknown prices are not treated as free.
-Optional per-project floors, upstream latency gates, and cache-aware cost
-estimates apply at selection. Cache savings are used only when trustworthy
-cache metadata and a catalog cached-input price are present.
+Cheapest-first without a floor sends 0.513 of the synthetic holdout under the
+quality floor (`always_cheapest` at n=113). Among targets the router already
+marked eligible, LRP picks the cheapest predicted to meet the operator quality
+floor. If none meet the floor, it picks the highest predicted quality. Unknown
+prices are not treated as free. Optional per-project floors, upstream latency
+gates, and cache-aware cost estimates apply at selection. Cache savings are
+used only when trustworthy cache metadata and a catalog cached-input price are
+present.
 See [docs/LRP_SELECTION_CONSTRAINTS.md](docs/LRP_SELECTION_CONSTRAINTS.md).
 
 ### Safety rails
 
-`lrp train --ensemble-size 5` fits a bootstrap ensemble. With
-`uncertainty_abstention: true`, high calibrated quality standard deviation
-abstains to `abstention_anchor` (or first fallback) and labels `lrp:uncertain`.
-Thompson exploration (`exploration_strategy: thompson`) is restricted to
-`exploration_projects`. PSI and embedding-centroid drift can recommend shadow;
-the router `external_policy.mode` remains the activation authority. Bradley-Terry
-cold start injects baseline predictions only for targets already eligible.
+A confident wrong prediction sends a hard request to a weak model.
+Abstention and ensemble uncertainty cut that path. `lrp train --ensemble-size 5`
+fits a bootstrap ensemble. With `uncertainty_abstention: true`, high calibrated
+quality standard deviation abstains to `abstention_anchor` (or first fallback)
+and labels `lrp:uncertain`. Thompson exploration
+(`exploration_strategy: thompson`) is restricted to `exploration_projects`. PSI
+and embedding-centroid drift can recommend shadow; the router
+`external_policy.mode` remains the activation authority. Bradley-Terry cold
+start injects baseline predictions only for targets already eligible.
 See [docs/LRP_UNCERTAINTY.md](docs/LRP_UNCERTAINTY.md).
 
 ### How outcomes are labeled
 
-Deterministic verifiers run only inside the isolated judge worker. LLM judging
-and human audit are separate outcome classes with different meanings.
+Mixing host-side execution with LLM scores collapses pass/fail meaning and
+pollutes training. Deterministic verifiers run only inside the isolated judge
+worker. LLM judging and human audit are separate outcome classes with different
+meanings.
 See [docs/LRP_VERIFIERS.md](docs/LRP_VERIFIERS.md) and
 [docs/LRP_HUMAN_JUDGE.md](docs/LRP_HUMAN_JUDGE.md).
 
 ### How it ships
 
-Router `external_policy.mode` values
+Flipping learned influence without a reversible mode burns a weekend of
+incident rollback. Router `external_policy.mode` values
 ([internal/router/external_strategy.go](internal/router/external_strategy.go)):
 
 - `baseline`: no policy call; first eligible configured target.
@@ -117,11 +194,6 @@ Post-completion `external_policy.feedback` posts request ID, status, usage,
 cost, latency, TTFB, and selected target. It does not retrain quality models.
 See [internal/router/external_policy_feedback.go](internal/router/external_policy_feedback.go)
 and [docs/EXTERNAL_POLICY_CONTEXT.md](docs/EXTERNAL_POLICY_CONTEXT.md).
-
-`strategy: intelligent` is an experimental baseline-only LLM-selector scaffold
-(shadow/simulate only; it does not alter target selection). Legacy `latency`,
-`cost`, and `semantic` are compatibility-only stubs.
-See [Deprecated Selectors](docs-site/docs/reference/deprecated-selectors.md).
 
 ### Minimal group config
 
@@ -165,7 +237,9 @@ Synthetic results do not authorize live promotion.
 
 ### Evidence status
 
-Figures below are checked-in repository artifacts. They do not authorize live
+Evidence means checked-in artifacts with dates, gates, and reproducible
+commands. Synthetic results are published so gates and wiring can be inspected
+before anyone spends on real embeddings. Figures below do not authorize live
 promotion.
 
 | Claim | Evidence | Source | Date |
@@ -180,15 +254,22 @@ promotion.
 
 ### Budget enforcement before the upstream call
 
-Token-budget admission reserves estimated input tokens, tool/schema payload
-size, and the requested output cap before a cache-miss upstream call. TPM,
-daily token, monthly token, and lifetime key budgets include in-flight
-reservations. Completed requests reconcile to reported usage; failed or
-canceled requests release the reservation; cache hits do not consume persisted
-token quota. Counting only after completion lets concurrent large-cap requests
-overshoot.
-Source: [API Key Flow](#api-key-flow), `internal/router/service.go`,
-`internal/router/quota.go`.
+Counting spend after completion lets concurrent large-cap requests overshoot a
+monthly cap before anyone sees the invoice. Token-budget admission reserves
+estimated input tokens, tool/schema payload size, and the requested output cap
+before a cache-miss upstream call. TPM, daily token, monthly token, and lifetime
+key budgets include in-flight reservations. Completed requests reconcile to
+reported usage; failed or canceled requests release the reservation; cache hits
+do not consume persisted token quota.
+([API Key Flow](#api-key-flow), `internal/router/service.go`, `internal/router/quota.go`)
+
+Illustrative: 5,000 engineers share one caller project with a $1,500/month
+token-budget cap. When remaining monthly tokens map to $12 of headroom and the
+next request reserves an estimated $18 of input-plus-output cap, admission
+fails with `429` / `quota-exhausted` (or `403` / `key-exhausted` when the
+lifetime key is done) before any provider call. Usage reports show the
+rejection without an upstream attempt. Arithmetic: $1,500/month ÷ 5,000
+engineers ≈ $0.30/engineer/month of shared headroom if the cap is fully used.
 
 ```yaml
 callers:
@@ -202,21 +283,23 @@ callers:
 
 ### Request-shape eligibility before selection
 
-The router filters dialect, per-skin tool support, modalities, structured
-outputs, reasoning controls, max-token honoring, and payload size before
-strategy selection. If none remain, it returns `502 no-eligible-target` with
-no upstream attempt. Forwarding first and waiting for a provider `400` spends
-a call on an ineligible shape.
-Source: `internal/router/service.go`, `internal/router/request_shape_eligibility.go`.
+Forwarding first and waiting for a provider `400` spends a billed call on an
+ineligible shape. Illustrative: one 8,000-token tool request rejected locally
+at $2.50 per million input tokens avoids about $0.02 of upstream spend
+(8000 / 1e6 × 2.50). The router filters dialect, per-skin tool support,
+modalities, structured outputs, reasoning controls, max-token honoring, and
+payload size before strategy selection. If none remain, it returns
+`502 no-eligible-target` with no upstream attempt.
+(`internal/router/service.go`, `internal/router/request_shape_eligibility.go`)
 
 ### Quality contracts with expiry
 
-An optional model-group `contract` applies `require_tags`,
-`min_eval_quality_score`, `min_eval_pass_rate`, `max_eval_age_days`, and
-`allowed_validation_status`. Stale `validated_at` removes a target from
-eligibility. Static routing weights do not expire on their own.
-Source: [Model Group Contracts](#model-group-contracts),
-`internal/router/contract.go`.
+Static routing weights do not expire when an eval ages out. After
+`max_eval_age_days: 30`, a target whose `validated_at` is older than 30 days
+drops from eligibility even if its weight is still positive. An optional
+model-group `contract` applies `require_tags`, `min_eval_quality_score`,
+`min_eval_pass_rate`, `max_eval_age_days`, and `allowed_validation_status`.
+([Model Group Contracts](#model-group-contracts), `internal/router/contract.go`)
 
 ```yaml
 models:
@@ -233,18 +316,22 @@ models:
 
 ### Request-time cost capture
 
-Each usage row stores input/output price per million, pricing source and date,
-computed USD, plus routing/policy/pricing fingerprints. Historical reports use
-those stored values after provider list prices change. Savings baselines are
-source-dated operator comparisons.
-Source: [Usage Reports](#usage-reports), `internal/router/usage_db.go`.
+Provider list prices change; historical reports that reprice old rows rewrite
+past months. Illustrative: a 20% mid-month list-price cut would rescale 15 prior
+days of USD if rows were not frozen at request time. Each usage row stores
+input/output price per million, pricing source and date, computed USD, plus
+routing/policy/pricing fingerprints. Savings baselines are source-dated
+operator comparisons.
+([Usage Reports](#usage-reports), `internal/router/usage_db.go`)
 
 ### Private and mixed hardware routing
 
-vLLM, SGLang, and any OpenAI-compatible service register as catalog targets
-with the same activation rules. One group can weight a private target with a
-hosted fallback after exact-shape validation.
-Source: [docs/SELF_HOSTED_UPSTREAMS.md](docs/SELF_HOSTED_UPSTREAMS.md).
+Separate gateways for private GPUs and hosted APIs force callers to pick a
+model name per request. vLLM, SGLang, and any OpenAI-compatible service register
+as catalog targets with the same activation rules. One group can weight a
+private target with a hosted fallback after exact-shape validation, for example
+80/20 in the snippet below.
+([docs/SELF_HOSTED_UPSTREAMS.md](docs/SELF_HOSTED_UPSTREAMS.md))
 
 ```yaml
 models:
@@ -257,49 +344,60 @@ models:
 
 ### Capacity pooling and upstream protection
 
-A group can pool the same model across provider accounts or endpoints.
-Optional provider/model/target shaping can start bounded adaptive cooldowns
-after classified 429 or quota exhaustion when those knobs are enabled.
-Fallback runs on retryable classes. Ordinary non-retryable 4xx is not replayed
-to another provider.
-Source: [API Key Flow](#api-key-flow), `internal/router/upstream_shape.go`.
+A single account rate limit turns one 429 into a fleet outage for that model.
+Illustrative: three provider accounts pooled 1:1:1 absorb three times the
+per-account RPM before the group is empty. A group can pool the same model
+across provider accounts or endpoints. Optional provider/model/target shaping
+can start bounded adaptive cooldowns after classified 429 or quota exhaustion
+when those knobs are enabled. Fallback runs on retryable classes. Ordinary
+non-retryable 4xx is not replayed to another provider.
+([API Key Flow](#api-key-flow), `internal/router/upstream_shape.go`)
 
 ### Secrets and content never leak into policy
 
-Scripts and external policies receive safe identifiers only. Provider keys are
-injected server-side. Optional `pii_filter` runs before cache key, routing
-input, and upstream call (`redact_only`, `redact_and_restore`, `fail_on_match`).
-Content capture is opt-in, redacted, and AES-256-GCM encrypted.
-Source: [TypeScript Routing](#typescript-routing), [PII Filtering](#pii-filtering),
-`internal/router/content_capture.go`.
+Shipping provider keys or raw prompts into a routing script creates a second
+secret surface. Illustrative: one leaked key forces rotation across every
+caller that shared it, often a multi-day outage window. Scripts and external
+policies receive safe identifiers only. Provider keys are injected server-side.
+Optional `pii_filter` runs before cache key, routing input, and upstream call
+(`redact_only`, `redact_and_restore`, `fail_on_match`). Content capture is
+opt-in, redacted, and AES-256-GCM encrypted.
+([TypeScript Routing](#typescript-routing), [PII Filtering](#pii-filtering),
+`internal/router/content_capture.go`)
 
 ### Every decision is evidence
 
+A routing dispute without a joinable `request_id` becomes a week of log spelunking.
 When usage persistence, diagnostics, and optional decision telemetry are
 enabled, attempts, traces, traffic-shape events, request shapes, translation
 shapes, sanitized upstream errors, and terminal errors join by `request_id`.
 `/admin/reports/api/request-evidence` returns a completeness-scored bundle.
 Decision telemetry stores scalar buckets only. Pre-selection failures may have
 no routing-decision row.
-Source: [Usage Reports](#usage-reports), `internal/router/decision_telemetry.go`.
+([Usage Reports](#usage-reports), `internal/router/decision_telemetry.go`)
 
 ### Sovereignty by default
 
-Apache-2.0 core. No license key required by default. Optional signed-license
-verification is local. Prompts and responses are not retained by default. The
-documented policy is not to train on traffic. Linux binary, Compose, and
-Kubernetes are the documented runtimes. Operators can run on-premises or
-air-gapped infrastructure.
-Source: [Editions](#editions),
+Hosted gateways keep prompts and keys on someone else's control plane. This
+core is Apache-2.0. No license key required by default. Optional signed-license
+verification is local. Prompts and responses are not retained by default
+(zero-day retention unless you enable capture). The documented policy is not to
+train on traffic. Linux binary, Compose, and Kubernetes are the documented
+runtimes. Operators can run on-premises or air-gapped infrastructure.
+([Editions](#editions),
 [deployment-paths](docs-site/docs/licensing/deployment-paths.md),
-[architecture-limitations](docs-site/docs/reference/architecture-limitations.md).
+[architecture-limitations](docs-site/docs/reference/architecture-limitations.md))
 
 ### Agent CLI support as a first-class path
 
-Claude Code uses `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`. Codex uses
+Pointing Claude Code or Codex at a generic OpenAI proxy still fails tool and
+catalog startup checks. Keep the two smoke commands in
+[CLI Smoke Tests](#cli-smoke-tests); Harbor already showed Codex and Claude Code
+against the same `big-coder` group in one deterministic pair of jobs
+([docs/harbor-case-study.md](docs/harbor-case-study.md)). Claude Code uses
+`ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`. Codex uses
 `/v1/codex/models.json` as a caller-filtered Responses catalog. Tool-bearing
-requests bypass the response cache. Keep the two smoke commands in
-[CLI Smoke Tests](#cli-smoke-tests). Containerized tool variants:
+requests bypass the response cache. Containerized tool variants:
 [coding-agent-clients](docs-site/docs/getting-started/coding-agent-clients.md#containerized-tool-smokes).
 
 ### What it does not do
@@ -320,6 +418,56 @@ From [Explicit Limitations And Non-Goals](docs-site/docs/reference/architecture-
   compliance, or support-service guarantees.
 
 Remaining bullets live on that page.
+
+## Frequently asked
+
+**Does LRP see my prompts?**
+By default the external-policy payload uses derived scalars such as token and
+tool counts, not prompt text. `external_policy.include_request: true` sends
+request content only to a trusted sidecar; enable `pii_filter` first.
+([External Routing Policy Service](#external-routing-policy-service))
+
+**What happens when the LRP sidecar is down?**
+Default `on_error: fail_closed` returns `502 routing-policy-error` and no
+upstream call. Optional `on_error: fallback` serves the first eligible
+configured target instead.
+([docs/LEARNED_ROUTING_POLICY.md](docs/LEARNED_ROUTING_POLICY.md))
+
+**Can I run without LRP?**
+Yes. Use `static`, `weighted`, `failover`, `dynamic_score`, or TypeScript
+`script` strategies. LRP is optional behind `strategy: external`.
+
+**How is this different from LiteLLM?**
+LiteLLM Server manages a unified interface to 100+ LLMs in OpenAI
+ChatCompletions/Completions format, plus cost tracking, auth, spend, budgets,
+and load balancing ([https://docs.litellm.ai/docs/proxy/quick_start](https://docs.litellm.ai/docs/proxy/quick_start)).
+
+**Does it learn online?**
+No. `external_policy.feedback` posts status, usage, cost, and latency for
+offline pipelines. It does not retrain quality models
+([internal/router/external_policy_feedback.go](internal/router/external_policy_feedback.go)).
+
+**What do I need to run on GPU?**
+Measured CPU BGE embedding stage latency is published for the LRP case study.
+There is no universal GPU requirement for the router or LRP sidecar. Private
+GPUs remain optional as routing targets
+([learned-routing-case-study](docs-site/docs/evaluation/learned-routing-case-study.md),
+[docs/SELF_HOSTED_UPSTREAMS.md](docs/SELF_HOSTED_UPSTREAMS.md)).
+
+**What does Enterprise edition add?**
+Enterprise is a separate distribution with production validation, named
+support, signed releases, and related commercial entitlements
+([Editions](#editions)).
+
+**How do I roll back learned routing?**
+Set `external_policy.mode: baseline` (or restore prior group config). That
+stops policy influence without redeploying binaries
+([internal/router/external_strategy.go](internal/router/external_strategy.go)).
+
+**Where does data live?**
+State, usage, and optional content capture stay on operator-controlled storage.
+Upstream provider calls and approved judging can still transfer prompts and
+responses outside your network boundary when you configure those paths.
 
 ## Proof: same group, different upstream
 
@@ -380,6 +528,41 @@ for f in testdata/proof/trivial.json testdata/proof/complex.json; do
        }'
 done
 ```
+
+## Reference
+
+Former README headings remain reachable below or from this index.
+
+- [Frequently asked](#frequently-asked)
+- [Cache Behavior](#cache-behavior)
+- [Editions](#editions)
+- [Known limitations](#known-limitations)
+- [Software License And Notices](#software-license-and-notices)
+- [Routing](#routing)
+- [Gateway and governance](#gateway-and-governance)
+- [Proof: same group, different upstream](#proof-same-group-different-upstream)
+- [Quick Start From Source](#quick-start-from-source)
+- [Learned Routing Policy](#learned-routing-policy)
+- [Evidence status](#evidence-status)
+- [What sets this router apart](#what-sets-this-router-apart)
+- [Proof: same group, different upstream](#proof-same-group-different-upstream)
+- [Build And Package](#build-and-package)
+- [Documentation Map](#documentation-map)
+- [Run From Source](#run-from-source)
+- [Runtime Policy License Enforcement](#runtime-policy-license-enforcement)
+- [API Key Flow](#api-key-flow)
+- [Provider Model Catalogs](#provider-model-catalogs)
+- [Dynamic Score Routing](#dynamic-score-routing)
+- [Model Group Contracts](#model-group-contracts)
+- [TypeScript Routing](#typescript-routing)
+- [External Routing Policy Service](#external-routing-policy-service)
+- [PII Filtering](#pii-filtering)
+- [Usage Reports](#usage-reports)
+- [Make Targets](#make-targets)
+- [CLI Smoke Tests](#cli-smoke-tests)
+- [Claude Code](#claude-code)
+- [Codex CLI](#codex-cli)
+- [Test](#test)
 
 ## Cache Behavior
 
@@ -1510,39 +1693,6 @@ make e2e-compose-live
 
 These require live provider keys in `env.json` or the shell plus locally installed `claude`, `codex`, Docker, and Docker Compose.
 
-
-## Reference
-
-Former README headings remain reachable below or from this index.
-
-- [Editions](#editions)
-- [Known limitations](#known-limitations)
-- [Software License And Notices](#software-license-and-notices)
-- [Routing](#routing)
-- [Gateway and governance](#gateway-and-governance)
-- [Proof: same group, different upstream](#proof-same-group-different-upstream)
-- [Quick Start From Source](#quick-start-from-source)
-- [Learned Routing Policy](#learned-routing-policy)
-- [Evidence status](#evidence-status)
-- [What sets this router apart](#what-sets-this-router-apart)
-- [Proof: same group, different upstream](#proof-same-group-different-upstream)
-- [Build And Package](#build-and-package)
-- [Documentation Map](#documentation-map)
-- [Run From Source](#run-from-source)
-- [Runtime Policy License Enforcement](#runtime-policy-license-enforcement)
-- [API Key Flow](#api-key-flow)
-- [Provider Model Catalogs](#provider-model-catalogs)
-- [Dynamic Score Routing](#dynamic-score-routing)
-- [Model Group Contracts](#model-group-contracts)
-- [TypeScript Routing](#typescript-routing)
-- [External Routing Policy Service](#external-routing-policy-service)
-- [PII Filtering](#pii-filtering)
-- [Usage Reports](#usage-reports)
-- [Make Targets](#make-targets)
-- [CLI Smoke Tests](#cli-smoke-tests)
-- [Claude Code](#claude-code)
-- [Codex CLI](#codex-cli)
-- [Test](#test)
 
 ## Editions
 
