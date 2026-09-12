@@ -10,6 +10,8 @@ import re
 import sys
 from pathlib import Path
 
+import canonical_product
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS_SITE = ROOT / "docs-site"
@@ -18,6 +20,7 @@ RELEASE_NOTES = DOCS_SITE / "docs" / "release-notes" / "index.md"
 FORBIDDEN_RELEASE_NOTE_PATTERNS = [
     ("raw token or token hash", re.compile(r"(?i)(bearer\s+[A-Za-z0-9._~+/=-]{16,}|router[_-]?token|token[_-]?hash)")),
     ("provider API key", re.compile(r"(?i)(api[_-]?key\s*[:=]|provider[_-]?key)")),
+    # llm-api.apps.metrum.ai is allowed only as https://llm-api.apps.metrum.ai/docs...
     ("private host/IP", re.compile(r"\b(?:100\.30\.225\.66|54\.84\.22\.33|llm-api-engg\.metrum\.ai|llm-api\.apps\.metrum\.ai|backups\.metrum\.ai)\b")),
     ("private AWS account", re.compile(r"\b121701826775\b")),
     ("private repository visibility claim", re.compile(r"(?i)repository visibility remains private")),
@@ -69,8 +72,9 @@ def main() -> int:
     require("Current Package" in release_text or re.search(r"^## v?\d", release_text, re.MULTILINE), "release notes must include a current or versioned release entry", errors)
 
     for line_no, line in enumerate(release_text.splitlines(), start=1):
+        privacy_line = canonical_product.strip_allowed_docs_urls(line)
         for label, pattern in FORBIDDEN_RELEASE_NOTE_PATTERNS:
-            if pattern.search(line):
+            if pattern.search(privacy_line):
                 errors.append(f"release notes line {line_no} contains {label}")
 
     if errors:
