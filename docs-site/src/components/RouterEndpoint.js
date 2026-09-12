@@ -11,7 +11,13 @@ function isLikelyEmbeddedRouterDocs() {
     return false;
   }
   const { hostname, pathname } = window.location;
-  if (!hostname || hostname === "docs.metrum.ai") {
+  // Standalone hosted docs (current temporary origin and future docs.metrum.ai)
+  // must keep the placeholder; do not treat them as an embedded router.
+  if (
+    !hostname ||
+    hostname === "docs.metrum.ai" ||
+    hostname === new URL("https://llm-api.apps.metrum.ai/docs").hostname
+  ) {
     return false;
   }
   // Standalone Docusaurus hosts and GitHub Pages must keep the placeholder.
