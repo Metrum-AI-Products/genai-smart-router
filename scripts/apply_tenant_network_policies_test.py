@@ -104,7 +104,7 @@ def fake_target_run(
         if command[0] == "kubectl" and "config" in command:
             return json.dumps({"clusters": [{"cluster": {"server": kube_endpoint}}]})
         if command[0] == "kubectl" and "apply" in command:
-            return "networkpolicy/smart-llmrouter-discovered-ingress configured\n"
+            return "networkpolicy/metrum-ai-router-discovered-ingress configured\n"
         raise AssertionError(f"unexpected command shape: {command!r}")
 
     return fake_run
@@ -354,7 +354,7 @@ def test_activation_uses_immutable_kubeconfig_and_policy_snapshots(root: Path) -
                 raise AssertionError("activation passed a mutable caller path to kubectl")
             if snapshot_policy.read_text(encoding="utf-8") != expected_policy:
                 raise AssertionError("activation did not apply the renderer-generated policy snapshot")
-            return "networkpolicy/smart-llmrouter-discovered-ingress configured\n"
+            return "networkpolicy/metrum-ai-router-discovered-ingress configured\n"
         raise AssertionError(f"unexpected command shape: {command!r}")
 
     original_run = MODULE.run
@@ -422,7 +422,7 @@ def test_make_validation_binds_the_explicit_context(root: Path) -> None:
         "printf '%s\\n' \"$*\" >> \"$TEST_COMMAND_LOG\"\n"
         "case \" $* \" in\n"
         "  *\" config view \"*) printf '%s\\n' '{\"clusters\":[{\"cluster\":{\"server\":\"https://approved.example\"}}]}' ;;\n"
-        "  *\" apply \"*) printf '%s\\n' 'networkpolicy/smart-llmrouter-discovered-ingress configured' ;;\n"
+        "  *\" apply \"*) printf '%s\\n' 'networkpolicy/metrum-ai-router-discovered-ingress configured' ;;\n"
         "  *) exit 64 ;;\n"
         "esac\n",
         encoding="utf-8",

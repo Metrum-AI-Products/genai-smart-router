@@ -54,7 +54,7 @@ def validated_namespaces(discovery: dict[str, Any]) -> tuple[str, str]:
 
 def validate_eks_ingress_guard_policy(content: str) -> None:
     """Require the EKS-only guard to deny ingress pending selected-policy activation."""
-    if "metadata:\n  name: smart-llmrouter-restrict-ingress\n" not in content:
+    if "metadata:\n  name: metrum-ai-router-restrict-ingress\n" not in content:
         raise ValueError("EKS ingress guard is not the reviewed smart-router policy")
     if "    - Ingress\n" not in content or len(re.findall(r"(?m)^  ingress:", content)) != 1 or not re.search(r"(?m)^  ingress:\s*\[\]\s*$", content):
         raise ValueError("EKS ingress guard must deny ingress until the selected namespace policy is rendered")

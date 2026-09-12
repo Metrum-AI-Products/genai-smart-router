@@ -134,7 +134,7 @@ def main() -> int:
     if "namespace: tenant-acme" not in rendered or "kubernetes.io/metadata.name: gateway-system" not in rendered:
         raise AssertionError("renderer did not bind the NetworkPolicy to verified discovery namespaces")
     metadata, spec = rendered.split("\nspec:\n", 1)
-    delivery_label = "app.kubernetes.io/name: smart-llmrouter"
+    delivery_label = "app.kubernetes.io/name: metrum-ai-router"
     if (
         delivery_label in metadata
         or delivery_label not in spec
@@ -176,7 +176,7 @@ def main() -> int:
     if "kubernetes.io/metadata.name: external-gateway" not in non_linkerd_rendered:
         raise AssertionError("renderer rejected or changed the explicit non-Linkerd ingress namespace")
     expect_rejected(lambda: MODULE.render(template, discovery(), eks_guard.replace("  ingress: []", "  ingress:\n    - from: []")))
-    expect_rejected(lambda: MODULE.render(template, discovery(), eks_guard.replace("smart-llmrouter-restrict-ingress", "wrong-ingress-guard")))
+    expect_rejected(lambda: MODULE.render(template, discovery(), eks_guard.replace("metrum-ai-router-restrict-ingress", "wrong-ingress-guard")))
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory) / "tenant-ingress-network-policy.yaml"
         MODULE.atomic_write(output, rendered)
