@@ -31,6 +31,19 @@ sanitized usage and performance fields.
 - private vLLM/SGLang-style OpenAI-compatible upstream support;
 - objective workload validation before lower-cost targets are promoted.
 
+## Learned Routing Policy
+
+Learned Routing Policy (LRP) recommends the cheapest eligible target predicted
+to meet an operator quality floor. It trains offline (LightGBM, isotonic
+calibration) and serves through `strategy: external` with `baseline`,
+`shadow`, and `enforce` modes. Feedback carries status, usage, cost, and
+latency. Quality labels arrive offline.
+
+See [Learned routing policy](/docs/routing/learned-routing-policy),
+[Train and evaluate](/docs/routing/lrp-train-and-evaluate), and
+[Serve and promote](/docs/routing/lrp-serve-and-promote).
+Synthetic results do not authorize live promotion.
+
 Different models are good at different jobs and to different degrees. The goal
 is the least expensive validated model or mix that still completes each
 workload. Teams can prove that with unit tests, extraction accuracy, OCR
