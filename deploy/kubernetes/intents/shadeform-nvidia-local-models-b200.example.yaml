@@ -3,8 +3,8 @@ profile: nvidia-local-serving
 # B200/H200 matrix: one Qwen3.8-class 20–40B primary plus two <=9B models.
 # Set hardware_profile to h200 when that is the selected Shadeform SKU.
 hardware_profile: b200
-namespace: smart-llmrouter
-router_image: registry.example.com/metrum-router:<version>-linux-amd64
+namespace: metrum-ai-router
+router_image: registry.example.com/metrum-ai-router:<version>-linux-amd64
 edge: ingress
 usage_driver: sqlite
 default_model_group: local-small-chat

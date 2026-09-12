@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: vllm-chat
-  namespace: smart-llmrouter
+  namespace: metrum-ai-router
   labels:
     app.kubernetes.io/name: vllm-chat
     app.kubernetes.io/component: local-serving

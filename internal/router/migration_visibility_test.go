@@ -181,14 +181,14 @@ func TestMigrationMetricsAreAggregateAndSafe(t *testing.T) {
 		Jobs:    []MigrationDataJobStatus{{State: "running"}, {State: "running"}},
 	})
 	for _, want := range []string{
-		`smart_llmrouter_migration_schema_version{scope="usage"} 2`,
-		`smart_llmrouter_migration_data_version{scope="usage"} 1`,
-		`smart_llmrouter_migration_compatible{scope="usage"} 1`,
-		`smart_llmrouter_migration_pending{scope="usage"} 1`,
-		`smart_llmrouter_migration_jobs{scope="usage",state="running"} 2`,
-		`smart_llmrouter_migration_failures{scope="usage"} 0`,
-		`smart_llmrouter_migration_progress_rows{scope="usage",outcome="scanned"} 0`,
-		`smart_llmrouter_migration_in_progress_age_seconds{scope="usage"} 0`,
+		`metrum_ai_router_migration_schema_version{scope="usage"} 2`,
+		`metrum_ai_router_migration_data_version{scope="usage"} 1`,
+		`metrum_ai_router_migration_compatible{scope="usage"} 1`,
+		`metrum_ai_router_migration_pending{scope="usage"} 1`,
+		`metrum_ai_router_migration_jobs{scope="usage",state="running"} 2`,
+		`metrum_ai_router_migration_failures{scope="usage"} 0`,
+		`metrum_ai_router_migration_progress_rows{scope="usage",outcome="scanned"} 0`,
+		`metrum_ai_router_migration_in_progress_age_seconds{scope="usage"} 0`,
 	} {
 		if !strings.Contains(metrics, want) {
 			t.Fatalf("migration metrics missing %q: %s", want, metrics)
@@ -214,7 +214,7 @@ func TestMigrationMetricsExposeAllSafeDataJobStates(t *testing.T) {
 		},
 	})
 	for _, state := range []string{"pending", "running", "paused", "cancelled", "failed", "validated"} {
-		want := `smart_llmrouter_migration_jobs{scope="usage",state="` + state + `"} 1`
+		want := `metrum_ai_router_migration_jobs{scope="usage",state="` + state + `"} 1`
 		if !strings.Contains(metrics, want) {
 			t.Fatalf("migration metrics missing %q: %s", want, metrics)
 		}
@@ -264,11 +264,11 @@ func TestMetricsRetainsAuthorizedGlobalFamiliesWhenMigrationStatusUnavailable(t 
 		t.Fatal("migration status lookup hook was not called")
 	}
 	for _, want := range []string{
-		`smart_llmrouter_migration_status_available{scope="usage"} 0`,
-		"smart_llmrouter_requests_total",
-		"smart_llmrouter_license_valid",
-		"smart_llmrouter_traffic_shape_queue_depth",
-		"smart_llmrouter_build_info",
+		`metrum_ai_router_migration_status_available{scope="usage"} 0`,
+		"metrum_ai_router_requests_total",
+		"metrum_ai_router_license_valid",
+		"metrum_ai_router_traffic_shape_queue_depth",
+		"metrum_ai_router_build_info",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics missing %q:\n%s", want, body)
@@ -280,10 +280,10 @@ func TestMetricsRetainsAuthorizedGlobalFamiliesWhenMigrationStatusUnavailable(t 
 		}
 	}
 	for _, unavailable := range []string{
-		`smart_llmrouter_migration_schema_version{scope="usage"}`,
-		`smart_llmrouter_migration_data_version{scope="usage"}`,
-		`smart_llmrouter_migration_compatible{scope="usage"}`,
-		`smart_llmrouter_migration_pending{scope="usage"}`,
+		`metrum_ai_router_migration_schema_version{scope="usage"}`,
+		`metrum_ai_router_migration_data_version{scope="usage"}`,
+		`metrum_ai_router_migration_compatible{scope="usage"}`,
+		`metrum_ai_router_migration_pending{scope="usage"}`,
 	} {
 		if strings.Contains(body, unavailable) {
 			t.Fatalf("unavailable migration status emitted stale metric %q: %s", unavailable, body)

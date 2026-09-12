@@ -103,6 +103,27 @@ func TestLicenseValidationRejectsExpiredWrongProductAndUnknownKey(t *testing.T) 
 	}
 }
 
+func TestLicenseVerificationAcceptsLegacyProduct(t *testing.T) {
+	pub, priv, err := GenerateLicenseKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	payload := testLicensePayload(now, []string{LicenseFeatureRouting})
+	payload.Product = "genai-smart-router"
+	env, err := SignLicensePayload(payload, priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := []LicensePublicKey{{KeyID: payload.KeyID, Algorithm: "ed25519", PublicKey: pub}}
+	if err := VerifyLicenseEnvelope(env, keys, now); err != nil {
+		t.Fatalf("legacy product should verify: %v", err)
+	}
+	if err := ValidateLicensePayload(env.Payload, nil, keys, now); err != nil {
+		t.Fatalf("legacy product should validate: %v", err)
+	}
+}
+
 func TestLicenseManagerReadinessRequestGateMetricsAndUsage(t *testing.T) {
 	pub, priv, err := GenerateLicenseKeypair()
 	if err != nil {

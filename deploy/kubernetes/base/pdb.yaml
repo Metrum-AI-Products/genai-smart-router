@@ -1,11 +1,11 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: smart-llmrouter
+  name: metrum-ai-router
   labels:
-    app.kubernetes.io/name: smart-llmrouter
+    app.kubernetes.io/name: metrum-ai-router
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: smart-llmrouter
+      app.kubernetes.io/name: metrum-ai-router

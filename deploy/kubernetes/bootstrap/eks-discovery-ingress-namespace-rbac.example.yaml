@@ -6,7 +6,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: genai-smart-router-eks-ingress-discovery
+  name: metrum-ai-router-eks-ingress-discovery
   namespace: replace-with-approved-ingress-namespace
 rules:
   - apiGroups: [""]
@@ -19,7 +19,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: genai-smart-router-eks-ingress-discovery
+  name: metrum-ai-router-eks-ingress-discovery
   namespace: replace-with-approved-ingress-namespace
 subjects:
   - kind: Group
@@ -27,4 +27,4 @@ subjects:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: genai-smart-router-eks-ingress-discovery
+  name: metrum-ai-router-eks-ingress-discovery

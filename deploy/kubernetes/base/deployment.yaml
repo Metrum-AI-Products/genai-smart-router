@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: smart-llmrouter
+  name: metrum-ai-router
   labels:
-    app.kubernetes.io/name: smart-llmrouter
+    app.kubernetes.io/name: metrum-ai-router
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: smart-llmrouter
+      app.kubernetes.io/name: metrum-ai-router
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: smart-llmrouter
+        app.kubernetes.io/name: metrum-ai-router
     spec:
-      serviceAccountName: smart-llmrouter
+      serviceAccountName: metrum-ai-router
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 30
       securityContext:
@@ -28,7 +28,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: router
-          image: registry.example.com/metrum-router:<version>-linux-amd64
+          image: registry.example.com/metrum-ai-router:<version>-linux-amd64
           imagePullPolicy: IfNotPresent
           args: ["--config", "/app/config/config.yaml"]
           ports:
@@ -89,14 +89,14 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: smart-llmrouter-config
+            name: metrum-ai-router-config
         - name: secrets
           secret:
-            secretName: smart-llmrouter-secrets
+            secretName: metrum-ai-router-secrets
             defaultMode: 0400
         - name: state
           persistentVolumeClaim:
-            claimName: smart-llmrouter-state
+            claimName: metrum-ai-router-state
         - name: logs
           emptyDir: {}
         - name: tmp

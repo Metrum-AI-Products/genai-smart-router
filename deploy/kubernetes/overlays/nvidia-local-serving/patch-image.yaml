@@ -1,11 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: smart-llmrouter
+  name: metrum-ai-router
 spec:
   template:
     spec:
       containers:
         - name: router
-          image: registry.example.com/metrum-router:<version>-linux-amd64
+          image: registry.example.com/metrum-ai-router:<version>-linux-amd64
           # Router must not request nvidia.com/gpu; serving pods own accelerators.

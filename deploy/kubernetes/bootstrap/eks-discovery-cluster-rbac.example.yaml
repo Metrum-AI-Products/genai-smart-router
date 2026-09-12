@@ -2,7 +2,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: genai-smart-router-eks-discovery
+  name: metrum-ai-router-eks-discovery
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
@@ -20,7 +20,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: genai-smart-router-eks-discovery
+  name: metrum-ai-router-eks-discovery
 subjects:
   # Use the Kubernetes username or group configured on the EKS access entry;
   # do not substitute the IAM principal ARN (RBAC never sees that ARN).
@@ -29,4 +29,4 @@ subjects:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: genai-smart-router-eks-discovery
+  name: metrum-ai-router-eks-discovery

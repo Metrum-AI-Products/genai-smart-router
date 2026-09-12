@@ -34,7 +34,7 @@ class DiscoveryError(RuntimeError):
 
 DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
 TRUST_DOMAIN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
-DISCOVERY_ROLE_NAME = "genai-smart-router-eks-discovery"
+DISCOVERY_ROLE_NAME = "metrum-ai-router-eks-discovery"
 ROOT = Path(__file__).resolve().parents[1]
 DISCOVERY_REPORT_INTENT = "read-only bootstrap discovery; no secret, endpoint, certificate, DSN, or policy payload values"
 DISCOVERY_REPORT_OBJECT_FIELDS = frozenset({"selection", "aws_identity", "eks", "namespace", "cluster_resources", "linkerd", "ecr", "evidence"})
@@ -700,7 +700,7 @@ def main() -> int:
                         "get",
                         "pods",
                         "-l",
-                        "app.kubernetes.io/name=smart-llmrouter",
+                        "app.kubernetes.io/name=metrum-ai-router",
                     ],
                 )
                 router_deployments = kubectl_json(
@@ -713,7 +713,7 @@ def main() -> int:
                         "get",
                         "deployments",
                         "-l",
-                        "app.kubernetes.io/name=smart-llmrouter",
+                        "app.kubernetes.io/name=metrum-ai-router",
                     ],
                 )
                 router_replica_sets = kubectl_json(
@@ -726,7 +726,7 @@ def main() -> int:
                         "get",
                         "replicasets",
                         "-l",
-                        "app.kubernetes.io/name=smart-llmrouter",
+                        "app.kubernetes.io/name=metrum-ai-router",
                     ],
                 )
                 router_deployment = selected_router_deployment(router_deployments)
@@ -789,7 +789,7 @@ def main() -> int:
                 "evidence": {"secrets_read": False, "secret_data_read": False, "config_payloads_read": False, "drift_requires_review": True},
             }
             for kind, plural in (("deployments", "deployments"), ("services", "services"), ("persistent_volume_claims", "persistentvolumeclaims"), ("ingresses", "ingresses")):
-                report["namespace"]["router_resources"][kind] = item_names(kubectl_json(kubeconfig, ["--context", context, "-n", args.namespace, "get", plural, "-l", "app.kubernetes.io/name=smart-llmrouter"]))
+                report["namespace"]["router_resources"][kind] = item_names(kubectl_json(kubeconfig, ["--context", context, "-n", args.namespace, "get", plural, "-l", "app.kubernetes.io/name=metrum-ai-router"]))
 
             repository = aws_json(["ecr", "describe-repositories", "--repository-names", args.ecr_repository], args.region, args.profile)["repositories"][0]
             report["ecr"] = {"image_tag_mutability": repository.get("imageTagMutability"), "encryption_type": repository.get("encryptionConfiguration", {}).get("encryptionType"), "repository_policy_present": ecr_policy_present(args.ecr_repository, args.region, args.profile), "image_scan_on_push": repository.get("imageScanningConfiguration", {}).get("scanOnPush"), "image_scan_visibility_checked": False}

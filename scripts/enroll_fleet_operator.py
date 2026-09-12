@@ -23,8 +23,8 @@ from typing import Any
 LIFECYCLE_USER_PATH = "/smart-router-lifecycle/"
 LIFECYCLE_TAG_KEY = "GenAISmartRouterLifecycle"
 LIFECYCLE_TAG_VALUE = "true"
-LIFECYCLE_GROUP = "genai-smart-router-eks-staging-lifecycle-operators"
-PLATFORM_IAC_ROLE_NAME = "genai-smart-router-eks-staging-platform-iac"
+LIFECYCLE_GROUP = "metrum-ai-router-eks-staging-lifecycle-operators"
+PLATFORM_IAC_ROLE_NAME = "metrum-ai-router-eks-staging-platform-iac"
 APPLY_CONFIRMATION = "ENROLL_FLEET_OPERATOR"
 USER_ARN = re.compile(r"^arn:(aws|aws-us-gov|aws-cn):iam::(?P<account>[0-9]{12}):user(?P<path>/[A-Za-z0-9+=,.@_/-]+)$")
 ASSUMED_PLATFORM_IAC_ARN = re.compile(
@@ -85,7 +85,7 @@ def caller_account(profile: str) -> str:
     match = ASSUMED_PLATFORM_IAC_ARN.fullmatch(arn)
     if match is None or match.group("account") != account:
         raise EnrollmentError(
-            "caller must assume genai-smart-router-eks-staging-platform-iac; "
+            "caller must assume metrum-ai-router-eks-staging-platform-iac; "
             "lifecycle operators and root cannot enroll Fleet operators"
         )
     return account
@@ -160,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--profile",
         required=True,
-        help="AWS CLI profile that has assumed genai-smart-router-eks-staging-platform-iac",
+        help="AWS CLI profile that has assumed metrum-ai-router-eks-staging-platform-iac",
     )
     parser.add_argument("--principal-arn", required=True, help="runtime IAM-user ARN under the reviewed lifecycle path")
     parser.add_argument("--apply", action="store_true", help="perform the explicit IAM group membership mutation")

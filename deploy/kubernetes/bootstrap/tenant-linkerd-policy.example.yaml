@@ -11,7 +11,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: smart-llmrouter
+      app.kubernetes.io/name: metrum-ai-router
   port: http
   proxyProtocol: HTTP/1
 ---

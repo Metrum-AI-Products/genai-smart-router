@@ -1,8 +1,8 @@
 schema: metrum.ai/smartrouter-stack-intent/v1
 profile: nvidia-llmd-compat
 hardware_profile: l40s
-namespace: smart-llmrouter
-router_image: registry.example.com/metrum-router:<version>-linux-amd64
+namespace: metrum-ai-router
+router_image: registry.example.com/metrum-ai-router:<version>-linux-amd64
 edge: ingress
 usage_driver: sqlite
 default_model_group: local-llmd-chat

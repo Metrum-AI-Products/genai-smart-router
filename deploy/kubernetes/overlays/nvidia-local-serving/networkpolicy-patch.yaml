@@ -2,8 +2,8 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
     labels:
-        app.kubernetes.io/name: smart-llmrouter
-    name: smart-llmrouter-restrict
+        app.kubernetes.io/name: metrum-ai-router
+    name: metrum-ai-router-restrict
 spec:
     egress:
         - ports:
@@ -36,6 +36,6 @@ spec:
                     app.kubernetes.io/name: vllm-coder
     podSelector:
         matchLabels:
-            app.kubernetes.io/name: smart-llmrouter
+            app.kubernetes.io/name: metrum-ai-router
     policyTypes:
         - Egress

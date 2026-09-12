@@ -6,13 +6,13 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: smart-llmrouter-restrict-ingress
+  name: metrum-ai-router-restrict-ingress
   labels:
-    app.kubernetes.io/name: smart-llmrouter
+    app.kubernetes.io/name: metrum-ai-router
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: smart-llmrouter
+      app.kubernetes.io/name: metrum-ai-router
   policyTypes:
     - Ingress
   ingress: []

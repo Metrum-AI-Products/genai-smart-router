@@ -468,7 +468,7 @@ func (s *Service) modelMetadata(caller *callerRuntime, codexResponsesOnly bool) 
 			"priority":                         1000,
 			"object":                           "model",
 			"created":                          0,
-			"owned_by":                         "smart-llmrouter",
+			"owned_by":                         "metrum-ai-router",
 			"use_responses_lite":               false,
 		}
 		if len(reasoningLevels) > 0 {

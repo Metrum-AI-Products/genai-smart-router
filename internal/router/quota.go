@@ -92,7 +92,8 @@ func newQuotaStore(path string, cfg *Config) (*quotaStore, error) {
 		if enveloped {
 			qs.state = state
 		} else {
-			if os.Getenv("SMART_LLMROUTER_ALLOW_UNSIGNED_STATE_MIGRATION") != "1" {
+			if os.Getenv("METRUM_AI_ROUTER_ALLOW_UNSIGNED_STATE_MIGRATION") != "1" &&
+				os.Getenv("SMART_LLMROUTER_ALLOW_UNSIGNED_STATE_MIGRATION") != "1" {
 				return nil, errStateIntegrity
 			}
 			if err := json.Unmarshal(raw, &qs.state); err != nil {
