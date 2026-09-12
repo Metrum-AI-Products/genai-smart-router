@@ -65,7 +65,7 @@ DOCKER_BUILDX ?= $(DOCKER) buildx
 DOCKER_PLATFORM ?= linux/$(GOARCH)
 # Unqualified local tag used by make docker / docker save. Published images are
 # also tagged as ghcr.io/metrum-ai/router (same IMAGE_TAG suffix).
-IMAGE_NAME ?= metrum-router
+IMAGE_NAME ?= metrum-ai-router
 IMAGE_TAG ?= $(VERSION)-$(GOOS)-$(GOARCH)
 DOCS_SITE_DIR ?= docs-site
 DOCS_EMBED_DIR ?= internal/router/docsdist
@@ -551,7 +551,7 @@ package-docker-one-no-docs: capability-smoke-unit
 	cp deploy/docker-compose.postgres-localhost.yml "$${docker_pkg_dir}/compose/docker-compose.postgres-localhost.yml"; \
 	cp deploy/Caddyfile.compose "$${docker_pkg_dir}/compose/Caddyfile.compose"; \
 	cp deploy/compose.env.example "$${docker_pkg_dir}/compose/.env.example"; \
-	sed "s/^SMART_LLMROUTER_VERSION=.*/SMART_LLMROUTER_VERSION=$${VERSION}-$${GOOS}-$${GOARCH}/" deploy/compose.env.example > "$${docker_pkg_dir}/compose/.env"; \
+	sed "s/^METRUM_AI_ROUTER_VERSION=.*/METRUM_AI_ROUTER_VERSION=$${VERSION}-$${GOOS}-$${GOARCH}/" deploy/compose.env.example > "$${docker_pkg_dir}/compose/.env"; \
 	cp config.example.yaml "$${docker_pkg_dir}/config/config.example.yaml"; \
 	cp env.example.json "$${docker_pkg_dir}/config/env.example.json"; \
 	cp scripts/router.ts "$${docker_pkg_dir}/config/scripts/router.ts"; \
@@ -588,7 +588,7 @@ compose-security-check:
 
 eks-session-bootstrap:
 	@test -n "$$EKS_CLEANUP_RECORD" || (echo "EKS_CLEANUP_RECORD is required" >&2; exit 2)
-	python3 scripts/bootstrap_eks_session.py --admin-profile "$$EKS_ADMIN_PROFILE" --source-user "$$EKS_SOURCE_USER" --mfa-serial "$$EKS_MFA_SERIAL" --macos-keychain-service "$$EKS_MFA_KEYCHAIN_SERVICE" --macos-keychain-account "$$EKS_MFA_KEYCHAIN_ACCOUNT" --session-profile smartrouter --role-profile "$$EKS_AWS_PROFILE" --role-arn "arn:aws:iam::$$EKS_ACCOUNT_ID:role/genai-smart-router-eks-discovery" --region "$$EKS_REGION" --duration-seconds "$$EKS_SESSION_DURATION" --cleanup-record "$$EKS_CLEANUP_RECORD"
+	python3 scripts/bootstrap_eks_session.py --admin-profile "$$EKS_ADMIN_PROFILE" --source-user "$$EKS_SOURCE_USER" --mfa-serial "$$EKS_MFA_SERIAL" --macos-keychain-service "$$EKS_MFA_KEYCHAIN_SERVICE" --macos-keychain-account "$$EKS_MFA_KEYCHAIN_ACCOUNT" --session-profile smartrouter --role-profile "$$EKS_AWS_PROFILE" --role-arn "arn:aws:iam::$$EKS_ACCOUNT_ID:role/metrum-ai-router-eks-discovery" --region "$$EKS_REGION" --duration-seconds "$$EKS_SESSION_DURATION" --cleanup-record "$$EKS_CLEANUP_RECORD"
 
 eks-session-recovery-status:
 	@test -n "$$EKS_CLEANUP_RECORD" || (echo "EKS_CLEANUP_RECORD is required" >&2; exit 2)
@@ -598,8 +598,8 @@ eks-identity-check:
 	python3 scripts/validate_eks_make_args.py --identity-only --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION"
 	@identity="$$(aws --profile "$$EKS_AWS_PROFILE" --region "$$EKS_REGION" sts get-caller-identity --query Arn --output text)"; \
 	case "$$identity" in \
-	"arn:aws:sts::$$EKS_ACCOUNT_ID:assumed-role/genai-smart-router-eks-discovery/"*) ;; \
-	*) echo "EKS identity error: expected the genai-smart-router-eks-discovery assumed role" >&2; exit 1 ;; \
+	"arn:aws:sts::$$EKS_ACCOUNT_ID:assumed-role/metrum-ai-router-eks-discovery/"*) ;; \
+	*) echo "EKS identity error: expected the metrum-ai-router-eks-discovery assumed role" >&2; exit 1 ;; \
 	esac
 
 eks-discovery-validate:

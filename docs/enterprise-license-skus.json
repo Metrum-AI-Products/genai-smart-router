@@ -2,7 +2,7 @@
   "schema_version": 1,
   "metadata": {
     "artifact": "enterprise-license-skus",
-    "product": "genai-smart-router",
+    "product": "metrum-ai-router",
     "owner": "commercial-operations",
     "updated_at": "2026-08-20",
     "runtime_dependency_issue": 159,
@@ -51,7 +51,7 @@
     ]
   },
   "defaults": {
-    "product": "genai-smart-router",
+    "product": "metrum-ai-router",
     "issuer": "self-managed",
     "schema_version": 1,
     "support_contact": "",

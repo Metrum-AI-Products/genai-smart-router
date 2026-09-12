@@ -7,9 +7,19 @@
 package licensecontract
 
 const (
-	Product = "genai-smart-router"
-	Issuer  = "self-managed"
+	// Product is the canonical product identity issued in new licenses.
+	Product = "metrum-ai-router"
+	// ProductLegacy remains accepted by runtime verification during the
+	// compatibility window for licenses issued before the rename.
+	ProductLegacy = "genai-smart-router"
+	Issuer        = "self-managed"
 )
+
+// AcceptedProduct reports whether product is the canonical or legacy license
+// product identity.
+func AcceptedProduct(product string) bool {
+	return product == Product || product == ProductLegacy
+}
 
 type Limits struct {
 	MaxModelGroups        int      `json:"max_model_groups,omitempty"`

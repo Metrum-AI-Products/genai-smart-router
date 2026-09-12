@@ -158,8 +158,9 @@ func setPublicDocsSecurityHeaders(w http.ResponseWriter) {
 	// The consented ConvAI voice control needs same-origin microphone access.
 	w.Header().Set("Permissions-Policy", "camera=(), geolocation=(), payment=(), usb=(), browsing-topics=(), microphone=(self)")
 	w.Header().Del("Server")
-	w.Header().Del("X-Smart-LLMRouter-Version")
-	w.Header().Del("X-Smart-LLMRouter-Build-Date")
+	w.Header().Del("X-Metrum-AI-Router-Version")
+	w.Header().Del("X-Metrum-AI-Router-Build-Date")
+	w.Header().Del("X-Metrum-AI-Router-Commit")
 }
 
 func securityTextHandler(w http.ResponseWriter, r *http.Request) {

@@ -9,7 +9,7 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: smart-llmrouter-discovered-ingress
+  name: metrum-ai-router-discovered-ingress
   namespace: __TENANT_NAMESPACE__
 # This discovery-owned policy deliberately has no delivery-inventory metadata
 # label. The router label remains below in spec.podSelector, which controls the
@@ -17,7 +17,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: smart-llmrouter
+      app.kubernetes.io/name: metrum-ai-router
   policyTypes:
     - Ingress
   ingress:

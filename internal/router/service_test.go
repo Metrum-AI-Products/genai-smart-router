@@ -4305,12 +4305,12 @@ func TestEmbeddedDocsAreServedUnderDocs(t *testing.T) {
 	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
 		t.Fatalf("content-type=%q", ct)
 	}
-	for _, header := range []string{"X-Smart-LLMRouter-Version", "X-Smart-LLMRouter-Build-Date"} {
+	for _, header := range []string{"X-Metrum-AI-Router-Version", "X-Metrum-AI-Router-Build-Date"} {
 		if got := rr.Header().Get(header); got != "" {
 			t.Fatalf("public docs exposed build identity header %s=%q", header, got)
 		}
 	}
-	if got := rr.Header().Get("X-Smart-LLMRouter-Commit"); got != "" {
+	if got := rr.Header().Get("X-Metrum-AI-Router-Commit"); got != "" {
 		t.Fatalf("docs response exposed source-control commit header: %q", got)
 	}
 }
@@ -6806,7 +6806,7 @@ func TestQuotaStateExplicitUnsignedMigration(t *testing.T) {
 	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("SMART_LLMROUTER_ALLOW_UNSIGNED_STATE_MIGRATION", "1")
+	t.Setenv("METRUM_AI_ROUTER_ALLOW_UNSIGNED_STATE_MIGRATION", "1")
 	qs, err := newQuotaStore(path, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -6817,7 +6817,7 @@ func TestQuotaStateExplicitUnsignedMigration(t *testing.T) {
 	if err := qs.Close(); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("SMART_LLMROUTER_ALLOW_UNSIGNED_STATE_MIGRATION", "")
+	t.Setenv("METRUM_AI_ROUTER_ALLOW_UNSIGNED_STATE_MIGRATION", "")
 	if _, err := newQuotaStore(path, cfg); err != nil {
 		t.Fatalf("signed migrated state rejected: %v", err)
 	}
@@ -7040,7 +7040,7 @@ func TestMetricsEndpointRequiresMetricsAdminAndExportsGlobalLabels(t *testing.T)
 		if !strings.Contains(body, "metrics-forbidden") {
 			t.Fatalf("non-admin metrics missing metrics-forbidden: %s", body)
 		}
-		if strings.Contains(body, "caller_user") || strings.Contains(body, "rtr_") || strings.Contains(body, "smart_llmrouter_") {
+		if strings.Contains(body, "caller_user") || strings.Contains(body, "rtr_") || strings.Contains(body, "metrum_ai_router_") {
 			t.Fatalf("non-admin metrics leaked metrics data: %s", body)
 		}
 	}
@@ -7054,7 +7054,7 @@ func TestMetricsEndpointRequiresMetricsAdminAndExportsGlobalLabels(t *testing.T)
 	}
 	body := metricsRR.Body.String()
 	for _, want := range []string{
-		`smart_llmrouter_requests_total`,
+		`metrum_ai_router_requests_total`,
 		`caller_id="alice"`,
 		`caller_user="alice"`,
 		`caller_project="metrum-insights"`,
@@ -7067,12 +7067,12 @@ func TestMetricsEndpointRequiresMetricsAdminAndExportsGlobalLabels(t *testing.T)
 		`model_group="default"`,
 		`target_provider="mock"`,
 		`target_model="mock-model"`,
-		`smart_llmrouter_tokens_total`,
-		`smart_llmrouter_cache_bypass_total`,
-		`smart_llmrouter_cache_entries`,
-		`smart_llmrouter_upstream_output_tokens_per_second_sum`,
-		`smart_llmrouter_downstream_output_tokens_per_second_sum`,
-		`smart_llmrouter_build_info`,
+		`metrum_ai_router_tokens_total`,
+		`metrum_ai_router_cache_bypass_total`,
+		`metrum_ai_router_cache_entries`,
+		`metrum_ai_router_upstream_output_tokens_per_second_sum`,
+		`metrum_ai_router_downstream_output_tokens_per_second_sum`,
+		`metrum_ai_router_build_info`,
 		`version="`,
 		`build_date="`,
 	} {
@@ -7173,7 +7173,7 @@ func TestCasbinAuthorizationForMetricsAndReports(t *testing.T) {
 	if metricsRR.Code != http.StatusOK {
 		t.Fatalf("policy metrics status=%d body=%s", metricsRR.Code, metricsRR.Body.String())
 	}
-	if !strings.Contains(metricsRR.Body.String(), "smart_llmrouter_build_info") {
+	if !strings.Contains(metricsRR.Body.String(), "metrum_ai_router_build_info") {
 		t.Fatalf("policy metrics missing metrics output: %s", metricsRR.Body.String())
 	}
 

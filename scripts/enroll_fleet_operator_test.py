@@ -105,7 +105,7 @@ def main() -> int:
     if "root credentials" not in expect_error(FakeAWS(root=True)):
         raise AssertionError("root caller was not rejected")
     wrong_role = FakeAWS(
-        caller_arn=f"arn:aws:sts::{ACCOUNT}:assumed-role/genai-smart-router-eks-staging-lifecycle-operator/session"
+        caller_arn=f"arn:aws:sts::{ACCOUNT}:assumed-role/metrum-ai-router-eks-staging-lifecycle-operator/session"
     )
     if "platform-iac" not in expect_error(wrong_role):
         raise AssertionError("non-platform-iac assumed role was not rejected")

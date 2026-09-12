@@ -1,16 +1,16 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: smart-llmrouter
+  name: metrum-ai-router
   labels:
-    app.kubernetes.io/name: smart-llmrouter
+    app.kubernetes.io/name: metrum-ai-router
   annotations:
     cert-manager.io/cluster-issuer: replace-with-cluster-issuer
 spec:
   tls:
     - hosts:
         - llm-api.example.com
-      secretName: smart-llmrouter-tls
+      secretName: metrum-ai-router-tls
   rules:
     - host: llm-api.example.com
       http:
@@ -19,6 +19,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: smart-llmrouter
+                name: metrum-ai-router
                 port:
                   name: http

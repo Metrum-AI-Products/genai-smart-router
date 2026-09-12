@@ -20,7 +20,7 @@ func TestDocsHandlerServesEmbedded404ForMissingDocsPage(t *testing.T) {
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("status=%d, want 404", rr.Code)
 	}
-	for _, header := range []string{"X-Smart-LLMRouter-Version", "X-Smart-LLMRouter-Build-Date"} {
+	for _, header := range []string{"X-Metrum-AI-Router-Version", "X-Metrum-AI-Router-Build-Date"} {
 		if got := rr.Header().Get(header); got != "" {
 			t.Fatalf("public docs exposed %s=%q", header, got)
 		}

@@ -1,13 +1,13 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: smart-llmrouter-restrict
+  name: metrum-ai-router-restrict
   labels:
-    app.kubernetes.io/name: smart-llmrouter
+    app.kubernetes.io/name: metrum-ai-router
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: smart-llmrouter
+      app.kubernetes.io/name: metrum-ai-router
   policyTypes:
     - Egress
   # This generic base stays ingress-neutral so it remains usable outside EKS.

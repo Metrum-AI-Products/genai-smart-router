@@ -4,8 +4,8 @@ profile: nvidia-local-serving
 # shadeform-nvidia-local-models-b200.example.yaml (or hardware_profile h200)
 # when B200/H200 capacity exists.
 hardware_profile: l40s
-namespace: smart-llmrouter
-router_image: registry.example.com/metrum-router:<version>-linux-amd64
+namespace: metrum-ai-router
+router_image: registry.example.com/metrum-ai-router:<version>-linux-amd64
 edge: ingress
 usage_driver: sqlite
 default_model_group: local-small-chat

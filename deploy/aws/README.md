@@ -1,7 +1,9 @@
 # AWS EKS Delivery Identity Templates
 
+> **Ops cutover:** Example RoleName values and filenames use `metrum-ai-router-*`. Live IAM roles, groups, ECR repositories, and CloudFormation stacks still named `genai-smart-router-*` (or older) must be renamed or rebound by operators; this tree does not mutate account identity.
+
 Files ending in `.example.json` are reviewed examples, not deployable account
-infrastructure. `genai-smart-router-eks-staging-identity.yaml` is the single
+infrastructure. `metrum-ai-router-eks-staging-identity.yaml` is the single
 deployable non-production identity stack for the checked-in Metrum staging
 target. Supply its exact authorized federated operator-role ARN only as a
 protected deployment parameter; never commit that principal, AWS keys, cluster
@@ -14,7 +16,7 @@ trust policy to `repo:*`, a branch wildcard, tags, pull requests, or a generic
 repository claim. The workflow must use a pinned action revision and request
 only `id-token: write` plus the minimum repository permissions.
 
-`genai-smart-router-eks-discovery-role.example.json` defines the separately
+`metrum-ai-router-eks-discovery-role.example.json` defines the separately
 named, read-only EKS discovery role. Replace the account and approved
 IAM-user placeholder through reviewed infrastructure as code. The approved
 local operator is named `smartrouter`; an organization may substitute a
@@ -48,15 +50,15 @@ shared command contract.
 
 ## Deployable Staging Delivery Identity
 
-`genai-smart-router-eks-staging-identity.yaml` is the deployable
+`metrum-ai-router-eks-staging-identity.yaml` is the deployable
 CloudFormation definition for the single reviewed Metrum staging target. It
 creates exact delivery and bootstrap roles, a separate reusable staging
 image-publisher role, a fixed lifecycle-operator role, and the permanent
-`genai-smart-router-eks-staging-lifecycle-operators` IAM group. It also creates
-the private `metrum-router` ECR repository, protected non-secret target
+`metrum-ai-router-eks-staging-lifecycle-operators` IAM group. It also creates
+the private `metrum-ai-router` ECR repository, protected non-secret target
 Parameter, and EKS access entries mapped to the
-`genai-smart-router-eks-staging-delivery` and
-`genai-smart-router-eks-staging-bootstrap` Kubernetes groups. The repository
+`metrum-ai-router-eks-staging-delivery` and
+`metrum-ai-router-eks-staging-bootstrap` Kubernetes groups. The repository
 has immutable tags, scan-on-push, and a retained resource deletion policy.
 Lifecycle expiration applies only to images carrying an explicit
 `cleanup-approved-` tag for at least seven days. Active deployment digests and
@@ -67,14 +69,14 @@ The required `AuthorizedOperatorRoleArn` remains one exact
 organization-controlled federated or SSO role. It may assume the target roles
 directly through its separately reviewed source-role policy. The required
 `AuthorizedPlatformIacRoleArn` is a separate exact federated or SSO role that
-may assume only `genai-smart-router-eks-staging-platform-iac`. That platform-IaC
+may assume only `metrum-ai-router-eks-staging-platform-iac`. That platform-IaC
 role may enroll or remove path-tagged IAM users under `/smart-router-lifecycle/`
-into `genai-smart-router-eks-staging-lifecycle-operators` and has no EKS,
+into `metrum-ai-router-eks-staging-lifecycle-operators` and has no EKS,
 Secret, ECR, or PassRole authority. The permanent IAM-user operator path is
 group membership: after enrollment, group members may only assume
-`genai-smart-router-eks-staging-lifecycle-operator`; the intermediary may only
+`metrum-ai-router-eks-staging-lifecycle-operator`; the intermediary may only
 assume the three reviewed target roles. The IAM-user path, required
-`GenAISmartRouterLifecycle=true` principal tag, and group policy are all
+`MetrumAIRouterLifecycle=true` principal tag, and group policy are all
 required. The template names no individual user, creates no user, and creates
 no credentials. Users outside that path, missing the tag, or outside the group
 cannot enter the lifecycle role. Do not pass an IAM user ARN, account root,
@@ -90,8 +92,8 @@ runtime ARNs only:
 aws cloudformation deploy \
   --profile <approved-stack-deploy-profile> \
   --region us-east-1 \
-  --stack-name genai-smart-router-eks-staging-identity \
-  --template-file deploy/aws/genai-smart-router-eks-staging-identity.yaml \
+  --stack-name metrum-ai-router-eks-staging-identity \
+  --template-file deploy/aws/metrum-ai-router-eks-staging-identity.yaml \
   --parameter-overrides \
     AuthorizedOperatorRoleArn=<exact-federated-operator-role-arn> \
     AuthorizedPlatformIacRoleArn=<exact-federated-platform-iac-role-arn> \
@@ -101,7 +103,7 @@ aws cloudformation deploy \
 
 # After org assignment to AuthorizedPlatformIacRoleArn, assume platform-IaC:
 rtk python3 scripts/enroll_fleet_operator.py \
-  --profile genai-smart-router-eks-staging-platform-iac \
+  --profile metrum-ai-router-eks-staging-platform-iac \
   --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/smart-router-lifecycle/<operator>
 ```
 
@@ -116,14 +118,14 @@ except the exact reviewed delivery objects, so those verbs cannot authorize
 arbitrary rules, subjects, names, namespaces, workload mutation, or privilege
 expansion. The role cannot read Secrets or other ConfigMaps, read Pod logs,
 execute Pods, create resources, delete resources, or act outside
-`smart-llmrouter-staging`.
+`metrum-ai-router-staging`.
 
 The platform/bootstrap owner must install the fail-closed admission guard and
 bootstrap RBAC once through an explicit temporary kubeconfig after the identity
 stack creates the access entry. It creates the unbound delivery Role at this
 stage and delays its RoleBinding until workload admission is active.
 Afterwards an authorized federated operator can assume
-`genai-smart-router-eks-staging-bootstrap` and use the guarded recovery CLI
+`metrum-ai-router-eks-staging-bootstrap` and use the guarded recovery CLI
 to reconcile only the reviewed namespace delivery RBAC. The CLI first
 reads the two named admission-guard objects and compares their exact canonical
 specifications, then server-side dry-runs both objects and force-claims their
@@ -179,9 +181,9 @@ KUBECONFIG=<explicit-temporary-kubeconfig> \
 The publisher role trusts the same `AuthorizedOperatorRoleArn`; it does not
 name an individual user. Assign operators to that federated/SSO role and grant
 its source role `sts:AssumeRole` for
-`genai-smart-router-eks-staging-image-publisher`. The publisher can request an
+`metrum-ai-router-eks-staging-image-publisher`. The publisher can request an
 ECR authorization token and upload, inspect, and resolve images only in the
-stack-owned `metrum-router` repository. It cannot mutate EKS, Secrets,
+stack-owned `metrum-ai-router` repository. It cannot mutate EKS, Secrets,
 parameters, or any other repository.
 
 Publish a reviewed current commit under an immutable staging tag, then resolve
@@ -191,10 +193,10 @@ the resulting `@sha256:` digest before creating the runtime attestation:
 aws ecr get-login-password --profile <staging-publisher-profile> --region us-east-1 \
   | docker login --username AWS --password-stdin <account>.dkr.ecr.us-east-1.amazonaws.com
 docker buildx build --platform linux/amd64 --load \
-  -t <account>.dkr.ecr.us-east-1.amazonaws.com/metrum-router:staging-<commit> .
-docker push <account>.dkr.ecr.us-east-1.amazonaws.com/metrum-router:staging-<commit>
+  -t <account>.dkr.ecr.us-east-1.amazonaws.com/metrum-ai-router:staging-<commit> .
+docker push <account>.dkr.ecr.us-east-1.amazonaws.com/metrum-ai-router:staging-<commit>
 aws ecr describe-images --profile <staging-publisher-profile> --region us-east-1 \
-  --repository-name metrum-router --image-ids imageTag=staging-<commit>
+  --repository-name metrum-ai-router --image-ids imageTag=staging-<commit>
 ```
 
 The separately reviewed cluster-bootstrap identity must first create the
@@ -223,7 +225,7 @@ delete the Router workload, RDS, PVC, runtime Secret, or customer data; those
 resources retain their own reviewed lifecycle.
 ## EKS Staging Target Bootstrap
 
-`genai-smart-router-eks-staging-target.json` is a checked-in bootstrap policy
+`metrum-ai-router-eks-staging-target.json` is a checked-in bootstrap policy
 for the delivery-contract test suite. Its ECR repository URI is **not** proof
 of a currently approved live AWS/EKS target.
 
@@ -279,7 +281,7 @@ mutable, or mismatched state blocks delivery.
 
 The policy evaluates every Deployment create/update by the delivery group in
 the staging namespace. Its first validation permits only the reviewed
-`smart-llmrouter` Deployment name, so using an alternate workload name cannot
+`metrum-ai-router` Deployment name, so using an alternate workload name cannot
 bypass the container, image, mount, or pod-security checks.
 
 The delivery contract records only safe UID/resource-version fields and

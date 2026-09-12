@@ -45,7 +45,7 @@ def test_command_failure_never_copies_stderr() -> None:
 def discovery_argv(output: Path) -> list[str]:
     return [
         "eks_discover.py",
-        "--profile", "genai-smart-router-eks-discovery",
+        "--profile", "metrum-ai-router-eks-discovery",
         "--account-id", "123456789012",
         "--region", "us-east-1",
         "--cluster", "approved-cluster",
@@ -139,7 +139,7 @@ def test_make_discover_invalidates_before_identity_failure(root: Path) -> None:
     environment = {
         **os.environ,
         "PATH": f"{command_directory}:{os.environ.get('PATH', '')}",
-        "EKS_AWS_PROFILE": "genai-smart-router-eks-discovery",
+        "EKS_AWS_PROFILE": "metrum-ai-router-eks-discovery",
         "EKS_ACCOUNT_ID": "123456789012",
         "EKS_REGION": "us-east-1",
         "EKS_CLUSTER": "approved-cluster",
@@ -495,7 +495,7 @@ def test_ingress_workload_requires_durable_linkerd_injection() -> None:
 
 def router_workload_payloads() -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
     deployment = {
-        "metadata": {"name": "smart-llmrouter", "uid": "router-deployment-uid"},
+        "metadata": {"name": "metrum-ai-router", "uid": "router-deployment-uid"},
         "spec": {
             "replicas": 2,
             "template": {
@@ -508,16 +508,16 @@ def router_workload_payloads() -> tuple[dict[str, object], dict[str, object], di
     replica_sets = {
         "items": [{
             "metadata": {
-                "name": "smart-llmrouter-abc123",
+                "name": "metrum-ai-router-abc123",
                 "uid": "router-replicaset-uid",
-                "ownerReferences": [{"kind": "Deployment", "name": "smart-llmrouter", "uid": "router-deployment-uid", "controller": True}],
+                "ownerReferences": [{"kind": "Deployment", "name": "metrum-ai-router", "uid": "router-deployment-uid", "controller": True}],
             },
         }],
     }
     pods = {
         "items": [
             {
-                "metadata": {"ownerReferences": [{"kind": "ReplicaSet", "name": "smart-llmrouter-abc123", "uid": "router-replicaset-uid", "controller": True}]},
+                "metadata": {"ownerReferences": [{"kind": "ReplicaSet", "name": "metrum-ai-router-abc123", "uid": "router-replicaset-uid", "controller": True}]},
                 "spec": {
                     "serviceAccountName": "router",
                     "containers": [{
@@ -534,7 +534,7 @@ def router_workload_payloads() -> tuple[dict[str, object], dict[str, object], di
                 },
             },
             {
-                "metadata": {"ownerReferences": [{"kind": "ReplicaSet", "name": "smart-llmrouter-abc123", "uid": "router-replicaset-uid", "controller": True}]},
+                "metadata": {"ownerReferences": [{"kind": "ReplicaSet", "name": "metrum-ai-router-abc123", "uid": "router-replicaset-uid", "controller": True}]},
                 "spec": {
                     "serviceAccountName": "router",
                     "containers": [{
@@ -624,7 +624,7 @@ def test_router_workload_requires_durable_linkerd_injection() -> None:
     evidence = MODULE.router_workload_injection_evidence(MODULE.selected_router_deployment(deployments), namespace)
     if evidence != {
         "router_workload_kind": "Deployment",
-        "router_workload_name": "smart-llmrouter",
+        "router_workload_name": "metrum-ai-router",
         "router_workload_injection_verified": True,
         "router_workload_injection_source": "deployment-template",
     }:

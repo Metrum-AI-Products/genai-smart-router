@@ -17,7 +17,7 @@ import (
 
 const defaultBridgeStatefulSessionHeader = "X-Router-Session"
 const defaultBridgeStatefulSessionBackend = "memory"
-const defaultBridgeStatefulSessionRedisNamespace = "smart-llmrouter"
+const defaultBridgeStatefulSessionRedisNamespace = "metrum-ai-router"
 
 type bridgeSessionBackend interface {
 	Get(ctx context.Context, key string) (bridgeSessionEntry, bool, error)

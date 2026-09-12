@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vllm-tiny
-  namespace: smart-llmrouter
+  namespace: metrum-ai-router
   labels:
     app.kubernetes.io/name: vllm-tiny
     app.kubernetes.io/component: local-serving

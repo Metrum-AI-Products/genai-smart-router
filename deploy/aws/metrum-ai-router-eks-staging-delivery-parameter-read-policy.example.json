@@ -7,7 +7,7 @@
       "Action": [
         "ssm:GetParameter"
       ],
-      "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/example/genai-smart-router/staging-delivery-target"
+      "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/example/metrum-ai-router/staging-delivery-target"
     }
   ]
 }

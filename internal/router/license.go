@@ -861,7 +861,7 @@ func VerifyLicenseEnvelope(env LicenseEnvelope, keys []LicensePublicKey, now tim
 	if env.Payload.SchemaVersion != 1 {
 		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "unsupported license schema"}
 	}
-	if env.Payload.Product != licenseProduct {
+	if !licensecontract.AcceptedProduct(env.Payload.Product) {
 		return licenseValidationError{Code: "license-product-mismatch", StatusCode: 503, Message: "license product mismatch"}
 	}
 	if env.Payload.Issuer != licenseIssuer {
@@ -946,7 +946,7 @@ func ValidateLicensePayload(payload LicensePayload, cfg *Config, keys []LicenseP
 	if payload.SchemaVersion != 1 {
 		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "unsupported license schema"}
 	}
-	if payload.Product != licenseProduct {
+	if !licensecontract.AcceptedProduct(payload.Product) {
 		return licenseValidationError{Code: "license-product-mismatch", StatusCode: 503, Message: "license product mismatch"}
 	}
 	if payload.Issuer != licenseIssuer {
@@ -1293,7 +1293,7 @@ func ParseLicenseRevocationEnvelope(raw []byte) (LicenseRevocationEnvelope, erro
 }
 
 func VerifyLicenseRevocationEnvelope(env LicenseRevocationEnvelope, keys []LicensePublicKey, now time.Time) error {
-	if env.Payload.SchemaVersion != 1 || env.Payload.Product != licenseProduct || env.Payload.Issuer != licenseIssuer {
+	if env.Payload.SchemaVersion != 1 || !licensecontract.AcceptedProduct(env.Payload.Product) || env.Payload.Issuer != licenseIssuer {
 		return licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation bundle identity mismatch"}
 	}
 	if env.Payload.RevocationSetID == "" || env.Payload.RevocationEpoch <= 0 {
@@ -1387,8 +1387,14 @@ func licenseInstanceFingerprintHash(payload LicensePayload, raw string) string {
 	if deploymentID == "" {
 		deploymentID = strings.TrimSpace(payload.Deployment.Mode)
 	}
+	// Use the license payload product so legacy genai-smart-router bindings
+	// keep matching hashes computed at issuance.
+	product := strings.TrimSpace(payload.Product)
+	if product == "" {
+		product = licenseProduct
+	}
 	material := strings.Join([]string{
-		licenseProduct,
+		product,
 		strings.TrimSpace(payload.CustomerID),
 		strings.TrimSpace(payload.LicenseID),
 		deploymentID,

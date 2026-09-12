@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vllm-coder
-  namespace: smart-llmrouter
+  namespace: metrum-ai-router
   labels:
     app.kubernetes.io/name: vllm-coder
     app.kubernetes.io/component: local-serving

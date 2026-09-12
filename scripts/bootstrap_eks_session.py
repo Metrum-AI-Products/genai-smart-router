@@ -35,7 +35,7 @@ ACCESS_KEY_ID = re.compile(r"^[A-Z0-9]{16,128}$")
 RECOVERY_RECORD_VERSION = 1
 RESERVED_BEFORE_CREATE = "reserved_before_create"
 ACCESS_KEY_CREATED = "access_key_created"
-DISCOVERY_ROLE_NAME = "genai-smart-router-eks-discovery"
+DISCOVERY_ROLE_NAME = "metrum-ai-router-eks-discovery"
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -105,7 +105,7 @@ def profile_pair_lock_path(credentials_path: Path, config_path: Path) -> Path:
     )
     pair_identity = "\0".join(resolved_paths).encode("utf-8")
     digest = hashlib.sha256(pair_identity).hexdigest()
-    return credentials_path.resolve(strict=False).parent / f".genai-smart-router-profile-{digest}.lock"
+    return credentials_path.resolve(strict=False).parent / f".metrum-ai-router-profile-{digest}.lock"
 
 
 @contextmanager
@@ -647,7 +647,7 @@ def main() -> int:
     parser.add_argument("--macos-keychain-service")
     parser.add_argument("--macos-keychain-account")
     parser.add_argument("--session-profile", default="smartrouter")
-    parser.add_argument("--role-profile", default="genai-smart-router-eks-discovery")
+    parser.add_argument("--role-profile", default="metrum-ai-router-eks-discovery")
     parser.add_argument("--role-arn")
     parser.add_argument("--region")
     parser.add_argument("--duration-seconds", type=int, default=3600)

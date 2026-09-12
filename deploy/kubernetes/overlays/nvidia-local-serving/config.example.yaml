@@ -162,7 +162,7 @@ project_memberships:
       joined_at: ""
 providers:
     local-vllm-chat:
-        base_url: http://vllm-chat.smart-llmrouter.svc.cluster.local:8000/v1
+        base_url: http://vllm-chat.metrum-ai-router.svc.cluster.local:8000/v1
         dialect: openai-chat
         api_key: ${LOCAL_VLLM_API_KEY}
         api_key_env: LOCAL_VLLM_API_KEY
@@ -352,7 +352,7 @@ providers:
                 tier: ""
                 cost: 0
     local-vllm-coder:
-        base_url: http://vllm-coder.smart-llmrouter.svc.cluster.local:8000/v1
+        base_url: http://vllm-coder.metrum-ai-router.svc.cluster.local:8000/v1
         dialect: openai-chat
         api_key: ${LOCAL_VLLM_API_KEY}
         api_key_env: LOCAL_VLLM_API_KEY
@@ -542,7 +542,7 @@ providers:
                 tier: ""
                 cost: 0
     local-vllm-tiny:
-        base_url: http://vllm-tiny.smart-llmrouter.svc.cluster.local:8000/v1
+        base_url: http://vllm-tiny.metrum-ai-router.svc.cluster.local:8000/v1
         dialect: openai-chat
         api_key: ${LOCAL_VLLM_API_KEY}
         api_key_env: LOCAL_VLLM_API_KEY

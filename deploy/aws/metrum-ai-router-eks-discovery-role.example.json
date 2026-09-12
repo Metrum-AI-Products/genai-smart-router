@@ -1,8 +1,8 @@
 {
-  "RoleName": "genai-smart-router-eks-discovery",
+  "RoleName": "metrum-ai-router-eks-discovery",
   "MaxSessionDuration": 3600,
   "Tags": [
-    {"Key": "application", "Value": "genai-smart-router"},
+    {"Key": "application", "Value": "metrum-ai-router"},
     {"Key": "purpose", "Value": "eks-discovery"},
     {"Key": "environment", "Value": "non-production"}
   ],

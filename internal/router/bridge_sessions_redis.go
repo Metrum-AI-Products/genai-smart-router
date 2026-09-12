@@ -132,7 +132,7 @@ func bridgeRedisSessionKey(namespace, hashedSessionKey string) string {
 		namespace = defaultBridgeStatefulSessionRedisNamespace
 	}
 	sum := sha256.Sum256([]byte(strings.TrimSpace(hashedSessionKey)))
-	return "smart-llmrouter:bridge-session:" + namespace + ":" + hex.EncodeToString(sum[:])
+	return "metrum-ai-router:bridge-session:" + namespace + ":" + hex.EncodeToString(sum[:])
 }
 
 func envValueIfConfigured(envName, field string) (string, error) {

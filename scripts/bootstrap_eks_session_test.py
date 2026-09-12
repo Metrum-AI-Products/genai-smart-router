@@ -93,7 +93,7 @@ def bootstrap_argv(cleanup: Path) -> list[str]:
         "--mfa-serial", "arn:aws:iam::123456789012:mfa/smartrouter",
         "--macos-keychain-service", "test-mfa",
         "--macos-keychain-account", "smartrouter",
-        "--role-arn", "arn:aws:iam::123456789012:role/genai-smart-router-eks-discovery",
+        "--role-arn", "arn:aws:iam::123456789012:role/metrum-ai-router-eks-discovery",
         "--region", "us-east-1",
         "--propagation-wait-seconds", "0",
         "--cleanup-record", str(cleanup),
@@ -130,8 +130,8 @@ def assert_precreate_reservation_order(root: Path) -> None:
             profile = args[args.index("--profile") + 1]
             if profile == "admin":
                 return json.dumps({"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/smartrouter"})
-            if profile == "genai-smart-router-eks-discovery":
-                return json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/genai-smart-router-eks-discovery/test"})
+            if profile == "metrum-ai-router-eks-discovery":
+                return json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/metrum-ai-router-eks-discovery/test"})
         if args[:3] == ["aws", "iam", "create-access-key"]:
             if MODULE.recovery_status(cleanup)["state"] != MODULE.RESERVED_BEFORE_CREATE:
                 raise AssertionError("IAM create was attempted before the exclusive recovery reservation")
@@ -246,7 +246,7 @@ def assert_configured_profile_paths_and_role_verification(root: Path) -> None:
             profile = args[args.index("--profile") + 1]
             if profile == "admin":
                 return json.dumps({"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/smartrouter"})
-            if profile == "genai-smart-router-eks-discovery":
+            if profile == "metrum-ai-router-eks-discovery":
                 if env is None:
                     raise AssertionError("role verification must use an explicitly pinned profile environment")
                 if env.get("AWS_CONFIG_FILE") != str(config_path) or env.get("AWS_SHARED_CREDENTIALS_FILE") != str(credentials_path):
@@ -269,7 +269,7 @@ def assert_configured_profile_paths_and_role_verification(root: Path) -> None:
                 ):
                     raise AssertionError("role verification inherited ambient AWS credentials or role selection")
                 role_verification_seen = True
-                return json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/genai-smart-router-eks-discovery/test"})
+                return json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/metrum-ai-router-eks-discovery/test"})
         if args[:3] == ["aws", "iam", "create-access-key"]:
             return json.dumps({"AccessKey": {"AccessKeyId": "AKIAEXAMPLEKEYID", "SecretAccessKey": "test-only-secret"}})
         if args[:3] == ["aws", "sts", "get-session-token"]:
@@ -302,7 +302,7 @@ def assert_configured_profile_paths_and_role_verification(root: Path) -> None:
         raise AssertionError("bootstrap did not write the session to AWS_SHARED_CREDENTIALS_FILE")
     config = configparser.RawConfigParser()
     config.read(config_path)
-    if config["profile genai-smart-router-eks-discovery"].get("source_profile") != "smartrouter":
+    if config["profile metrum-ai-router-eks-discovery"].get("source_profile") != "smartrouter":
         raise AssertionError("bootstrap did not write the role profile to AWS_CONFIG_FILE")
 
 
@@ -311,7 +311,7 @@ def assert_profile_write_rolls_back_credentials_when_config_write_fails(root: Pa
     config_path = root / "profile-rollback" / "config"
     credentials_path.parent.mkdir()
     original_credentials = b"[smartrouter]\naws_access_key_id = prior-test-session\n"
-    original_config = b"[profile genai-smart-router-eks-discovery]\nregion = us-west-2\n"
+    original_config = b"[profile metrum-ai-router-eks-discovery]\nregion = us-west-2\n"
     credentials_path.write_bytes(original_credentials)
     config_path.write_bytes(original_config)
     credentials_path.chmod(0o640)
@@ -328,8 +328,8 @@ def assert_profile_write_rolls_back_credentials_when_config_write_fails(root: Pa
         try:
             MODULE.write_profiles(
                 "smartrouter",
-                "genai-smart-router-eks-discovery",
-                "arn:aws:iam::123456789012:role/genai-smart-router-eks-discovery",
+                "metrum-ai-router-eks-discovery",
+                "arn:aws:iam::123456789012:role/metrum-ai-router-eks-discovery",
                 "us-east-1",
                 {
                     "aws_access_key_id": "new-test-session",
@@ -495,7 +495,7 @@ def assert_concurrent_profile_update_is_not_overwritten(root: Path) -> None:
     credentials_path = profile_root / "credentials"
     config_path = profile_root / "config"
     original_credentials = b"[smartrouter]\naws_access_key_id = prior-session\n"
-    original_config = b"[profile genai-smart-router-eks-discovery]\nregion = us-west-2\n"
+    original_config = b"[profile metrum-ai-router-eks-discovery]\nregion = us-west-2\n"
     credentials_path.write_bytes(original_credentials)
     config_path.write_bytes(original_config)
     credentials_path.chmod(0o600)
@@ -503,8 +503,8 @@ def assert_concurrent_profile_update_is_not_overwritten(root: Path) -> None:
     prior = MODULE.profile_files_snapshot(credentials_path, config_path)
     published = MODULE.write_profiles(
         "smartrouter",
-        "genai-smart-router-eks-discovery",
-        "arn:aws:iam::123456789012:role/genai-smart-router-eks-discovery",
+        "metrum-ai-router-eks-discovery",
+        "arn:aws:iam::123456789012:role/metrum-ai-router-eks-discovery",
         "us-east-1",
         {
             "aws_access_key_id": "new-test-session",
@@ -542,7 +542,7 @@ def assert_failed_role_verification_restores_profile_files(root: Path) -> None:
             profile = args[args.index("--profile") + 1]
             if profile == "admin":
                 return json.dumps({"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/smartrouter"})
-            if profile == "genai-smart-router-eks-discovery":
+            if profile == "metrum-ai-router-eks-discovery":
                 return json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/wrong-role/test"})
         if args[:3] == ["aws", "iam", "create-access-key"]:
             return json.dumps({"AccessKey": {"AccessKeyId": "AKIAEXAMPLEKEYID", "SecretAccessKey": "test-only-secret"}})
@@ -577,7 +577,7 @@ def assert_failed_role_verification_restores_profile_files(root: Path) -> None:
     credentials_path = profile_root / "credentials"
     config_path = profile_root / "config"
     original_credentials = b"[smartrouter]\naws_access_key_id = prior-session\n"
-    original_config = b"[profile genai-smart-router-eks-discovery]\nregion = us-west-2\n"
+    original_config = b"[profile metrum-ai-router-eks-discovery]\nregion = us-west-2\n"
     credentials_path.write_bytes(original_credentials)
     config_path.write_bytes(original_config)
     credentials_path.chmod(0o640)
@@ -603,7 +603,7 @@ def assert_cleanup_record_failure_still_restores_profiles(root: Path) -> None:
     credentials_path = profile_root / "credentials"
     config_path = profile_root / "config"
     original_credentials = b"[smartrouter]\naws_access_key_id = prior-session\n"
-    original_config = b"[profile genai-smart-router-eks-discovery]\nregion = us-west-2\n"
+    original_config = b"[profile metrum-ai-router-eks-discovery]\nregion = us-west-2\n"
     credentials_path.write_bytes(original_credentials)
     config_path.write_bytes(original_config)
     credentials_path.chmod(0o640)
@@ -618,7 +618,7 @@ def assert_cleanup_record_failure_still_restores_profiles(root: Path) -> None:
             profile = args[args.index("--profile") + 1]
             if profile == "admin":
                 return json.dumps({"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/smartrouter"})
-            if profile == "genai-smart-router-eks-discovery":
+            if profile == "metrum-ai-router-eks-discovery":
                 return json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/wrong-role/test"})
         if args[:3] == ["aws", "iam", "create-access-key"]:
             return json.dumps({"AccessKey": {"AccessKeyId": "AKIAEXAMPLEKEYID", "SecretAccessKey": "test-only-secret"}})
@@ -662,7 +662,7 @@ def assert_unexpected_role_identity_is_rejected(root: Path) -> None:
             profile = args[args.index("--profile") + 1]
             if profile == "admin":
                 return json.dumps({"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/smartrouter"})
-            if profile == "genai-smart-router-eks-discovery":
+            if profile == "metrum-ai-router-eks-discovery":
                 return json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/unexpected-role/test"})
         if args[:3] == ["aws", "iam", "create-access-key"]:
             return json.dumps({"AccessKey": {"AccessKeyId": "AKIAEXAMPLEKEYID", "SecretAccessKey": "test-only-secret"}})
@@ -683,7 +683,7 @@ def assert_unexpected_role_identity_is_rejected(root: Path) -> None:
     if not source_key_deleted or cleanup.exists():
         raise AssertionError("unexpected role identity did not preserve temporary-key cleanup guarantees")
     for identity in (
-        {"Account": "000000000000", "Arn": "arn:aws:sts::000000000000:assumed-role/genai-smart-router-eks-discovery/test"},
+        {"Account": "000000000000", "Arn": "arn:aws:sts::000000000000:assumed-role/metrum-ai-router-eks-discovery/test"},
         {"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/unexpected-role/test"},
     ):
         try:

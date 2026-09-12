@@ -112,7 +112,7 @@ def main() -> int:
     require(make_database.returncode == 0, f"Make database inspection failed:\n{make_database.stderr}")
     require(
         "EKS_AWS_PROFILE =" in make_database.stdout
-        and "EKS_AWS_PROFILE = genai-smart-router-eks-discovery" not in make_database.stdout,
+        and "EKS_AWS_PROFILE = metrum-ai-router-eks-discovery" not in make_database.stdout,
         "EKS_AWS_PROFILE must have an empty Make default (operator-supplied)",
     )
 
