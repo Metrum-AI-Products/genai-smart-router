@@ -379,6 +379,9 @@ dco-check-test:
 secret-check:
 	python3 scripts/check_env_example_secrets.py
 	python3 scripts/check_env_example_secrets_test.py
+	python3 scripts/canonical_product_test.py
+	python3 scripts/check_stale_product_names_test.py
+	python3 scripts/check_stale_product_names.py
 	python3 scripts/local_dev_bootstrap_test.py
 	python3 scripts/prepare_fleet_production_bundle_test.py
 	python3 scripts/launch_operational_readiness_test.py

@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+import canonical_product
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -59,6 +61,8 @@ HISTORICAL_FILES = {
 DOC_TYPE_VALUES = {"tutorial", "howto", "reference", "explanation"}
 DOCS_SITE_DOCS = ROOT / "docs-site" / "docs"
 
+# llm-api.apps.metrum.ai is allowed only as the temporary public docs origin
+# (https://llm-api.apps.metrum.ai/docs/...). Other uses of that host remain private.
 PRIVATE_PATTERNS = [
     (
         "private production host/IP",
@@ -470,9 +474,13 @@ def privacy_line_errors(path: Path, line_no: int, line: str) -> Iterable[str]:
 
 
 def rel_privacy_errors(rel: Path, line_no: int, line: str) -> Iterable[str]:
+    # Temporary public docs URLs are stripped before private-host matching so
+    # https://llm-api.apps.metrum.ai/docs remains documentable while /v1 and
+    # bare-host API examples stay forbidden.
+    privacy_line = canonical_product.strip_allowed_docs_urls(line)
     if rel not in HISTORICAL_FILES:
         for label, pattern in PRIVATE_PATTERNS:
-            if pattern.search(line):
+            if pattern.search(privacy_line):
                 yield f"{rel}:{line_no}: contains {label}"
 
     for label, pattern in STALE_CURRENT_ROUTE_PATTERNS:
