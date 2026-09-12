@@ -34,10 +34,13 @@ evidence. Do not mutate any other environment.
 - Use only the binary-package Fleet lifecycle tools and the approved production
   profile/intent. Customer-local metrum-ai-routerctl has no Fleet or
   production-cutover authority.
-- This release is a breaking packaging rename to metrum-ai-router*. Expect new
+- This release is a breaking identity rename to metrum-ai-router*. Expect new
   artifact names (metrum-ai-router-v2.0.0-*.tar.gz), image repository/tag
-  metrum-ai-router:<tag>, and canonical CLI names only (no packaged rename
-  stubs). Still verify /readyz and /version.
+  metrum-ai-router:<tag>, canonical CLI names only (no packaged rename stubs),
+  Compose `METRUM_AI_ROUTER_VERSION`, Prometheus `metrum_ai_router_*` metrics,
+  `X-Metrum-AI-Router-*` headers, and Kubernetes object names
+  `metrum-ai-router*` (recreate/migrate live objects; do not assume in-place
+  rename). Still verify /readyz and /version.
 
 ## Preflight
 1. Confirm REPLACE_CHANGE_ID is approved for production-stage mutation.
@@ -51,8 +54,10 @@ evidence. Do not mutate any other environment.
    available for rollback.
 5. Capture current /readyz and /version from the production instance using the
    approved operator path (no secrets in command output).
-6. Inventory systemd/Compose/Kubernetes/client references that still name
-   metrum-router* or metrum-genai-smartrouter-* and update them before cutover.
+6. Inventory systemd/Compose/Kubernetes/client/scrape/proxy references that
+   still name metrum-router*, metrum-genai-smartrouter*, smart-llmrouter*,
+   SMART_LLMROUTER_VERSION, smart_llmrouter_* metrics, or X-Smart-LLMRouter-*
+   headers and update them before cutover.
 
 ## Deploy
 1. Apply the approved production lifecycle for this exact job/intent only.
@@ -73,7 +78,9 @@ evidence. Do not mutate any other environment.
    without prompts, tokens, or keys
 8. Confirm PATH / container entrypoints use metrum-ai-router* (not metrum-router*
    or packaged stubs)
-9. If a dynamic_score proof group exists in this deployment, optionally compare a
+9. Confirm /metrics (metrics-admin) exposes `metrum_ai_router_build_info` and
+   scrapers/alerts no longer require `smart_llmrouter_*`
+10. If a dynamic_score proof group exists in this deployment, optionally compare a
    trivial summarize request and a code/tool request; otherwise record that the
    offline make proof-routing gate already passed in CI for this tag
 
