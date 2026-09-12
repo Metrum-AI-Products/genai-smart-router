@@ -163,6 +163,19 @@ make lrp-synthetic-demo
 
 Synthetic results do not authorize live promotion.
 
+### Evidence status
+
+Figures below are checked-in repository artifacts. They do not authorize live
+promotion.
+
+| Claim | Evidence | Source | Date |
+|---|---|---|---|
+| Synthetic holdout LRP quality mean 1.0, floor violation 0, cost USD 0.1507895 (n=113) | Single synthetic run, seed 42, 800 requests | [docs/evidence/learned-routing-policy/public-training.json](docs/evidence/learned-routing-policy/public-training.json) | 2026-09-09 |
+| `promotable` is false; gates `cost_vs_anchor` and `real_data_and_embedding` failed | Same snapshot | [public-training.json](docs/evidence/learned-routing-policy/public-training.json) | 2026-09-09 |
+| Synthetic embeddings, mock outcomes; real LightGBM and router wiring | Operator and public case study | [docs/LEARNED_ROUTING_POLICY.md](docs/LEARNED_ROUTING_POLICY.md), [learned-routing-case-study](docs-site/docs/evaluation/learned-routing-case-study.md) | 2026-09-09 |
+| Native shadow: LRP recommended `strong`; router served configured-first `cheap` | Single synthetic inference snapshot | [docs-site/docs/routing/lrp-train-and-serve.md](docs-site/docs/routing/lrp-train-and-serve.md) | 2026-09-09 |
+| Harbor Codex reward 1, Claude Code reward 0 on `big-coder` | One deterministic weighted-group run; not LRP | [docs/harbor-case-study.md](docs/harbor-case-study.md) | 2026-06-29 |
+
 ## Proof: same group, different upstream
 
 One caller-facing model group can select different upstream models for different
@@ -1410,6 +1423,7 @@ Former README headings remain reachable below or from this index.
 - [Proof: same group, different upstream](#proof-same-group-different-upstream)
 - [Quick Start From Source](#quick-start-from-source)
 - [Learned Routing Policy](#learned-routing-policy)
+- [Evidence status](#evidence-status)
 - [Cache Behavior](#cache-behavior)
 - [Build And Package](#build-and-package)
 - [Documentation Map](#documentation-map)
