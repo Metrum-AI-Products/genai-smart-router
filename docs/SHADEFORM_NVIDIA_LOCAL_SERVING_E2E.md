@@ -129,7 +129,7 @@ copy): with `driver_owned_by_ami: true`, rendered values set `driver.enabled` an
 
 ```bash
 # L40S fallback intent, or shadeform-nvidia-local-models-b200.example.yaml for B200/H200.
-metrum-genai-smartrouterctl blueprint render \
+metrum-ai-routerctl blueprint render \
   --intent deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml \
   --out /tmp/shadeform-blueprint
 helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
@@ -155,7 +155,7 @@ provider URLs and one static local target for each model group.
 # Create the caller file locally. The wrapper issues the license, creates the
 # namespace, atomically replaces the runtime Secret, and runs Helm.
 # Adjust --allow to the live model groups (local-tiny/... or local-qwen38/...).
-metrum-genai-smartrouterctl callers generate \
+metrum-ai-routerctl callers generate \
   --owner-user local-operator --project local --env dev \
   --allow local-tiny,local-small-chat,local-small-coder \
   --token-out /tmp/shadeform-caller.token \
@@ -178,7 +178,7 @@ scripts/helm_install_with_license.sh \
   --valid-for 12h \
   --config /tmp/shadeform-blueprint/config.yaml \
   --env-file /secure/path/local-env.json \
-  --image-repository metrum-router \
+  --image-repository metrum-ai-router \
   --image-tag issue-943
 ```
 
@@ -213,7 +213,7 @@ Run before PR creation:
 ```bash
 make test-k8s-nvidia-local-serving
 make secret-check
-go test ./internal/smartrouterctl ./cmd/metrum-routerctl
+go test ./internal/smartrouterctl ./cmd/metrum-ai-routerctl
 ```
 
 Attach safe scalars only: worktree/branch, Shadeform SKU, GPU/driver/CUDA,

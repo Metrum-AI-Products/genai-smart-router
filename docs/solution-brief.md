@@ -530,11 +530,11 @@ codex exec --ignore-user-config --ephemeral \
   --ignore-rules \
   --skip-git-repo-check \
   -c "model=\"$ROUTER_MODEL\"" \
-  -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
+  -c 'model_provider="metrum-ai-router"' \
+  -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-ai-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
+  -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-ai-router.wire_api="responses"' \
   "Reply with exactly: router codex ok" </dev/null
 ```
 
@@ -547,11 +547,11 @@ export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
 
 codex \
   -c "model=\"$ROUTER_MODEL\"" \
-  -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"'
+  -c 'model_provider="metrum-ai-router"' \
+  -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-ai-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
+  -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-ai-router.wire_api="responses"'
 ```
 
 For a different route, change `ROUTER_MODEL` to another allowed deployment-defined model group. The router decides the concrete upstream provider and model behind that group.
@@ -594,11 +594,11 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
     --dangerously-bypass-approvals-and-sandbox \
     -C /workspace \
     -c 'model="agent-tools-smoke"' \
-    -c 'model_provider="metrum-router"' \
-    -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-    -c "model_providers.metrum-router.base_url=\"${ROUTER_BASE_URL}/v1\"" \
-    -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-    -c 'model_providers.metrum-router.wire_api="responses"' \
+    -c 'model_provider="metrum-ai-router"' \
+    -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+    -c "model_providers.metrum-ai-router.base_url=\"${ROUTER_BASE_URL}/v1\"" \
+    -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+    -c 'model_providers.metrum-ai-router.wire_api="responses"' \
     "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
 ```
 

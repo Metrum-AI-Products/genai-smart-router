@@ -93,17 +93,11 @@ def assert_offline_package_documentation_contract() -> None:
             "the source copy, and the docs build must remain architecture-independent"
         )
     for runtime_binary in (
-        "metrum-router",
-        "metrum-router-token-gen",
-        "metrum-router-usage-report",
-        "metrum-router-migrate",
-        "metrum-routerctl",
-        "router",
-        "router-token-gen",
-        "router-usage-report",
-        "router-migrate",
-        "metrum-genai-smartrouterctl",
-        "smartrouterctl",
+        "metrum-ai-router",
+        "metrum-ai-router-token-gen",
+        "metrum-ai-router-usage-report",
+        "metrum-ai-router-migrate",
+        "metrum-ai-routerctl",
     ):
         expected_copy = f"COPY --from=build /out/{runtime_binary} /app/bin/{runtime_binary}"
         if expected_copy not in dockerfile:
@@ -150,27 +144,17 @@ def expect_ok(archive: Path, allowlist: Path) -> None:
         raise AssertionError(f"{archive}: unexpected errors {errors!r}")
 
 
-def binary_package_files(root: str = "metrum-router-v1.0.0-linux-amd64") -> dict[str, str | bytes]:
+def binary_package_files(root: str = "metrum-ai-router-v1.0.0-linux-amd64") -> dict[str, str | bytes]:
     files: dict[str, str | bytes] = {
-        f"{root}/bin/metrum-router": elf(62),
-        f"{root}/bin/metrum-router-token-gen": elf(62),
-        f"{root}/bin/metrum-router-usage-report": elf(62),
-        f"{root}/bin/metrum-router-migrate": elf(62),
-        f"{root}/bin/metrum-routerctl": elf(62),
-        f"{root}/bin/metrum-genai-smartrouter-fleetctl": elf(62),
-        f"{root}/bin/metrum-genai-smartrouter-fleet-sign": elf(62),
-        f"{root}/bin/metrum-genai-smartrouter-license": elf(62),
-        f"{root}/bin/metrum-genai-customer-lifecycle": elf(62),
-        f"{root}/bin/router": elf(62),
-        f"{root}/bin/router-token-gen": elf(62),
-        f"{root}/bin/router-usage-report": elf(62),
-        f"{root}/bin/router-migrate": elf(62),
-        f"{root}/bin/metrum-genai-smartrouterctl": elf(62),
-        f"{root}/bin/smartrouterctl": elf(62),
-        f"{root}/bin/metrum-fleetctl": elf(62),
-        f"{root}/bin/metrum-smartrouterctl": elf(62),
-        f"{root}/bin/metrum-fleet-sign": elf(62),
-        f"{root}/bin/router-license": elf(62),
+        f"{root}/bin/metrum-ai-router": elf(62),
+        f"{root}/bin/metrum-ai-router-token-gen": elf(62),
+        f"{root}/bin/metrum-ai-router-usage-report": elf(62),
+        f"{root}/bin/metrum-ai-router-migrate": elf(62),
+        f"{root}/bin/metrum-ai-routerctl": elf(62),
+        f"{root}/bin/metrum-ai-router-fleetctl": elf(62),
+        f"{root}/bin/metrum-ai-router-fleet-sign": elf(62),
+        f"{root}/bin/metrum-ai-router-license": elf(62),
+        f"{root}/bin/metrum-ai-router-customer-lifecycle": elf(62),
         f"{root}/config/config.example.yaml": "server: {}\n",
         f"{root}/config/env.example.json": "{}\n",
         f"{root}/config/enterprise-license-skus.json": '{"skus":[]}\n',
@@ -196,17 +180,11 @@ def docker_image_tar(
     layer_data = io.BytesIO()
     with tarfile.open(fileobj=layer_data, mode="w") as layer:
         for name in [
-            "app/bin/metrum-router",
-            "app/bin/metrum-router-token-gen",
-            "app/bin/metrum-router-usage-report",
-            "app/bin/metrum-router-migrate",
-            "app/bin/metrum-routerctl",
-            "app/bin/router",
-            "app/bin/router-token-gen",
-            "app/bin/router-usage-report",
-            "app/bin/router-migrate",
-            "app/bin/metrum-genai-smartrouterctl",
-            "app/bin/smartrouterctl",
+            "app/bin/metrum-ai-router",
+            "app/bin/metrum-ai-router-token-gen",
+            "app/bin/metrum-ai-router-usage-report",
+            "app/bin/metrum-ai-router-migrate",
+            "app/bin/metrum-ai-routerctl",
         ]:
             data = elf(62)
             info = tarfile.TarInfo(name)
@@ -221,7 +199,7 @@ def docker_image_tar(
 
     image_data = io.BytesIO()
     with tarfile.open(fileobj=image_data, mode="w") as image:
-        manifest = [{"Config": "config.json", "RepoTags": ["metrum-router:v1.0.0-linux-amd64"], "Layers": ["layer.tar"]}]
+        manifest = [{"Config": "config.json", "RepoTags": ["metrum-ai-router:v1.0.0-linux-amd64"], "Layers": ["layer.tar"]}]
         config = {"architecture": arch, "os": "linux"}
         for name, content in {
             "manifest.json": json.dumps(manifest).encode("utf-8"),
@@ -234,7 +212,7 @@ def docker_image_tar(
     return image_data.getvalue()
 
 
-def docker_package_files(root: str = "metrum-router-v1.0.0-docker-linux-amd64") -> dict[str, str | bytes]:
+def docker_package_files(root: str = "metrum-ai-router-v1.0.0-docker-linux-amd64") -> dict[str, str | bytes]:
     files: dict[str, str | bytes] = {
         f"{root}/compose/docker-compose.yml": "services: {}\n",
         f"{root}/compose/docker-compose.postgres-localhost.yml": "services: {}\n",
@@ -244,7 +222,7 @@ def docker_package_files(root: str = "metrum-router-v1.0.0-docker-linux-amd64") 
         f"{root}/config/config.example.yaml": "server: {}\n",
         f"{root}/config/env.example.json": "{}\n",
         f"{root}/config/scripts/router.ts": "export function route() {}\n",
-        f"{root}/images/metrum-router-v1.0.0-linux-amd64.tar": docker_image_tar(),
+        f"{root}/images/metrum-ai-router-v1.0.0-linux-amd64.tar": docker_image_tar(),
     }
     files.update(
         {
@@ -263,27 +241,27 @@ def main() -> int:
         root = Path(temp)
         allowlist = write_allowlist(root)
 
-        good = root / "metrum-router-v1.0.0-linux-amd64.tar.gz"
+        good = root / "metrum-ai-router-v1.0.0-linux-amd64.tar.gz"
         write_tar(good, binary_package_files())
         expect_ok(good, allowlist)
 
         missing_cli = root / "missing-cli.tar.gz"
         missing_cli_files = binary_package_files()
-        del missing_cli_files["metrum-router-v1.0.0-linux-amd64/bin/metrum-genai-smartrouter-fleetctl"]
+        del missing_cli_files["metrum-ai-router-v1.0.0-linux-amd64/bin/metrum-ai-router-fleetctl"]
         write_tar(missing_cli, missing_cli_files)
-        expect_errors(missing_cli, allowlist, ["required package file is missing: bin/metrum-genai-smartrouter-fleetctl"])
+        expect_errors(missing_cli, allowlist, ["required package file is missing: bin/metrum-ai-router-fleetctl"])
 
         missing_lifecycle = root / "missing-lifecycle.tar.gz"
         missing_lifecycle_files = binary_package_files()
-        del missing_lifecycle_files["metrum-router-v1.0.0-linux-amd64/bin/metrum-genai-customer-lifecycle"]
+        del missing_lifecycle_files["metrum-ai-router-v1.0.0-linux-amd64/bin/metrum-ai-router-customer-lifecycle"]
         write_tar(missing_lifecycle, missing_lifecycle_files)
         expect_errors(
             missing_lifecycle,
             allowlist,
-            ["required package file is missing: bin/metrum-genai-customer-lifecycle"],
+            ["required package file is missing: bin/metrum-ai-router-customer-lifecycle"],
         )
 
-        good_docker = root / "metrum-router-v1.0.0-docker-linux-amd64.tar.gz"
+        good_docker = root / "metrum-ai-router-v1.0.0-docker-linux-amd64.tar.gz"
         write_tar(good_docker, docker_package_files())
         expect_ok(good_docker, allowlist)
 
@@ -291,8 +269,8 @@ def main() -> int:
             forbidden_image = root / f"forbidden-image-{fleet_binary}.tar.gz"
             forbidden_image_files = docker_package_files()
             image_path = (
-                "metrum-router-v1.0.0-docker-linux-amd64/"
-                "images/metrum-router-v1.0.0-linux-amd64.tar"
+                "metrum-ai-router-v1.0.0-docker-linux-amd64/"
+                "images/metrum-ai-router-v1.0.0-linux-amd64.tar"
             )
             forbidden_image_files[image_path] = docker_image_tar(
                 {f"app/bin/{fleet_binary}": elf(62)}
@@ -307,11 +285,11 @@ def main() -> int:
         relocated_fleet_binary = root / "relocated-fleet-binary.tar.gz"
         relocated_files = docker_package_files()
         relocated_image_path = (
-            "metrum-router-v1.0.0-docker-linux-amd64/"
-            "images/metrum-router-v1.0.0-linux-amd64.tar"
+            "metrum-ai-router-v1.0.0-docker-linux-amd64/"
+            "images/metrum-ai-router-v1.0.0-linux-amd64.tar"
         )
         relocated_files[relocated_image_path] = docker_image_tar(
-            {"usr/local/bin/metrum-genai-smartrouter-fleetctl": elf(62)}
+            {"usr/local/bin/metrum-ai-router-fleetctl": elf(62)}
         )
         write_tar(relocated_fleet_binary, relocated_files)
         expect_errors(
@@ -319,31 +297,31 @@ def main() -> int:
             allowlist,
             [
                 "forbidden fleet lifecycle binary "
-                "/usr/local/bin/metrum-genai-smartrouter-fleetctl"
+                "/usr/local/bin/metrum-ai-router-fleetctl"
             ],
         )
 
-        wrong_image_arch = root / "metrum-router-v1.0.0-docker-linux-amd64.tar.gz"
+        wrong_image_arch = root / "metrum-ai-router-v1.0.0-docker-linux-amd64.tar.gz"
         wrong_image_arch_files = docker_package_files()
         wrong_image_arch_files[
-            "metrum-router-v1.0.0-docker-linux-amd64/images/metrum-router-v1.0.0-linux-amd64.tar"
+            "metrum-ai-router-v1.0.0-docker-linux-amd64/images/metrum-ai-router-v1.0.0-linux-amd64.tar"
         ] = docker_image_tar(arch="arm64")
         write_tar(wrong_image_arch, wrong_image_arch_files)
         expect_errors(wrong_image_arch, allowlist, ["image platform linux/arm64 does not match linux/amd64"])
 
-        wrong_root = root / "metrum-router-v1.0.0-linux-amd64.tar.gz"
+        wrong_root = root / "metrum-ai-router-v1.0.0-linux-amd64.tar.gz"
         write_tar(wrong_root, binary_package_files("another-root"))
         expect_errors(wrong_root, allowlist, ["top-level directory must be"])
 
         extra_image = root / "extra-image.tar.gz"
         extra_image_files = docker_package_files()
-        extra_image_files["metrum-router-v1.0.0-docker-linux-amd64/images/extra.tar"] = docker_image_tar()
+        extra_image_files["metrum-ai-router-v1.0.0-docker-linux-amd64/images/extra.tar"] = docker_image_tar()
         write_tar(extra_image, extra_image_files)
         expect_errors(extra_image, allowlist, ["unexpected package file included"])
 
         image_source_path = root / "image-source-path.tar.gz"
         image_source_files = docker_package_files()
-        image_source_files["metrum-router-v1.0.0-docker-linux-amd64/images/metrum-router-v1.0.0-linux-amd64.tar"] = (
+        image_source_files["metrum-ai-router-v1.0.0-docker-linux-amd64/images/metrum-ai-router-v1.0.0-linux-amd64.tar"] = (
             docker_image_tar({"app/docs/PRODUCTION_RUNBOOK.md": "private\n"})
         )
         write_tar(image_source_path, image_source_files)
@@ -351,7 +329,7 @@ def main() -> int:
 
         image_source_dot_path = root / "image-source-dot-path.tar.gz"
         image_source_dot_files = docker_package_files()
-        image_source_dot_files["metrum-router-v1.0.0-docker-linux-amd64/images/metrum-router-v1.0.0-linux-amd64.tar"] = (
+        image_source_dot_files["metrum-ai-router-v1.0.0-docker-linux-amd64/images/metrum-ai-router-v1.0.0-linux-amd64.tar"] = (
             docker_image_tar({"./app/internal/router/secret.go": "private\n"})
         )
         write_tar(image_source_dot_path, image_source_dot_files)
@@ -359,31 +337,31 @@ def main() -> int:
 
         binary_source_path = root / "binary-source-path.tar.gz"
         binary_source_files = binary_package_files()
-        binary_source_files["metrum-router-v1.0.0-linux-amd64/cmd/metrum-fleetctl/main.go"] = "package main\n"
+        binary_source_files["metrum-ai-router-v1.0.0-linux-amd64/cmd/metrum-fleetctl/main.go"] = "package main\n"
         write_tar(binary_source_path, binary_source_files)
         expect_errors(binary_source_path, allowlist, ["forbidden source path"])
 
         apple_double = root / "appledouble.tar.gz"
         apple_files = binary_package_files()
-        apple_files["metrum-router-v1.0.0-linux-amd64/docs/._PACKAGE_README.md"] = "mac metadata\n"
+        apple_files["metrum-ai-router-v1.0.0-linux-amd64/docs/._PACKAGE_README.md"] = "mac metadata\n"
         write_tar(apple_double, apple_files)
         expect_errors(apple_double, allowlist, ["AppleDouble metadata entry"])
 
         private_runbook = root / "private-runbook.tar.gz"
         runbook_files = binary_package_files()
-        runbook_files["metrum-router-v1.0.0-linux-amd64/docs/PRODUCTION_RUNBOOK.md"] = "private\n"
+        runbook_files["metrum-ai-router-v1.0.0-linux-amd64/docs/PRODUCTION_RUNBOOK.md"] = "private\n"
         write_tar(private_runbook, runbook_files)
         expect_errors(private_runbook, allowlist, ["forbidden local secret/state file", "not in package docs allowlist"])
 
         private_marker = root / "private-marker.tar.gz"
         marker_files = binary_package_files()
-        marker_files["metrum-router-v1.0.0-linux-amd64/docs/PACKAGE_README.md"] = "Host: 100.30.225.66\n"
+        marker_files["metrum-ai-router-v1.0.0-linux-amd64/docs/PACKAGE_README.md"] = "Host: 100.30.225.66\n"
         write_tar(private_marker, marker_files)
         expect_errors(private_marker, allowlist, ["private production host marker"])
 
         raw_token = root / "raw-token.tar.gz"
         token_files = binary_package_files()
-        token_files["metrum-router-v1.0.0-linux-amd64/docs/PACKAGE_README.md"] = (
+        token_files["metrum-ai-router-v1.0.0-linux-amd64/docs/PACKAGE_README.md"] = (
             "token rtr_metrum_user_project_prod_key_abcdefghijklmnopqrstuvwxyz\n"
         )
         write_tar(raw_token, token_files)
@@ -393,29 +371,29 @@ def main() -> int:
         bad_files = binary_package_files()
         bad_files.update(
             {
-                "metrum-router-v1.0.0-linux-amd64/config/env.json": "{}\n",
-                "metrum-router-v1.0.0-linux-amd64/config/config.production.yaml": "server: {}\n",
-                "metrum-router-v1.0.0-linux-amd64/ROUTER_TOKEN.txt": "placeholder\n",
-                "metrum-router-v1.0.0-linux-amd64/config/license.json": "{}\n",
-                "metrum-router-v1.0.0-linux-amd64/state/usage.sqlite": "not actually sqlite\n",
+                "metrum-ai-router-v1.0.0-linux-amd64/config/env.json": "{}\n",
+                "metrum-ai-router-v1.0.0-linux-amd64/config/config.production.yaml": "server: {}\n",
+                "metrum-ai-router-v1.0.0-linux-amd64/ROUTER_TOKEN.txt": "placeholder\n",
+                "metrum-ai-router-v1.0.0-linux-amd64/config/license.json": "{}\n",
+                "metrum-ai-router-v1.0.0-linux-amd64/state/usage.sqlite": "not actually sqlite\n",
             }
         )
         write_tar(forbidden_files, bad_files)
         expect_errors(forbidden_files, allowlist, ["forbidden local secret/state file"])
 
-        wrong_arch = root / "metrum-router-v1.0.0-linux-arm64.tar.gz"
-        write_tar(wrong_arch, binary_package_files("metrum-router-v1.0.0-linux-arm64"))
+        wrong_arch = root / "metrum-ai-router-v1.0.0-linux-arm64.tar.gz"
+        write_tar(wrong_arch, binary_package_files("metrum-ai-router-v1.0.0-linux-arm64"))
         expect_errors(wrong_arch, allowlist, ["expected 183 for linux-arm64"])
 
         unexpected = root / "unexpected.tar.gz"
         unexpected_files = binary_package_files()
-        unexpected_files["metrum-router-v1.0.0-linux-amd64/docs-site/source.md"] = "source\n"
+        unexpected_files["metrum-ai-router-v1.0.0-linux-amd64/docs-site/source.md"] = "source\n"
         write_tar(unexpected, unexpected_files)
         expect_errors(unexpected, allowlist, ["unexpected package file included"])
 
         missing_doc = root / "missing-doc.tar.gz"
         missing_files = binary_package_files()
-        del missing_files["metrum-router-v1.0.0-linux-amd64/docs/PACKAGE_VALIDATION.md"]
+        del missing_files["metrum-ai-router-v1.0.0-linux-amd64/docs/PACKAGE_VALIDATION.md"]
         write_tar(missing_doc, missing_files)
         expect_errors(missing_doc, allowlist, ["from package docs allowlist is missing"])
 

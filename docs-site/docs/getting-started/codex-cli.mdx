@@ -44,12 +44,12 @@ codex exec --ignore-user-config --ephemeral \
   --ignore-rules \
   --skip-git-repo-check \
   -c 'model="<allowed-model-group>"' \
-  -c 'model_provider="metrum-router"' \
+  -c 'model_provider="metrum-ai-router"' \
   -c 'model_catalog_json="~/.codex/metrum-models.json"' \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-  -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
+  -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-ai-router.base_url="{{apiBase}}"' \
+  -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-ai-router.wire_api="responses"' \
   "Reply with exactly: router codex ok" </dev/null
 `}
 </RouterCodeBlock>
@@ -66,12 +66,12 @@ export METRUM_ROUTER_KEY="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 
 codex \
   -c 'model="<allowed-model-group>"' \
-  -c 'model_provider="metrum-router"' \
+  -c 'model_provider="metrum-ai-router"' \
   -c 'model_catalog_json="~/.codex/metrum-models.json"' \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-  -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"'
+  -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-ai-router.base_url="{{apiBase}}"' \
+  -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-ai-router.wire_api="responses"'
 `}
 </RouterCodeBlock>
 
@@ -100,12 +100,12 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
     --dangerously-bypass-approvals-and-sandbox \
     -C /workspace \
     -c 'model="<allowed-model-group>"' \
-    -c 'model_provider="metrum-router"' \
+    -c 'model_provider="metrum-ai-router"' \
     -c 'model_catalog_json="/workspace/metrum-models.json"' \
-    -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-    -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
-    -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-    -c 'model_providers.metrum-router.wire_api="responses"' \
+    -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+    -c 'model_providers.metrum-ai-router.base_url="{{apiBase}}"' \
+    -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+    -c 'model_providers.metrum-ai-router.wire_api="responses"' \
     "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
 `}
 </RouterCodeBlock>
@@ -129,12 +129,12 @@ codex exec --ignore-user-config --ephemeral \
   --skip-git-repo-check \
   --image tmp/router-vision-smoke/receipt.png \
   -c 'model="<allowed-model-group>"' \
-  -c 'model_provider="metrum-router"' \
+  -c 'model_provider="metrum-ai-router"' \
   -c 'model_catalog_json="~/.codex/metrum-models.json"' \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-  -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
+  -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-ai-router.base_url="{{apiBase}}"' \
+  -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-ai-router.wire_api="responses"' \
   "Read the attached receipt image. Reply with only the merchant name." </dev/null
 `}
 </RouterCodeBlock>

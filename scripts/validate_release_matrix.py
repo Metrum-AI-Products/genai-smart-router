@@ -30,10 +30,10 @@ def seed_make_defaults() -> None:
         "COMMIT": command_output(["git", "rev-parse", "--short", "HEAD"], "unknown"),
         "BUILD_DATE": command_output(["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"], "unknown"),
         "DIST_DIR": "dist",
-        "PKG_NAME": "metrum-router",
+        "PKG_NAME": "metrum-ai-router",
         "GOOS": "linux",
         "GOARCH": command_output(["go", "env", "GOARCH"], "amd64"),
-        "IMAGE_NAME": "metrum-router",
+        "IMAGE_NAME": "metrum-ai-router",
         "IMAGE_TAG": os.environ.get("VERSION") or command_output(["git", "describe", "--tags", "--always", "--dirty"], "dev") + "-linux-" + command_output(["go", "env", "GOARCH"], "amd64"),
     }
     for key, value in defaults.items():
@@ -60,9 +60,9 @@ def run(label: str, cmd: list[str], *, optional: bool = False) -> bool:
 
 
 def check_artifacts() -> bool:
-    archives = sorted((ROOT / "dist").glob("metrum-router-*.tar.gz"))
+    archives = sorted((ROOT / "dist").glob("metrum-ai-router-*.tar.gz"))
     if not archives:
-        print("SKIP artifact content validation: no dist/metrum-router-*.tar.gz archives found")
+        print("SKIP artifact content validation: no dist/metrum-ai-router-*.tar.gz archives found")
         return True
     return run(
         "artifact content validation",

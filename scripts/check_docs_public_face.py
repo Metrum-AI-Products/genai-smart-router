@@ -115,7 +115,7 @@ STALE_CURRENT_ROUTE_PATTERNS = [
 # display names below are rejected wherever they name the current product;
 # company-only "Metrum AI", generic "router"/"routing" prose, third-party
 # router names and hyphenated or concatenated technical identifiers
-# (genai-smart-router, smart-llmrouter, smartrouterctl, metrum-router, ...)
+# (genai-smart-router, smart-llmrouter, smartrouterctl, metrum-ai-router, ...)
 # are deliberately not branding errors. Category prose such as "LLM smart
 # router" or bare "smart router" is not a product title and is allowed.
 CANONICAL_PRODUCT_TITLE = "Metrum AI Router"

@@ -42,19 +42,19 @@ def write(path: Path, text: str = "x\n") -> None:
 
 
 def make_package(root: Path, *, version: str = "a910827", arch: str = "amd64") -> Path:
-    payload = root / f"metrum-router-{version}-docker-linux-{arch}"
+    payload = root / f"metrum-ai-router-{version}-docker-linux-{arch}"
     write(payload / "compose" / "docker-compose.yml", "services: {}\n")
     write(payload / "compose" / "docker-compose.postgres-localhost.yml", "services:\n  postgres: {}\n")
     write(payload / "compose" / ".env", "SMART_LLMROUTER_VERSION=placeholder\n")
-    write(payload / "images" / f"metrum-router-{version}-linux-{arch}.tar", "image-bytes\n")
-    archive = root / f"metrum-router-{version}-docker-linux-{arch}.tar.gz"
+    write(payload / "images" / f"metrum-ai-router-{version}-linux-{arch}.tar", "image-bytes\n")
+    archive = root / f"metrum-ai-router-{version}-docker-linux-{arch}.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
         tar.add(payload, arcname=payload.name)
     return archive
 
 
 def make_install(root: Path) -> Path:
-    install = root / "metrum-router"
+    install = root / "metrum-ai-router"
     write(install / "compose" / "config" / "config.yaml", "live: true\n")
     write(install / "compose" / "config" / "env.json", '{"k":"secret"}\n')
     write(install / "compose" / "state" / "quota.json", "{}\n")
@@ -104,7 +104,7 @@ class FakeRunner:
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         if "config" in argv and "--format" in argv:
             return subprocess.CompletedProcess(argv, 0, stdout=COMPOSE_JSON, stderr="")
-        if "/app/bin/metrum-router-migrate" in argv:
+        if "/app/bin/metrum-ai-router-migrate" in argv:
             action = ""
             for part in argv:
                 if part.startswith("--action="):
@@ -129,7 +129,7 @@ class FakeRunner:
             self.full_up_index = len(self.calls) - 1
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         if "ps" in argv:
-            return subprocess.CompletedProcess(argv, 0, stdout="compose-router metrum-router:a910827-linux-amd64 Up\n", stderr="")
+            return subprocess.CompletedProcess(argv, 0, stdout="compose-router metrum-ai-router:a910827-linux-amd64 Up\n", stderr="")
         if "load" in argv:
             return subprocess.CompletedProcess(argv, 0, stdout="Loaded image\n", stderr="")
         if "pg_isready" in joined or "stop" in argv or (argv[-2:] == ["-d", "postgres"]):
@@ -141,7 +141,7 @@ def test_missing_runtime_aborts() -> None:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         package = make_package(root)
-        install = root / "metrum-router"
+        install = root / "metrum-ai-router"
         write(install / "compose" / "docker-compose.yml", "old: true\n")
         info = upgrade.inspect_package(package)
         try:
@@ -313,7 +313,7 @@ def test_volume_reset_and_migrate_before_serve() -> None:
         require(result["job_state"] == "validated", "migration gate did not validate")
         require(runner.verify_index is not None, "verify-serving was not run")
         require(runner.full_up_index is None, "compose up -d ran before skip_serve returned")
-        migrate_cmds = [cmd for cmd in runner.calls if "/app/bin/metrum-router-migrate" in cmd]
+        migrate_cmds = [cmd for cmd in runner.calls if "/app/bin/metrum-ai-router-migrate" in cmd]
         require(any("--dsn-env=ROUTER_USAGE_DB_DSN" in cmd for cmd in migrate_cmds), "missing dsn-env")
         require(all(cmd[:2] == ["docker", "run"] for cmd in migrate_cmds), "migrate used compose run")
         require(all("--env-file" in cmd for cmd in migrate_cmds), "migrate missing env-file")
@@ -378,7 +378,7 @@ def test_unsafe_commands() -> None:
 
 
 def test_remote_pg_dump_keeps_container_user() -> None:
-    cmd = cutover.remote_pg_dump_command(Path("/opt/metrum-router"))
+    cmd = cutover.remote_pg_dump_command(Path("/opt/metrum-ai-router"))
     require("sh -c " in cmd, f"missing container sh -c: {cmd}")
     require('"$POSTGRES_USER"' in cmd, f"POSTGRES_USER would expand on the SSH host: {cmd}")
     require(cmd.startswith("sudo docker compose "), f"unexpected prefix: {cmd}")
@@ -389,11 +389,11 @@ def test_remote_pg_dump_keeps_container_user() -> None:
 def test_remote_apply_forwards_package() -> None:
     cmd = cutover.remote_apply_command(
         "compose_clean_cutover.py",
-        ["apply", "--install-root", "/opt/metrum-router", "--skip-archive", "--confirm-reset-usage", "reset-postgres-data"],
-        "metrum-router-d73ac83-docker-linux-amd64.tar.gz",
+        ["apply", "--install-root", "/opt/metrum-ai-router", "--skip-archive", "--confirm-reset-usage", "reset-postgres-data"],
+        "metrum-ai-router-d73ac83-docker-linux-amd64.tar.gz",
     )
     require("--package" in cmd, f"missing --package: {cmd}")
-    require("/tmp/metrum-router-d73ac83-docker-linux-amd64.tar.gz" in cmd, f"package path missing: {cmd}")
+    require("/tmp/metrum-ai-router-d73ac83-docker-linux-amd64.tar.gz" in cmd, f"package path missing: {cmd}")
     require(cmd[cmd.index("--package") + 1].startswith("/tmp/"), "package must be the uploaded /tmp path")
 
 

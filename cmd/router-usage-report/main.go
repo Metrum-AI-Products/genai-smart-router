@@ -1,7 +1,7 @@
 // Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
-// router-usage-report is a one-release compatibility notice for the renamed usage-report CLI.
+// router-usage-report is a source-only rename notice; it is not packaged.
 package main
 
 import (
@@ -10,6 +10,6 @@ import (
 )
 
 func main() {
-	fmt.Fprintln(os.Stderr, "router-usage-report was renamed to metrum-router-usage-report; install and invoke metrum-router-usage-report instead")
+	fmt.Fprintln(os.Stderr, "router-usage-report was renamed to metrum-ai-router-usage-report; install and invoke metrum-ai-router-usage-report instead")
 	os.Exit(2)
 }

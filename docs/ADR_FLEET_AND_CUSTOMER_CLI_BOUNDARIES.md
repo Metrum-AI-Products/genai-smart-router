@@ -5,7 +5,7 @@
 
 ## Decision
 
-`metrum-genai-smartrouter-fleetctl` is the only Fleet authority. It owns the one #555 lifecycle
+`metrum-ai-router-fleetctl` is the only Fleet authority. It owns the one #555 lifecycle
 registry (GORM+SQLite jobs plus tenant/license inventory) and the deterministic
 `plan`, idempotent `deploy`, exact-job `status`, separately approved `delete`,
 and registry-local `tenants`/`licenses` inventory vocabulary. Its reference-only
@@ -20,14 +20,14 @@ intent fields and node-group/ASG/Karpenter mutation are out of scope. The legacy
 `metrum-smartrouterctl` binary exists for one release only; it exits after
 reporting the rename and performs no operation.
 
-`metrum-genai-smartrouterctl` is customer-local and ships in both binary and Router Docker
+`metrum-ai-routerctl` is customer-local and ships in both binary and Router Docker
 packages. It can validate or safely compare local config, generate a caller
 token into a new mode-`0600` file exactly once, inspect safe config/license/
 model status, and print aggregate usage. It cannot invoke AWS, EKS, RDS, DNS,
 Fleet registries, cross-customer operations, config activation, key rotation,
 or license signing.
 
-Operator convenience verbs under `metrum-genai-smartrouter-fleetctl customer …`
+Operator convenience verbs under `metrum-ai-router-fleetctl customer …`
 orchestrate disposable SQLite prepare/activate flows only. They require
 explicit reference-only inputs or an externally signed mode-`0600` intent /
 delete approval, never ACME/staging/production-identical string defaults, and
@@ -54,7 +54,7 @@ approved signing service or isolated signing workflow.
 | Core `plan`/`deploy`/`delete` | Fleet lifecycle role | Reference-only signed intent required |
 
 Fleet binaries are included only in binary tarballs. Customer Docker images
-contain `metrum-genai-smartrouterctl`, never `metrum-genai-smartrouter-fleetctl` or the compatibility binary.
+contain `metrum-ai-routerctl`, never `metrum-ai-router-fleetctl` or the compatibility binary.
 
 ## Go package boundary
 
@@ -72,7 +72,7 @@ depend on Fleet. Run:
 
 ```bash
 go test ./internal/architecture ./internal/fleet \
-  ./cmd/metrum-genai-smartrouter-fleetctl
+  ./cmd/metrum-ai-router-fleetctl
 python3 scripts/validate_package_contents_test.py
 ```
 
@@ -93,7 +93,7 @@ safe generic errors.
 
 The adapter writes those two exact keys to the owned `router-runtime` Secret
 and mounts it read-only at `/app/config`, the Router image's startup path.
-`metrum-genai-smartrouter-license` remains a distinct one-key `license.json` Secret and mount.
+`metrum-ai-router-license` remains a distinct one-key `license.json` Secret and mount.
 Neither protected bundle values nor references enter plans, lifecycle records,
 statuses, or error output.
 
@@ -114,7 +114,7 @@ It is unattached by the default EKS constructor. The existing `deploy` and
 mode-`0600`, time-bounded non-production disposable-E2E admission, signed by
 the approved profile's `lifecycle_approval_public_key`, and bound to the exact
 profile, deterministic job/intent, namespace, database profile, and manifest
-digest. `metrum-genai-smartrouter-fleetctl` never creates, updates, emits, or persists that
+digest. `metrum-ai-router-fleetctl` never creates, updates, emits, or persists that
 admission or signing material. Invalid, unsigned, stale, or out-of-scope
 records fail before registry or AWS/EKS clients are opened. Production-stage
 Fleet tenants use the same lifecycle authority with an operator-owned production
@@ -144,8 +144,8 @@ protected profile plus the recorded security/operations review in
 
 Fleet, commerce, licensing, and customer-lifecycle packages remain in this
 Apache-2.0 monorepo as **optional operator tooling**. They are not required to
-run Community Metrum AI Router. Request-path packages (`cmd/metrum-router`,
-`internal/router`, customer-local `metrum-routerctl`) must not import
+run Community Metrum AI Router. Request-path packages (`cmd/metrum-ai-router`,
+`internal/router`, customer-local `metrum-ai-routerctl`) must not import
 `internal/commerce`, `internal/fleet`, or `internal/customerlifecycle`.
 Customer Docker images continue to omit Fleet-only binaries. Local Stripe and
 operator credential files such as `commerce.env.json` stay untracked and out of

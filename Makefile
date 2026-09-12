@@ -3,7 +3,7 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS ?= -X github.com/metrum-ai/router/internal/buildinfo.Version=$(VERSION) -X github.com/metrum-ai/router/internal/buildinfo.Commit=$(COMMIT) -X github.com/metrum-ai/router/internal/buildinfo.BuildDate=$(BUILD_DATE)
 DIST_DIR ?= dist
-PKG_NAME ?= metrum-router
+PKG_NAME ?= metrum-ai-router
 GOOS ?= linux
 GOARCH ?= $(shell go env GOARCH)
 HOST_GOOS := $(shell go env GOHOSTOS)
@@ -11,10 +11,11 @@ HOST_GOARCH := $(shell go env GOHOSTARCH)
 PYTHON ?= python3
 # Packaged CLIs are ELF binaries only. Release packages never ship Go source,
 # cmd/, internal/, or go.mod. Fleet-only CLIs stay out of customer Docker images.
-# Primary runtime names are metrum-router*; older names remain one-release stubs.
-PACKAGE_BINARIES := metrum-router metrum-router-token-gen metrum-router-usage-report metrum-router-migrate metrum-routerctl metrum-genai-smartrouter-fleetctl metrum-genai-smartrouter-fleet-sign metrum-genai-smartrouter-license metrum-genai-customer-lifecycle router router-token-gen router-usage-report router-migrate metrum-genai-smartrouterctl smartrouterctl metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
-FLEET_ONLY_BINARIES := metrum-genai-smartrouter-fleetctl metrum-genai-smartrouter-fleet-sign metrum-genai-smartrouter-license metrum-genai-customer-lifecycle metrum-fleetctl metrum-smartrouterctl metrum-fleet-sign router-license
-DOCKER_RUNTIME_BINARIES := metrum-router metrum-router-token-gen metrum-router-usage-report metrum-router-migrate metrum-routerctl router router-token-gen router-usage-report router-migrate metrum-genai-smartrouterctl smartrouterctl
+# Packages ship canonical metrum-ai-router* binaries only; rename stubs are
+# source-only under cmd/ and are never packaged.
+PACKAGE_BINARIES := metrum-ai-router metrum-ai-router-token-gen metrum-ai-router-usage-report metrum-ai-router-migrate metrum-ai-routerctl metrum-ai-router-fleetctl metrum-ai-router-fleet-sign metrum-ai-router-license metrum-ai-router-customer-lifecycle
+FLEET_ONLY_BINARIES := metrum-ai-router-fleetctl metrum-ai-router-fleet-sign metrum-ai-router-license metrum-ai-router-customer-lifecycle
+DOCKER_RUNTIME_BINARIES := metrum-ai-router metrum-ai-router-token-gen metrum-ai-router-usage-report metrum-ai-router-migrate metrum-ai-routerctl
 
 # Inspect coding evaluations are deliberately opt-in: they call a live endpoint
 # and may start Docker sandboxes.  They are never prerequisites of test/build.
@@ -381,7 +382,7 @@ secret-check:
 	python3 scripts/check_env_example_secrets_test.py
 	python3 scripts/canonical_product_test.py
 	python3 scripts/check_stale_product_names_test.py
-	python3 scripts/check_stale_product_names.py
+	python3 scripts/check_stale_product_names.py --enforce-docs-origin --enforce-contract
 	python3 scripts/local_dev_bootstrap_test.py
 	python3 scripts/prepare_fleet_production_bundle_test.py
 	python3 scripts/launch_operational_readiness_test.py

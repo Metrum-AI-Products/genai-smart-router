@@ -24,12 +24,12 @@ from typing import Callable, Sequence
 
 
 PACKAGE_FILE_RE = re.compile(
-    r"^metrum-router-(?P<version>.+)-docker-linux-(?P<arch>amd64|arm64)\.tar\.gz$"
+    r"^metrum-ai-router-(?P<version>.+)-docker-linux-(?P<arch>amd64|arm64)\.tar\.gz$"
 )
 PACKAGE_DIR_RE = re.compile(
-    r"^metrum-router-(?P<version>.+)-docker-linux-(?P<arch>amd64|arm64)$"
+    r"^metrum-ai-router-(?P<version>.+)-docker-linux-(?P<arch>amd64|arm64)$"
 )
-IMAGE_TAR_RE = re.compile(r"^metrum-router-.+-linux-(amd64|arm64)\.tar$")
+IMAGE_TAR_RE = re.compile(r"^metrum-ai-router-.+-linux-(amd64|arm64)\.tar$")
 FORBIDDEN_PATHS = {"/", "/usr", "/bin", "/opt", "/etc", "/var", "/home", "/root"}
 RUNTIME_DIRS = ("compose/config", "compose/state", "compose/logs")
 RUNTIME_ENV = Path("compose/.env")
@@ -75,7 +75,7 @@ def parse_package_filename(path: Path) -> tuple[str, str]:
     match = PACKAGE_FILE_RE.match(path.name)
     if not match:
         raise UpgradeError(
-            f"package name {path.name} must match metrum-router-<version>-docker-linux-<arch>.tar.gz"
+            f"package name {path.name} must match metrum-ai-router-<version>-docker-linux-<arch>.tar.gz"
         )
     return match.group("version"), match.group("arch")
 
@@ -106,7 +106,7 @@ def inspect_package(package: Path) -> PackageInfo:
         version=version,
         arch=arch,
         top_dir=top,
-        image_tag=f"metrum-router:{version}-linux-{arch}",
+        image_tag=f"metrum-ai-router:{version}-linux-{arch}",
         version_env=f"{version}-linux-{arch}",
     )
 
@@ -447,7 +447,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     def add_common(cmd: argparse.ArgumentParser, *, require_package: bool) -> None:
         if require_package:
             cmd.add_argument("--package", required=True, type=Path)
-        cmd.add_argument("--install-root", type=Path, default=Path("/opt/metrum-router"))
+        cmd.add_argument("--install-root", type=Path, default=Path("/opt/metrum-ai-router"))
         cmd.add_argument("--backup-suffix", default="compose-upgrade")
         cmd.add_argument("--utc", default=None, help="UTC stamp override YYYYMMDDTHHMMSSZ")
         cmd.add_argument("--remote", default=None)
@@ -459,7 +459,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     add_common(sub.add_parser("apply", help="backup, unpack, copy runtime, load image, compose up"), require_package=True)
     rollback = sub.add_parser("rollback", help="restore a timestamped backup and compose up")
     rollback.add_argument("--backup", required=True, type=Path)
-    rollback.add_argument("--install-root", type=Path, default=Path("/opt/metrum-router"))
+    rollback.add_argument("--install-root", type=Path, default=Path("/opt/metrum-ai-router"))
     rollback.add_argument("--utc", default=None)
     rollback.add_argument("--remote", default=None)
     rollback.add_argument("--ssh-identity", type=Path, default=None)

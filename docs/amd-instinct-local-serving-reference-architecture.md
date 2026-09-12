@@ -633,7 +633,7 @@ receivers:
 | `scripts/test_k8s_amd_instinct_local_serving.sh` | Offline gate |
 
 There is **no** `amd-instinct-local-serving` blueprint profile in
-`metrum-genai-smartrouterctl` yet. Do not invent one without a dedicated CLI
+`metrum-ai-routerctl` yet. Do not invent one without a dedicated CLI
 change.
 
 ---

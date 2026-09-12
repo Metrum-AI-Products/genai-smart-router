@@ -34,10 +34,10 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         names = [
-            "metrum-router-v1.2.3-linux-amd64.tar.gz",
-            "metrum-router-v1.2.3-linux-arm64.tar.gz",
-            "metrum-router-v1.2.3-docker-linux-amd64.tar.gz",
-            "metrum-router-v1.2.3-docker-linux-arm64.tar.gz",
+            "metrum-ai-router-v1.2.3-linux-amd64.tar.gz",
+            "metrum-ai-router-v1.2.3-linux-arm64.tar.gz",
+            "metrum-ai-router-v1.2.3-docker-linux-amd64.tar.gz",
+            "metrum-ai-router-v1.2.3-docker-linux-arm64.tar.gz",
         ]
         for name in names:
             (root / name).write_bytes(name.encode("utf-8"))

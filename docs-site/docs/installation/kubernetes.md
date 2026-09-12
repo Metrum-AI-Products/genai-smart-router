@@ -21,7 +21,7 @@ not belong in public manifests or package documentation.
 ## Prerequisites
 
 - A Kubernetes cluster with an ingress controller and TLS automation or a separate TLS termination plan.
-- A private registry image tag such as `registry.example.com/metrum-router:<version>-linux-amd64`.
+- A private registry image tag such as `registry.example.com/metrum-ai-router:<version>-linux-amd64`.
 - A fresh `ReadWriteOnce` PVC for the default SQLite bootstrap, or an explicit PostgreSQL deployment design for multi-replica/external database use.
 - An operator-generated `license.json` and paired verification public key.
 - Provider credentials stored in a Kubernetes Secret or external secret manager.
@@ -44,9 +44,9 @@ Release Docker packages include per-architecture image tarballs:
 For private clusters, load the image tar into nodes or push it to a private registry:
 
 ```bash
-docker load -i images/metrum-router-<version>-linux-amd64.tar
-docker tag metrum-router:<version>-linux-amd64 registry.example.com/metrum-router:<version>-linux-amd64
-docker push registry.example.com/metrum-router:<version>-linux-amd64
+docker load -i images/metrum-ai-router-<version>-linux-amd64.tar
+docker tag metrum-ai-router:<version>-linux-amd64 registry.example.com/metrum-ai-router:<version>-linux-amd64
+docker push registry.example.com/metrum-ai-router:<version>-linux-amd64
 ```
 
 Mixed-architecture clusters need separate per-architecture tags or a registry-managed multi-architecture manifest. Do not use a per-architecture tarball as if it were a multi-architecture image.
@@ -90,7 +90,7 @@ names. The router Pod does **not** request `nvidia.com/gpu`; serving Deployments
 LMCache and Mooncake stay off unless you enable them separately.
 
 ```bash
-metrum-genai-smartrouterctl blueprint render \
+metrum-ai-routerctl blueprint render \
   --intent deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml \
   --out /tmp/blueprint
 # Review /tmp/blueprint/architecture.md and config.yaml, then:

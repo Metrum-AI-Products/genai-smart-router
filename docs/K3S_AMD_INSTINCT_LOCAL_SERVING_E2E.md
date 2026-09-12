@@ -223,20 +223,20 @@ Build CLIs to a **temp** directory (not the repo):
 
 ```bash
 mkdir -p /tmp/smart-router-amd/bin /tmp/smart-router-amd/protected
-go build -o /tmp/smart-router-amd/bin/metrum-genai-smartrouterctl \
-  ./cmd/metrum-routerctl
-go build -o /tmp/smart-router-amd/bin/metrum-genai-smartrouter-license \
-  ./cmd/metrum-genai-smartrouter-license
+go build -o /tmp/smart-router-amd/bin/metrum-ai-routerctl \
+  ./cmd/metrum-ai-routerctl
+go build -o /tmp/smart-router-amd/bin/metrum-ai-router-license \
+  ./cmd/metrum-ai-router-license
 
 VERSION="$(git rev-parse --short HEAD)"
 IMAGE_TAG="${VERSION}-linux-amd64"
-docker build -t "metrum-router:${IMAGE_TAG}" .
+docker build -t "metrum-ai-router:${IMAGE_TAG}" .
 ```
 
 Import into k3s (requires sudo on a default install):
 
 ```bash
-docker save "metrum-router:${IMAGE_TAG}" | sudo k3s ctr images import -
+docker save "metrum-ai-router:${IMAGE_TAG}" | sudo k3s ctr images import -
 ```
 
 Never tag `latest`. Registry push is an alternative to `ctr import`.
@@ -245,7 +245,7 @@ Render blueprint **only** for config + Helm chart:
 
 ```bash
 rm -rf /tmp/smart-router-amd/blueprint
-/tmp/smart-router-amd/bin/metrum-genai-smartrouterctl blueprint render \
+/tmp/smart-router-amd/bin/metrum-ai-routerctl blueprint render \
   --intent deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml \
   --out /tmp/smart-router-amd/blueprint
 
@@ -288,7 +288,7 @@ chmod 0600 /tmp/smart-router-amd/protected/config.yaml \
 Generate the **downstream** token and merge the hash into config:
 
 ```bash
-/tmp/smart-router-amd/bin/metrum-genai-smartrouterctl callers generate \
+/tmp/smart-router-amd/bin/metrum-ai-routerctl callers generate \
   --owner-user amd-k3s-smoke \
   --project onprem-validation \
   --env dev \
@@ -298,7 +298,7 @@ Generate the **downstream** token and merge the hash into config:
   --write
 chmod 0600 /tmp/smart-router-amd/protected/onprem-caller.token
 
-/tmp/smart-router-amd/bin/metrum-genai-smartrouterctl config validate \
+/tmp/smart-router-amd/bin/metrum-ai-routerctl config validate \
   --config /tmp/smart-router-amd/protected/config.yaml
 ```
 
@@ -364,7 +364,7 @@ kubectl -n smart-llmrouter exec deploy/vllm-tiny -- python3 -c \
 
 ```bash
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-export LICENSE_CLI=/tmp/smart-router-amd/bin/metrum-genai-smartrouter-license
+export LICENSE_CLI=/tmp/smart-router-amd/bin/metrum-ai-router-license
 scripts/helm_install_with_license.sh \
   --kubeconfig "$KUBECONFIG" \
   --namespace smart-llmrouter \
@@ -374,7 +374,7 @@ scripts/helm_install_with_license.sh \
   --valid-for 12h \
   --config /tmp/smart-router-amd/protected/config.yaml \
   --env-file /tmp/smart-router-amd/protected/env.json \
-  --image-repository metrum-router \
+  --image-repository metrum-ai-router \
   --image-tag "${IMAGE_TAG}"
 
 kubectl -n smart-llmrouter rollout status deployment/smart-llmrouter --timeout=10m

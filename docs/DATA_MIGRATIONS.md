@@ -15,9 +15,9 @@ When a Compose PostgreSQL usage schema cannot be adopted and the operator choose
 New generic Compose/Kubernetes installations use SQLite at `/app/state/usage.sqlite` and run:
 
 ```sh
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=plan --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=plan --driver=sqlite --db=/app/state/usage.sqlite --json
 # Take and approve one offline atomic copy/snapshot of usage.sqlite and any -wal/-shm sidecars.
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=apply --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=apply --driver=sqlite --db=/app/state/usage.sqlite --json
 ```
 
 Version-check the same packaged runner before this gate. Complete every data job named by the release contract; do not start serving if plan, apply, or any job is incompatible, pending, running, paused, cancelled, failed, or unrecognized. `verify-serving` runs schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. PostgreSQL is explicit: use `--driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN` with a deployment-owned DSN.
@@ -38,19 +38,19 @@ For the current package, the controlled repeat is:
 
 ```sh
 # n starts at 0. Run one checkpoint, then inspect only the returned safe status.
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router \
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router \
   --driver=sqlite --db=/app/state/usage.sqlite --action=resume \
   --job=historical-usage-validation-v1 --checkpoint-ordinal="$n" --json
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router \
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router \
   --driver=sqlite --db=/app/state/usage.sqlite --action=status --json
 ```
 
 Record the ordinal and safe state in the approved change record. If the job state is `running`, set `n` to the next integer and repeat the two commands. If it is `validated`, continue with the final non-serving checks:
 
 ```sh
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router \
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router \
   --driver=sqlite --db=/app/state/usage.sqlite --action=verify-serving --json
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router \
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router \
   --driver=sqlite --db=/app/state/usage.sqlite --action=status --json
 # Only after compatible/current final status and every required job is validated:
 docker compose up -d
@@ -66,7 +66,7 @@ For PostgreSQL, take and verify a consistent logical or storage snapshot with th
 
 For SQLite, schedule exclusive downtime, stop every router and migration process, use an SQLite-safe backup method, verify integrity with approved SQLite tooling, and confirm source and backup free space before applying work. Restore while the database remains exclusively offline, verify integrity again, then run the same verify/status gate. SQLite is not a multi-replica migration option.
 
-On file-owned installs, `metrum-genai-smartrouterctl usage backup` and `usage restore`
+On file-owned installs, `metrum-ai-routerctl usage backup` and `usage restore`
 perform an SQLite-safe copy of the configured `server.usage_db.path` plus `-wal`/`-shm`
 sidecars when `--confirm-offline` is set. They refuse PostgreSQL and point operators at
 this document. CLI backup/restore is an approved SQLite method; it does **not** replace

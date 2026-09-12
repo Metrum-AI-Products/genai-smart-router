@@ -1,6 +1,6 @@
-# Customer Lifecycle CLI (`metrum-genai-customer-lifecycle`)
+# Customer Lifecycle CLI (`metrum-ai-router-customer-lifecycle`)
 
-Internal operator CLI that automates a **customer onboard** from one JSON intent, then wraps day-2 Fleet verbs. It **composes** existing packaged binaries; it does **not** replace `#555` `metrum-genai-smartrouter-fleetctl`. Payment/checkout is **out of band** and is not performed by this CLI.
+Internal operator CLI that automates a **customer onboard** from one JSON intent, then wraps day-2 Fleet verbs. It **composes** existing packaged binaries; it does **not** replace `#555` `metrum-ai-router-fleetctl`. Payment/checkout is **out of band** and is not performed by this CLI.
 
 Operators and production hosts **do not have source trees**. Acceptance and day-2 work must use release/package binaries only (for example under `dist/bin/` or a release tarball), with `PATH` and/or `METRUM_FLEET_BIN_DIR` pointing at that directory. Do not rely on `go run` or mid-flight `kubectl` secret/config patches.
 
@@ -13,9 +13,9 @@ Related:
 
 | Step | Binary / API | Notes |
 |---|---|---|
-| Collect / validate | `metrum-genai-customer-lifecycle` | Hostname + BYOK + fleet-eks durable path gates |
-| License | `metrum-genai-smartrouter-license` + SSM | Publish signed `license.json` to `license_ref` (payment out of band) |
-| Provision | `metrum-genai-smartrouter-fleetctl customer bootstrap` | Explicit after licensed |
+| Collect / validate | `metrum-ai-router-customer-lifecycle` | Hostname + BYOK + fleet-eks durable path gates |
+| License | `metrum-ai-router-license` + SSM | Publish signed `license.json` to `license_ref` (payment out of band) |
+| Provision | `metrum-ai-router-fleetctl customer bootstrap` | Explicit after licensed |
 | Status / smoke / update / delete | thin wrappers → fleetctl | Same refs as intent; update signs and redeploys |
 
 ## Packaged binaries
@@ -27,10 +27,10 @@ export METRUM_FLEET_BIN_DIR=/path/to/dist/bin
 export PATH="${METRUM_FLEET_BIN_DIR}:${PATH}"
 
 # Required companion binaries on PATH / METRUM_FLEET_BIN_DIR:
-#   metrum-genai-customer-lifecycle
-#   metrum-genai-smartrouter-fleetctl
-#   metrum-genai-smartrouter-fleet-sign
-#   metrum-genai-smartrouter-license
+#   metrum-ai-router-customer-lifecycle
+#   metrum-ai-router-fleetctl
+#   metrum-ai-router-fleet-sign
+#   metrum-ai-router-license
 ```
 
 ## Intent JSON
@@ -63,26 +63,26 @@ Minimal instance config should route only the BYOK model (start from [`examples/
 
 ```bash
 # Structural + BYOK + fleet-eks path checks (no AWS mutation)
-metrum-genai-customer-lifecycle validate-intent --intent /protected/acme/onboard.json
+metrum-ai-router-customer-lifecycle validate-intent --intent /protected/acme/onboard.json
 
 # Onboard: validate → license SSM → fleetctl bootstrap (payment out of band)
-metrum-genai-customer-lifecycle onboard --intent /protected/acme/onboard.json
+metrum-ai-router-customer-lifecycle onboard --intent /protected/acme/onboard.json
 
 # Resume after license published
-metrum-genai-customer-lifecycle onboard --intent /protected/acme/onboard.json \
+metrum-ai-router-customer-lifecycle onboard --intent /protected/acme/onboard.json \
   --from-step provision
 
-metrum-genai-customer-lifecycle status --intent /protected/acme/onboard.json
-metrum-genai-customer-lifecycle smoke --intent /protected/acme/onboard.json
+metrum-ai-router-customer-lifecycle status --intent /protected/acme/onboard.json
+metrum-ai-router-customer-lifecycle smoke --intent /protected/acme/onboard.json
 
 # Day-2: publish runtime bundle AND signed Fleet redeploy (one verb)
-metrum-genai-customer-lifecycle update-config --intent /protected/acme/onboard.json \
+metrum-ai-router-customer-lifecycle update-config --intent /protected/acme/onboard.json \
   --patch-file /protected/acme/patch.yaml
-metrum-genai-customer-lifecycle update-config --intent /protected/acme/onboard.json --refresh-byok
+metrum-ai-router-customer-lifecycle update-config --intent /protected/acme/onboard.json --refresh-byok
 
-metrum-genai-customer-lifecycle export-usage --intent /protected/acme/onboard.json \
+metrum-ai-router-customer-lifecycle export-usage --intent /protected/acme/onboard.json \
   --out-dir /protected/acme/usage-export --token-file /protected/acme/CALLER_TOKEN.txt
-metrum-genai-customer-lifecycle delete --intent /protected/acme/onboard.json
+metrum-ai-router-customer-lifecycle delete --intent /protected/acme/onboard.json
 ```
 
 Safe scalar progress is stored under `~/.local/share/metrum-fleet/<customer_id>/customer-lifecycle-state.json` (mode `0600`).
@@ -97,7 +97,7 @@ Always: rebuild instance env when requested → `publish-runtime-bundle` (`--rew
 
 ## License publish
 
-1. Render/sign with `metrum-genai-smartrouter-license issue` (existing signing root; no new key authority).
+1. Render/sign with `metrum-ai-router-license issue` (existing signing root; no new key authority).
 2. `ssm:PutParameter` SecureString at `license_ref` (`aws-ssm:///…`) using **operator IAM**.
    The lifecycle CLI clears any inherited Fleet STS session env before PutParameter so a
    prior `fleetctl` assume-role cannot AccesDenied the write. The Fleet lifecycle role

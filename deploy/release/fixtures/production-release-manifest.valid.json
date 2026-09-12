@@ -2,12 +2,12 @@
   "schema_version": 1,
   "release_id": "router-20260720-01",
   "environment": "production",
-  "artifact": {"image_digest": "registry.example/metrum-router@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "artifact": {"image_digest": "registry.example/metrum-ai-router@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
   "staging_evidence": {"result": "passed", "reference": "evidence-promotion-plan.safe.json", "sha256": "8d14c4d56e53546a5f0687abd09ead5b7f568a05d1ade7fc9fb02b73ab55827e"},
   "supply_chain": {"validation_result": {"result": "passed", "reference": "supply-chain-20260720.json", "sha256": "7777d7d56c9566dabe4dea4443d859e0b66af5daeac3c5b2aeaa5f8224260ee4"}},
   "configuration": {"version": "2026.07.20", "fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
   "migration": {"id": "usage-expand-v1", "compatibility": "backward-compatible", "rehearsal_evidence": {"result": "passed", "reference": "rehearsal-20260720.json", "sha256": "cdd65a564043a6b282b8f4081601cef24718a310b995173e0cf9ef5e7e1547e1"}},
   "canary": {"scope_id": "approved-canary-a", "max_traffic_percent": 5, "observation_minutes": 30},
-  "rollback": {"class": "compatible-schema", "known_good_image_digest": "registry.example/metrum-router@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+  "rollback": {"class": "compatible-schema", "known_good_image_digest": "registry.example/metrum-ai-router@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
   "promotion_gates": {"change_reference": "change/518-20260720", "result": "passed", "evaluated_at": "2029-01-01T00:00:00Z", "valid_until": "2029-01-01T00:30:00Z"}
 }

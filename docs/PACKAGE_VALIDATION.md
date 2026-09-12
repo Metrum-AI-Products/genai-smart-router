@@ -7,7 +7,7 @@ Release packages are intentionally small and package-safe. The full administrato
 Expected binary package layout:
 
 ```text
-metrum-router-<version>-linux-<arch>/
+metrum-ai-router-<version>-linux-<arch>/
   bin/
   config/
   caddy/
@@ -17,7 +17,7 @@ metrum-router-<version>-linux-<arch>/
 Expected Docker Compose package layout:
 
 ```text
-metrum-router-<version>-docker-linux-<arch>/
+metrum-ai-router-<version>-docker-linux-<arch>/
   compose/
   config/
   images/
@@ -46,10 +46,10 @@ license text.
 For a Docker package, load the saved image and version-check all operational binaries, including the non-serving migration runner:
 
 ```bash
-docker run --rm --entrypoint /app/bin/metrum-router metrum-router:<version>-linux-<arch> --version
-docker run --rm --entrypoint /app/bin/metrum-router-token-gen metrum-router:<version>-linux-<arch> --version
-docker run --rm --entrypoint /app/bin/metrum-router-usage-report metrum-router:<version>-linux-<arch> --version
-docker run --rm --entrypoint /app/bin/metrum-router-migrate metrum-router:<version>-linux-<arch> --version
+docker run --rm --entrypoint /app/bin/metrum-ai-router metrum-ai-router:<version>-linux-<arch> --version
+docker run --rm --entrypoint /app/bin/metrum-ai-router-token-gen metrum-ai-router:<version>-linux-<arch> --version
+docker run --rm --entrypoint /app/bin/metrum-ai-router-usage-report metrum-ai-router:<version>-linux-<arch> --version
+docker run --rm --entrypoint /app/bin/metrum-ai-router-migrate metrum-ai-router:<version>-linux-<arch> --version
 ```
 
 Before a `deployment-job` serving startup, use the canonical `DATA_MIGRATIONS.md` procedure: `plan`, approved backup, `apply`, all release-defined data jobs until each safe state is `validated`, `verify-serving`, then final read-only `status`. `verify-serving` runs schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. New generic packages use `--driver=sqlite --db=/app/state/usage.sqlite`; PostgreSQL is an explicit deployment substitution using `--driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN`, never a literal DSN. A successful ordinal `0` is not completion evidence.
@@ -64,13 +64,13 @@ Packages must not contain:
 - Go source files (`.go`), `go.mod`, or `go.sum`;
 - full production config files.
 
-Packaged CLIs (`router`, `metrum-genai-smartrouterctl`,
-`metrum-genai-smartrouter-fleetctl`,
-`metrum-genai-smartrouter-fleet-sign`,
-`metrum-genai-smartrouter-license`, and related tools) are prebuilt ELF
+Packaged CLIs (`router`, `metrum-ai-routerctl`,
+`metrum-ai-router-fleetctl`,
+`metrum-ai-router-fleet-sign`,
+`metrum-ai-router-license`, and related tools) are prebuilt ELF
 binaries only. Operator and customer hosts must not require a Go toolchain or
 product source tree to run them. Self-managed operators use
-`metrum-genai-smartrouter-license` from a trusted administration host with
+`metrum-ai-router-license` from a trusted administration host with
 their own retained Ed25519 keypair; the tool, private key, and real
 `license.json` must not appear in customer runtime Docker images.
 

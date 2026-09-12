@@ -47,12 +47,12 @@ export METRUM_ROUTER_KEY="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 codex exec --ignore-user-config --ephemeral \
   --skip-git-repo-check \
   -c 'model="<allowed-model-group>"' \
-  -c 'model_provider="metrum-router"' \
+  -c 'model_provider="metrum-ai-router"' \
   -c 'model_catalog_json="~/.codex/metrum-models.json"' \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-  -c 'model_providers.metrum-router.base_url="https://<router-host>/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
+  -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-ai-router.base_url="https://<router-host>/v1"' \
+  -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-ai-router.wire_api="responses"' \
   "Reply with exactly: router codex ok" </dev/null
 ```
 
@@ -117,8 +117,8 @@ Create a local token file with owner-only permissions. Use the real router token
 ```bash
 mkdir -p ~/.config/opencode
 umask 077
-printf %s "rtr_metrum_<user>_<project>_<env>_<key>_<secret>" > ~/.config/opencode/metrum-router.key
-chmod 600 ~/.config/opencode/metrum-router.key
+printf %s "rtr_metrum_<user>_<project>_<env>_<key>_<secret>" > ~/.config/opencode/metrum-ai-router.key
+chmod 600 ~/.config/opencode/metrum-ai-router.key
 ```
 
 Edit `~/.config/opencode/opencode.json` and add or merge a provider that uses `@ai-sdk/openai-compatible`:
@@ -133,7 +133,7 @@ Edit `~/.config/opencode/opencode.json` and add or merge a provider that uses `@
       "name": "Metrum AI Router",
       "options": {
         "baseURL": "https://<router-host>/v1",
-        "apiKey": "{file:~/.config/opencode/metrum-router.key}"
+        "apiKey": "{file:~/.config/opencode/metrum-ai-router.key}"
       },
       "models": {
         "<allowed-model-group>": {
@@ -151,7 +151,7 @@ Verify model access with the same token file before running opencode:
 
 ```bash
 curl -fsS "https://<router-host>/v1/models" \
-  -H "Authorization: Bearer $(cat ~/.config/opencode/metrum-router.key)"
+  -H "Authorization: Bearer $(cat ~/.config/opencode/metrum-ai-router.key)"
 ```
 
 The response should include the allowed router model group in `data[].id`:

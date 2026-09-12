@@ -21,7 +21,7 @@ EOF
 
 KUBECTL="${KUBECTL:-kubectl}"
 HELM="${HELM:-helm}"
-LICENSE_CLI="${LICENSE_CLI:-metrum-genai-smartrouter-license}"
+LICENSE_CLI="${LICENSE_CLI:-metrum-ai-router-license}"
 KUBECONFIG_PATH=""
 NAMESPACE=""
 RELEASE=""

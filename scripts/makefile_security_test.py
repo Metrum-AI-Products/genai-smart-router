@@ -31,9 +31,9 @@ def run_make(
             "BUILD_DATE": "2026-06-28T00:00:00Z",
             "GOOS": "linux",
             "GOARCH": "amd64",
-            "PKG_NAME": "metrum-router",
+            "PKG_NAME": "metrum-ai-router",
             "DIST_DIR": "dist",
-            "IMAGE_NAME": "metrum-router",
+            "IMAGE_NAME": "metrum-ai-router",
             "IMAGE_TAG": "v1.2.3-linux-amd64",
         }
     )

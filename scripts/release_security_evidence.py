@@ -112,7 +112,7 @@ def main() -> int:
         })
 
     summary = {
-        "schema": "metrum-router.release-security-evidence/v1",
+        "schema": "metrum-ai-router.release-security-evidence/v1",
         "version": args.version,
         "syft_version": syft_version,
         "grype_version": grype_version,

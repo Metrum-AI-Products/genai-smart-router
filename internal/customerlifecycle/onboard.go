@@ -182,7 +182,7 @@ func runProvision(ctx context.Context, intent Intent, st *OnboardState) error {
 	}
 	st.EnvFile = envPath
 
-	fleetBin, err := resolveBinary("metrum-genai-smartrouter-fleetctl", "metrum-fleetctl")
+	fleetBin, err := resolveBinary("metrum-ai-router-fleetctl", "metrum-fleetctl")
 	if err != nil {
 		return err
 	}

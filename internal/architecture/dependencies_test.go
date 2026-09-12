@@ -19,7 +19,7 @@ const (
 )
 
 func TestRequestPathDoesNotDependOnFleetOrInfrastructureSDKs(t *testing.T) {
-	for _, target := range []string{"./cmd/metrum-router", "./internal/router"} {
+	for _, target := range []string{"./cmd/metrum-ai-router", "./internal/router"} {
 		t.Run(strings.TrimPrefix(target, "./"), func(t *testing.T) {
 			dependencies := goListDependencies(t, target)
 			for dependency := range dependencies {
@@ -37,7 +37,7 @@ func TestRequestPathDoesNotDependOnFleetOrInfrastructureSDKs(t *testing.T) {
 }
 
 func TestFleetCLIOwnsFleetDependency(t *testing.T) {
-	dependencies := goListDependencies(t, "./cmd/metrum-genai-smartrouter-fleetctl")
+	dependencies := goListDependencies(t, "./cmd/metrum-ai-router-fleetctl")
 	if !dependencies[fleetPackage] {
 		t.Fatalf("Fleet CLI must depend on %s", fleetPackage)
 	}
@@ -47,7 +47,7 @@ func TestFleetCLIOwnsFleetDependency(t *testing.T) {
 }
 
 func TestCommerceStaysOffRequestPath(t *testing.T) {
-	for _, target := range []string{"./cmd/metrum-router", "./internal/router", "./cmd/metrum-routerctl"} {
+	for _, target := range []string{"./cmd/metrum-ai-router", "./internal/router", "./cmd/metrum-ai-routerctl"} {
 		t.Run(strings.TrimPrefix(target, "./"), func(t *testing.T) {
 			dependencies := goListDependencies(t, target)
 			for dependency := range dependencies {

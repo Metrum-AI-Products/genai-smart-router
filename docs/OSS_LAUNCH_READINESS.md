@@ -32,7 +32,7 @@ Withheld / separately gated:
 | U01 | Accepted; code closed for Launch A containment | Durable liability + persistence latch in `internal/router/quota.go`; cache after settlement; committed-stream settlement; tests in `quota_test.go` / `native_stream_test.go` |
 | U02 | Accepted; settings remain repo-admin gate | Workflows enforce `make test` + docs QA + security; see `docs/BRANCH_PROTECTION.md` for required-check configuration and negative merge test |
 | U03 | Accepted residual; default cache off | Caller/project + sampling fields keyed; unknown Raw fields bypass; README corrected |
-| U04 | Accepted | Quickstart `cd router`; upgrade guide uses `metrum-router` artifacts; legacy stubs declared non-functional |
+| U04 | Accepted | Quickstart `cd router`; upgrade guide uses `metrum-ai-router` artifacts; legacy stubs declared non-functional |
 | U05 | Accepted | Count-tokens acquires concurrency before body read; LLM path already did |
 | U06 | Accepted | `spend_ceiling` / `tier_ceilings` examples in `config.example.yaml` with scope comments |
 | U07 | Narrowed; unit evidence present | Native stream + affinity unit tests; provider-backed matrix remains A3 operator evidence |
@@ -63,5 +63,5 @@ Withheld / separately gated:
 - `python3 scripts/validate_docker_context.py`: pass (`commerce.env.json` excluded)
 - `make docs-qa`: pass
 - Targeted `go test` for quota, cache, security.txt, PII cache ordering, affinity, and stream settlement: pass
-- `python3 scripts/local_dev_bootstrap.py --out-dir /tmp/metrum-router-launch-smoke`: wrote config/license/token files (`BOOTSTRAP_OK`)
+- `python3 scripts/local_dev_bootstrap.py --out-dir /tmp/metrum-ai-router-launch-smoke`: wrote config/license/token files (`BOOTSTRAP_OK`)
 

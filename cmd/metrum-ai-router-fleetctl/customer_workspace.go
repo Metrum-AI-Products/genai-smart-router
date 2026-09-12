@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	fleetBinaryName     = "metrum-genai-smartrouter-fleetctl"
-	fleetSignBinaryName = "metrum-genai-smartrouter-fleet-sign"
+	fleetBinaryName     = "metrum-ai-router-fleetctl"
+	fleetSignBinaryName = "metrum-ai-router-fleet-sign"
 	tokenGenBinaryName  = "router-token-gen"
 	hostnameSuffix      = "apps.example.test"
 )

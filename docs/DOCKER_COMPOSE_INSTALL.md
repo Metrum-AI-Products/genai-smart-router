@@ -13,10 +13,10 @@ This is the offline bootstrap path for a Docker Compose package. After startup, 
 ## Bootstrap
 
 ```bash
-tar -xzf metrum-router-<version>-docker-linux-<arch>.tar.gz
-cd metrum-router-<version>-docker-linux-<arch>
+tar -xzf metrum-ai-router-<version>-docker-linux-<arch>.tar.gz
+cd metrum-ai-router-<version>-docker-linux-<arch>
 
-docker load -i images/metrum-router-<version>-linux-<arch>.tar
+docker load -i images/metrum-ai-router-<version>-linux-<arch>.tar
 
 cd compose
 mkdir -p config state logs
@@ -44,8 +44,8 @@ Generate a caller token from the packaged image and add the generated caller ent
 
 ```bash
 docker run --rm \
-  --entrypoint /app/bin/metrum-router-token-gen \
-  metrum-router:<version>-linux-<arch> \
+  --entrypoint /app/bin/metrum-ai-router-token-gen \
+  metrum-ai-router:<version>-linux-<arch> \
   generate \
   --owner-user example-admin \
   --project example-project \
@@ -63,12 +63,12 @@ chmod 0400 config/env.json config/license.json
 
 Migrations run only while the router is stopped. Before an upgrade, take one approved atomic storage snapshot or offline copy of `usage.sqlite` together with any `-wal`/`-shm` sidecars; never copy those files independently while the router writes. Run the non-serving SQLite gate in order:
 ```bash
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --version
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=plan --driver=sqlite --db=/app/state/usage.sqlite --json
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=apply --driver=sqlite --db=/app/state/usage.sqlite --json
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --driver=sqlite --db=/app/state/usage.sqlite --json
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=verify-serving --driver=sqlite --db=/app/state/usage.sqlite --json
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=status --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --version
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=plan --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=apply --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=verify-serving --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=status --driver=sqlite --db=/app/state/usage.sqlite --json
 ```
 `verify-serving` checks schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. It is the machine gate immediately before final read-only `status`; ordinal `0` alone is not completion evidence.
 

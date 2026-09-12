@@ -205,7 +205,7 @@ func customerCLIBinary(t *testing.T) string {
 			customerCLIBinErr = err
 			return
 		}
-		customerCLIBinPath = filepath.Join(dir, "metrum-genai-smartrouter-fleetctl")
+		customerCLIBinPath = filepath.Join(dir, "metrum-ai-router-fleetctl")
 		cmd := exec.Command("go", "build", "-o", customerCLIBinPath, ".")
 		out, err := cmd.CombinedOutput()
 		if err != nil {

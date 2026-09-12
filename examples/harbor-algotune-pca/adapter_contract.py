@@ -174,7 +174,7 @@ def build_codex_router_config(
     *,
     model_group: str,
     base_url: str,
-    provider_name: str = "metrum-router",
+    provider_name: str = "metrum-ai-router",
     env_key: str = "METRUM_ROUTER_KEY",
     wire_api: str = "responses",
 ) -> str:

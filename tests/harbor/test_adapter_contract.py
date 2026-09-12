@@ -282,7 +282,7 @@ class TestConfigEndpointTargeting(unittest.TestCase):
             model_group="small",
             base_url="http://127.0.0.1:18080/v1/",
         )
-        self.assertIn('model_provider = "metrum-router"', text)
+        self.assertIn('model_provider = "metrum-ai-router"', text)
         self.assertIn('base_url = "http://127.0.0.1:18080/v1"', text)
         self.assertIn('wire_api = "responses"', text)
         self.assertIn('env_key = "METRUM_ROUTER_KEY"', text)

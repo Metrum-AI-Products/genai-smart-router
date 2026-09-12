@@ -6,26 +6,16 @@ This package contains a packaged Metrum AI Router runtime plus a small offline d
 
 Binary packages include:
 
-- `bin/metrum-router`
-- `bin/metrum-router-token-gen`
-- `bin/metrum-router-usage-report`
-- `bin/metrum-router-migrate`
-- `bin/metrum-routerctl`
-- `bin/metrum-genai-smartrouter-fleetctl`
-- `bin/metrum-genai-smartrouter-fleet-sign`
-- `bin/metrum-genai-smartrouter-license` (operator-side runtime-policy key and
+- `bin/metrum-ai-router`
+- `bin/metrum-ai-router-token-gen`
+- `bin/metrum-ai-router-usage-report`
+- `bin/metrum-ai-router-migrate`
+- `bin/metrum-ai-routerctl`
+- `bin/metrum-ai-router-fleetctl`
+- `bin/metrum-ai-router-fleet-sign`
+- `bin/metrum-ai-router-license` (operator-side runtime-policy key and
   license tool; never included in the runtime image)
-- `bin/metrum-genai-customer-lifecycle` (Metrum operator lifecycle CLI only; never for customer self-service)
-- `bin/router` (one-release rename notice → `metrum-router`)
-- `bin/router-token-gen` (one-release rename notice → `metrum-router-token-gen`)
-- `bin/router-usage-report` (one-release rename notice → `metrum-router-usage-report`)
-- `bin/router-migrate` (one-release rename notice → `metrum-router-migrate`)
-- `bin/metrum-genai-smartrouterctl` (one-release rename notice → `metrum-routerctl`)
-- `bin/smartrouterctl` (one-release rename notice → `metrum-routerctl`)
-- `bin/metrum-fleetctl` (one-release rename notice → `metrum-genai-smartrouter-fleetctl`)
-- `bin/metrum-smartrouterctl` (one-release rename notice → `metrum-genai-smartrouter-fleetctl`)
-- `bin/metrum-fleet-sign` (one-release rename notice → `metrum-genai-smartrouter-fleet-sign`)
-- `bin/router-license` (one-release rename notice → `metrum-genai-smartrouter-license`)
+- `bin/metrum-ai-router-customer-lifecycle` (Metrum operator lifecycle CLI only; never for customer self-service)
 - `config/config.example.yaml`
 - `config/env.example.json`
 - `config/enterprise-license-skus.json`
@@ -47,27 +37,28 @@ Docker Compose packages include:
 - `config/config.example.yaml`
 - `config/env.example.json`
 - `config/scripts/router.ts`
-- `images/metrum-router-<version>-linux-<arch>.tar`
+- `images/metrum-ai-router-<version>-linux-<arch>.tar`
 - `docs/`
 - `LICENSE`
 - `NOTICE`
 - `THIRD_PARTY_NOTICES.md`
 - `MODEL_LICENSES.md`
 
-The saved Docker image includes `/app/bin/metrum-router`, `/app/bin/metrum-router-migrate`,
-customer-local `/app/bin/metrum-routerctl`, and one-release rename notices for the
-previous `router*` / `metrum-genai-smartrouterctl` / `smartrouterctl` names; Fleet
+The saved Docker image includes only the canonical runtime CLIs:
+`/app/bin/metrum-ai-router`, `/app/bin/metrum-ai-router-token-gen`,
+`/app/bin/metrum-ai-router-usage-report`, `/app/bin/metrum-ai-router-migrate`,
+and customer-local `/app/bin/metrum-ai-routerctl`. Rename stubs and Fleet
 lifecycle binaries are excluded. Version-check the runtime with
-`docker run --rm --entrypoint /app/bin/metrum-routerctl
-metrum-router:<version>-linux-<arch> version`.
+`docker run --rm --entrypoint /app/bin/metrum-ai-routerctl
+metrum-ai-router:<version>-linux-<arch> version`.
 
 The standard Docker and Docker Compose images do not include
-`metrum-genai-smartrouter-fleetctl`, `metrum-genai-smartrouter-fleet-sign`,
-`metrum-genai-smartrouter-license`, or the one-release Fleet rename notices.
+`metrum-ai-router-fleetctl`, `metrum-ai-router-fleet-sign`,
+or `metrum-ai-router-license`.
 Docker-based Fleet operators run those tools from a binary package on a separate trusted administration host.
 Fleet CLIs are distributed as prebuilt binaries only; operator hosts must not require a Go toolchain or product source tree.
 Self-managed operators generate and retain their own Ed25519 keypair and use
-`metrum-genai-smartrouter-license` from the trusted administration host to
+`metrum-ai-router-license` from the trusted administration host to
 issue the deployment's runtime-policy `license.json`. Metrum-managed issuance
 may be offered as an optional commercial deployment service, but it is not
 required by the open-source runtime. Keep private keys and real licenses out of

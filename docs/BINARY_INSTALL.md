@@ -13,10 +13,10 @@ This is the offline bootstrap path for a Linux binary package. After startup, us
 ## Bootstrap
 
 ```bash
-tar -xzf metrum-router-<version>-linux-<arch>.tar.gz
-cd metrum-router-<version>-linux-<arch>
+tar -xzf metrum-ai-router-<version>-linux-<arch>.tar.gz
+cd metrum-ai-router-<version>-linux-<arch>
 
-bin/metrum-router --version
+bin/metrum-ai-router --version
 cp config/config.example.yaml config/config.yaml
 cp config/env.example.json config/env.json
 ```
@@ -35,7 +35,7 @@ Populate `config/env.json` or the process environment with provider credentials.
 Generate a caller token and add the generated caller entry to `config/config.yaml`:
 
 ```bash
-bin/metrum-router-token-gen generate \
+bin/metrum-ai-router-token-gen generate \
   --owner-user example-admin \
   --project example-project \
   --env prod \
@@ -43,11 +43,10 @@ bin/metrum-router-token-gen generate \
 ```
 
 Before starting a `deployment-job` router, version-check the non-serving runner and follow the canonical [Data migration framework](DATA_MIGRATIONS.md): `plan`, approved backup, `apply`, every required data job until its safe state is `validated`, `verify`, `status`, then serve. PostgreSQL receives its connection only through `--dsn-env`; `auto-safe` is not a PostgreSQL production procedure. Do not infer completion from checkpoint ordinal `0`.
-For Fleet lifecycle contract validation, run `bin/metrum-genai-smartrouter-fleetctl plan`, then
+For Fleet lifecycle contract validation, run `bin/metrum-ai-router-fleetctl plan`, then
 `deploy`, exact-job `status`, and approved `delete` with a protected
 reference-only profile. A new intent/config revision reconciles the same
-instance in place. `bin/metrum-smartrouterctl` reports the one-release rename
-notice only. `metrum-genai-smartrouterctl` provides local configuration, caller-token,
+instance in place. `metrum-ai-routerctl` provides local configuration, caller-token,
 license, model, and usage operations; it cannot activate config or access cloud
 systems. The default deployment is SQLite state with one Router container and
 one replica; it neither provisions nor binds RDS. Dedicated RDS requires an
@@ -63,7 +62,7 @@ approval contract.
 Start the router in the foreground only after compatible/current final status:
 
 ```bash
-bin/metrum-router --config config/config.yaml
+bin/metrum-ai-router --config config/config.yaml
 ```
 
 ## Validate
@@ -95,6 +94,6 @@ curl -fsS "$ROUTER_BASE_URL/v1/chat/completions" \
 
 ## Upgrade And Rollback
 
-Before upgrading, back up `config.yaml`, `env.json`, `license.json`, license state, router state, usage database data, and logs according to the deployment policy. Install the new package beside the old one, run `bin/metrum-router --version`, review config changes, then restart the supervised service.
+Before upgrading, back up `config.yaml`, `env.json`, `license.json`, license state, router state, usage database data, and logs according to the deployment policy. Install the new package beside the old one, run `bin/metrum-ai-router --version`, review config changes, then restart the supervised service.
 
 Package rollback never runs a reverse migration. For a `restore-required` release contract, restore the approved pre-migration database snapshot before deploying the earlier package; otherwise preserve the usage database and restore only approved package/config inputs. Rerun migration verify/status, `/readyz`, `/docs/`, `/v1/models`, and one caller smoke.

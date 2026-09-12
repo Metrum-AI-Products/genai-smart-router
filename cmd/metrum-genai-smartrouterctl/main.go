@@ -1,7 +1,7 @@
 // Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
-// metrum-genai-smartrouterctl is a one-release compatibility notice for the renamed customer CLI.
+// metrum-genai-smartrouterctl is a source-only rename notice; it is not packaged.
 package main
 
 import (
@@ -10,6 +10,6 @@ import (
 )
 
 func main() {
-	fmt.Fprintln(os.Stderr, "metrum-genai-smartrouterctl was renamed to metrum-routerctl; install and invoke metrum-routerctl instead")
+	fmt.Fprintln(os.Stderr, "metrum-genai-smartrouterctl was renamed to metrum-ai-routerctl; install and invoke metrum-ai-routerctl instead")
 	os.Exit(2)
 }

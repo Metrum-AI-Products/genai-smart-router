@@ -68,12 +68,12 @@ After each issue, rotation, or disablement, ask the caller to run `/v1/models`. 
 
 Generating a token is not the same as activating it.
 
-- **Self-hosted / file-owned installs:** use `metrum-genai-smartrouterctl callers generate`
+- **Self-hosted / file-owned installs:** use `metrum-ai-routerctl callers generate`
   (or `router-token-gen`) to create a mode-`0600` token file. Pass `--config` with
   `--write` to merge the hashed caller into local `config.yaml`, then reload or
   restart the router. Use `callers rotate` to replace the hash and emit a new token
   file, or `callers revoke` to disable a caller. The CLI never activates config on a
   remote managed hostname or signs licenses.
-- **Private managed / Fleet-operated installs:** use `customer grant-caller`, `customer list-callers`, and `customer revoke-caller` from the release binary package, then signed `customer create`. See [Customer Administrator Guide](./customer-administration). `metrum-genai-smartrouterctl` alone does not change a live managed hostname.
+- **Private managed / Fleet-operated installs:** use `customer grant-caller`, `customer list-callers`, and `customer revoke-caller` from the release binary package, then signed `customer create`. See [Customer Administrator Guide](./customer-administration). `metrum-ai-routerctl` alone does not change a live managed hostname.
 
 Never paste raw tokens, token hashes, or provider keys into tickets, chat, or public docs. Distribute the raw token once over an approved channel, then confirm access with `/v1/models`.

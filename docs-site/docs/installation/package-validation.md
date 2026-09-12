@@ -12,20 +12,16 @@ Release packages are designed to be small, inspectable, and safe for external ad
 For binary packages:
 
 ```text
-metrum-router-<version>-linux-<arch>/
-  bin/router
-  bin/router-token-gen
-  bin/router-usage-report
-  bin/router-migrate
-  bin/metrum-genai-smartrouterctl
-  bin/metrum-genai-smartrouter-fleetctl
-  bin/metrum-genai-smartrouter-fleet-sign
-  bin/metrum-genai-smartrouter-license
-  bin/smartrouterctl                  # one-release rename notice
-  bin/metrum-fleetctl                 # one-release rename notice
-  bin/metrum-smartrouterctl           # one-release rename notice
-  bin/metrum-fleet-sign               # one-release rename notice
-  bin/router-license                  # one-release rename notice
+metrum-ai-router-<version>-linux-<arch>/
+  bin/metrum-ai-router
+  bin/metrum-ai-router-token-gen
+  bin/metrum-ai-router-usage-report
+  bin/metrum-ai-router-migrate
+  bin/metrum-ai-routerctl
+  bin/metrum-ai-router-fleetctl
+  bin/metrum-ai-router-fleet-sign
+  bin/metrum-ai-router-license
+  bin/metrum-ai-router-customer-lifecycle
   config/config.example.yaml
   config/env.example.json
   config/scripts/router.ts
@@ -36,7 +32,7 @@ metrum-router-<version>-linux-<arch>/
 For Docker Compose packages:
 
 ```text
-metrum-router-<version>-docker-linux-<arch>/
+metrum-ai-router-<version>-docker-linux-<arch>/
   compose/docker-compose.yml
   compose/docker-compose.postgres-localhost.yml
   compose/Caddyfile.compose
@@ -45,25 +41,28 @@ metrum-router-<version>-docker-linux-<arch>/
   config/config.example.yaml
   config/env.example.json
   config/scripts/router.ts
-  images/metrum-router-<version>-linux-<arch>.tar
+  images/metrum-ai-router-<version>-linux-<arch>.tar
   docs/
 ```
 
-`metrum-genai-smartrouterctl` and `metrum-genai-smartrouter-fleetctl` are
+`metrum-ai-routerctl` and `metrum-ai-router-fleetctl` are
 required in the binary package. Only customer-local
-`metrum-genai-smartrouterctl` (plus the one-release `smartrouterctl` rename
-notice) is included in the standard Docker image and Docker Compose package
-image. Fleet lifecycle binaries are excluded; run Fleet work from an extracted
+`metrum-ai-routerctl` (with the other canonical runtime CLIs) is included in
+the standard Docker image and Docker Compose package image.
+Fleet lifecycle binaries are excluded; run Fleet work from an extracted
 binary package on a separate trusted administration host.
 
-Confirm the architecture suffix matches the host and, for Docker packages, that `compose/.env` pins `SMART_LLMROUTER_VERSION` to the loaded image tag.
+Confirm the architecture suffix matches the host and, for Docker packages, that
+`compose/.env` pins the packaged image tag. Until the PR3 compose env rename
+lands, existing packages may still use `SMART_LLMROUTER_VERSION`; new docs and
+the product contract use `METRUM_AI_ROUTER_VERSION`.
 
-For Docker packages, the saved image includes `/app/bin/metrum-router-migrate` and
-`/app/bin/metrum-genai-smartrouterctl`. Version-check them before operation:
+For Docker packages, the saved image includes `/app/bin/metrum-ai-router-migrate` and
+`/app/bin/metrum-ai-routerctl`. Version-check them before operation:
 
 ```bash
-docker run --rm --entrypoint /app/bin/metrum-genai-smartrouterctl \
-  metrum-router:<version>-linux-<arch> version
+docker run --rm --entrypoint /app/bin/metrum-ai-routerctl \
+  metrum-ai-router:<version>-linux-<arch> version
 ```
 
 For `migration_policy: deployment-job`, follow the packaged `docs/DATA_MIGRATIONS.md` runbook before service startup: `plan`, approved backup, `apply`, every release-defined data job until each safe state is `validated`, `verify-serving`, then final read-only `status`. `verify-serving` runs schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. Generic Compose/Kubernetes installs use `--driver sqlite --db /app/state/usage.sqlite`; PostgreSQL is a separately configured deployment substitution using `--driver postgres --dsn "$ROUTER_USAGE_DB_DSN"`. Do not treat checkpoint ordinal `0` as completion or expose a connection string in commands/evidence. See [Upgrade Guide](../release-notes/upgrade-guide) for the release and rollback contract.

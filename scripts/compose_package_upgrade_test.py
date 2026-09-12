@@ -26,19 +26,19 @@ def write(path: Path, text: str = "x\n") -> None:
 
 
 def make_package(root: Path, *, version: str = "a910827", arch: str = "amd64") -> Path:
-    payload = root / f"metrum-router-{version}-docker-linux-{arch}"
+    payload = root / f"metrum-ai-router-{version}-docker-linux-{arch}"
     write(payload / "compose" / "docker-compose.yml", "services: {}\n")
     write(payload / "compose" / ".env", "SMART_LLMROUTER_VERSION=placeholder\nOTHER=keep\n")
-    write(payload / "images" / f"metrum-router-{version}-linux-{arch}.tar", "image-bytes\n")
+    write(payload / "images" / f"metrum-ai-router-{version}-linux-{arch}.tar", "image-bytes\n")
     write(payload / "config" / "config.example.yaml", "example: true\n")
-    archive = root / f"metrum-router-{version}-docker-linux-{arch}.tar.gz"
+    archive = root / f"metrum-ai-router-{version}-docker-linux-{arch}.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
         tar.add(payload, arcname=payload.name)
     return archive
 
 
 def make_install(root: Path) -> Path:
-    install = root / "metrum-router"
+    install = root / "metrum-ai-router"
     write(install / "compose" / "config" / "config.yaml", "live: true\n")
     write(install / "compose" / "config" / "env.json", '{"k":"secret"}\n')
     write(install / "compose" / "state" / "usage.sqlite", "db\n")
@@ -84,7 +84,7 @@ def test_missing_runtime_aborts() -> None:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         package = make_package(root)
-        install = root / "metrum-router"
+        install = root / "metrum-ai-router"
         write(install / "compose" / "docker-compose.yml", "old: true\n")
         info = upgrade.inspect_package(package)
         original = (install / "compose" / "docker-compose.yml").read_text(encoding="utf-8")
@@ -101,7 +101,7 @@ def test_missing_runtime_aborts() -> None:
 def test_token_listing_stays_in_compose_dir() -> None:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
-        compose = root / "metrum-router" / "compose"
+        compose = root / "metrum-ai-router" / "compose"
         write(compose / "ROUTER_TOKEN.txt", "a\n")
         write(compose / "ROUTER_TOKEN_HARBOR.txt", "b\n")
         write(compose / "not-a-token.txt", "c\n")
@@ -158,7 +158,7 @@ def test_rollback_restores_backup() -> None:
 
 def test_postgres_override_compose_files() -> None:
     with tempfile.TemporaryDirectory() as temp:
-        root = Path(temp) / "metrum-router"
+        root = Path(temp) / "metrum-ai-router"
         write(root / "compose" / ".env", "SMART_LLMROUTER_VERSION=x\nROUTER_USAGE_DB_DSN=host=postgres\n")
         write(root / "compose" / "docker-compose.yml", "services: {}\n")
         write(root / "compose" / "docker-compose.postgres-localhost.yml", "services: {}\n")

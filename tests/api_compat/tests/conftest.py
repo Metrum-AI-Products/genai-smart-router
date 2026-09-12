@@ -94,7 +94,7 @@ callers:
     build_env = os.environ | {"GOPROXY": "off", "GOSUMDB": "off", "GOTOOLCHAIN": "local"}
     router_binary = work / "router"
     subprocess.run(
-        ["go", "build", "-tags", "dev_no_license", "-o", str(router_binary), "./cmd/metrum-router"],
+        ["go", "build", "-tags", "dev_no_license", "-o", str(router_binary), "./cmd/metrum-ai-router"],
         cwd=Path(__file__).parents[3],
         env=build_env,
         check=True,

@@ -157,7 +157,7 @@ class ExemptPatternTest(unittest.TestCase):
 
     def test_technical_identifiers_are_not_branding(self) -> None:
         for line in (
-            'model_provider = "metrum-router"',
+            'model_provider = "metrum-ai-router"',
             'Product = "genai-smart-router"',
             "image: metrum-ai/genai-smart-router:v1.3.1",
             "helm install genai-smart-router ./deploy/helm/genai-smart-router",
@@ -174,7 +174,7 @@ class ExemptPatternTest(unittest.TestCase):
         line = 'realm := "Metrum AI Router"'
         for relative in (
             "internal/router/service.go",
-            "cmd/metrum-router/main.go",
+            "cmd/metrum-ai-router/main.go",
             "scripts/local_launch_path_smoke.py",
             "examples/external-routing-policy/prompt_size_policy.py",
             "Makefile",

@@ -37,9 +37,9 @@ provider accounts.
 
 The serving router handles proxy traffic, caller policy, routing, usage, and
 safe diagnostics. Customer runtime images include the router and the
-customer-local `metrum-genai-smartrouterctl`; they do not contain Fleet
+customer-local `metrum-ai-routerctl`; they do not contain Fleet
 lifecycle or signing binaries. Release binary packages may include
-`metrum-genai-smartrouter-fleetctl` and related package-only lifecycle tools
+`metrum-ai-router-fleetctl` and related package-only lifecycle tools
 for approved deployment workflows. This keeps cluster lifecycle authority out
 of the customer request-serving image.
 
