@@ -1,111 +1,167 @@
 # Metrum AI Router
 
-**Metrum AI Router** is an open-source LLM smart router: it selects a different
-upstream model per request from a policy you own and version, then records why.
-Selection runs on request shape, capability contracts, measured
-cost/latency/reliability, and optionally a Learned Routing Policy trained on
-your own outcome data.
+Metrum AI Router is a self-hosted LLM gateway that selects an eligible upstream
+per request from a policy you own, including a Learned Routing Policy trained
+on your outcome data.
 
-Routing is the product. The gateway functions underneath it — one
-OpenAI/Anthropic-compatible endpoint, server-side provider keys, quotas,
-budgets, caching, PII redaction, per-request cost attribution — exist so the
-routing decision is enforceable and auditable.
-Apache-2.0, no license key required by default, runs on your hardware.
+It chooses the cheapest eligible target above a measured quality floor.
+Budgets, quotas, and eligibility run before any upstream spend.
+The binary, Compose, and Kubernetes paths run on hardware you control.
 
-Works with Claude Code and Codex CLI. Routes to Anthropic, OpenAI, Replicate,
-and OpenAI-compatible backends including vLLM and SGLang.
+Request path:
+
+1. Caller hits the router with a model group.
+2. Auth, allow list, and token-budget admission run first.
+3. Request-shape eligibility drops ineligible targets.
+4. `strategy: external` asks Learned Routing Policy among remaining targets.
+5. The router calls the selected target with a server-side provider key.
+6. Feedback returns status, usage, cost, and latency. Quality labels arrive offline.
 
 Community participation is governed by [CONTRIBUTING.md](CONTRIBUTING.md), the
 [Code of Conduct](CODE_OF_CONDUCT.md), and [GOVERNANCE.md](GOVERNANCE.md).
 Questions and bugs follow [SUPPORT.md](SUPPORT.md); suspected vulnerabilities
 must use the private reporting path in [SECURITY.md](SECURITY.md).
+Trademark use is governed by [TRADEMARKS.md](TRADEMARKS.md).
 
-This repository is public Apache-2.0 open-source software maintained in the
-open. Metrum branding, copyright, and support contacts remain; private Metrum
-production topology and operator evidence do not belong in this tree.
-Trademark use is governed by [TRADEMARKS.md](TRADEMARKS.md); the Apache-2.0
-license does not grant trademark rights.
+Hosted docs: [overview](https://llm-api.apps.metrum.ai/docs/overview) and `/docs/`
+on a running router. Technical brief: [docs/solution-brief.md](docs/solution-brief.md).
+Doc ownership map: [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md).
 
-For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md). The customer-facing hosted documentation is built from `docs-site/` and embedded into release binaries under `/docs/`; browser requests to `/` redirect there. In source checkouts, internal documentation maintenance rules and the public/internal source-of-truth map live in [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md).
+## Quick Start From Source
 
-## Editions
+Hosted product docs: [overview](https://llm-api.apps.metrum.ai/docs/overview)
+(also served from a running router at `/docs/`).
 
-- **Community** — this Apache-2.0 repository. No license key is required by
-  default. You may use, modify, and distribute the software under Apache-2.0
-  without payment; Enterprise offerings never condition those Apache rights on
-  payment.
-- **Enterprise** — a separate distribution with production validation, named
-  support, signed releases, and related commercial entitlements.
+Prerequisites are Go as declared in `go.mod` and Python 3 for the local
+bootstrap. An OpenAI API key is enough for one Chat completion. Building and
+starting the router require no private repository access.
 
-Privacy defaults for this software: do not retain prompts or responses by
-default; do not train on traffic; provider keys stay in your deployment.
+```bash
+git clone https://github.com/metrum-ai/router.git
+cd router
+python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev
+# Set OPENAI_API_KEY in tmp/local-dev/env.json.
+go run ./cmd/metrum-ai-router --config tmp/local-dev/config.yaml
+```
 
-## Known limitations
+The bootstrap issues a local runtime `license.json` (SKU `oss-self-managed`)
+and a caller token file `tmp/local-dev/router.token`. It does not print secrets.
+Confirm `/readyz`, then `GET /v1/models` and one Chat request as in
+[Local Quickstart](docs-site/docs/getting-started/local-quickstart.md).
 
-See [Architecture, Platforms, And Limitations](docs-site/docs/reference/architecture-limitations.md)
-for the full operator-owned boundary list. Streaming accuracy in brief: native
-incremental SSE applies to same-dialect Chat Completions and Anthropic
-Messages; OpenAI Responses and cross-dialect bridges synthesize SSE after a
-unary upstream response.
+`config.example.yaml` remains the full catalog reference. Do not copy it for a
+first local trial.
 
-## Software License And Notices
+For packaged installs, use the public [installation
+guide](docs-site/docs/installation/index.md). The documented deployment modes
+are Linux binary, Docker Compose, and Kubernetes. See [Architecture, Platforms,
+And Limitations](docs-site/docs/reference/architecture-limitations.md) for the
+operator-owned boundaries and explicit non-goals.
 
-The repository-root [LICENSE](LICENSE) contains the Apache License 2.0 terms
-for Metrum AI Router first-party content. Keep it together with
-[NOTICE](NOTICE), the dependency and asset inventory in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the model-term boundaries
-in [MODEL_LICENSES.md](MODEL_LICENSES.md) when copying or redistributing a
-release. Third-party components, assets, and models remain governed by their
-own applicable terms; the Apache-2.0 license does not replace them. See
-[TRADEMARKS.md](TRADEMARKS.md) for mark usage.
+## Learned Routing Policy
 
-Optional signed `license.json` is a separate operator runtime-policy input for
-feature and operational enforcement when enabled. It is not the software
-copyright license and not a replacement for any of the files above. See
-[docs/LICENSE.md](docs/LICENSE.md) for the complete scope map and Apache terms.
+Learned Routing Policy (LRP) is a standalone Python service behind
+`strategy: external`. The operator runbook is
+[docs/LEARNED_ROUTING_POLICY.md](docs/LEARNED_ROUTING_POLICY.md). The service
+README is [services/learned-routing-policy/README.md](services/learned-routing-policy/README.md).
 
-Current MVP capabilities:
+### What it predicts
 
-### Routing
+Per-target quality and output-token models are trained offline with LightGBM.
+Quality scores are isotonic-calibrated. Train and serve share the same feature
+definitions and embedding artifacts.
+See [docs/LEARNED_ROUTING_POLICY.md](docs/LEARNED_ROUTING_POLICY.md).
 
-- Config-driven model groups with decision-making strategies first: `dynamic_score`, TypeScript `script`, and `external` policy services (including Learned Routing Policy). Optional model-group `contract` gates and request-shape eligibility filtering run before strategy selection. Fallback stays inside the requested group.
-- External policy `shadow`, `enforce`, and `baseline` modes provide explicit promotion and rollback while selection remains limited to post-eligibility targets.
-- Dynamic-score conversation affinity is enabled by default, caller-isolated,
-  process-local, TTL-bounded, and subordinate to current eligibility.
-- TypeScript routing scripts for custom model-selection logic inside the Go
-  router, with fresh per-decision VMs, a bounded per-group concurrency cap, and
-  cancellation-aware admission.
-- External routing policy services for standalone web-service target selection
-  with safe request, caller, target, pricing, tool, and modality context,
-  connection reuse, bounded timeouts, and reversible baseline/shadow/enforce
-  modes.
-- Conservative traffic-mix strategies remain available: `static`, `weighted`, and `failover`.
+### How it decides
 
-### Gateway and governance
+Among targets the router already marked eligible, LRP picks the cheapest
+predicted to meet the operator quality floor. If none meet the floor, it picks
+the highest predicted quality. Unknown prices are not treated as free.
+Optional per-project floors, upstream latency gates, and cache-aware cost
+estimates apply at selection. Cache savings are used only when trustworthy
+cache metadata and a catalog cached-input price are present.
+See [docs/LRP_SELECTION_CONSTRAINTS.md](docs/LRP_SELECTION_CONSTRAINTS.md).
 
-- Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses ingress.
-- Anthropic token-count estimate endpoint for Claude Code startup.
-- Bearer-token auth using configured SHA-256 token hashes.
-- Separate caller dialects from upstream provider adapters: callers can use
-  Anthropic/OpenAI wire formats while targets route to Anthropic,
-  OpenAI-compatible, Replicate, or evidence-gated unary-text Gemini
-  `generateContent` adapters.
-- Optional bounded `targets[].region` metadata for selected-target diagnostics;
-  deployments remain responsible for residency enforcement and provider
-  validation.
-- Server-side provider key injection.
-- Same-dialect OpenAI Chat and Anthropic Messages native SSE proxying with incremental delivery, plus unary upstream proxying and caller-dialect response encoding for OpenAI Responses and cross-dialect bridges.
-- Committed native streams never fall back after the first event; caller cancellation stops the upstream request.
-- In-process LRU+TTL cache for eligible unary responses.
-- Per-caller RPM, TPM, concurrency, traffic shaping, rolling quota, and lifetime key budget enforcement.
-- Disk-persisted quota/key state.
-- JSONL request logs using the SRS schema.
-- Metrics-admin-only Prometheus-compatible `/metrics` with caller/user/project labels.
-- Usage reports, admin browser reports, and optional signed runtime-policy licensing.
+### Safety rails
 
-Legacy selectors named `latency`, `cost`, and `semantic`, plus licensed
-`strategy: intelligent`, are documented under
-[Deprecated Selectors](docs-site/docs/reference/deprecated-selectors.md).
+`lrp train --ensemble-size 5` fits a bootstrap ensemble. With
+`uncertainty_abstention: true`, high calibrated quality standard deviation
+abstains to `abstention_anchor` (or first fallback) and labels `lrp:uncertain`.
+Thompson exploration (`exploration_strategy: thompson`) is restricted to
+`exploration_projects`. PSI and embedding-centroid drift can recommend shadow;
+the router `external_policy.mode` remains the activation authority. Bradley-Terry
+cold start injects baseline predictions only for targets already eligible.
+See [docs/LRP_UNCERTAINTY.md](docs/LRP_UNCERTAINTY.md).
+
+### How outcomes are labeled
+
+Deterministic verifiers run only inside the isolated judge worker. LLM judging
+and human audit are separate outcome classes with different meanings.
+See [docs/LRP_VERIFIERS.md](docs/LRP_VERIFIERS.md) and
+[docs/LRP_HUMAN_JUDGE.md](docs/LRP_HUMAN_JUDGE.md).
+
+### How it ships
+
+Router `external_policy.mode` values
+([internal/router/external_strategy.go](internal/router/external_strategy.go)):
+
+- `baseline`: no policy call; first eligible configured target.
+- `shadow`: policy is called and recorded; first eligible configured target is served.
+- `enforce`: the policy recommendation is served (default when `mode` is omitted).
+
+Rollback of learned influence is `mode: baseline` or restoring prior group
+config. Operators may require Ed25519-signed bundles before load.
+See [docs/LRP_SIGNED_BUNDLES.md](docs/LRP_SIGNED_BUNDLES.md).
+
+Post-completion `external_policy.feedback` posts request ID, status, usage,
+cost, latency, TTFB, and selected target. It does not retrain quality models.
+See [internal/router/external_policy_feedback.go](internal/router/external_policy_feedback.go)
+and [docs/EXTERNAL_POLICY_CONTEXT.md](docs/EXTERNAL_POLICY_CONTEXT.md).
+
+`strategy: intelligent` is an experimental baseline-only LLM-selector scaffold
+(shadow/simulate only; it does not alter target selection). Legacy `latency`,
+`cost`, and `semantic` are compatibility-only stubs.
+See [Deprecated Selectors](docs-site/docs/reference/deprecated-selectors.md).
+
+### Minimal group config
+
+Field names match [config.example.yaml](config.example.yaml) and
+[internal/router/config.go](internal/router/config.go). Catalog-only LRP groups
+stay commented until exact-shape validation and protected evaluation pass.
+
+```yaml
+models:
+  workload-staging:
+    strategy: external
+    external_policy:
+      url: http://127.0.0.1:18093/route
+      allow_hosts: [127.0.0.1]
+      mode: shadow
+      timeout_ms: 500
+      max_response_bytes: 65536
+      include_request: true
+      on_error: fail_closed
+      headers:
+        X-LRP-Auth: ${LRP_POLICY_AUTH_HEADER}
+      feedback:
+        enabled: true
+    targets:
+      - { provider: example_chat, model_ref: example-model, weight: 1 }
+```
+
+`include_request: true` belongs only in trusted infrastructure. Enable
+model-group `pii_filter` before sending request content. Loopback URL matches
+current router egress rules for the LRP sidecar.
+
+### Try it
+
+```bash
+uv sync --project services/learned-routing-policy --locked
+make lrp-test
+make lrp-synthetic-demo
+```
+
+Synthetic results do not authorize live promotion.
 
 ## Proof: same group, different upstream
 
@@ -166,37 +222,6 @@ for f in testdata/proof/trivial.json testdata/proof/complex.json; do
        }'
 done
 ```
-
-## Quick Start From Source
-
-Hosted product docs: [overview](https://llm-api.apps.metrum.ai/docs/overview)
-(also served from a running router at `/docs/`).
-
-Prerequisites are Go as declared in `go.mod` and Python 3 for the local
-bootstrap. An OpenAI API key is enough for one Chat completion. Building and
-starting the router require no private repository access.
-
-```bash
-git clone https://github.com/metrum-ai/router.git
-cd router
-python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev
-# Set OPENAI_API_KEY in tmp/local-dev/env.json.
-go run ./cmd/metrum-ai-router --config tmp/local-dev/config.yaml
-```
-
-The bootstrap issues a local runtime `license.json` (SKU `oss-self-managed`)
-and a caller token file `tmp/local-dev/router.token`. It does not print secrets.
-Confirm `/readyz`, then `GET /v1/models` and one Chat request as in
-[Local Quickstart](docs-site/docs/getting-started/local-quickstart.md).
-
-`config.example.yaml` remains the full catalog reference. Do not copy it for a
-first local trial.
-
-For packaged installs, use the public [installation
-guide](docs-site/docs/installation/index.md). The documented deployment modes
-are Linux binary, Docker Compose, and Kubernetes. See [Architecture, Platforms,
-And Limitations](docs-site/docs/reference/architecture-limitations.md) for the
-operator-owned boundaries and explicit non-goals.
 
 ## Cache Behavior
 
@@ -770,14 +795,8 @@ A demo PII-aware routing policy lives in `examples/typescript-pii-policy/`. It d
 
 ## External Routing Policy Service
 
-[Learned Routing Policy](docs-site/docs/routing/learned-routing-policy.md)
-([operator runbook](docs/LEARNED_ROUTING_POLICY.md)) adds a standalone
-outcome-trained service and offline `lrp` CLI. It recommends the cheapest eligible
-target above a configured quality floor, with calibrated per-target models,
-protected datasets and held-out evaluation. Start with `make lrp-synthetic-demo`;
-synthetic results do not authorize live target promotion.
-
-Use `strategy: external` when routing policy should live in a standalone web service instead of in TypeScript. The router sends safe derived request context, safe caller metadata, safe contract metadata when configured, eligible target metadata, validation metadata, pricing, tool capability metadata, and modalities to the configured policy URL, then validates the returned target against the model group's eligible targets. By default the policy payload does not include prompt text, message bodies, image URLs/data, tool schemas, tool outputs, or `request.raw`; route on fields such as `context.textChars`, `context.estimatedTokens`, `context.imageCount`, and `context.toolCount`. Set `external_policy.include_request: true` only for a trusted policy service that is allowed to receive request content. With `pii_filter`, that opt-in request mirror is redacted before dispatch and placeholder mappings are not sent. Raw router tokens, token hashes, and provider API keys are never sent.
+See [Learned Routing Policy](#learned-routing-policy) for the outcome-trained
+service. Use `strategy: external` when routing policy should live in a standalone web service instead of in TypeScript. The router sends safe derived request context, safe caller metadata, safe contract metadata when configured, eligible target metadata, validation metadata, pricing, tool capability metadata, and modalities to the configured policy URL, then validates the returned target against the model group's eligible targets. By default the policy payload does not include prompt text, message bodies, image URLs/data, tool schemas, tool outputs, or `request.raw`; route on fields such as `context.textChars`, `context.estimatedTokens`, `context.imageCount`, and `context.toolCount`. Set `external_policy.include_request: true` only for a trusted policy service that is allowed to receive request content. With `pii_filter`, that opt-in request mirror is redacted before dispatch and placeholder mappings are not sent. Raw router tokens, token hashes, and provider API keys are never sent.
 
 ```yaml
 models:
@@ -1377,3 +1396,112 @@ make e2e-compose-live
 ```
 
 These require live provider keys in `env.json` or the shell plus locally installed `claude`, `codex`, Docker, and Docker Compose.
+
+
+## Reference
+
+Former README headings remain reachable below or from this index.
+
+- [Editions](#editions)
+- [Known limitations](#known-limitations)
+- [Software License And Notices](#software-license-and-notices)
+- [Routing](#routing)
+- [Gateway and governance](#gateway-and-governance)
+- [Proof: same group, different upstream](#proof-same-group-different-upstream)
+- [Quick Start From Source](#quick-start-from-source)
+- [Learned Routing Policy](#learned-routing-policy)
+- [Cache Behavior](#cache-behavior)
+- [Build And Package](#build-and-package)
+- [Documentation Map](#documentation-map)
+- [Run From Source](#run-from-source)
+- [Runtime Policy License Enforcement](#runtime-policy-license-enforcement)
+- [API Key Flow](#api-key-flow)
+- [Provider Model Catalogs](#provider-model-catalogs)
+- [Dynamic Score Routing](#dynamic-score-routing)
+- [Model Group Contracts](#model-group-contracts)
+- [TypeScript Routing](#typescript-routing)
+- [External Routing Policy Service](#external-routing-policy-service)
+- [PII Filtering](#pii-filtering)
+- [Usage Reports](#usage-reports)
+- [Make Targets](#make-targets)
+- [CLI Smoke Tests](#cli-smoke-tests)
+- [Claude Code](#claude-code)
+- [Codex CLI](#codex-cli)
+- [Test](#test)
+
+## Editions
+
+- **Community**: this Apache-2.0 repository. No license key is required by
+  default. You may use, modify, and distribute the software under Apache-2.0
+  without payment; Enterprise offerings never condition those Apache rights on
+  payment.
+- **Enterprise**: a separate distribution with production validation, named
+  support, signed releases, and related commercial entitlements.
+
+Privacy defaults for this software: do not retain prompts or responses by
+default; do not train on traffic; provider keys stay in your deployment.
+
+## Known limitations
+
+See [Architecture, Platforms, And Limitations](docs-site/docs/reference/architecture-limitations.md)
+for the full operator-owned boundary list. Streaming accuracy in brief: native
+incremental SSE applies to same-dialect Chat Completions and Anthropic
+Messages; OpenAI Responses and cross-dialect bridges synthesize SSE after a
+unary upstream response.
+
+## Software License And Notices
+
+The repository-root [LICENSE](LICENSE) contains the Apache License 2.0 terms
+for Metrum AI Router first-party content. Keep it together with
+[NOTICE](NOTICE), the dependency and asset inventory in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the model-term boundaries
+in [MODEL_LICENSES.md](MODEL_LICENSES.md) when copying or redistributing a
+release. Third-party components, assets, and models remain governed by their
+own applicable terms; the Apache-2.0 license does not replace them. See
+[TRADEMARKS.md](TRADEMARKS.md) for mark usage.
+
+Optional signed `license.json` is a separate operator runtime-policy input for
+feature and operational enforcement when enabled. It is not the software
+copyright license and not a replacement for any of the files above. See
+[docs/LICENSE.md](docs/LICENSE.md) for the complete scope map and Apache terms.
+
+Current MVP capabilities:
+
+### Routing
+
+- Config-driven model groups with decision-making strategies first: `dynamic_score`, TypeScript `script`, and `external` policy services (including Learned Routing Policy). Optional model-group `contract` gates and request-shape eligibility filtering run before strategy selection. Fallback stays inside the requested group.
+- External policy `shadow`, `enforce`, and `baseline` modes provide explicit promotion and rollback while selection remains limited to post-eligibility targets.
+- Dynamic-score conversation affinity is enabled by default, caller-isolated,
+  process-local, TTL-bounded, and subordinate to current eligibility.
+- TypeScript routing scripts for custom model-selection logic inside the Go
+  router, with fresh per-decision VMs, a bounded per-group concurrency cap, and
+  cancellation-aware admission.
+- External routing policy services for standalone web-service target selection
+  with safe request, caller, target, pricing, tool, and modality context,
+  connection reuse, bounded timeouts, and reversible baseline/shadow/enforce
+  modes.
+- Conservative traffic-mix strategies remain available: `static`, `weighted`, and `failover`.
+- `strategy: intelligent` is an experimental baseline-only LLM-selector scaffold (shadow/simulate only; it does not alter target selection). Legacy `latency`, `cost`, and `semantic` are compatibility-only stubs. See [Deprecated Selectors](docs-site/docs/reference/deprecated-selectors.md).
+
+### Gateway and governance
+
+- Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses ingress.
+- Anthropic token-count estimate endpoint for Claude Code startup.
+- Bearer-token auth using configured SHA-256 token hashes.
+- Separate caller dialects from upstream provider adapters: callers can use
+  Anthropic/OpenAI wire formats while targets route to Anthropic,
+  OpenAI-compatible, Replicate, or evidence-gated unary-text Gemini
+  `generateContent` adapters.
+- Optional bounded `targets[].region` metadata for selected-target diagnostics;
+  deployments remain responsible for residency enforcement and provider
+  validation.
+- Server-side provider key injection.
+- Same-dialect OpenAI Chat and Anthropic Messages native SSE proxying with incremental delivery, plus unary upstream proxying and caller-dialect response encoding for OpenAI Responses and cross-dialect bridges.
+- Committed native streams never fall back after the first event; caller cancellation stops the upstream request.
+- In-process LRU+TTL cache for eligible unary responses.
+- Per-caller RPM, TPM, concurrency, traffic shaping, rolling quota, and lifetime key budget enforcement.
+- Disk-persisted quota/key state.
+- JSONL request logs using the SRS schema.
+- Metrics-admin-only Prometheus-compatible `/metrics` with caller/user/project labels.
+- Usage reports, admin browser reports, and optional signed runtime-policy licensing.
+
