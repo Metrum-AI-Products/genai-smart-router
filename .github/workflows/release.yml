@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to build (for example v1.3.1)"
+        description: "Release tag to build (for example v1.4.4). Build-only unless this run is already on that tag ref."
         required: true
 
 permissions:
@@ -68,9 +68,41 @@ jobs:
             dist/**
             dist/SHA256SUMS
           if-no-files-found: error
-      - name: Publish GitHub Release assets
+      - name: Publish GitHub Release with assets
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ steps.version.outputs.tag }}" dist/* --clobber
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          if [ "${GITHUB_REF_NAME}" != "${TAG}" ]; then
+            echo "ref tag ${GITHUB_REF_NAME} does not match resolved version ${TAG}" >&2
+            exit 2
+          fi
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "GitHub Release ${TAG} already exists." >&2
+            echo "This repository uses immutable releases, so assets cannot be uploaded after the fact." >&2
+            echo "Do not create an empty release first. Push the annotated tag and let this workflow create the release with dist/* assets in one step." >&2
+            exit 1
+          fi
+          mapfile -t ASSETS < <(find dist -maxdepth 1 -type f ! -name '*.sha256' | sort)
+          if [ "${#ASSETS[@]}" -eq 0 ]; then
+            echo "no dist assets found to attach to ${TAG}" >&2
+            exit 1
+          fi
+          NOTES_FILE="$(mktemp)"
+          if git cat-file -t "refs/tags/${TAG}" 2>/dev/null | grep -qx tag; then
+            git tag -l --format='%(contents)' "${TAG}" > "${NOTES_FILE}"
+          fi
+          if [ ! -s "${NOTES_FILE}" ]; then
+            printf 'Metrum AI Router %s\n' "${TAG}" > "${NOTES_FILE}"
+          fi
+          # Dry-run the exact publication command shape before mutate.
+          printf 'gh release create %s --verify-tag --title %s --notes-file %s' "${TAG}" "Metrum AI Router ${TAG}" "${NOTES_FILE}"
+          printf ' %q' "${ASSETS[@]}"
+          printf '\n'
+          gh release create "${TAG}" \
+            --verify-tag \
+            --title "Metrum AI Router ${TAG}" \
+            --notes-file "${NOTES_FILE}" \
+            "${ASSETS[@]}"
