@@ -1,24 +1,115 @@
 # Metrum AI Router Solution Brief
 
-Metrum AI Router is a provider-neutral, self-managed LLM smart router and governance layer for enterprise LLM traffic. It selects an upstream model per request from a deployment-owned policy, then records why. Teams expose one controlled API endpoint to applications and developer tools while routing across multiple upstream providers using policy, cost, availability, observed performance, caller identity, and workload-specific rules.
+Agent workloads make dozens of upstream model calls per user task. Paying
+frontier list price on every call is the default when applications hard-code
+one premium model. Token spend then shows up on the invoice after the monthly
+budget is already gone. EY describes token costs as a visible signal of
+changing agentic AI economics and argues that leaders need Agent FinOps
+discipline to manage total cost, value, and risk. See EY,
+["Unlocking agentic value: a new investment discipline for the agentic era"](https://www.ey.com/en_us/insights/ai/agentic-ai-token-costs),
+June 1, 2026.
 
-The result is a simpler operating model: applications integrate once, operators keep provider keys and routing policy server-side, and platform teams get consistent authentication, quotas, cache behavior, audit logs, metrics, and usage reports across heterogeneous LLM backends.
+One deterministic Harbor run on the reference `big-coder` group used 48,470
+Harbor input tokens through Codex CLI for a single
+`aider/polyglot_python_two-bucket` task. That is one agent, one task, one
+group. Concurrent agents multiply that pattern into monthly spend.
+([harbor-case-study.md](harbor-case-study.md), June 29, 2026 Codex
+`big-coder` row: Harbor input 48,470; Harbor cache 31,744; Harbor output
+2,598.)
+
+Metrum AI Router is a provider-neutral, self-managed LLM gateway and governance
+layer. It selects an upstream model per request from a deployment-owned policy,
+then records why. Teams expose one controlled API endpoint to applications and
+developer tools while routing across multiple upstream providers using policy,
+cost, availability, observed performance, caller identity, and workload-specific
+rules. Applications integrate once. Operators keep provider keys and routing
+policy server-side. Platform teams get consistent authentication, quotas, cache
+behavior, audit logs, metrics, and usage reports across heterogeneous LLM
+backends.
 
 ## Executive Summary
 
-Modern AI teams often need more than one model provider. Different models may be better for coding, summarization, data extraction, low-latency chat, or high-reasoning workflows. Provider availability, pricing, rate limits, and access permissions also change over time. Hard-coding provider-specific endpoints into each application creates operational risk, pins throughput to one upstream limit, and makes migration expensive.
+Platform teams that run agents need more than one model provider. Different
+models fit coding, summarization, extraction, low-latency chat, or
+high-reasoning work. Provider availability, pricing, rate limits, and
+entitlements change. Hard-coding provider endpoints into each application pins
+throughput to one upstream limit and makes migration expensive. An agent coding
+task that burns 48,470 Harbor input tokens on one `big-coder` run still needs a
+cheaper eligible target when quality evidence allows it. Without a group
+contract, every call stays on the premium default and the invoice arrives
+after the budget is spent
+([harbor-case-study.md](harbor-case-study.md)).
 
-Metrum AI Router centralizes that complexity behind one internal API surface. Clients can speak OpenAI-style or Anthropic-style APIs; the router authenticates the caller, selects an allowed model group, chooses an upstream target, injects the provider credential, normalizes responses, records usage, and returns the response in the caller's expected dialect.
+Mental model for the first screen of every request: a model group is a quality
+and cost contract callers request by name; routing picks the cheapest candidate
+that has evidence of meeting that contract; contract validation evidence
+expires through optional `contract.quality_floor.max_eval_age_days` so stale
+`validated_at` values remove a target from eligibility; Learned Routing Policy
+can abstain under calibrated uncertainty when `uncertainty_abstention` is
+enabled, then fall back to `abstention_anchor` or the first fallback; allow
+lists, rate limits, quotas, and lifetime token budgets run before any upstream
+provider call.
 
-Quality decisions should be evidence-first. For router-versus-fixed-model complaints or buyer evaluations, use [Evaluation Evidence Playbook](EVALUATION_EVIDENCE_PLAYBOOK.md) to compare a routed group, fixed model, or previous policy with workload, client, tools, versions, token caps, and scoring held constant.
+```yaml
+models:
+  support-chat:
+    strategy: weighted
+    contract:
+      quality_floor:
+        require_tags: [validated]
+        min_eval_quality_score: 0.90
+        min_eval_pass_rate: 0.95
+        max_eval_age_days: 30
+        allowed_validation_status: [passed]
+```
+
+Metrum AI Router centralizes that complexity behind one internal API surface.
+Clients can speak OpenAI-style or Anthropic-style APIs. The router authenticates
+the caller, selects an allowed model group, chooses an upstream target, injects
+the provider credential, normalizes responses, records usage, and returns the
+response in the caller's expected dialect.
+
+Quality decisions should be evidence-first. For router-versus-fixed-model
+complaints or buyer evaluations, use
+[Evaluation Evidence Playbook](EVALUATION_EVIDENCE_PLAYBOOK.md) to compare a
+routed group, fixed model, or previous policy with workload, client, tools,
+versions, token caps, and scoring held constant.
 
 ## Learned Routing Policy
 
+Static weights and fixed premium defaults leave spend on the table when a
+cheaper eligible target would meet the quality floor. Selectors without a
+measured floor or abstention send uncertain traffic to the wrong target.
 Learned Routing Policy (LRP) is an optional `strategy: external` service. It
 predicts per-target quality and output tokens with LightGBM and isotonic
 calibration, then selects the cheapest eligible target above an operator
 quality floor. The router still authenticates the caller and filters request
-shape before LRP sees targets.
+shape before LRP sees targets. Operator runbook:
+[LEARNED_ROUTING_POLICY.md](LEARNED_ROUTING_POLICY.md). Public pages: hosted
+`/docs/routing/learned-routing-policy`.
+
+### Synthetic worked example
+
+Figures below are synthetic repository artifacts from seed 42 and 800
+generated requests (train 569, valid 118, test 113). They demonstrate wiring
+and promotion-gate behavior. They do not authorize live promotion.
+
+**Synthetic holdout: anchor vs routed (n=113)**
+
+| Policy | Cost (USD) | Quality mean | Floor violation rate | Abstention rate | n |
+|---|---|---|---|---|---|
+| always_anchor | 0.151829 | 1.0 | 0.0 | not measured | 113 |
+| lrp | 0.1507895 | 1.0 | 0.0 | not measured | 113 |
+| always_cheapest | 0.0151829 | 0.48672566371681414 | 0.5132743362831859 | not measured | 113 |
+
+Arithmetic on the holdout: LRP cost / always_anchor cost = 0.1507895 /
+0.151829 ≈ 0.99315. Quality means match at 1.0. Floor violations stay at 0.0
+for both. `promotable` is false because gates `cost_vs_anchor` and
+`real_data_and_embedding` failed. The gates blocked promotion as designed for
+synthetic embeddings and mock outcomes
+([evidence/learned-routing-policy/public-training.json](evidence/learned-routing-policy/public-training.json)).
+A live promotion still needs real embeddings and real outcomes; this artifact
+stays non-promotable until those gates pass.
 
 Promotion uses `external_policy.mode`: `baseline` (no policy call), `shadow`
 (record recommendation, serve first eligible), `enforce` (serve
@@ -27,8 +118,6 @@ Feedback posts status, usage, cost, and latency. Quality labels arrive
 offline from sandboxed verifiers or separate LLM/human judging.
 
 Synthetic demos (`make lrp-synthetic-demo`) do not authorize live promotion.
-Operator runbook: [LEARNED_ROUTING_POLICY.md](LEARNED_ROUTING_POLICY.md).
-Public pages: hosted `/docs/routing/learned-routing-policy`.
 
 ```mermaid
 flowchart LR
@@ -45,7 +134,15 @@ flowchart LR
 
 ## Buyer Value
 
-Metrum AI Router is useful when an organization wants the flexibility of multiple LLM providers without distributing provider credentials, rewriting every client, or losing cost and usage visibility.
+Organizations that need multiple LLM providers still have to keep credentials
+off client machines, avoid rewriting every application, and retain cost and
+usage visibility. Metrum AI Router is the control point for that combination.
+
+1. A coding caller with `allow: [default, fast, small, medium, high, big-coder]`
+   and `rate: { rpm: 120, tpm: 200000, concurrent: 8 }` (see Configuration
+   Overview below) can use agent CLIs against stable group names while provider
+   keys stay server-side. A disallowed group returns `403 model-not-allowed`
+   before any upstream credential is used.
 
 Technical buyers typically evaluate it for:
 
@@ -60,7 +157,18 @@ Technical buyers typically evaluate it for:
 
 ## Cost Governance Context
 
-Enterprise AI spend is moving from predictable software licensing toward variable inference consumption. This is especially visible in agentic workflows, where one user action can trigger planning, retrieval, tool calls, retries, subagents, and multiple model invocations. EY describes token costs as a visible signal of changing agentic AI economics and argues that leaders need broader Agent FinOps discipline to manage total cost, value, and risk. See EY, ["Unlocking agentic value: a new investment discipline for the agentic era"](https://www.ey.com/en_us/insights/ai/agentic-ai-token-costs), June 1, 2026.
+Agentic workflows turn one user action into planning, retrieval, tool calls,
+retries, subagents, and many model invocations. Variable inference spend
+replaces predictable license line items. The opening section cites EY's June 1,
+2026 Agent FinOps framing and the Harbor `big-coder` 48,470-input-token Codex
+example for that pressure.
+
+1. Illustrative arithmetic: if 20 concurrent agents each repeat a 48,470-input
+   Harbor-scale task once per day, daily Harbor-scale input demand is
+   20 × 48,470 = 969,400 tokens before retries or tool loops. Budgets that
+   count only after completion miss concurrent overshoot. Source numbers:
+   [harbor-case-study.md](harbor-case-study.md); multiplier labeled
+   illustrative.
 
 Metrum AI Router addresses the controllable layer of that problem:
 
