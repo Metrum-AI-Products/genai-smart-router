@@ -5,6 +5,11 @@ doc_type: howto
 
 # Train And Serve Learned Routing Policy
 
+Split public pages: [Concepts](learned-routing-policy.md),
+[Train and evaluate](lrp-train-and-evaluate.md),
+[Serve and promote](lrp-serve-and-promote.md). This page keeps the command
+blocks and checked-in synthetic evidence tables.
+
 Learned Routing Policy (LRP) trains a **routing policy**, not upstream language
 models. Offline, LightGBM fits per-target quality and output-token models.
 Online, `lrp serve` loads a versioned bundle and recommends the cheapest eligible

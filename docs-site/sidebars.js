@@ -7,7 +7,7 @@ const sidebars = {
     "overview",
     {
       type: "category",
-      label: "Tutorials",
+      label: "Getting Started",
       collapsed: false,
       items: [
         "getting-started/local-quickstart",
@@ -15,6 +15,21 @@ const sidebars = {
         "getting-started/codex-cli",
         "getting-started/claude-code-cli",
         "getting-started/coding-agent-clients",
+      ],
+    },
+    {
+      type: "category",
+      label: "Learned Routing",
+      collapsed: false,
+      items: [
+        "routing/learned-routing-policy",
+        "routing/lrp-train-and-evaluate",
+        "routing/lrp-serve-and-promote",
+        "routing/lrp-uncertainty",
+        "routing/lrp-verifiers-and-judging",
+        "routing/lrp-selection-constraints",
+        "routing/lrp-signed-bundles",
+        "routing/lrp-train-and-serve",
       ],
     },
     {
@@ -35,12 +50,7 @@ const sidebars = {
         "configuration/dynamic-score-routing",
         "configuration/routing-typescript",
         "configuration/external-routing-policy",
-        "routing/learned-routing-policy",
         "configuration/external-policy-context",
-        "routing/lrp-train-and-serve",
-        "routing/lrp-signed-bundles",
-        "routing/lrp-selection-constraints",
-        "routing/lrp-uncertainty",
         "configuration/image-analysis-vlm",
         "configuration/reasoning-routing",
         "configuration/self-hosted-upstreams",

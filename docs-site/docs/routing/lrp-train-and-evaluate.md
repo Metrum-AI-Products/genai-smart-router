@@ -1,0 +1,51 @@
+---
+title: Train and evaluate Learned Routing Policy
+doc_type: howto
+---
+
+# Train and Evaluate Learned Routing Policy
+
+LRP trains a routing policy, not upstream language models. Offline, LightGBM
+fits per-target quality and output-token models. Quality scores are
+isotonic-calibrated. Evaluation uses a session-disjoint held-out split.
+
+Callers still request a deployment-defined model group. Training datasets,
+responses, and judgments stay in operator-controlled storage.
+
+## Pipeline
+
+```text
+approved workload dataset
+  -> collect -> fanout -> verify/judge -> featurize -> train -> evaluate
+  -> validated bundle
+```
+
+After `uv sync --project services/learned-routing-policy --locked`:
+
+```bash
+uv run --project services/learned-routing-policy --locked lrp collect
+uv run --project services/learned-routing-policy --locked lrp fanout
+uv run --project services/learned-routing-policy --locked lrp judge
+uv run --project services/learned-routing-policy --locked lrp featurize
+uv run --project services/learned-routing-policy --locked lrp train
+uv run --project services/learned-routing-policy --locked lrp eval
+uv run --project services/learned-routing-policy --locked lrp validate --bundle "$LRP_BUNDLE_DIR"
+```
+
+Each target needs at least 200 training rows to participate in learned
+selection. That is a sample-count floor, not proof of workload coverage.
+
+## Synthetic demo
+
+```bash
+make lrp-test
+make lrp-synthetic-demo
+```
+
+Synthetic results do not authorize live promotion. Provider-backed outcomes and
+real embedding latency are separate evidence.
+
+Flags, splits, and promotion gates:
+[operator runbook](https://github.com/metrum-ai/router/blob/main/docs/LEARNED_ROUTING_POLICY.md).
+Evaluation splits: [LRP_EVAL_SPLITS.md](https://github.com/metrum-ai/router/blob/main/docs/LRP_EVAL_SPLITS.md).
+Serve and promotion: [Serve and promote](lrp-serve-and-promote.md).

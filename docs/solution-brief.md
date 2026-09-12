@@ -12,6 +12,24 @@ Metrum AI Router centralizes that complexity behind one internal API surface. Cl
 
 Quality decisions should be evidence-first. For router-versus-fixed-model complaints or buyer evaluations, use [Evaluation Evidence Playbook](EVALUATION_EVIDENCE_PLAYBOOK.md) to compare a routed group, fixed model, or previous policy with workload, client, tools, versions, token caps, and scoring held constant.
 
+## Learned Routing Policy
+
+Learned Routing Policy (LRP) is an optional `strategy: external` service. It
+predicts per-target quality and output tokens with LightGBM and isotonic
+calibration, then selects the cheapest eligible target above an operator
+quality floor. The router still authenticates the caller and filters request
+shape before LRP sees targets.
+
+Promotion uses `external_policy.mode`: `baseline` (no policy call), `shadow`
+(record recommendation, serve first eligible), `enforce` (serve
+recommendation). Rollback is `mode: baseline` or restoring prior config.
+Feedback posts status, usage, cost, and latency. Quality labels arrive
+offline from sandboxed verifiers or separate LLM/human judging.
+
+Synthetic demos (`make lrp-synthetic-demo`) do not authorize live promotion.
+Operator runbook: [LEARNED_ROUTING_POLICY.md](LEARNED_ROUTING_POLICY.md).
+Public pages: hosted `/docs/routing/learned-routing-policy`.
+
 ```mermaid
 flowchart LR
   App[Applications and AI tools] --> Router[Metrum AI Router]

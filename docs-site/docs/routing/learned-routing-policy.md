@@ -6,7 +6,30 @@ doc_type: explanation
 # Learned Routing Policy
 
 Learned Routing Policy (LRP) recommends the lowest-cost eligible target predicted
-to meet an operator-defined quality floor. Different models are good at different
+to meet an operator-defined quality floor.
+
+```mermaid
+flowchart LR
+  subgraph requestPath [Request path]
+    Caller[Caller] --> Router[Metrum AI Router]
+    Router --> Elig[Eligibility filter]
+    Elig --> LRP[LRP external policy]
+    LRP --> Target[Selected target]
+    Target --> Feedback[Feedback status usage cost latency]
+    Feedback --> LRP
+  end
+  subgraph trainLoop [Offline train and evaluate]
+    Data[Approved dataset] --> Fanout[Fanout]
+    Fanout --> Label[Verifier or judge]
+    Label --> Train[Train and calibrate]
+    Train --> Eval[Held-out eval]
+    Eval --> Bundle[Versioned bundle]
+  end
+  Bundle --> LRP
+```
+
+Quality labels are assigned offline. Feedback carries status, usage, cost, and
+latency only. Different models are good at different
 jobs and to different degrees. Teams establish the cheapest sufficient model mix
 using objective outcomes, such as unit tests, extraction accuracy, tool-call
 correctness, browser tasks or product acceptance tests.
