@@ -60,6 +60,58 @@ For image-bearing validation, attach an image with `--image` and use the same al
 
 Codex requests use the Responses API shape. If a model group contains many OpenAI Chat targets but only a smaller set of Responses-compatible targets, Codex will route within that Responses subset. For example, a deployment may validate MiniMax `MiniMax-M3` as separate Chat, Responses, and Anthropic Messages provider skins; Codex can use only the Responses skin in that group.
 
+## Containerized tool smokes
+
+Tool-capable smokes should run in a disposable container. Pass only the router
+base URL and a scoped router token. Bind-mount only a scratch work directory.
+
+```bash
+unset ANTHROPIC_API_KEY
+mkdir -p "$WORK/claude-tool-work"
+docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 1 --memory 1g --pids-limit 256 --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --mount type=bind,source="$WORK/claude-tool-work",target=/workspace \
+  -e "ANTHROPIC_BASE_URL=http://127.0.0.1:18081/anthropic" \
+  -e "ANTHROPIC_AUTH_TOKEN=$ROUTER_TOKEN" \
+  -w /workspace "$TOOL_SMOKE_IMAGE" \
+  claude --bare --print --model claude-tools-smoke \
+    --permission-mode bypassPermissions \
+    --allowedTools "Write,Bash" \
+    "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
+
+test "$(cat "$WORK/claude-tool-work/claude_tool_smoke.txt")" = "claude-tool-ok"
+```
+
+```bash
+mkdir -p "$WORK/codex-tool-work"
+curl -fsS "http://127.0.0.1:18081/v1/codex/models.json" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -o "$WORK/codex-tool-work/metrum-models.json"
+docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 1 --memory 1g --pids-limit 256 --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --mount type=bind,source="$WORK/codex-tool-work",target=/workspace \
+  -e "METRUM_ROUTER_KEY=$ROUTER_TOKEN" \
+  -e "ROUTER_BASE_URL=http://127.0.0.1:18081" \
+  -w /workspace "$TOOL_SMOKE_IMAGE" \
+  codex exec --ignore-user-config --ephemeral \
+    --ignore-rules \
+    --skip-git-repo-check \
+    --dangerously-bypass-approvals-and-sandbox \
+    -C /workspace \
+    -c 'model="agent-tools-smoke"' \
+    -c 'model_provider="metrum-ai-router"' \
+    -c 'model_catalog_json="/workspace/metrum-models.json"' \
+    -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+    -c 'model_providers.metrum-ai-router.base_url="http://127.0.0.1:18081/v1"' \
+    -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+    -c 'model_providers.metrum-ai-router.wire_api="responses"' \
+    "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
+
+test "$(cat "$WORK/codex-tool-work/codex_tool_smoke.txt")" = "codex-tool-ok"
+```
+
 ## Claude Code CLI
 
 Claude Code uses the Anthropic Messages-compatible router path. Use `ANTHROPIC_AUTH_TOKEN` for the router token and unset `ANTHROPIC_API_KEY` for router traffic.

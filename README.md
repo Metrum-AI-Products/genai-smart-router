@@ -176,6 +176,151 @@ promotion.
 | Native shadow: LRP recommended `strong`; router served configured-first `cheap` | Single synthetic inference snapshot | [docs-site/docs/routing/lrp-train-and-serve.md](docs-site/docs/routing/lrp-train-and-serve.md) | 2026-09-09 |
 | Harbor Codex reward 1, Claude Code reward 0 on `big-coder` | One deterministic weighted-group run; not LRP | [docs/harbor-case-study.md](docs/harbor-case-study.md) | 2026-06-29 |
 
+## What sets this router apart
+
+### Budget enforcement before the upstream call
+
+Token-budget admission reserves estimated input tokens, tool/schema payload
+size, and the requested output cap before a cache-miss upstream call. TPM,
+daily token, monthly token, and lifetime key budgets include in-flight
+reservations. Completed requests reconcile to reported usage; failed or
+canceled requests release the reservation; cache hits do not consume persisted
+token quota. Counting only after completion lets concurrent large-cap requests
+overshoot.
+Source: [API Key Flow](#api-key-flow), `internal/router/service.go`,
+`internal/router/quota.go`.
+
+```yaml
+callers:
+  - id: example-standard-dev
+    rate: { rpm: 120, tpm: 200000, concurrent: 8 }
+    quota:
+      day: { requests: 5000, tokens: 20000000 }
+      month: { tokens: 400000000 }
+    key: { lifetime_tokens: 2000000000, soft_pct: 90, on_exhaust: disable }
+```
+
+### Request-shape eligibility before selection
+
+The router filters dialect, per-skin tool support, modalities, structured
+outputs, reasoning controls, max-token honoring, and payload size before
+strategy selection. If none remain, it returns `502 no-eligible-target` with
+no upstream attempt. Forwarding first and waiting for a provider `400` spends
+a call on an ineligible shape.
+Source: `internal/router/service.go`, `internal/router/request_shape_eligibility.go`.
+
+### Quality contracts with expiry
+
+An optional model-group `contract` applies `require_tags`,
+`min_eval_quality_score`, `min_eval_pass_rate`, `max_eval_age_days`, and
+`allowed_validation_status`. Stale `validated_at` removes a target from
+eligibility. Static routing weights do not expire on their own.
+Source: [Model Group Contracts](#model-group-contracts),
+`internal/router/contract.go`.
+
+```yaml
+models:
+  support-chat:
+    strategy: weighted
+    contract:
+      quality_floor:
+        require_tags: [validated]
+        min_eval_quality_score: 0.90
+        min_eval_pass_rate: 0.95
+        max_eval_age_days: 30
+        allowed_validation_status: [passed]
+```
+
+### Request-time cost capture
+
+Each usage row stores input/output price per million, pricing source and date,
+computed USD, plus routing/policy/pricing fingerprints. Historical reports use
+those stored values after provider list prices change. Savings baselines are
+source-dated operator comparisons.
+Source: [Usage Reports](#usage-reports), `internal/router/usage_db.go`.
+
+### Private and mixed hardware routing
+
+vLLM, SGLang, and any OpenAI-compatible service register as catalog targets
+with the same activation rules. One group can weight a private target with a
+hosted fallback after exact-shape validation.
+Source: [docs/SELF_HOSTED_UPSTREAMS.md](docs/SELF_HOSTED_UPSTREAMS.md).
+
+```yaml
+models:
+  mixed-hardware:
+    strategy: weighted
+    targets:
+      - { provider: private_vllm, model_ref: small-local, weight: 80 }
+      - { provider: hosted_chat, model_ref: fallback, weight: 20 }
+```
+
+### Capacity pooling and upstream protection
+
+A group can pool the same model across provider accounts or endpoints.
+Optional provider/model/target shaping can start bounded adaptive cooldowns
+after classified 429 or quota exhaustion when those knobs are enabled.
+Fallback runs on retryable classes. Ordinary non-retryable 4xx is not replayed
+to another provider.
+Source: [API Key Flow](#api-key-flow), `internal/router/upstream_shape.go`.
+
+### Secrets and content never leak into policy
+
+Scripts and external policies receive safe identifiers only. Provider keys are
+injected server-side. Optional `pii_filter` runs before cache key, routing
+input, and upstream call (`redact_only`, `redact_and_restore`, `fail_on_match`).
+Content capture is opt-in, redacted, and AES-256-GCM encrypted.
+Source: [TypeScript Routing](#typescript-routing), [PII Filtering](#pii-filtering),
+`internal/router/content_capture.go`.
+
+### Every decision is evidence
+
+When usage persistence, diagnostics, and optional decision telemetry are
+enabled, attempts, traces, traffic-shape events, request shapes, translation
+shapes, sanitized upstream errors, and terminal errors join by `request_id`.
+`/admin/reports/api/request-evidence` returns a completeness-scored bundle.
+Decision telemetry stores scalar buckets only. Pre-selection failures may have
+no routing-decision row.
+Source: [Usage Reports](#usage-reports), `internal/router/decision_telemetry.go`.
+
+### Sovereignty by default
+
+Apache-2.0 core. No license key required by default. Optional signed-license
+verification is local. Prompts and responses are not retained by default. The
+documented policy is not to train on traffic. Linux binary, Compose, and
+Kubernetes are the documented runtimes. Operators can run on-premises or
+air-gapped infrastructure.
+Source: [Editions](#editions),
+[deployment-paths](docs-site/docs/licensing/deployment-paths.md),
+[architecture-limitations](docs-site/docs/reference/architecture-limitations.md).
+
+### Agent CLI support as a first-class path
+
+Claude Code uses `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`. Codex uses
+`/v1/codex/models.json` as a caller-filtered Responses catalog. Tool-bearing
+requests bypass the response cache. Keep the two smoke commands in
+[CLI Smoke Tests](#cli-smoke-tests). Containerized tool variants:
+[coding-agent-clients](docs-site/docs/getting-started/coding-agent-clients.md#containerized-tool-smokes).
+
+### What it does not do
+
+From [Explicit Limitations And Non-Goals](docs-site/docs/reference/architecture-limitations.md#explicit-limitations-and-non-goals):
+
+- Model-group names and provider availability are deployment-defined; the
+  project does not guarantee access to any provider or model.
+- Catalog metadata is not capability proof. Tools, images, API bridges, and
+  large request shapes require direct upstream and router-level validation.
+- The in-process response cache is per process and is cleared by restart.
+- After the first native SSE event, the HTTP response is committed. A later
+  failure cannot change the caller's `200`, append a reliable error envelope,
+  or fall back to another target; clients must detect a missing terminal event.
+- SQLite is not a shared multi-writer database and must not back horizontally
+  scaled router replicas.
+- The project does not provide provider uptime, model-quality, legal,
+  compliance, or support-service guarantees.
+
+Remaining bullets live on that page.
+
 ## Proof: same group, different upstream
 
 One caller-facing model group can select different upstream models for different
@@ -1286,25 +1431,8 @@ router claude ok
 
 Expected log fields include `client=claude-code`, `inbound_dialect=anthropic`, `requested_model=cli-smoke`, and a concrete target provider/model. Provider keys must not appear in output or logs.
 
-Tool-capable smoke for Claude Code should run inside a disposable container or equivalent sandbox. The sandbox should receive only the router base URL and a scoped router token, and it should bind-mount only a scratch work directory:
-
-```bash
-unset ANTHROPIC_API_KEY
-mkdir -p "$WORK/claude-tool-work"
-docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
-  --cpus 1 --memory 1g --pids-limit 256 --read-only \
-  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
-  --mount type=bind,source="$WORK/claude-tool-work",target=/workspace \
-  -e "ANTHROPIC_BASE_URL=http://127.0.0.1:18081/anthropic" \
-  -e "ANTHROPIC_AUTH_TOKEN=$ROUTER_TOKEN" \
-  -w /workspace "$TOOL_SMOKE_IMAGE" \
-  claude --bare --print --model claude-tools-smoke \
-    --permission-mode bypassPermissions \
-    --allowedTools "Write,Bash" \
-    "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
-
-test "$(cat "$WORK/claude-tool-work/claude_tool_smoke.txt")" = "claude-tool-ok"
-```
+Containerized tool smokes:
+[Coding-Agent Client Matrix](docs-site/docs/getting-started/coding-agent-clients.md#containerized-tool-smokes).
 
 ### Codex CLI
 
@@ -1359,36 +1487,8 @@ router codex ok
 
 Expected log fields include `client=codex`, `inbound_dialect=openai-responses`, `requested_model=cli-smoke`, and no leaked credentials. A local Codex installation may print a bubblewrap/user-namespace warning; that is separate from the router request and does not indicate provider failure.
 
-Tool-capable smoke for Codex follows the same containerized pattern:
-
-```bash
-mkdir -p "$WORK/codex-tool-work"
-curl -fsS "http://127.0.0.1:18081/v1/codex/models.json" \
-  -H "Authorization: Bearer $ROUTER_TOKEN" \
-  -o "$WORK/codex-tool-work/metrum-models.json"
-docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
-  --cpus 1 --memory 1g --pids-limit 256 --read-only \
-  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
-  --mount type=bind,source="$WORK/codex-tool-work",target=/workspace \
-  -e "METRUM_ROUTER_KEY=$ROUTER_TOKEN" \
-  -e "ROUTER_BASE_URL=http://127.0.0.1:18081" \
-  -w /workspace "$TOOL_SMOKE_IMAGE" \
-  codex exec --ignore-user-config --ephemeral \
-    --ignore-rules \
-    --skip-git-repo-check \
-    --dangerously-bypass-approvals-and-sandbox \
-    -C /workspace \
-    -c 'model="agent-tools-smoke"' \
-    -c 'model_provider="metrum-ai-router"' \
-    -c 'model_catalog_json="/workspace/metrum-models.json"' \
-    -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
-    -c 'model_providers.metrum-ai-router.base_url="http://127.0.0.1:18081/v1"' \
-    -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
-    -c 'model_providers.metrum-ai-router.wire_api="responses"' \
-    "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
-
-test "$(cat "$WORK/codex-tool-work/codex_tool_smoke.txt")" = "codex-tool-ok"
-```
+Containerized Codex tool smoke:
+[Coding-Agent Client Matrix](docs-site/docs/getting-started/coding-agent-clients.md#containerized-tool-smokes).
 
 Tool-bearing requests bypass the router response cache. They are intentionally routed to the provider every time because tool calls depend on external filesystem, shell, and agent state.
 
@@ -1424,7 +1524,8 @@ Former README headings remain reachable below or from this index.
 - [Quick Start From Source](#quick-start-from-source)
 - [Learned Routing Policy](#learned-routing-policy)
 - [Evidence status](#evidence-status)
-- [Cache Behavior](#cache-behavior)
+- [What sets this router apart](#what-sets-this-router-apart)
+- [Proof: same group, different upstream](#proof-same-group-different-upstream)
 - [Build And Package](#build-and-package)
 - [Documentation Map](#documentation-map)
 - [Run From Source](#run-from-source)
