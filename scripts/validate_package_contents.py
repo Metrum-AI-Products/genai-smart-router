@@ -15,6 +15,8 @@ import tarfile
 from pathlib import Path
 from typing import Iterable
 
+import canonical_product
+
 
 TEXT_SCAN_LIMIT = 10 * 1024 * 1024
 BINARY_PACKAGE_FILES = {
@@ -142,6 +144,7 @@ FORBIDDEN_NAME_RE = re.compile(
     r"requests\.jsonl"
     r")$"
 )
+# llm-api.apps.metrum.ai is allowed only as https://llm-api.apps.metrum.ai/docs/...
 FORBIDDEN_TEXT_PATTERNS = [
     (
         "private production host marker",
@@ -421,8 +424,9 @@ def validate_archive(archive: Path, allowed_docs: set[str]) -> list[str]:
             text = decode_text(blob[: TEXT_SCAN_LIMIT + 1])
             if text is None:
                 continue
+            privacy_text = canonical_product.strip_allowed_docs_urls(text)
             for label, pattern in FORBIDDEN_TEXT_PATTERNS:
-                if pattern.search(text):
+                if pattern.search(privacy_text):
                     errors.append(f"{archive}: {rel} contains {label}")
 
     unexpected_files = actual_files - expected_files

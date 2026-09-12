@@ -307,6 +307,17 @@ class CheckSeparationTest(unittest.TestCase):
         self.assertEqual(1, len(errors), errors)
         self.assertIn("contains private AWS account", errors[0])
 
+    def test_temporary_docs_origin_is_allowed(self) -> None:
+        line = "Hosted docs: https://llm-api.apps.metrum.ai/docs/overview"
+        self.assertEqual([], list(checker.privacy_line_errors(README, 1, line)))
+
+    def test_temporary_docs_host_api_path_remains_private(self) -> None:
+        errors = list(
+            checker.privacy_line_errors(README, 1, "curl https://llm-api.apps.metrum.ai/v1/models")
+        )
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("contains private production host/IP", errors[0])
+
     def test_stale_route_rules_still_fire_on_public_docs(self) -> None:
         errors = list(
             checker.privacy_line_errors(README, 9, "The current route is OpenRouter DeepSeek V3.")
