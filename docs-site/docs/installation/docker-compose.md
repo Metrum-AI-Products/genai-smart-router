@@ -14,7 +14,7 @@ For package selection and architecture guidance, start with [Deployment Artifact
 A release package follows this shape:
 
 ```text
-metrum-router-<version>-docker-linux-<arch>/
+metrum-ai-router-<version>-docker-linux-<arch>/
   compose/
     docker-compose.yml
     docker-compose.postgres-localhost.yml
@@ -27,7 +27,7 @@ metrum-router-<version>-docker-linux-<arch>/
     scripts/
       router.ts
   images/
-    metrum-router-<version>-linux-<arch>.tar
+    metrum-ai-router-<version>-linux-<arch>.tar
   docs/
 ```
 
@@ -38,8 +38,8 @@ The shipped Compose file bind-mounts `./config`, `./state`, and `./logs` relativ
 Use `docker-linux-amd64` for x86_64 hosts and `docker-linux-arm64` for ARM64 hosts. Release validation checks that the package has exactly one image tar for the selected architecture, required compose/config/docs files, required router binaries in the saved image layers, and no AppleDouble metadata, deployment-private notes, raw secrets, or local state files.
 
 ```bash
-cd metrum-router-<version>-docker-linux-<arch>
-docker load -i images/metrum-router-<version>-linux-<arch>.tar
+cd metrum-ai-router-<version>-docker-linux-<arch>
+docker load -i images/metrum-ai-router-<version>-linux-<arch>.tar
 
 cd compose
 mkdir -p config state logs
@@ -54,8 +54,8 @@ Generate at least one caller token and replace the placeholder caller hashes in 
 
 ```bash
 docker run --rm \
-  --entrypoint /app/bin/metrum-router-token-gen \
-  metrum-router:<version>-linux-<arch> \
+  --entrypoint /app/bin/metrum-ai-router-token-gen \
+  metrum-ai-router:<version>-linux-<arch> \
   generate \
   --owner-user example-admin \
   --project example-project \
@@ -113,12 +113,12 @@ chmod 0400 config/env.json config/license.json
 For `server.usage_db.migration_policy: deployment-job`, stop or keep the router absent while running the non-serving gate. Before upgrades, take one approved atomic offline snapshot/copy of `usage.sqlite` together with any `-wal`/`-shm` sidecars; never copy those files independently while the router writes. For a fresh SQLite PVC/state bind, run:
 
 ```bash
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --version
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=plan --driver=sqlite --db=/app/state/usage.sqlite --json
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=apply --driver=sqlite --db=/app/state/usage.sqlite --json
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --driver=sqlite --db=/app/state/usage.sqlite --json
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=verify-serving --driver=sqlite --db=/app/state/usage.sqlite --json
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-migrate router --action=status --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --version
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=plan --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=apply --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=verify-serving --driver=sqlite --db=/app/state/usage.sqlite --json
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-migrate router --action=status --driver=sqlite --db=/app/state/usage.sqlite --json
 ```
 
 `verify-serving` runs schema postconditions and fails unless the ledger is current/compatible and every bound data job is validated. It is the machine gate immediately before final read-only `status`; ordinal `0` alone does not prove completion. PostgreSQL uses the explicit override and `--driver postgres --dsn "$ROUTER_USAGE_DB_DSN"` instead.

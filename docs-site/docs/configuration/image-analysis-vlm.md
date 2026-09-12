@@ -181,11 +181,11 @@ curl -fsSL "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/rece
 codex exec --ignore-user-config --ephemeral --skip-git-repo-check \
   --image tmp/router-vision-smoke/receipt.png \
   -c 'model="<allowed-vlm-model-group>"' \
-  -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
+  -c 'model_provider="metrum-ai-router"' \
+  -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-ai-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
+  -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-ai-router.wire_api="responses"' \
   "Read the attached receipt image. Reply with only the merchant name." </dev/null
 ```
 

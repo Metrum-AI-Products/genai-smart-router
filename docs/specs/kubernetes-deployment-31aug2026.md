@@ -140,7 +140,7 @@ Under a three-resource CRD surface, account-directory fields belong on
 Image entrypoint:
 
 ```text
-/app/bin/metrum-router --config /app/config/config.yaml
+/app/bin/metrum-ai-router --config /app/config/config.yaml
 ```
 
 Generic Kustomize uses name `smart-llmrouter`, one replica, `Recreate`, RWO PVC,
@@ -157,7 +157,7 @@ in-cluster service-account tokens, or cluster credentials. It does not call the
 Kubernetes API at runtime.
 
 Kubernetes client libraries exist in this Go module because Fleet EKS adapters
-live in `internal/fleet`. Only `metrum-genai-smartrouter-fleetctl` and its
+live in `internal/fleet`. Only `metrum-ai-router-fleetctl` and its
 package-only support commands import that package. Architecture tests enforce
 that `cmd/router` and `internal/router` do not import `internal/fleet`.
 This specification MUST NOT add a serving-router

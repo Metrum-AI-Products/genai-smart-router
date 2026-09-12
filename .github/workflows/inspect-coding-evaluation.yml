@@ -4,7 +4,7 @@ name: Inspect coding evaluation
 
 on:
   pull_request:
-    paths: ["cmd/metrum-router-usage-report/**", "internal/router/**", "config.example.yaml", "Makefile", "scripts/inspect_coding_eval.py", "scripts/inspect_coding_eval_test.py", "config/evaluation-policy.example.json", ".gitignore", "examples/inspect-coding-evaluation.env.example", "docs/INSPECT_CODING_EVALUATIONS.md", "docs-site/docs/evaluation/evaluate-smart-router.md", ".github/workflows/inspect-coding-evaluation.yml"]
+    paths: ["cmd/metrum-ai-router-usage-report/**", "internal/router/**", "config.example.yaml", "Makefile", "scripts/inspect_coding_eval.py", "scripts/inspect_coding_eval_test.py", "config/evaluation-policy.example.json", ".gitignore", "examples/inspect-coding-evaluation.env.example", "docs/INSPECT_CODING_EVALUATIONS.md", "docs-site/docs/evaluation/evaluate-smart-router.md", ".github/workflows/inspect-coding-evaluation.yml"]
   push:
     branches: [main]
   schedule:

@@ -65,7 +65,7 @@ Collect production usage for the reusable Harbor caller by filtering on the conf
 cd /opt/smart-llmrouter/compose
 dsn="$(sed -n 's/^ROUTER_USAGE_DB_DSN=//p' .env | tail -n 1)"
 
-docker compose exec -T router /app/bin/metrum-router-usage-report \
+docker compose exec -T router /app/bin/metrum-ai-router-usage-report \
   --driver postgres \
   --dsn "$dsn" \
   --caller-project harbor \
@@ -198,9 +198,9 @@ For each Codex run, the script creates an isolated `CODEX_HOME` containing:
 
 ```toml
 model = "<model-group>"
-model_provider = "metrum-router"
+model_provider = "metrum-ai-router"
 
-[model_providers."metrum-router"]
+[model_providers."metrum-ai-router"]
 name = "Metrum AI Router"
 base_url = "<router-base-url>/v1"
 env_key = "METRUM_ROUTER_KEY"
@@ -238,7 +238,7 @@ For production Postgres, run from the deployment host or from an environment tha
 cd /opt/smart-llmrouter/compose
 dsn="$(sed -n 's/^ROUTER_USAGE_DB_DSN=//p' .env | tail -n 1)"
 
-docker compose exec -T router /app/bin/metrum-router-usage-report \
+docker compose exec -T router /app/bin/metrum-ai-router-usage-report \
   --driver postgres \
   --dsn "$dsn" \
   --caller-project harbor-algotune-pca \

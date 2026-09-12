@@ -10,7 +10,7 @@ the procedure for that deployment and its currently authenticated operator
 session.
 
 For Fleet-managed instances, publish a protected runtime bundle and activate a
-signed immutable intent through `metrum-genai-smartrouter-fleetctl`; do not edit
+signed immutable intent through `metrum-ai-router-fleetctl`; do not edit
 owned Kubernetes Secrets, ConfigMaps, or Deployments by hand because
 reconciliation replaces unrecorded changes. See [Customer instance operations
 runbook](CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md) and [Multi-environment

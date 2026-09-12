@@ -245,10 +245,10 @@ Release packaging smokes prove that artifacts are deterministic, external-safe, 
 | Artifact | Required smoke |
 |---|---|
 | Package validation self-test | `python3 scripts/validate_package_contents_test.py` and `python3 scripts/validate_release_clean_test.py` |
-| Binary amd64 package | Clean tree, `make package-all`, validate `dist/metrum-router-*-linux-amd64.tar.gz`, confirm x86-64 ELF binaries |
-| Binary arm64 package | Clean tree, `make package-all`, validate `dist/metrum-router-*-linux-arm64.tar.gz`, confirm aarch64 ELF binaries |
-| Docker amd64 package | Docker daemon available, `make package-docker-all`, validate `dist/metrum-router-*-docker-linux-amd64.tar.gz`, load image tar, run `/app/bin/metrum-router --version` and helper `--version` commands |
-| Docker arm64 package | Docker daemon and buildx platform support available, `make package-docker-all`, validate `dist/metrum-router-*-docker-linux-arm64.tar.gz`, load image tar, run `/app/bin/metrum-router --version` and helper `--version` commands where runner architecture or emulation allows |
+| Binary amd64 package | Clean tree, `make package-all`, validate `dist/metrum-ai-router-*-linux-amd64.tar.gz`, confirm x86-64 ELF binaries |
+| Binary arm64 package | Clean tree, `make package-all`, validate `dist/metrum-ai-router-*-linux-arm64.tar.gz`, confirm aarch64 ELF binaries |
+| Docker amd64 package | Docker daemon available, `make package-docker-all`, validate `dist/metrum-ai-router-*-docker-linux-amd64.tar.gz`, load image tar, run `/app/bin/metrum-ai-router --version` and helper `--version` commands |
+| Docker arm64 package | Docker daemon and buildx platform support available, `make package-docker-all`, validate `dist/metrum-ai-router-*-docker-linux-arm64.tar.gz`, load image tar, run `/app/bin/metrum-ai-router --version` and helper `--version` commands where runner architecture or emulation allows |
 | macOS release host | Confirm package tarballs contain no AppleDouble `._*` entries; package recipes set `COPYFILE_DISABLE=1` and validator rejects any accidental metadata entries |
 | Compose assets | Extract Docker package, verify `compose/.env` pins `SMART_LLMROUTER_VERSION=<version>-linux-<arch>`, set deployment-owned passwords/DSNs, and run `docker compose config >/dev/null` |
 
@@ -385,23 +385,23 @@ Direct checks before any active route:
 
 ```bash
 curl -fsS https://api.inference.crusoecloud.com/v1/models \
-  -H "User-Agent: metrum-router-validation" \
+  -H "User-Agent: metrum-ai-router-validation" \
   -H "Authorization: Bearer ${CRUSOE_API_KEY}"
 
 curl -fsS https://api.inference.crusoecloud.com/v1/chat/completions \
-  -H "User-Agent: metrum-router-validation" \
+  -H "User-Agent: metrum-ai-router-validation" \
   -H "Authorization: Bearer ${CRUSOE_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"model":"<crusoe-model-id>","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}'
 
 curl -N https://api.inference.crusoecloud.com/v1/chat/completions \
-  -H "User-Agent: metrum-router-validation" \
+  -H "User-Agent: metrum-ai-router-validation" \
   -H "Authorization: Bearer ${CRUSOE_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"model":"<crusoe-model-id>","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":true}'
 
 curl -fsS https://api.inference.crusoecloud.com/v1/chat/completions \
-  -H "User-Agent: metrum-router-validation" \
+  -H "User-Agent: metrum-ai-router-validation" \
   -H "Authorization: Bearer ${CRUSOE_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"model":"<crusoe-model-id>","messages":[{"role":"user","content":"Write five sentences about routing."}],"max_tokens":1,"stream":false}'
@@ -423,17 +423,17 @@ Direct Fireworks checks before any active route:
 
 ```bash
 curl -fsS https://api.fireworks.ai/inference/v1/models \
-  -H "User-Agent: metrum-router-validation" \
+  -H "User-Agent: metrum-ai-router-validation" \
   -H "Authorization: Bearer ${FIREWORKS_API_KEY}"
 
 curl -fsS https://api.fireworks.ai/inference/v1/chat/completions \
-  -H "User-Agent: metrum-router-validation" \
+  -H "User-Agent: metrum-ai-router-validation" \
   -H "Authorization: Bearer ${FIREWORKS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"model":"accounts/fireworks/models/gpt-oss-20b","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":64,"stream":false}'
 
 curl -fsS https://api.fireworks.ai/inference/v1/chat/completions \
-  -H "User-Agent: metrum-router-validation" \
+  -H "User-Agent: metrum-ai-router-validation" \
   -H "Authorization: Bearer ${FIREWORKS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"model":"accounts/fireworks/models/gpt-oss-20b","messages":[{"role":"user","content":"Reply OK only."}],"reasoning_effort":"low","max_tokens":128,"stream":false}'
@@ -470,13 +470,13 @@ Direct Fireworks Responses checks:
 
 ```bash
 curl -fsS https://api.fireworks.ai/inference/v1/responses \
-  -H "User-Agent: metrum-router-validation" \
+  -H "User-Agent: metrum-ai-router-validation" \
   -H "Authorization: Bearer ${FIREWORKS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"model":"accounts/fireworks/models/kimi-k2p7-code","input":"Reply OK only.","max_output_tokens":64,"store":false}'
 
 curl -fsS https://api.fireworks.ai/inference/v1/responses \
-  -H "User-Agent: metrum-router-validation" \
+  -H "User-Agent: metrum-ai-router-validation" \
   -H "Authorization: Bearer ${FIREWORKS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"model":"accounts/fireworks/models/kimi-k2p7-code","input":"Use the weather tool for San Francisco, CA.","max_output_tokens":512,"store":false,"tool_choice":"auto","tools":[{"type":"function","name":"get_weather","description":"Get current weather for a city","parameters":{"type":"object","properties":{"location":{"type":"string"}},"required":["location"],"additionalProperties":false}}]}'
@@ -488,7 +488,7 @@ For Crusoe VLM candidates, add an image smoke before broad routing:
 
 ```bash
 curl -fsS https://api.inference.crusoecloud.com/v1/chat/completions \
-  -H "User-Agent: metrum-router-validation" \
+  -H "User-Agent: metrum-ai-router-validation" \
   -H "Authorization: Bearer ${CRUSOE_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"model":"<crusoe-model-id>","messages":[{"role":"user","content":[{"type":"text","text":"Read the receipt image carefully. Reply with only the merchant/store chain name printed on the receipt."},{"type":"image_url","image_url":{"url":"https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}}]}],"max_tokens":512,"stream":false}'

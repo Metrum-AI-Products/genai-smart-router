@@ -250,11 +250,11 @@ run_codex() {
       -C "$codex_dir" \
       -o "$final_message" \
       -c "model=\"${group}\"" \
-      -c 'model_provider="metrum-router"' \
-      -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-      -c "model_providers.metrum-router.base_url=\"${BASE_URL}/v1\"" \
-      -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-      -c 'model_providers.metrum-router.wire_api="responses"' \
+      -c 'model_provider="metrum-ai-router"' \
+      -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+      -c "model_providers.metrum-ai-router.base_url=\"${BASE_URL}/v1\"" \
+      -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+      -c 'model_providers.metrum-ai-router.wire_api="responses"' \
       "$prompt" </dev/null >&2
   cat "$final_message"
 }
@@ -367,7 +367,7 @@ run_case() {
 }
 
 if [[ ! -x "$ROOT/router" ]]; then
-  (cd "$ROOT" && go build -o metrum-router ./cmd/metrum-router)
+  (cd "$ROOT" && go build -o metrum-ai-router ./cmd/metrum-ai-router)
 fi
 
 if [[ ! -f "$ROOT/env.json" && -z "${OPENROUTER_API_KEY:-}" ]]; then

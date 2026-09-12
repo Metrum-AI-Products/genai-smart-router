@@ -60,16 +60,16 @@ containers, Kubernetes, logs, or this repository.
 
 ## Issue A Runtime License
 
-Use the packaged `metrum-genai-smartrouter-license` (or `go run ./cmd/metrum-genai-smartrouter-license` from a source checkout). Operator-generated keys are not embedded in release binaries, so `issue` needs `--allow-unknown-runtime-key` plus `--public-key`.
+Use the packaged `metrum-ai-router-license` (or `go run ./cmd/metrum-ai-router-license` from a source checkout). Operator-generated keys are not embedded in release binaries, so `issue` needs `--allow-unknown-runtime-key` plus `--public-key`.
 
 A local trial can run [Local Quickstart](/docs/getting-started/local-quickstart) instead of these flags. For a manual issue:
 
 ```bash
-metrum-genai-smartrouter-license generate-keypair \
+metrum-ai-router-license generate-keypair \
   --public-key-out license.pub \
   --private-key-out license.key
 
-metrum-genai-smartrouter-license issue \
+metrum-ai-router-license issue \
   --catalog docs/enterprise-license-skus.json \
   --entitlement docs/entitlement.local-dev.example.json \
   --key license.key \
@@ -78,11 +78,11 @@ metrum-genai-smartrouter-license issue \
   --valid-for 8760h \
   --out license.json
 
-metrum-genai-smartrouter-license verify \
+metrum-ai-router-license verify \
   --license license.json \
   --public-key license.pub
 
-metrum-genai-smartrouter-license safe-summary \
+metrum-ai-router-license safe-summary \
   --license license.json
 ```
 

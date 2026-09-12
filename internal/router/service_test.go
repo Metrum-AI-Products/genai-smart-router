@@ -4134,12 +4134,12 @@ func TestCodexModelsEndpointInstalledCLIFetchThenRunSmoke(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "codex", "exec", "--ignore-user-config", "--ephemeral", "--ignore-rules", "--skip-git-repo-check",
 		"-c", `model="catalog-smoke"`,
-		"-c", `model_provider="metrum-router"`,
+		"-c", `model_provider="metrum-ai-router"`,
 		"-c", `model_catalog_json="`+catalogPath+`"`,
-		"-c", `model_providers.metrum-router.name="Metrum AI Router"`,
-		"-c", `model_providers.metrum-router.base_url="`+routerServer.URL+`/v1"`,
-		"-c", `model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"`,
-		"-c", `model_providers.metrum-router.wire_api="responses"`,
+		"-c", `model_providers.metrum-ai-router.name="Metrum AI Router"`,
+		"-c", `model_providers.metrum-ai-router.base_url="`+routerServer.URL+`/v1"`,
+		"-c", `model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"`,
+		"-c", `model_providers.metrum-ai-router.wire_api="responses"`,
 		"Reply with exactly: router codex ok")
 	cmd.Env = append(os.Environ(), "METRUM_ROUTER_KEY="+testToken, "HOME="+dir, "CODEX_HOME="+dir)
 	output, err := cmd.CombinedOutput()

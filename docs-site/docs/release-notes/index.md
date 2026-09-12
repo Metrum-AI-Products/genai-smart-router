@@ -14,6 +14,55 @@ this page. The version banner, `/docs/releases`, and `/version` are the
 authoritative sources for its exact router version and build timestamp; do not
 infer the running version from a date written in documentation.
 
+## v2.0.0 - 2026-09-12
+
+### Highlights
+
+- Breaking packaging rename to the canonical technical slug
+  **`metrum-ai-router`**. Packages and the runtime image ship **canonical
+  binaries only**; rename stub binaries are not packaged.
+- Release archives, Docker image tags, and GitHub Release artifact names use
+  `metrum-ai-router-*` / `metrum-ai-router:<tag>`.
+- Go module path remains `github.com/metrum-ai/router`.
+
+### Operator Impact
+
+| Area | Change |
+| --- | --- |
+| Runtime binary | `metrum-router` → `metrum-ai-router` |
+| Token / usage / migrate CLIs | `metrum-router-*` → `metrum-ai-router-*` |
+| Customer CLI | `metrum-routerctl` → `metrum-ai-routerctl` |
+| Fleet / license / lifecycle CLIs | `metrum-genai-smartrouter-*` / `metrum-genai-customer-lifecycle` → `metrum-ai-router-fleetctl`, `metrum-ai-router-fleet-sign`, `metrum-ai-router-license`, `metrum-ai-router-customer-lifecycle` |
+| Packaged stubs | Removed (`router`, `smartrouterctl`, `metrum-fleetctl`, …) |
+| Archives / image | `metrum-router-*` → `metrum-ai-router-*` |
+| Client `model_provider` examples | `metrum-router` → `metrum-ai-router` |
+| Docs URL | Still `https://llm-api.apps.metrum.ai/docs` until docs.metrum.ai is hosted |
+
+### Upgrade
+
+1. Download `metrum-ai-router-v2.0.0-linux-<arch>.tar.gz` (and Docker package if used)
+   from the GitHub Release; verify against `SHA256SUMS` / `release-artifacts.json`.
+2. Update service unit, Compose image name, Kubernetes image references, and PATH
+   installs to the new binary names. Do not rely on packaged rename stubs.
+3. Update client configs that set `model_provider="metrum-router"` to
+   `metrum-ai-router`.
+4. Follow the [Upgrade Guide](/docs/release-notes/upgrade-guide) for migration
+   gate and Compose/Kubernetes procedures.
+
+### Validation
+
+- `python3 scripts/validate_package_contents_test.py`
+- `python3 scripts/release_artifact_inventory_test.py`
+- `python3 scripts/canonical_product_test.py`
+- After deploy: `/readyz`, `/version` reports v2.0.0, binaries on PATH are
+  `metrum-ai-router*`, `/docs/` names Metrum AI Router
+
+### Rollback
+
+Roll back to GitHub Release **v1.4.4** (`metrum-router-*` artifacts and image
+tags) with the prior service unit / Compose / Kubernetes references. Restore
+config and usage DB backups taken before the upgrade if any migration ran.
+
 ## v1.4.4 - 2026-09-11
 
 Packaged republish of the canonical **Metrum AI Router** naming commit as

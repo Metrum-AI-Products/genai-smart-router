@@ -1,7 +1,7 @@
 // Copyright 2026 Metrum AI
 // SPDX-License-Identifier: Apache-2.0
 
-// router is a one-release compatibility notice for the renamed runtime binary.
+// router is a source-only rename notice; it is not packaged.
 package main
 
 import (
@@ -10,6 +10,6 @@ import (
 )
 
 func main() {
-	fmt.Fprintln(os.Stderr, "router was renamed to metrum-router; install and invoke metrum-router instead")
+	fmt.Fprintln(os.Stderr, "router was renamed to metrum-ai-router; install and invoke metrum-ai-router instead")
 	os.Exit(2)
 }

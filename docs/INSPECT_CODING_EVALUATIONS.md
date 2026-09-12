@@ -40,7 +40,7 @@ Suite bounds retain nanoseconds. The exporter adds a bounded terminal-persistenc
 ```sh
 # Run in the protected environment that can read the usage DB. Keep the output
 # outside the repository and make it owner-readable only.
-go run ./cmd/metrum-router-usage-report \
+go run ./cmd/metrum-ai-router-usage-report \
   --usage-db-config /protected/router-config.yaml \
   --from 2026-07-23T10:00:00Z --to 2026-07-23T11:00:00Z \
   --caller-id dedicated-evaluation-caller \

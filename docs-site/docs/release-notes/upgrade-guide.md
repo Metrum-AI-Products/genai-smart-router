@@ -16,10 +16,39 @@ Use this guide for customer-managed package upgrades. The exact maintenance wind
 5. Record the current router version and build timestamp from `/version`.
 6. Confirm `/readyz`, `/v1/models`, metrics, and admin reports are healthy before the change.
 7. Prepare a rollback package and the previous reviewed config.
+8. For v2.0.0+, inventory every install path, systemd unit, Compose service,
+   Kubernetes image, and client `model_provider` that still names `metrum-router*`
+   or `metrum-genai-smartrouter-*` CLIs.
+
+## Breaking rename (v2.0.0)
+
+v2.0.0 packages ship **canonical binaries only**. There are no packaged rename
+stub binaries. Update operators and automation before cutover:
+
+| Old packaged name | New packaged name |
+| --- | --- |
+| `metrum-router` | `metrum-ai-router` |
+| `metrum-router-token-gen` | `metrum-ai-router-token-gen` |
+| `metrum-router-usage-report` | `metrum-ai-router-usage-report` |
+| `metrum-router-migrate` | `metrum-ai-router-migrate` |
+| `metrum-routerctl` | `metrum-ai-routerctl` |
+| `metrum-genai-smartrouter-fleetctl` | `metrum-ai-router-fleetctl` |
+| `metrum-genai-smartrouter-fleet-sign` | `metrum-ai-router-fleet-sign` |
+| `metrum-genai-smartrouter-license` | `metrum-ai-router-license` |
+| `metrum-genai-customer-lifecycle` | `metrum-ai-router-customer-lifecycle` |
+
+Also removed from packages and the runtime image: `router`, `router-token-gen`,
+`router-usage-report`, `router-migrate`, `smartrouterctl`,
+`metrum-genai-smartrouterctl`, `metrum-fleetctl`, `metrum-smartrouterctl`,
+`metrum-fleet-sign`, and `router-license`.
+
+Release archives and image tags move from `metrum-router-*` to
+`metrum-ai-router-*`. Client examples that set `model_provider="metrum-router"`
+must use `metrum-ai-router`.
 
 ## Required Migration Gate
 
-For a package whose release contract includes a migration, stop or drain the serving router and follow the packaged `docs/DATA_MIGRATIONS.md` runbook: `router-migrate plan → approved backup → apply → all required data jobs validated → verify → status → serve`. `deployment-job` never applies application schema at startup; it validates the ledger and fails closed until the contract is current, compatible, and every required bound data job is validated—including the post-apply, pre-resume pending state. PostgreSQL production uses this non-serving job, not `auto-safe`; SQLite requires exclusive downtime, SQLite-safe backup and integrity verification, and free-space checks. Checkpoint ordinal `0` is not completion evidence.
+For a package whose release contract includes a migration, stop or drain the serving router and follow the packaged `docs/DATA_MIGRATIONS.md` runbook: `metrum-ai-router-migrate plan → approved backup → apply → all required data jobs validated → verify → status → serve`. `deployment-job` never applies application schema at startup; it validates the ledger and fails closed until the contract is current, compatible, and every required bound data job is validated—including the post-apply, pre-resume pending state. PostgreSQL production uses this non-serving job, not `auto-safe`; SQLite requires exclusive downtime, SQLite-safe backup and integrity verification, and free-space checks. Checkpoint ordinal `0` is not completion evidence.
 
 Use `--dsn-env=ROUTER_USAGE_DB_DSN` for PostgreSQL and the documented non-serving container `--entrypoint` for Compose. Do not put a database connection string in commands, tickets, screenshots, or logs.
 
@@ -34,11 +63,13 @@ database snapshot.
 ## Docker Compose Upgrade
 
 ```bash
-docker load -i images/metrum-router-<version>-linux-<arch>.tar
+docker load -i images/metrum-ai-router-<version>-linux-<arch>.tar
 
 cd compose
 cp .env .env.backup
-# Edit SMART_LLMROUTER_VERSION to the exact loaded image tag (metrum-router:<tag>).
+# Pin the image tag env var to the exact loaded tag (metrum-ai-router:<tag>).
+# Until the compose env rename lands, packages may still use SMART_LLMROUTER_VERSION;
+# the product contract name is METRUM_AI_ROUTER_VERSION.
 docker compose config >/dev/null
 docker compose up -d
 docker compose ps
@@ -48,86 +79,34 @@ Validate:
 
 ```bash
 export ROUTER_BASE_URL="https://<router-host>"
-export ROUTER_TOKEN="replace-with-router-token"
-
 curl -fsS "$ROUTER_BASE_URL/readyz"
 curl -fsS "$ROUTER_BASE_URL/version"
-curl -fsS -H "Authorization: Bearer $ROUTER_TOKEN" \
-  "$ROUTER_BASE_URL/v1/models"
+curl -fsS "$ROUTER_BASE_URL/docs/" | head
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-routerctl router version
 ```
 
-## Binary Upgrade
+## Binary Host Upgrade
 
-1. Stop or drain traffic according to the service manager and reverse proxy policy.
-2. Install the new `metrum-router` and operational CLI binaries. Legacy `router*`
-   names shipped in packages are **rename notices only** (exit 2); they are not
-   functional wrappers. Update unit files and scripts to call `metrum-router*`.
-3. Apply reviewed config or license changes.
-4. Restart the service.
-5. Validate readiness and caller/API smokes.
+1. Extract `metrum-ai-router-<version>-linux-<arch>.tar.gz`.
+2. Install the new `bin/metrum-ai-router*` binaries over the previous names
+   (or update PATH/service unit ExecStart paths).
+3. Diff `config.example.yaml` against the reviewed runtime config; apply only
+   approved changes.
+4. Run the migration gate when the release contract requires it.
+5. Restart the supervised process and validate `/readyz`, `/version`, and one
+   authenticated `/v1/models` call.
 
-Example validation is the same as Docker Compose.
+## Kubernetes Upgrade
 
-## Post-Upgrade Validation
-
-Run:
-
-- `/readyz`;
-- `/version`;
-- browser docs and release notes for the expected router version;
-- `/v1/models` for at least one application caller;
-- one completion smoke per changed model group or API skin;
-- `/metrics` with a metrics-admin caller when metrics are enabled;
-- `/admin/reports/api/summary?since=24h` when browser reports are enabled;
-- `router-usage-report --since 1h` when usage reporting is enabled.
-
-Watch for:
-
-- elevated 5xx responses;
-- router-side quota/rate-limit spikes;
-- upstream 429/5xx attempts;
-- fallback rate changes;
-- latency and throughput regressions;
-- license status changes;
-- usage database write failures.
+Update the Deployment/Job image to `…/metrum-ai-router:<version>-linux-<arch>`
+(or the digest from the release inventory). Migration Jobs must use
+`/app/bin/metrum-ai-router-migrate`. Confirm the service account, mounts, and
+license/config secrets still match the signed intent.
 
 ## Rollback
 
-Rollback should restore the previous package, previous reviewed config, and previous valid license file when those inputs changed. Restart the router and repeat the same readiness, model, metrics, and report smokes.
-
-Package rollback never runs a reverse migration. Use database restore whenever the release migration contract says `restore-required`; restore the approved pre-migration snapshot before deploying the earlier package. When the contract is compatible without restore, preserve the current usage database so request history remains intact. The database does not process a retrospective amendment merely because the package changed its mind.
-
-## Most Recent Upgrade Flow
-
-For v1.2.0, review the LRP follow-up and external-policy notes in the release
-notes. New conversation-key, feedback, verifier-hint, signed-bundle, usage
-import, selection-constraint, and uncertainty/explore knobs are opt-in; leave
-them disabled unless the deployment has validated them. No new usage migration
-is required solely for these LRP follow-ups.
-
-For v1.1.0, review the migration and streaming changes in the release notes.
-LRP is optional: install the separate locked Python/uv service from the release
-source archive and validate its bundle before configuring a deployment-defined
-staging group with `strategy: external`. Begin in shadow mode, compare the
-recommendation with the served target, and require representative quality, cost
-and latency evidence before enforcement. Roll back LRP by restoring the prior
-strategy or using external-policy baseline mode; preserve the previous validated
-bundle and configuration. See the [LRP guide](/docs/routing/learned-routing-policy)
-for authenticated service setup, deadline tuning and the worked scenario.
-
-For a docs-only package update:
-
-1. Read the current release note and verify it calls out no config, database, license, model-group, or caller API changes.
-2. Deploy the package using the Docker Compose or binary flow above.
-3. Check `/version` and confirm the browser docs banner shows the same router version and build timestamp.
-4. Open [Releases](/docs/releases) and [Release Notes](/docs/release-notes/) from the deployed router docs.
-5. Run `/readyz`, `/v1/models`, and one representative completion smoke.
-6. Roll back by restoring the previous package if the docs bundle or runtime health check is wrong.
-
-For a behavior-changing package update:
-
-1. Read the release note sections for operator impact, caller impact, validation, and rollback.
-2. Apply reviewed config or license updates before restarting the router.
-3. Run the release-specific model-group, API skin, metrics, report, and license smokes.
-4. Compare latency, fallback, upstream errors, usage writes, and license status against the pre-upgrade baseline.
-5. Roll back using the package, config, license, and database instructions in that release note.
+Prefer rolling back to the previous known-good GitHub Release package. For the
+v2.0.0 cutover, that is **v1.4.4** (`metrum-router-*` artifact and image names).
+Restore the prior service unit / Compose / Kubernetes references and any
+pre-upgrade config or usage DB backup required by the migration contract.
+Re-check `/readyz` and `/version` before closing the change.

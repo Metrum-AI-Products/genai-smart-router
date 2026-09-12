@@ -8,8 +8,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${METRUM_FLEET_BIN_DIR:-${ROOT}/dist/bin}"
-FLEETCTL="${BIN_DIR}/metrum-genai-smartrouter-fleetctl"
-FLEET_SIGN="${BIN_DIR}/metrum-genai-smartrouter-fleet-sign"
+FLEETCTL="${BIN_DIR}/metrum-ai-router-fleetctl"
+FLEET_SIGN="${BIN_DIR}/metrum-ai-router-fleet-sign"
 
 if [[ -z "${FLEET_SQLITE_E2E_PROFILE_REF:-}" || -z "${FLEET_SQLITE_E2E_LICENSE_REF:-}" ]]; then
   echo "skip: set FLEET_SQLITE_E2E_PROFILE_REF and FLEET_SQLITE_E2E_LICENSE_REF for live SQLite customer E2E" >&2

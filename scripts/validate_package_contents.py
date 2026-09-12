@@ -15,30 +15,12 @@ import tarfile
 from pathlib import Path
 from typing import Iterable
 
-import canonical_product
+import canonical_product as product
 
 
 TEXT_SCAN_LIMIT = 10 * 1024 * 1024
-BINARY_PACKAGE_FILES = {
-    "bin/metrum-router",
-    "bin/metrum-router-token-gen",
-    "bin/metrum-router-usage-report",
-    "bin/metrum-router-migrate",
-    "bin/metrum-routerctl",
-    "bin/metrum-genai-smartrouter-fleetctl",
-    "bin/metrum-genai-smartrouter-fleet-sign",
-    "bin/metrum-genai-smartrouter-license",
-    "bin/metrum-genai-customer-lifecycle",
-    "bin/router",
-    "bin/router-token-gen",
-    "bin/router-usage-report",
-    "bin/router-migrate",
-    "bin/metrum-genai-smartrouterctl",
-    "bin/smartrouterctl",
-    "bin/metrum-fleetctl",
-    "bin/metrum-smartrouterctl",
-    "bin/metrum-fleet-sign",
-    "bin/router-license",
+_PACKAGE_BINARY_PATHS = {f"bin/{name}" for name in product.PACKAGE_BINARIES}
+BINARY_PACKAGE_FILES = _PACKAGE_BINARY_PATHS | {
     "config/config.example.yaml",
     "config/env.example.json",
     "config/enterprise-license-skus.json",
@@ -63,39 +45,13 @@ DOCKER_PACKAGE_FILES = {
     "THIRD_PARTY_NOTICES.md",
     "MODEL_LICENSES.md",
 }
-PACKAGE_BINARIES = {
-    "bin/metrum-router",
-    "bin/metrum-router-token-gen",
-    "bin/metrum-router-usage-report",
-    "bin/metrum-router-migrate",
-    "bin/metrum-routerctl",
-    "bin/metrum-genai-smartrouter-fleetctl",
-    "bin/metrum-genai-smartrouter-fleet-sign",
-    "bin/metrum-genai-smartrouter-license",
-    "bin/metrum-genai-customer-lifecycle",
-    "bin/router",
-    "bin/router-token-gen",
-    "bin/router-usage-report",
-    "bin/router-migrate",
-    "bin/metrum-genai-smartrouterctl",
-    "bin/smartrouterctl",
-    "bin/metrum-fleetctl",
-    "bin/metrum-smartrouterctl",
-    "bin/metrum-fleet-sign",
-    "bin/router-license",
-}
-FLEET_ONLY_BINARY_NAMES = {
-    "metrum-genai-smartrouter-fleetctl",
-    "metrum-genai-smartrouter-fleet-sign",
-    "metrum-genai-smartrouter-license",
-    "metrum-genai-customer-lifecycle",
-    "metrum-fleetctl",
-    "metrum-smartrouterctl",
-    "metrum-fleet-sign",
-    "router-license",
-}
+PACKAGE_BINARIES = set(_PACKAGE_BINARY_PATHS)
+FLEET_ONLY_BINARY_NAMES = set(product.PACKAGE_FLEET_BINARIES)
+DOCKER_RUNTIME_BINARIES = {f"/app/bin/{name}" for name in product.PACKAGE_RUNTIME_BINARIES}
 EXPECTED_ELF_MACHINE = {"amd64": 62, "arm64": 183}
-DOCKER_IMAGE_RE = re.compile(r"^images/metrum-router-.+-linux-(amd64|arm64)\.tar$")
+DOCKER_IMAGE_RE = re.compile(
+    rf"^images/{re.escape(product.IMAGE_NAME)}-.+-linux-(amd64|arm64)\.tar$"
+)
 FORBIDDEN_IMAGE_PATH_RE = re.compile(
     r"^/?(?:"
     r"src/|"
@@ -253,19 +209,7 @@ def validate_elf_arch(blob: bytes, arch: str) -> str | None:
 
 def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes, expected_arch: str) -> list[str]:
     errors: list[str] = []
-    required = {
-        "/app/bin/metrum-router",
-        "/app/bin/metrum-router-token-gen",
-        "/app/bin/metrum-router-usage-report",
-        "/app/bin/metrum-router-migrate",
-        "/app/bin/metrum-routerctl",
-        "/app/bin/router",
-        "/app/bin/router-token-gen",
-        "/app/bin/router-usage-report",
-        "/app/bin/router-migrate",
-        "/app/bin/metrum-genai-smartrouterctl",
-        "/app/bin/smartrouterctl",
-    }
+    required = set(DOCKER_RUNTIME_BINARIES)
     actual: set[str] = set()
     try:
         with tarfile.open(fileobj=io.BytesIO(blob), mode="r:*") as image:
@@ -424,7 +368,7 @@ def validate_archive(archive: Path, allowed_docs: set[str]) -> list[str]:
             text = decode_text(blob[: TEXT_SCAN_LIMIT + 1])
             if text is None:
                 continue
-            privacy_text = canonical_product.strip_allowed_docs_urls(text)
+            privacy_text = product.strip_allowed_docs_urls(text)
             for label, pattern in FORBIDDEN_TEXT_PATTERNS:
                 if pattern.search(privacy_text):
                     errors.append(f"{archive}: {rel} contains {label}")

@@ -47,7 +47,7 @@ def main() -> int:
     require('cd "$CODEX_TOOL_WORK"' in compose and '-C "$CODEX_TOOL_WORK"' in compose, "Codex workspace-write sandbox must be rooted in its disposable work directory")
     require('--sandbox workspace-write' in compose, "Codex tool smoke must use workspace-write sandboxing")
     require("--dangerously-bypass-approvals-and-sandbox" not in compose, "Codex tool smoke must not bypass approvals or sandboxing")
-    require('model_providers.metrum-router.base_url=\\"${BASE_URL}/v1\\"' in compose, "Codex tool smoke must target the Compose router Responses URL")
+    require('model_providers.metrum-ai-router.base_url=\\"${BASE_URL}/v1\\"' in compose, "Codex tool smoke must target the Compose router Responses URL")
     require('grep -qx "claude-tool-ok" "$CLAUDE_WORK/claude_tool_smoke.txt"' in compose, "Claude tool smoke must assert the exact created file")
     require('grep -qx "codex-tool-ok" "$CODEX_TOOL_WORK/codex_tool_smoke.txt"' in compose, "Codex tool smoke must assert the exact created file")
     require('chmod 0700 "$WORKDIR" "$WORKDIR/config" "$WORKDIR/config/scripts"' in compose, "compose secret directories must be private")

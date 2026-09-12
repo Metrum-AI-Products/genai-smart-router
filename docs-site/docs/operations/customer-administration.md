@@ -22,10 +22,10 @@ runtime files in a ConfigMap or public issue.
 ## Validate Configuration
 
 ```bash
-metrum-genai-smartrouterctl config validate --config /path/to/config.yaml
-metrum-genai-smartrouterctl callers list --config /path/to/config.yaml
-metrum-genai-smartrouterctl providers list --config /path/to/config.yaml
-metrum-genai-smartrouterctl models list --config /path/to/config.yaml
+metrum-ai-routerctl config validate --config /path/to/config.yaml
+metrum-ai-routerctl callers list --config /path/to/config.yaml
+metrum-ai-routerctl providers list --config /path/to/config.yaml
+metrum-ai-routerctl models list --config /path/to/config.yaml
 ```
 
 The local CLI may update file-owned config, but it does not call Kubernetes or

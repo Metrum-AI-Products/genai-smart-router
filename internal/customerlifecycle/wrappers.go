@@ -17,7 +17,7 @@ import (
 
 // WrapStatus shells to fleetctl customer status and prints lifecycle state.
 func WrapStatus(ctx context.Context, intent Intent) error {
-	fleetBin, err := resolveBinary("metrum-genai-smartrouter-fleetctl", "metrum-fleetctl")
+	fleetBin, err := resolveBinary("metrum-ai-router-fleetctl", "metrum-fleetctl")
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func WrapStatus(ctx context.Context, intent Intent) error {
 
 // WrapSmoke shells to fleetctl customer smoke.
 func WrapSmoke(ctx context.Context, intent Intent, tokenFile, model string) error {
-	fleetBin, err := resolveBinary("metrum-genai-smartrouter-fleetctl", "metrum-fleetctl")
+	fleetBin, err := resolveBinary("metrum-ai-router-fleetctl", "metrum-fleetctl")
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func WrapSmoke(ctx context.Context, intent Intent, tokenFile, model string) erro
 // then signs and redeploys via fleetctl customer create. Operators without source
 // get a real rollout from one verb; publish-and-return alone is not acceptance.
 func WrapUpdateConfig(ctx context.Context, intent Intent, patchFile string, refreshBYOK bool) error {
-	fleetBin, err := resolveBinary("metrum-genai-smartrouter-fleetctl", "metrum-fleetctl")
+	fleetBin, err := resolveBinary("metrum-ai-router-fleetctl", "metrum-fleetctl")
 	if err != nil {
 		return err
 	}
@@ -145,7 +145,7 @@ func fileExists(path string) bool {
 
 // WrapDelete shells to fleetctl customer delete with signed approval.
 func WrapDelete(ctx context.Context, intent Intent, confirmFile string) error {
-	fleetBin, err := resolveBinary("metrum-genai-smartrouter-fleetctl", "metrum-fleetctl")
+	fleetBin, err := resolveBinary("metrum-ai-router-fleetctl", "metrum-fleetctl")
 	if err != nil {
 		return err
 	}

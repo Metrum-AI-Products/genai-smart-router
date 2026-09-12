@@ -16,7 +16,7 @@
 # 4. Mode-0600 runtime Secret with config.yaml, env.json, and license.json.
 #
 # Render a fresh blueprint:
-#   metrum-genai-smartrouterctl blueprint render \
+#   metrum-ai-routerctl blueprint render \
 #     --intent deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml \
 #     --out /tmp/blueprint
 #

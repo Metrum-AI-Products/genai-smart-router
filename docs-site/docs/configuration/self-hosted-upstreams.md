@@ -29,11 +29,11 @@ flowchart LR
 
 Typical enterprise deployments put the router behind the organization's TLS ingress and keep vLLM or SGLang services on private network names such as `http://vllm-llama70b.inference.svc.cluster.local:8000/v1`. The router can also mix internal services with external providers in one model group for migration, overflow, or fallback.
 
-On file-owned installs, `metrum-genai-smartrouterctl providers upsert` and
+On file-owned installs, `metrum-ai-routerctl providers upsert` and
 `models upsert-group` can write those upstream endpoints and routing targets into
 local `config.yaml`. For a full NVIDIA local-serving Kubernetes layout (multiple
 in-cluster models plus router), render
-`metrum-genai-smartrouterctl blueprint render` from
+`metrum-ai-routerctl blueprint render` from
 `deploy/kubernetes/intents/shadeform-nvidia-local-models.example.yaml` (L40S) or
 `shadeform-nvidia-local-models-b200.example.yaml` (B200/H200) so generated
 providers use only cluster Service DNS names.

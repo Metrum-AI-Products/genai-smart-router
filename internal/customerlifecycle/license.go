@@ -84,7 +84,7 @@ func bytesTrimSpace(b []byte) []byte {
 	return []byte(strings.TrimSpace(string(b)))
 }
 
-// IssueLicenseFile shells out to metrum-genai-smartrouter-license issue and returns the license path.
+// IssueLicenseFile shells out to metrum-ai-router-license issue and returns the license path.
 func IssueLicenseFile(ctx context.Context, intent Intent, workDir string) (string, error) {
 	if err := os.MkdirAll(workDir, 0o700); err != nil {
 		return "", err
@@ -99,7 +99,7 @@ func IssueLicenseFile(ctx context.Context, intent Intent, workDir string) (strin
 		"signing": map[string]string{
 			"key_id": intent.LicenseKeyID,
 		},
-		"notes": "issued by metrum-genai-customer-lifecycle (payment out of band)",
+		"notes": "issued by metrum-ai-router-customer-lifecycle (payment out of band)",
 	}
 	if intent.LicenseKeyID == "" {
 		return "", fmt.Errorf("license_key_id is required for license issue")
@@ -111,7 +111,7 @@ func IssueLicenseFile(ctx context.Context, intent Intent, workDir string) (strin
 	if err := writeMode0600(entitlementPath, raw); err != nil {
 		return "", err
 	}
-	bin, err := resolveBinary("metrum-genai-smartrouter-license", "router-license")
+	bin, err := resolveBinary("metrum-ai-router-license", "router-license")
 	if err != nil {
 		return "", err
 	}

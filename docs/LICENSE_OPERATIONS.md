@@ -6,7 +6,7 @@ entitlement record, payment record, or hosted dependency is required.
 
 ## Key custody
 
-- Generate a local pair with `metrum-genai-smartrouter-license generate-keypair`.
+- Generate a local pair with `metrum-ai-router-license generate-keypair`.
 - Store the private key mode `0600` outside Git, Kubernetes, container images, logs, and tickets.
 - The public key is safe to mount with `license.json` in the runtime Secret.
 - Back up the private key. Loss requires a trust rotation: new pair, replacement license, and replacement public key.

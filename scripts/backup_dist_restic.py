@@ -17,10 +17,10 @@ Local dist/ artifacts keep the version/hash in their filenames. Before upload,
 this script stages one complete release set under stable basenames so restic
 snapshots always replace the same paths:
 
-  metrum-router-linux-amd64.tar.gz
-  metrum-router-linux-arm64.tar.gz
-  metrum-router-docker-linux-amd64.tar.gz
-  metrum-router-docker-linux-arm64.tar.gz
+  metrum-ai-router-linux-amd64.tar.gz
+  metrum-ai-router-linux-arm64.tar.gz
+  metrum-ai-router-docker-linux-amd64.tar.gz
+  metrum-ai-router-docker-linux-arm64.tar.gz
 
 Version identity is recorded in restic tags (version:<id>). Customer license
 payloads are never packaged and are not included in this backup.
@@ -49,10 +49,10 @@ DEFAULT_ENV_JSON = ROOT / "env.json"
 STABLE_STAGE_DIR = ROOT / "tmp" / "restic-dist-upload"
 PACKAGE_GLOB = "*.tar.gz"
 DOCKER_PACKAGE_RE = re.compile(
-    r"^metrum-router-.+-docker-linux-(amd64|arm64)\.tar\.gz$"
+    r"^metrum-ai-router-.+-docker-linux-(amd64|arm64)\.tar\.gz$"
 )
 BINARY_PACKAGE_RE = re.compile(
-    r"^metrum-router-.+-linux-(amd64|arm64)\.tar\.gz$"
+    r"^metrum-ai-router-.+-linux-(amd64|arm64)\.tar\.gz$"
 )
 REQUIRED_KINDS = (
     ("binary", "amd64"),
@@ -61,10 +61,10 @@ REQUIRED_KINDS = (
     ("docker", "arm64"),
 )
 STABLE_NAMES = {
-    ("binary", "amd64"): "metrum-router-linux-amd64.tar.gz",
-    ("binary", "arm64"): "metrum-router-linux-arm64.tar.gz",
-    ("docker", "amd64"): "metrum-router-docker-linux-amd64.tar.gz",
-    ("docker", "arm64"): "metrum-router-docker-linux-arm64.tar.gz",
+    ("binary", "amd64"): "metrum-ai-router-linux-amd64.tar.gz",
+    ("binary", "arm64"): "metrum-ai-router-linux-arm64.tar.gz",
+    ("docker", "amd64"): "metrum-ai-router-docker-linux-amd64.tar.gz",
+    ("docker", "arm64"): "metrum-ai-router-docker-linux-arm64.tar.gz",
 }
 
 
@@ -96,12 +96,12 @@ def package_kind(name: str) -> str | None:
 def package_version(name: str) -> str | None:
     if is_docker_package(name):
         match = re.match(
-            r"^metrum-router-(.+)-docker-linux-(?:amd64|arm64)\.tar\.gz$",
+            r"^metrum-ai-router-(.+)-docker-linux-(?:amd64|arm64)\.tar\.gz$",
             name,
         )
     elif is_binary_package(name):
         match = re.match(
-            r"^metrum-router-(.+)-linux-(?:amd64|arm64)\.tar\.gz$",
+            r"^metrum-ai-router-(.+)-linux-(?:amd64|arm64)\.tar\.gz$",
             name,
         )
     else:
@@ -213,7 +213,7 @@ def select_release_set(
 def version_tags(version: str, packages: list[Path]) -> list[str]:
     tags = {
         "cto",
-        "metrum-router",
+        "metrum-ai-router",
         "release-packages",
         f"version:{version}",
     }
@@ -372,10 +372,10 @@ def self_test() -> None:
         "BACKUP_PASS": "example-pass",
         "RESTIC_PASSWORD": "example-restic",
         "RESTIC_REPO_HOST": "example.com",
-        "RESTIC_REPO_PATH": "backups/metrum-router",
+        "RESTIC_REPO_PATH": "backups/metrum-ai-router",
     }
     url = build_repository_url(with_creds)
-    expected = "rest:https://backup-user:example-pass@example.com/backups/metrum-router"
+    expected = "rest:https://backup-user:example-pass@example.com/backups/metrum-ai-router"
     if url != expected:
         raise AssertionError(f"repository URL mismatch: {url!r}")
 
@@ -385,7 +385,7 @@ def self_test() -> None:
             "BACKUP_PASS": "p@ss:word",
             "RESTIC_PASSWORD": "x",
             "RESTIC_REPO_HOST": "example.com",
-            "RESTIC_REPO_PATH": "backups/metrum-router",
+            "RESTIC_REPO_PATH": "backups/metrum-ai-router",
         }
     )
     if "u%2Fn" not in encoded or "p%40ss%3Aword" not in encoded:
@@ -409,10 +409,10 @@ def self_test() -> None:
         raise AssertionError("explicit RESTIC_REPOSITORY override failed")
 
     names = [
-        Path("metrum-router-v1-linux-amd64.tar.gz"),
-        Path("metrum-router-v1-linux-arm64.tar.gz"),
-        Path("metrum-router-v1-docker-linux-amd64.tar.gz"),
-        Path("metrum-router-v1-docker-linux-arm64.tar.gz"),
+        Path("metrum-ai-router-v1-linux-amd64.tar.gz"),
+        Path("metrum-ai-router-v1-linux-arm64.tar.gz"),
+        Path("metrum-ai-router-v1-docker-linux-amd64.tar.gz"),
+        Path("metrum-ai-router-v1-docker-linux-arm64.tar.gz"),
     ]
     if missing_required_packages(names):
         raise AssertionError("complete set reported missing packages")
@@ -420,14 +420,14 @@ def self_test() -> None:
         raise AssertionError("incomplete set should report missing docker packages")
     if missing_required_packages(names[2:]) != ["binary linux-amd64", "binary linux-arm64"]:
         raise AssertionError("docker-only set should report missing binary packages")
-    if is_binary_package("metrum-router-v1-docker-linux-amd64.tar.gz"):
+    if is_binary_package("metrum-ai-router-v1-docker-linux-amd64.tar.gz"):
         raise AssertionError("docker package must not classify as binary")
-    if package_version("metrum-router-v1-docker-linux-amd64.tar.gz") != "v1":
+    if package_version("metrum-ai-router-v1-docker-linux-amd64.tar.gz") != "v1":
         raise AssertionError("docker package version parse failed")
 
-    if stable_package_name(names[0]) != "metrum-router-linux-amd64.tar.gz":
+    if stable_package_name(names[0]) != "metrum-ai-router-linux-amd64.tar.gz":
         raise AssertionError("binary stable name mismatch")
-    if stable_package_name(names[2]) != "metrum-router-docker-linux-amd64.tar.gz":
+    if stable_package_name(names[2]) != "metrum-ai-router-docker-linux-amd64.tar.gz":
         raise AssertionError("docker stable name mismatch")
 
     version, selected = select_release_set(names, requested_version="v1")
@@ -435,8 +435,8 @@ def self_test() -> None:
         raise AssertionError("select_release_set failed for explicit version")
 
     mixed = names + [
-        Path("metrum-router-old-linux-amd64.tar.gz"),
-        Path("metrum-router-old-linux-arm64.tar.gz"),
+        Path("metrum-ai-router-old-linux-amd64.tar.gz"),
+        Path("metrum-ai-router-old-linux-arm64.tar.gz"),
     ]
     version, selected = select_release_set(mixed)
     if version != "v1" or len(selected) != 4:
@@ -445,7 +445,7 @@ def self_test() -> None:
     tags = version_tags("v1", names)
     for required in (
         "cto",
-        "metrum-router",
+        "metrum-ai-router",
         "release-packages",
         "fleet-admin-binary",
         "customer-docker",

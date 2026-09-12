@@ -133,7 +133,7 @@ def export_reasoning_coverage(suite_dir: Path, started_at: float, finished_at: f
         exporter = env("EVAL_USAGE_REPORT_BIN", "go")
         command = [exporter]
         if exporter == "go":
-            command.extend(["run", "./cmd/metrum-router-usage-report"])
+            command.extend(["run", "./cmd/metrum-ai-router-usage-report"])
         output = suite_dir / "reasoning-coverage.json"
         grace = bounded_int(env("EVAL_USAGE_EXPORT_GRACE_SECONDS", "2"), "EVAL_USAGE_EXPORT_GRACE_SECONDS", 0, 30)
         command.extend(["--usage-db-config", config_file, "--from", utc_timestamp(started_at), "--to", utc_timestamp(finished_at + grace), "--caller-id", caller_id, "--resolved-group", model, "--reasoning-coverage-out", str(output)])

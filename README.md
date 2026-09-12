@@ -181,7 +181,7 @@ git clone https://github.com/metrum-ai/router.git
 cd router
 python3 scripts/local_dev_bootstrap.py --out-dir tmp/local-dev
 # Set OPENAI_API_KEY in tmp/local-dev/env.json.
-go run ./cmd/metrum-router --config tmp/local-dev/config.yaml
+go run ./cmd/metrum-ai-router --config tmp/local-dev/config.yaml
 ```
 
 The bootstrap issues a local runtime `license.json` (SKU `oss-self-managed`)
@@ -236,25 +236,15 @@ Release package targets require a clean git tree and reject `-dirty` versions. U
 Each tarball contains:
 
 ```text
-bin/metrum-router
-bin/metrum-router-token-gen
-bin/metrum-router-usage-report
-bin/metrum-router-migrate
-bin/metrum-routerctl
-bin/metrum-genai-smartrouter-fleetctl
-bin/metrum-genai-smartrouter-fleet-sign
-bin/metrum-genai-smartrouter-license
-bin/metrum-genai-customer-lifecycle
-bin/router
-bin/router-token-gen
-bin/router-usage-report
-bin/router-migrate
-bin/metrum-genai-smartrouterctl
-bin/smartrouterctl
-bin/metrum-fleetctl
-bin/metrum-smartrouterctl # one-release rename notice
-bin/metrum-fleet-sign
-bin/router-license
+bin/metrum-ai-router
+bin/metrum-ai-router-token-gen
+bin/metrum-ai-router-usage-report
+bin/metrum-ai-router-migrate
+bin/metrum-ai-routerctl
+bin/metrum-ai-router-fleetctl
+bin/metrum-ai-router-fleet-sign
+bin/metrum-ai-router-license
+bin/metrum-ai-router-customer-lifecycle
 config/config.example.yaml
 config/env.example.json
 config/enterprise-license-skus.json
@@ -272,18 +262,18 @@ THIRD_PARTY_NOTICES.md
 MODEL_LICENSES.md
 caddy/Caddyfile
 ```
-`metrum-genai-smartrouter-fleetctl plan|deploy|status|delete|customer` is the
-binary-package-only Fleet lifecycle contract. `metrum-genai-smartrouter-fleet-sign`
+`metrum-ai-router-fleetctl plan|deploy|status|delete|customer` is the
+binary-package-only Fleet lifecycle contract. `metrum-ai-router-fleet-sign`
 issues protected intent/admission/delete documents and ships only in binary
 packages (never in customer Docker images).
-`metrum-genai-smartrouter-license` issues signed runtime-policy `license.json`
+`metrum-ai-router-license` issues signed runtime-policy `license.json`
 files and ships only in binary packages (never in runtime Docker images).
 `plan`, `deploy`, and `delete` consume one mode-`0600`,
 profile-key-signed, reference-only deployment intent; it contains the protected
 profile, runtime bundle, and license references without their resolved values.
 `customer create|status|smoke|grant-caller|get-config|list-callers|revoke-caller|update-quota|quota-status|update-config|delete` orchestrates
 disposable SQLite Fleet instances from the packaged binary alone (no Python/repo).
-`metrum-routerctl` provides customer-local safe config, caller-token-file,
+`metrum-ai-routerctl` provides customer-local safe config, caller-token-file,
 license, model, and aggregate-usage operations and is included in Docker images;
 Fleet binaries are not. The default deployment is SQLite state with one Router
 container and one replica; it neither provisions nor binds RDS. Dedicated RDS
@@ -291,10 +281,9 @@ requires an explicit approved `database_profile` manifest branch and a
 separately signed, scoped external admission that Fleet never creates. After
 disposable-E2E evidence exists, one qualified maintainer may self-review before
 a production-like non-production rehearsal.
-`router`, `router-token-gen`, `router-usage-report`, `router-migrate`, `metrum-genai-smartrouterctl`,
-`smartrouterctl`, `metrum-fleetctl`, `metrum-smartrouterctl`, `metrum-fleet-sign`, and `router-license`
-are one-release rename notices only. Fleet and multi-environment
-customer CLI guidance lives in
+Packages ship canonical `metrum-ai-router*` binaries only; older CLI names are
+source-only exit-2 notices under `cmd/` and are not packaged. Fleet and
+multi-environment customer CLI guidance lives in
 [docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md](docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md)
 and [docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md](docs/CUSTOMER_INSTANCE_OPERATIONS_RUNBOOK.md).
 
@@ -316,7 +305,7 @@ Internal operator and maintainer docs live under `docs/`. Use [docs/DOCS_MAINTEN
 Docker packages contain prebuilt image tarballs plus compose deployment assets:
 
 ```text
-images/metrum-router-<version>-linux-<arch>.tar
+images/metrum-ai-router-<version>-linux-<arch>.tar
 compose/docker-compose.yml
 compose/docker-compose.postgres-localhost.yml
 compose/Caddyfile.compose
@@ -336,7 +325,7 @@ docs/solution-brief.md
 The packaged config expects the routing script at `config/scripts/router.ts`, so the standard packaged run command is:
 
 ```bash
-bin/metrum-router --config config/config.yaml
+bin/metrum-ai-router --config config/config.yaml
 ```
 
 See `docs/DEPLOYMENT.md` for binary deployment guidance with Caddy TLS termination.
@@ -349,7 +338,7 @@ Create a config from the example:
 
 ```bash
 cp config.example.yaml config.yaml
-go run ./cmd/metrum-router-token-gen generate \
+go run ./cmd/metrum-ai-router-token-gen generate \
   --owner-user alice \
   --project example-project \
   --env dev \
@@ -363,7 +352,7 @@ Provider keys are read from `env.json` in this project before `${VAR}` reference
 Restic/backup secrets belong in ignored `ops.env.json` (see `ops.env.example.json`). Do not mix those into instance `env.json`; every deployment uses the same provider-only shape for instance secrets. Copy the example file locally (`cp ops.env.example.json ops.env.json`) and fill values; never commit the ignored runtime file.
 
 ```bash
-go run ./cmd/metrum-router --config config.yaml
+go run ./cmd/metrum-ai-router --config config.yaml
 ```
 
 If a variable is already set in the shell, the shell value wins over `env.json`. This lets CI or one-off live tests override local secrets without editing files.
@@ -407,7 +396,7 @@ Set `instance_fingerprint` only when the operator issues an instance-bound
 license for the deployment. It must match the licensed instance scope or
 startup/readiness will fail with `license-instance-limit-exceeded`.
 
-Use `go run ./cmd/metrum-genai-smartrouter-license safe-summary --license license.json` to inspect safe license metadata. `metrum-genai-smartrouter-license verify --license license.json --public-key <public-key-file>` is for release/test validation with a supplied public key. Operators use `issue`, `renew`, and `top-up` with a local signing key and the SKU catalog as needed for their deployment. Private signing keys are not required at runtime and must never be copied into router config, logs, images, or source control.
+Use `go run ./cmd/metrum-ai-router-license safe-summary --license license.json` to inspect safe license metadata. `metrum-ai-router-license verify --license license.json --public-key <public-key-file>` is for release/test validation with a supplied public key. Operators use `issue`, `renew`, and `top-up` with a local signing key and the SKU catalog as needed for their deployment. Private signing keys are not required at runtime and must never be copied into router config, logs, images, or source control.
 
 When the operator maintains a signed revocation bundle, configure
 `server.license.revocation.mode: file` and mount it at
@@ -1036,7 +1025,7 @@ Generate a report for an explicit period and import existing JSONL first. Import
 Generate a report from the default Docker Compose SQLite deployment:
 
 ```bash
-docker compose run --rm --no-deps --entrypoint /app/bin/metrum-router-usage-report router \
+docker compose run --rm --no-deps --entrypoint /app/bin/metrum-ai-router-usage-report router \
   --driver sqlite \
   --db /app/state/usage.sqlite \
   --since 24h \
@@ -1086,7 +1075,7 @@ make build-go-only # build Go binaries without refreshing embedded docs
 make build-all  # build docs, then linux amd64 and linux arm64 binaries under dist/build
 make package    # build linux amd64 and linux arm64 tarballs
 make package-all # same as package
-make docker-image # build one metrum-router image for GOOS/GOARCH with docker buildx
+make docker-image # build one metrum-ai-router image for GOOS/GOARCH with docker buildx
 make package-docker # build linux amd64 and linux arm64 Docker packages
 make package-docker-all # same as package-docker
 make e2e-mock   # local mock Claude/Codex C harness
@@ -1304,12 +1293,12 @@ codex exec --ignore-user-config --ephemeral \
   --skip-git-repo-check \
   -C "$WORK/codex-work" \
   -c "model=\"$ROUTER_MODEL\"" \
-  -c 'model_provider="metrum-router"' \
+  -c 'model_provider="metrum-ai-router"' \
   -c "model_catalog_json=\"$WORK/metrum-models.json\"" \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-  -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
+  -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-ai-router.base_url="http://127.0.0.1:18081/v1"' \
+  -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-ai-router.wire_api="responses"' \
   "Reply with exactly: router codex ok" </dev/null
 ```
 
@@ -1322,12 +1311,12 @@ export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
 
 codex \
   -c "model=\"$ROUTER_MODEL\"" \
-  -c 'model_provider="metrum-router"' \
+  -c 'model_provider="metrum-ai-router"' \
   -c "model_catalog_json=\"$WORK/metrum-models.json\"" \
-  -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-  -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"'
+  -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+  -c 'model_providers.metrum-ai-router.base_url="http://127.0.0.1:18081/v1"' \
+  -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-ai-router.wire_api="responses"'
 ```
 
 Expected final assistant output:
@@ -1358,12 +1347,12 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
     --dangerously-bypass-approvals-and-sandbox \
     -C /workspace \
     -c 'model="agent-tools-smoke"' \
-    -c 'model_provider="metrum-router"' \
+    -c 'model_provider="metrum-ai-router"' \
     -c 'model_catalog_json="/workspace/metrum-models.json"' \
-    -c 'model_providers.metrum-router.name="Metrum AI Router"' \
-    -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
-    -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-    -c 'model_providers.metrum-router.wire_api="responses"' \
+    -c 'model_providers.metrum-ai-router.name="Metrum AI Router"' \
+    -c 'model_providers.metrum-ai-router.base_url="http://127.0.0.1:18081/v1"' \
+    -c 'model_providers.metrum-ai-router.env_key="METRUM_ROUTER_KEY"' \
+    -c 'model_providers.metrum-ai-router.wire_api="responses"' \
     "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
 
 test "$(cat "$WORK/codex-tool-work/codex_tool_smoke.txt")" = "codex-tool-ok"
@@ -1375,7 +1364,7 @@ Tool-bearing requests bypass the router response cache. They are intentionally r
 
 ```bash
 go test ./...
-go build ./cmd/metrum-router
+go build ./cmd/metrum-ai-router
 ```
 
 The automated suite uses deterministic mock upstreams. The Claude Code and Codex commands above are the live provider acceptance gates.

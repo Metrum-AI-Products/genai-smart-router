@@ -45,7 +45,7 @@ func TestDisposableEKSReleasePackageCoreLifecycle(t *testing.T) {
 		t.Fatal("SQLite disposable EKS E2E must not set EKS_E2E_RDS_ADMISSION_FILE")
 	}
 
-	binary := filepath.Join(packageDir, "bin", "metrum-genai-smartrouter-fleetctl")
+	binary := filepath.Join(packageDir, "bin", "metrum-ai-router-fleetctl")
 	info, err := os.Stat(binary)
 	if err != nil {
 		t.Fatalf("release package Fleet binary unavailable: %v", err)
